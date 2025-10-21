@@ -9,11 +9,20 @@ import {CoverPool} from "../src/CoverPool.sol";
  * @notice Shared deployment helper that broadcasts a CoverPool deployment.
  */
 abstract contract Deploy is Script {
+    /**
+     * @notice Network-specific metadata used to validate deployments.
+     * @param networkName Human-readable network label used in logs.
+     * @param expectedChainId Chain id required for the deployment run (0 to skip validation).
+     */
     struct DeploymentConfig {
         string networkName;
         uint256 expectedChainId;
     }
 
+    /**
+     * @notice Emitted when a CoverPool deployment completes.
+     * @param coverPool Address of the newly deployed CoverPool.
+     */
     event CoverPoolDeployed(address indexed coverPool);
 
     /**
@@ -36,9 +45,11 @@ abstract contract Deploy is Script {
         _logDeployment(config, coverPool);
     }
 
-    /// @notice Logs deployment metadata after a CoverPool is broadcast.
-    /// @param config Network specific deployment configuration.
-    /// @param coverPool Address of the deployed CoverPool instance.
+    /**
+     * @notice Logs deployment metadata after a CoverPool is broadcast.
+     * @param config Network specific deployment configuration.
+     * @param coverPool Address of the deployed CoverPool instance.
+     */
     function _logDeployment(DeploymentConfig memory config, address coverPool) internal view {
         console2.log("=== CoverPool Deployment Summary ===");
         console2.log("Network:", config.networkName);
@@ -48,6 +59,8 @@ abstract contract Deploy is Script {
         console2.log("====================================");
     }
 
-    /// @notice Provides the network name and expected chain id used for deployment validation.
+    /**
+     * @notice Provides the network name and expected chain id used for deployment validation.
+     */
     function getDeploymentConfig() internal view virtual returns (DeploymentConfig memory);
 }
