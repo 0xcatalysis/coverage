@@ -8,6 +8,12 @@ import {Script, console2} from "forge-std/Script.sol";
  * @notice Shared inspection logic used to summarise a CoverPool deployment.
  */
 abstract contract Show is Script {
+    /**
+     * @notice Network metadata used to validate and label inspection runs.
+     * @param networkName Human-readable network label.
+     * @param chainIdEnvKey Environment variable holding the expected chain id.
+     * @param defaultChainId Fallback chain id to use when the env variable is unset.
+     */
     struct ShowConfig {
         string networkName;
         string chainIdEnvKey;
@@ -30,12 +36,16 @@ abstract contract Show is Script {
         _printDeploymentBanner(config, coverPoolAddr);
     }
 
-    /// @notice Returns the network metadata used to validate and label a Show run.
+    /**
+     * @notice Returns the network metadata used to validate and label a Show run.
+     */
     function getShowConfig() internal view virtual returns (ShowConfig memory);
 
-    /// @notice Pretty-prints the CoverPool deployment information for the current network.
-    /// @param config Network specific metadata.
-    /// @param coverPoolAddr Address of the CoverPool deployment being inspected.
+    /**
+     * @notice Pretty-prints the CoverPool deployment information for the current network.
+     * @param config Network specific metadata.
+     * @param coverPoolAddr Address of the CoverPool deployment being inspected.
+     */
     function _printDeploymentBanner(ShowConfig memory config, address coverPoolAddr) private view {
         console2.log(string.concat("=== ", config.networkName, " CoverPool Deployment ==="));
         console2.log("Network:", config.networkName);
