@@ -1,0 +1,17 @@
+broadcast/
+cache/
+coverage/
+docs/
+keystores/
+node_modules/
+out/
+
+*.log
+.DS_Store
+.env
+.env.*.local
+.env.local
+coverage.json
+coverage-report.txt
+lcov.info
+Thumbs.db
