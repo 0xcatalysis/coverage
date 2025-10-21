@@ -11,7 +11,6 @@ ETHEREUM_CHAIN_ID ?= 1
 COMPILER_VERSION = 0.8.28
 EVM_VERSION = shanghai
 OPTIMIZER_RUNS = 1000
-INIT_DATA = 0x
 
 FORGE_DEFAULT = FOUNDRY_PROFILE=default forge
 FORGE_CI = FOUNDRY_PROFILE=ci forge
@@ -49,7 +48,7 @@ setup:
 	@echo "Setup complete"
 
 build:
-	@echo "Building contracts..."
+	@echo "Building contracts with default profile..."
 	@$(FORGE_DEFAULT) build --sizes
 
 build-prod:
@@ -65,7 +64,7 @@ test:
 	@$(FORGE_DEFAULT) test -vvv --fail-fast
 
 test-ci:
-	@echo "Running tests with CI profile..."
+	@echo "Running all tests with ci profile..."
 	$(FORGE_CI) test -vvv --fail-fast
 
 test-unit:
@@ -78,7 +77,7 @@ test-fuzz:
 
 test-invariant:
 	@echo "Running invariant tests..."
-	@$(FORGE_DEFAULT) test --match-path "test/invariant/*.t.sol" -vvv
+	@$(FORGE_DEFAULT) test --match-path "test/invariant/*.t.sol" -vvv --fail-fast
 
 cover:
 	@echo "Generating coverage summary..."
@@ -173,6 +172,7 @@ slither:
 
 mythril:
 	@echo "Running mythril analysis..."
+	@myth analyze src/CoverPool.sol --solv $(COMPILER_VERSION)
 
 help:
 	@echo "Coverage Smart Contracts - Available commands:"
