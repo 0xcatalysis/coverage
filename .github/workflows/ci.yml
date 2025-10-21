@@ -42,69 +42,69 @@ jobs:
       - name: Clean build artifacts
         run: make clean
 
-      # - name: Check contract formatting
-      #   run: forge fmt --check
+      - name: Check contract formatting
+        run: forge fmt --check
 
       # - name: Check gas snapshot
       # run: make snapshot-check
 
-      # - name: Build contracts
-      #   run: make build
+      - name: Build contracts
+        run: make build
 
-      # - name: Run tests
-      #   run: make test-ci
+      - name: Run tests
+        run: make test-ci
 
-      # - name: Run slither analysis
-      #   run: make slither
+      - name: Run slither analysis
+        run: make slither
 
-      # - name: Start anvil
-      #   run: |
-      #     nohup anvil --port 8545 --silent &
-      #     for i in {1..15}; do
-      #       if nc -z 127.0.0.1 8545; then
-      #         echo "Anvil instance is up"
-      #         break
-      #       fi
-      #       sleep 1
-      #     done
+      - name: Start anvil
+        run: |
+          nohup anvil --port 8545 --silent &
+          for i in {1..15}; do
+            if nc -z 127.0.0.1 8545; then
+              echo "Anvil instance is up"
+              break
+            fi
+            sleep 1
+          done
 
-      # - name: Deploy contracts to anvil
-      #   run: make deploy-anvil
+      - name: Deploy contracts to anvil
+        run: make deploy-anvil
 
-      # - name: Generate coverage report
-      #   run: make cover > coverage-report.txt
+      - name: Generate coverage report
+        run: make cover > coverage-report.txt
 
-      # - name: Generate gas report
-      #   run: make gas > gas-report.txt
+      - name: Generate gas report
+        run: make gas > gas-report.txt
 
-      # - name: Generate abis
-      #   run: |
-      #     mkdir -p abis
-      #     for contract in PaymentRouter LiquidityPool TradeDataRecorder IPaymentRouter ILiquidityPool ITradeDataRecorder; do
-      #       find out -name "$contract.json" | while read file; do
-      #         dir_name=$(dirname "$file" | sed 's|^out/||')
-      #         mkdir -p "abis/$dir_name"
-      #         jq '.abi' "$file" > "abis/$dir_name/${contract}.json"
-      #       done
-      #     done
+      - name: Generate abis
+        run: |
+          mkdir -p abis
+          for contract in PaymentRouter LiquidityPool TradeDataRecorder IPaymentRouter ILiquidityPool ITradeDataRecorder; do
+            find out -name "$contract.json" | while read file; do
+              dir_name=$(dirname "$file" | sed 's|^out/||')
+              mkdir -p "abis/$dir_name"
+              jq '.abi' "$file" > "abis/$dir_name/${contract}.json"
+            done
+          done
 
-      # - name: Upload coverage report
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: coverage-report
-      #     path: coverage-report.txt
-      #     retention-days: ${{ env.RETENTION_DAYS }}
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-report.txt
+          retention-days: ${{ env.RETENTION_DAYS }}
 
-      # - name: Upload gas report
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: gas-report
-      #     path: gas-report.txt
-      #     retention-days: ${{ env.RETENTION_DAYS }}
+      - name: Upload gas report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gas-report
+          path: gas-report.txt
+          retention-days: ${{ env.RETENTION_DAYS }}
 
-      # - name: Upload abis
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: abis
-      #     path: abis/
-      #     retention-days: ${{ env.RETENTION_DAYS }}
+      - name: Upload abis
+        uses: actions/upload-artifact@v4
+        with:
+          name: abis
+          path: abis/
+          retention-days: ${{ env.RETENTION_DAYS }}

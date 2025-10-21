@@ -5,6 +5,8 @@ endif
 
 PRIVATE_KEY ?= 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ANVIL_RPC_URL ?= http://127.0.0.1:8545
+SEPOLIA_CHAIN_ID ?= 11155111
+ETHEREUM_CHAIN_ID ?= 1
 
 COMPILER_VERSION = 0.8.28
 EVM_VERSION = shanghai
@@ -26,7 +28,17 @@ VERIFY_COMPILER_OPTS = --compiler-version "$(COMPILER_VERSION)" \
 	--num-of-optimizations $(OPTIMIZER_RUNS) \
 	--via-ir
 
-.PHONY: all setup build test test-ci test-unit test-fuzz test-invariant cover cover-lcov gas snapshot snapshot-check build-prod docs clean slither mythril format help
+SEPOLIA_VERIFY_OPTS = --etherscan-api-key "$(SEPOLIA_ETHERSCAN_API_KEY)" \
+	--chain-id $(SEPOLIA_CHAIN_ID) \
+	--rpc-url $(SEPOLIA_RPC_URL) \
+	$(VERIFY_COMPILER_OPTS)
+
+ETHEREUM_VERIFY_OPTS = --etherscan-api-key "$(ETHERSCAN_API_KEY)" \
+	--chain-id $(ETHEREUM_CHAIN_ID) \
+	--rpc-url $(ETHEREUM_RPC_URL) \
+	$(VERIFY_COMPILER_OPTS)
+
+.PHONY: all setup build test test-ci test-unit test-fuzz test-invariant cover cover-lcov gas snapshot snapshot-check build-prod deploy-anvil deploy-sepolia deploy-ethereum verify-coverpool-sepolia verify-coverpool-ethereum show-sepolia show-ethereum docs clean slither mythril format help
 
 all: clean build test
 
@@ -97,6 +109,55 @@ snapshot-check:
 	@echo "Checking gas snapshot..."
 	@$(FORGE_PROD) snapshot --match-path "test/unit/*.t.sol" --check
 
+deploy-anvil: clean
+	@echo "Deploying contracts to Anvil..."
+	@$(FORGE_SCRIPT_DEFAULT) script/DeployAnvil.s.sol \
+		--rpc-url $(ANVIL_RPC_URL) \
+		--private-key $(PRIVATE_KEY) \
+		$(FORGE_SCRIPT_OPTS)
+
+deploy-sepolia: clean
+	@echo "Deploying contracts to Sepolia..."
+	@$(FORGE_SCRIPT_PROD) script/DeploySepolia.s.sol \
+		--rpc-url $(SEPOLIA_RPC_URL) \
+		--private-key $(PRIVATE_KEY) \
+		--chain-id $(SEPOLIA_CHAIN_ID) \
+		$(FORGE_SCRIPT_OPTS)
+
+deploy-ethereum: clean
+	@echo "Deploying contracts to Ethereum..."
+	@$(FORGE_SCRIPT_PROD) script/DeployEthereum.s.sol \
+		--rpc-url $(ETHEREUM_RPC_URL) \
+		--private-key $(PRIVATE_KEY) \
+		--chain-id $(ETHEREUM_CHAIN_ID) \
+		$(FORGE_SCRIPT_OPTS)
+
+verify-coverpool-sepolia:
+	@echo "Verifying CoverPool on Sepolia..."
+	@test -n "$(COVER_POOL_ADDRESS)" || (echo "COVER_POOL_ADDRESS environment variable required" && exit 1)
+	@$(FORGE_VERIFY_PROD) $(COVER_POOL_ADDRESS) src/CoverPool.sol:CoverPool \
+		$(SEPOLIA_VERIFY_OPTS) || true
+	@sleep 1
+
+verify-coverpool-ethereum:
+	@echo "Verifying CoverPool on Ethereum..."
+	@test -n "$(COVER_POOL_ADDRESS)" || (echo "COVER_POOL_ADDRESS environment variable required" && exit 1)
+	@$(FORGE_VERIFY_PROD) $(COVER_POOL_ADDRESS) src/CoverPool.sol:CoverPool \
+		$(ETHEREUM_VERIFY_OPTS) || true
+	@sleep 1
+
+show-sepolia:
+	@echo "Showing deployments for Sepolia..."
+	@$(FORGE_SCRIPT_DEFAULT) script/ShowSepolia.s.sol \
+		--rpc-url $(SEPOLIA_RPC_URL) \
+		--chain-id $(SEPOLIA_CHAIN_ID)
+
+show-ethereum:
+	@echo "Showing deployments for Ethereum..."
+	@$(FORGE_SCRIPT_DEFAULT) script/ShowEthereum.s.sol \
+		--rpc-url $(ETHEREUM_RPC_URL) \
+		--chain-id $(ETHEREUM_CHAIN_ID)
+
 docs:
 	@echo "Generating documentation..."
 	@forge doc
@@ -133,6 +194,19 @@ help:
 	@echo "  make cover            - Generate coverage summary (console output)"
 	@echo "  make cover-lcov       - Generate lcov report + HTML (if genhtml installed)"
 	@echo "  make gas              - Generate gas report"
+	@echo ""
+	@echo "Deployment:"
+	@echo "  make deploy-anvil       - Deploy contracts to Anvil"
+	@echo "  make deploy-sepolia     - Deploy contracts to Sepolia"
+	@echo "  make deploy-ethereum    - Deploy contracts to Ethereum"
+	@echo ""
+	@echo "Verification:"
+	@echo "  make verify-coverpool-sepolia  - Verify CoverPool on Sepolia"
+	@echo "  make verify-coverpool-ethereum - Verify CoverPool on Ethereum"
+	@echo ""
+	@echo "Inspection:"
+	@echo "  make show-sepolia       - Show Sepolia deployment metadata"
+	@echo "  make show-ethereum      - Show Ethereum deployment metadata"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make format           - Format code using forge fmt"
