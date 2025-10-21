@@ -1,0 +1,4 @@
+cache/** linguist-generated
+lib/** linguist-vendored
+out/** linguist-generated
+*.sol linguist-language=Solidity

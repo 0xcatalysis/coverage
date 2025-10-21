@@ -1,0 +1,75 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+solc = "0.8.28"
+auto_detect_solc = false
+optimizer = true
+optimizer_runs = 200
+evm_version = "shanghai"
+via_ir = false
+fuzz = { runs = 250, seed = "0x3e8" }
+invariant = { runs = 50, depth = 25, fail_on_revert = false }
+gas_reports = ["*"]
+fs_permissions = [
+    { access = "read", path = "./broadcast" },
+    { access = "read", path = "./out" },
+]
+allow_paths = ["docs", "lib", "script", "src", "test"]
+ffi = true
+ast = true
+build_info = true
+bytecode_hash = "none"
+extra_output = ["metadata", "storageLayout"]
+
+[profile.ci]
+fuzz = { runs = 500, seed = "0x3e8" }
+invariant = { runs = 100, depth = 50, fail_on_revert = false }
+verbosity = 4
+
+[profile.coverage]
+optimizer = true
+optimizer_runs = 1
+via_ir = true
+fuzz = { runs = 100, seed = "0x3e8" }
+invariant = { runs = 20, depth = 10 }
+extra_output = []
+gas_reports = []
+no_match_path = "script/**/*.sol"
+
+[profile.prod]
+gas_reports = []
+optimizer = true
+optimizer_runs = 1_000
+bytecode_hash = "ipfs"
+via_ir = true
+
+[rpc_endpoints]
+anvil = "${ANVIL_RPC_URL}"
+sepolia = "${SEPOLIA_RPC_URL}"
+ethereum = "${ETHEREUM_RPC_URL}"
+
+[etherscan]
+sepolia = { key = "${SEPOLIA_ETHERSCAN_API_KEY}", url = "https://api-sepolia.etherscan.io/api" }
+ethereum = { key = "${ETHERSCAN_API_KEY}", url = "https://api.etherscan.io/api" }
+
+[fmt]
+line_length = 130
+tab_width = 4
+bracket_spacing = false
+int_types = "long"
+multiline_func_header = "all"
+quote_style = "double"
+number_underscore = "thousands"
+hex_underscore = "remove"
+single_line_statement_blocks = "preserve"
+sort_imports = false
+contract_new_lines = false
+override_spacing = true
+wrap_comments = true
+
+[doc]
+out = "docs"
+repository = "https://github.com/0xcatalysis/coverage"

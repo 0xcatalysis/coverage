@@ -1,0 +1,33 @@
+{
+  "editor.trimAutoWhitespace": true,
+  "files.exclude": {
+    "**/broadcast": true,
+    "**/cache": true,
+    "**/out": true
+  },
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "search.exclude": {
+    "**/broadcast": true,
+    "**/cache": true,
+    "**/lib": true,
+    "**/out": true
+  },
+  "solidity.compileUsingRemoteVersion": "v0.8.28+commit.7893614a",
+  "solidity.formatter": "forge",
+  "solidity.defaultCompiler": "remote",
+  "solidity.packageDefaultDependenciesContractsDirectory": "src",
+  "solidity.packageDefaultDependenciesDirectory": "lib",
+  "solidity.remappings": [
+    "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
+    "@openzeppelin/=lib/openzeppelin-contracts/",
+    "@openzeppelin/upgrades/=lib/openzeppelin-foundry-upgrades/src/",
+    "forge-std/=lib/forge-std/src/"
+  ],
+  "[solidity]": {
+    "editor.defaultFormatter": "JuanBlanco.solidity",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 4,
+    "editor.rulers": [120]
+  },
+}
