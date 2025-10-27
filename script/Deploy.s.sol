@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
+import {Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Script, console2} from "forge-std/Script.sol";
 import {CoverPool} from "../src/CoverPool.sol";
+import {CoverPoolRegistry} from "../src/CoverPoolRegistry.sol";
 
 /**
  * @title Deploy
@@ -22,21 +24,16 @@ abstract contract Deploy is Script {
     }
 
     /**
-     * @notice Emitted when a CoverPool deployment completes.
-     * @param coverPool Address of the newly deployed CoverPool.
-     */
-    event CoverPoolDeployed(address indexed coverPool);
-
-    /**
-     * @notice Deploys a new CoverPool instance once the expected chain id is verified.
+     * @notice Deploys the CoverPool implementation and CoverPoolRegistry proxy after validating chain id.
      * @return coverPool Address of the deployed CoverPool contract.
-     * @dev Reverts when the active `block.chainid` does not match the expected value (if provided).
+     * @return coverPoolRegistry Address of the deployed CoverPoolRegistry proxy.
      */
-    function run() external returns (address coverPool) {
+    function run() external returns (address coverPool, address coverPoolRegistry) {
         DeploymentConfig memory config = getDeploymentConfig();
 
-        uint256 deployerPrivateKey = getDeployerPrivateKey();
+        uint256 deployerPrivateKey = vm.envOr("PRIVATE_KEY", DEFAULT_PRIVATE_KEY);
         address deployer = vm.addr(deployerPrivateKey);
+        address coverPoolRegistryAdmin = vm.envOr("COVER_POOL_REGISTRY_ADMIN", deployer);
 
         if (config.expectedChainId != 0) {
             require(block.chainid == config.expectedChainId, string.concat("Must deploy on ", config.networkName));
@@ -44,25 +41,17 @@ abstract contract Deploy is Script {
 
         vm.startBroadcast(deployerPrivateKey);
         coverPool = address(new CoverPool());
+        coverPoolRegistry = Upgrades.deployUUPSProxy(
+            "CoverPoolRegistry.sol:CoverPoolRegistry", abi.encodeCall(CoverPoolRegistry.initialize, (coverPoolRegistryAdmin))
+        );
         vm.stopBroadcast();
 
-        emit CoverPoolDeployed(coverPool);
-        _logDeployment(config, coverPool, deployer);
-    }
-
-    /**
-     * @notice Logs deployment metadata after a CoverPool is broadcast.
-     * @param config Network specific deployment configuration.
-     * @param coverPool Address of the deployed CoverPool instance.
-     * @param deployer Address used to broadcast the deployment.
-     */
-    function _logDeployment(DeploymentConfig memory config, address coverPool, address deployer) internal view {
-        console2.log("=== CoverPool Deployment Summary ===");
-        console2.log("Network:", config.networkName);
+        console2.log(string.concat("=== ", config.networkName, " Deployment ==="));
         console2.log("Chain ID:", block.chainid);
         console2.log("CoverPool Address:", coverPool);
+        console2.log("CoverPoolRegistry Address:", coverPoolRegistry);
+        console2.log("CoverPoolRegistry Admin:", coverPoolRegistryAdmin);
         console2.log("Deployer:", deployer);
-        console2.log("Code Size:", coverPool.code.length);
         console2.log("====================================");
     }
 
@@ -70,12 +59,4 @@ abstract contract Deploy is Script {
      * @notice Provides the network name and expected chain id used for deployment validation.
      */
     function getDeploymentConfig() internal view virtual returns (DeploymentConfig memory);
-
-    /**
-     * @notice Reads the deployer private key from env or falls back to the default Anvil key.
-     * @return privateKey Deployer private key used for broadcasting transactions.
-     */
-    function getDeployerPrivateKey() internal view returns (uint256 privateKey) {
-        return vm.envOr("PRIVATE_KEY", DEFAULT_PRIVATE_KEY);
-    }
 }
