@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {CoverPoolRegistry} from "../../src/CoverPoolRegistry.sol";
 import {ICoverPoolRegistry} from "../../src/interfaces/ICoverPoolRegistry.sol";
@@ -34,17 +35,18 @@ contract CoverPoolRegistryTest is Test {
         vm.label(premiumToken, "PremiumToken");
         vm.label(payoutToken, "PayoutToken");
 
-        CoverPoolRegistry registryImpl = new CoverPoolRegistry();
-        bytes memory initData = abi.encodeWithSelector(CoverPoolRegistry.initialize.selector, admin);
-        registry = CoverPoolRegistry(address(new ERC1967Proxy(address(registryImpl), initData)));
+        Options memory opts;
+        opts.unsafeSkipAllChecks = true;
+        address registryProxy = Upgrades.deployUUPSProxy(
+            "CoverPoolRegistry.sol:CoverPoolRegistry", abi.encodeCall(CoverPoolRegistry.initialize, (admin)), opts
+        );
+        registry = CoverPoolRegistry(registryProxy);
     }
 
     function test_initialize_WhenAdminZero_Reverts() public {
         CoverPoolRegistry registryImpl = new CoverPoolRegistry();
-        bytes memory initData = abi.encodeWithSelector(CoverPoolRegistry.initialize.selector, address(0));
-
         vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
-        new ERC1967Proxy(address(registryImpl), initData);
+        new ERC1967Proxy(address(registryImpl), abi.encodeCall(CoverPoolRegistry.initialize, (address(0))));
     }
 
     function test_registerPool_WhenConfigValid_StoresConfiguration() public {
