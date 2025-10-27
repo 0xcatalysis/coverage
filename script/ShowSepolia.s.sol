@@ -10,6 +10,12 @@ import {Show} from "./Show.s.sol";
 contract ShowSepolia is Show {
     /// @inheritdoc Show
     function getShowConfig() internal pure override returns (ShowConfig memory) {
-        return ShowConfig({networkName: "Sepolia", chainIdEnvKey: "SEPOLIA_CHAIN_ID", defaultChainId: 11_155_111});
+        return ShowConfig({
+            networkName: "Sepolia",
+            chainIdEnvKey: "SEPOLIA_CHAIN_ID",
+            defaultChainId: 11_155_111,
+            deploymentScript: "DeploySepolia.s.sol",
+            runFile: "run-latest.json"
+        });
     }
 }
