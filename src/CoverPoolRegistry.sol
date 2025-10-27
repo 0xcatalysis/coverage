@@ -27,6 +27,21 @@ contract CoverPoolRegistry is
     mapping(uint256 poolId => PoolConfig) private _poolConfigs;
     mapping(address pool => uint256 poolId) private _poolIds;
 
+    /**
+     * @notice Validation guard ensuring supplied pool configuration is well-formed.
+     * @dev Reverts with `ZeroAddress` or fee errors before executing the wrapped function.
+     */
+    modifier validateConfig(PoolConfig calldata config) {
+        require(
+            config.curator != address(0) && config.pool != address(0) && config.premiumToken != address(0)
+                && config.payoutToken != address(0),
+            ZeroAddress()
+        );
+        require(config.poolFeeBps <= _BASIS_POINTS && config.platformFeeBps <= _BASIS_POINTS, InvalidFeeBps());
+        require(uint256(config.poolFeeBps) + uint256(config.platformFeeBps) <= _BASIS_POINTS, InvalidFeeSum());
+        _;
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -70,9 +85,9 @@ contract CoverPoolRegistry is
         override
         onlyRole(REGISTRAR_ROLE)
         whenNotPaused
+        validateConfig(config)
         returns (uint256 poolId)
     {
-        _validateConfig(config);
         require(_poolIds[config.pool] == 0, PoolAlreadyRegistered(config.pool));
 
         poolId = ++_nextPoolId;
@@ -93,9 +108,8 @@ contract CoverPoolRegistry is
         override
         onlyRole(REGISTRAR_ROLE)
         whenNotPaused
+        validateConfig(newConfig)
     {
-        _validateConfig(newConfig);
-
         PoolConfig storage config = _poolConfigs[poolId];
         require(config.pool != address(0), PoolNotFound(poolId));
         require(config.active == newConfig.active, ActiveStatusMismatch());
@@ -148,20 +162,6 @@ contract CoverPoolRegistry is
         PoolConfig memory config = _poolConfigs[poolId];
         require(config.pool != address(0), PoolNotFound(poolId));
         return config;
-    }
-
-    /**
-     * @dev Validates pool configuration fields.
-     * @param config Configuration struct supplied either during registration or update.
-     */
-    function _validateConfig(PoolConfig calldata config) private pure {
-        require(
-            config.curator != address(0) && config.pool != address(0) && config.premiumToken != address(0)
-                && config.payoutToken != address(0),
-            ZeroAddress()
-        );
-        require(config.poolFeeBps <= _BASIS_POINTS && config.platformFeeBps <= _BASIS_POINTS, InvalidFeeBps());
-        require(uint256(config.poolFeeBps) + uint256(config.platformFeeBps) <= _BASIS_POINTS, InvalidFeeSum());
     }
 
     /**
