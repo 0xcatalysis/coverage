@@ -56,6 +56,11 @@ interface ICoverPoolRegistry {
     error ActiveStatusMismatch();
 
     /**
+     * @notice Reverts when a pagination request uses a zero page size.
+     */
+    error InvalidPageSize();
+
+    /**
      * @notice Configuration snapshot for a registered CoverPool.
      * @dev Resolved by PolicyManager and PremiumManager to enforce fee and asset guards per pool.
      */
@@ -101,6 +106,18 @@ interface ICoverPoolRegistry {
     event PoolStatusSet(uint256 indexed poolId, bool active);
 
     /**
+     * @notice Pauses registry mutations.
+     * @dev Only callable by DEFAULT_ADMIN_ROLE.
+     */
+    function pause() external;
+
+    /**
+     * @notice Resumes registry mutations.
+     * @dev Only callable by DEFAULT_ADMIN_ROLE.
+     */
+    function unpause() external;
+
+    /**
      * @notice Registers a new CoverPool and assigns it a deterministic identifier.
      * @dev Requires REGISTRAR_ROLE.
      * @param config Initial configuration parameters describing the pool.
@@ -125,16 +142,20 @@ interface ICoverPoolRegistry {
     function setPoolStatus(uint256 poolId, bool active) external;
 
     /**
-     * @notice Pauses registry mutations.
-     * @dev Only callable by DEFAULT_ADMIN_ROLE.
+     * @notice Enumerates registered pools using cursor-based pagination.
+     * @param cursor Pool id to start from (use 0 to begin at the first pool).
+     * @param size Maximum number of entries to return.
+     * @return poolIds Sequence of pool identifiers contained in the page.
+     * @return configs Matching pool configurations for the returned identifiers.
+     * @return nextCursor Cursor to supply in subsequent calls, or 0 when the end is reached.
      */
-    function pause() external;
-
-    /**
-     * @notice Resumes registry mutations.
-     * @dev Only callable by DEFAULT_ADMIN_ROLE.
-     */
-    function unpause() external;
+    function listPools(
+        uint256 cursor,
+        uint256 size
+    )
+        external
+        view
+        returns (uint256[] memory poolIds, PoolConfig[] memory configs, uint256 nextCursor);
 
     /**
      * @notice Resolves a pool identifier by CoverPool contract address.
