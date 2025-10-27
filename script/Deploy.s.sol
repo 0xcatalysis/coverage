@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import {Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Script, console2} from "forge-std/Script.sol";
-import {CoverPool} from "../src/CoverPool.sol";
 import {CoverPoolRegistry} from "../src/CoverPoolRegistry.sol";
 
 /**
@@ -32,12 +31,15 @@ abstract contract Deploy is Script {
 
         uint256 deployerPrivateKey = vm.envOr("PRIVATE_KEY", DEFAULT_PRIVATE_KEY);
         address deployer = vm.addr(deployerPrivateKey);
+
         address coverPoolRegistryAdmin = vm.envOr("COVER_POOL_REGISTRY_ADMIN", deployer);
+        address coverPoolRegistryRegistrar = vm.envOr("COVER_POOL_REGISTRY_REGISTRAR", coverPoolRegistryAdmin);
 
         vm.startBroadcast(deployerPrivateKey);
 
         address coverPoolRegistryProxy = Upgrades.deployUUPSProxy(
-            "CoverPoolRegistry.sol:CoverPoolRegistry", abi.encodeCall(CoverPoolRegistry.initialize, (coverPoolRegistryAdmin))
+            "CoverPoolRegistry.sol:CoverPoolRegistry",
+            abi.encodeCall(CoverPoolRegistry.initialize, (coverPoolRegistryAdmin, coverPoolRegistryRegistrar))
         );
 
         vm.stopBroadcast();
@@ -49,6 +51,7 @@ abstract contract Deploy is Script {
         console2.log("CoverPoolRegistry Proxy:", coverPoolRegistryProxy);
         console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImpl);
         console2.log("CoverPoolRegistry Admin:", coverPoolRegistryAdmin);
+        console2.log("CoverPoolRegistry Registrar:", coverPoolRegistryRegistrar);
         console2.log("====================================");
     }
 

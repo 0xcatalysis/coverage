@@ -13,6 +13,8 @@ import {ICoverPoolRegistry} from "./interfaces/ICoverPoolRegistry.sol";
  * @dev UUPS upgradeable with AccessControl governance and pausability hooks.
  */
 contract CoverPoolRegistry is Initializable, UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeable, ICoverPoolRegistry {
+    bytes32 public constant REGISTRAR_ROLE = keccak256("REGISTRAR_ROLE");
+
     uint16 private constant _BASIS_POINTS = 10_000;
 
     uint256 private _nextPoolId;
@@ -25,17 +27,19 @@ contract CoverPoolRegistry is Initializable, UUPSUpgradeable, AccessControlUpgra
     }
 
     /**
-     * @notice Initializes the registry and grants the admin role.
+     * @notice Initializes the registry and grants the admin and registrar roles.
      * @param admin Address that should receive DEFAULT_ADMIN_ROLE.
+     * @param registrar Address that should receive REGISTRAR_ROLE.
      */
-    function initialize(address admin) external initializer {
-        require(admin != address(0), ZeroAddress());
+    function initialize(address admin, address registrar) external initializer {
+        require(admin != address(0) && registrar != address(0), ZeroAddress());
 
         __UUPSUpgradeable_init();
         __AccessControl_init();
         __Pausable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(REGISTRAR_ROLE, registrar);
     }
 
     /**
@@ -58,7 +62,7 @@ contract CoverPoolRegistry is Initializable, UUPSUpgradeable, AccessControlUpgra
     function registerPool(PoolConfig calldata config)
         external
         override
-        onlyRole(DEFAULT_ADMIN_ROLE)
+        onlyRole(REGISTRAR_ROLE)
         whenNotPaused
         returns (uint256 poolId)
     {
@@ -81,7 +85,7 @@ contract CoverPoolRegistry is Initializable, UUPSUpgradeable, AccessControlUpgra
     )
         external
         override
-        onlyRole(DEFAULT_ADMIN_ROLE)
+        onlyRole(REGISTRAR_ROLE)
         whenNotPaused
     {
         _validateConfig(newConfig);
@@ -113,7 +117,7 @@ contract CoverPoolRegistry is Initializable, UUPSUpgradeable, AccessControlUpgra
     /**
      * @inheritdoc ICoverPoolRegistry
      */
-    function setPoolStatus(uint256 poolId, bool active) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setPoolStatus(uint256 poolId, bool active) external override onlyRole(REGISTRAR_ROLE) {
         PoolConfig storage config = _poolConfigs[poolId];
         require(config.pool != address(0), PoolNotFound(poolId));
         require(config.active != active, PoolStatusUnchanged());

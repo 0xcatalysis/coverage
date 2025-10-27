@@ -102,7 +102,7 @@ interface ICoverPoolRegistry {
 
     /**
      * @notice Registers a new CoverPool and assigns it a deterministic identifier.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires REGISTRAR_ROLE.
      * @param config Initial configuration parameters describing the pool.
      * @return poolId Newly assigned pool identifier.
      */
@@ -110,7 +110,7 @@ interface ICoverPoolRegistry {
 
     /**
      * @notice Updates the configuration metadata for an existing pool.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires REGISTRAR_ROLE.
      * @param poolId Identifier of the pool to update.
      * @param newConfig Replacement configuration struct.
      */
@@ -118,7 +118,7 @@ interface ICoverPoolRegistry {
 
     /**
      * @notice Toggles whether a pool is eligible for new bindings.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires REGISTRAR_ROLE.
      * @param poolId Identifier of the pool to modify.
      * @param active Desired active flag.
      */
