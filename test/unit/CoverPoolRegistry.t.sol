@@ -14,6 +14,7 @@ contract CoverPoolRegistryTest is Test {
 
     CoverPoolRegistry internal registry;
     address internal admin;
+    address internal registrar;
     address internal curator;
     address internal pool;
     address internal updatedPool;
@@ -22,6 +23,7 @@ contract CoverPoolRegistryTest is Test {
 
     function setUp() public {
         admin = makeAddr("admin");
+        registrar = makeAddr("registrar");
         curator = makeAddr("curator");
         pool = makeAddr("pool");
         updatedPool = makeAddr("updatedPool");
@@ -29,6 +31,7 @@ contract CoverPoolRegistryTest is Test {
         payoutToken = makeAddr("payoutToken");
 
         vm.label(admin, "Admin");
+        vm.label(registrar, "Registrar");
         vm.label(curator, "Curator");
         vm.label(pool, "Pool");
         vm.label(updatedPool, "UpdatedPool");
@@ -38,7 +41,9 @@ contract CoverPoolRegistryTest is Test {
         Options memory opts;
         opts.unsafeSkipAllChecks = true;
         address registryProxy = Upgrades.deployUUPSProxy(
-            "CoverPoolRegistry.sol:CoverPoolRegistry", abi.encodeCall(CoverPoolRegistry.initialize, (admin)), opts
+            "CoverPoolRegistry.sol:CoverPoolRegistry",
+            abi.encodeCall(CoverPoolRegistry.initialize, (admin, registrar)),
+            opts
         );
         registry = CoverPoolRegistry(registryProxy);
     }
@@ -46,7 +51,13 @@ contract CoverPoolRegistryTest is Test {
     function test_initialize_WhenAdminZero_Reverts() public {
         CoverPoolRegistry registryImpl = new CoverPoolRegistry();
         vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
-        new ERC1967Proxy(address(registryImpl), abi.encodeCall(CoverPoolRegistry.initialize, (address(0))));
+        new ERC1967Proxy(address(registryImpl), abi.encodeCall(CoverPoolRegistry.initialize, (address(0), registrar)));
+    }
+
+    function test_initialize_WhenRegistrarZero_Reverts() public {
+        CoverPoolRegistry registryImpl = new CoverPoolRegistry();
+        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
+        new ERC1967Proxy(address(registryImpl), abi.encodeCall(CoverPoolRegistry.initialize, (admin, address(0))));
     }
 
     function test_registerPool_WhenConfigValid_StoresConfiguration() public {
@@ -55,7 +66,7 @@ contract CoverPoolRegistryTest is Test {
         vm.expectEmit(true, true, true, true, address(registry));
         emit ICoverPoolRegistry.PoolRegistered(1, config.pool, config.curator, config);
 
-        vm.startPrank(admin);
+        vm.startPrank(registrar);
         uint256 poolId = registry.registerPool(config);
         vm.stopPrank();
 
@@ -67,8 +78,10 @@ contract CoverPoolRegistryTest is Test {
     function test_pause_WhenCalledByAdmin_Pauses() public {
         vm.startPrank(admin);
         registry.pause();
+        vm.stopPrank();
 
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        vm.startPrank(registrar);
         registry.registerPool(_defaultConfig(true));
         vm.stopPrank();
     }
@@ -86,6 +99,9 @@ contract CoverPoolRegistryTest is Test {
         vm.startPrank(admin);
         registry.pause();
         registry.unpause();
+        vm.stopPrank();
+
+        vm.startPrank(registrar);
         registry.registerPool(_defaultConfig(true));
         vm.stopPrank();
     }
@@ -106,16 +122,18 @@ contract CoverPoolRegistryTest is Test {
     function test_registerPool_WhenPaused_Reverts() public {
         vm.startPrank(admin);
         registry.pause();
+        vm.stopPrank();
 
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        vm.startPrank(registrar);
         registry.registerPool(_defaultConfig(true));
         vm.stopPrank();
     }
 
-    function test_registerPool_WhenCallerNotAdmin_Reverts() public {
+    function test_registerPool_WhenCallerNotRegistrar_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), registry.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), registry.REGISTRAR_ROLE()
             )
         );
         registry.registerPool(_defaultConfig(true));
@@ -125,7 +143,7 @@ contract CoverPoolRegistryTest is Test {
         _registerDefaultPool(true);
 
         vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolAlreadyRegistered.selector, pool));
-        vm.startPrank(admin);
+        vm.startPrank(registrar);
         registry.registerPool(_defaultConfig(true));
         vm.stopPrank();
     }
@@ -136,12 +154,12 @@ contract CoverPoolRegistryTest is Test {
         config.platformFeeBps = 5000;
 
         vm.expectRevert(ICoverPoolRegistry.InvalidFeeSum.selector);
-        vm.startPrank(admin);
+        vm.startPrank(registrar);
         registry.registerPool(config);
         vm.stopPrank();
     }
 
-    function test_updatePoolConfig_WhenCalledByAdmin_UpdatesFields() public {
+    function test_updatePoolConfig_WhenCalledByRegistrar_UpdatesFields() public {
         uint256 poolId = _registerDefaultPool(true);
 
         ICoverPoolRegistry.PoolConfig memory updated = ICoverPoolRegistry.PoolConfig({
@@ -157,7 +175,7 @@ contract CoverPoolRegistryTest is Test {
 
         vm.expectEmit(true, false, false, true, address(registry));
         emit ICoverPoolRegistry.PoolConfigUpdated(poolId, updated);
-        vm.startPrank(admin);
+        vm.startPrank(registrar);
         registry.updatePoolConfig(poolId, updated);
         vm.stopPrank();
 
@@ -169,8 +187,10 @@ contract CoverPoolRegistryTest is Test {
 
         vm.startPrank(admin);
         registry.pause();
+        vm.stopPrank();
 
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        vm.startPrank(registrar);
         registry.updatePoolConfig(poolId, _defaultConfig(true));
         vm.stopPrank();
     }
@@ -179,9 +199,20 @@ contract CoverPoolRegistryTest is Test {
         uint256 poolId = _registerDefaultPool(true);
 
         vm.expectRevert(ICoverPoolRegistry.ActiveStatusMismatch.selector);
-        vm.startPrank(admin);
+        vm.startPrank(registrar);
         registry.updatePoolConfig(poolId, _defaultConfig(false));
         vm.stopPrank();
+    }
+
+    function test_updatePoolConfig_WhenCallerNotRegistrar_Reverts() public {
+        uint256 poolId = _registerDefaultPool(true);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), registry.REGISTRAR_ROLE()
+            )
+        );
+        registry.updatePoolConfig(poolId, _defaultConfig(true));
     }
 
     function test_updatePoolConfig_WhenPoolAddressChanges_UpdatesMapping() public {
@@ -190,7 +221,7 @@ contract CoverPoolRegistryTest is Test {
         ICoverPoolRegistry.PoolConfig memory updated = _defaultConfig(true);
         updated.pool = updatedPool;
 
-        vm.startPrank(admin);
+        vm.startPrank(registrar);
         registry.updatePoolConfig(poolId, updated);
         vm.stopPrank();
 
@@ -205,7 +236,7 @@ contract CoverPoolRegistryTest is Test {
 
         vm.expectEmit(true, false, false, true, address(registry));
         emit ICoverPoolRegistry.PoolStatusSet(poolId, false);
-        vm.prank(admin);
+        vm.prank(registrar);
         registry.setPoolStatus(poolId, false);
 
         assertFalse(registry.getPoolConfig(poolId).active, "Pool should be inactive");
@@ -215,9 +246,20 @@ contract CoverPoolRegistryTest is Test {
         uint256 poolId = _registerDefaultPool(true);
 
         vm.expectRevert(ICoverPoolRegistry.PoolStatusUnchanged.selector);
-        vm.startPrank(admin);
+        vm.startPrank(registrar);
         registry.setPoolStatus(poolId, true);
         vm.stopPrank();
+    }
+
+    function test_setPoolStatus_WhenCallerNotRegistrar_Reverts() public {
+        uint256 poolId = _registerDefaultPool(true);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), registry.REGISTRAR_ROLE()
+            )
+        );
+        registry.setPoolStatus(poolId, false);
     }
 
     function test_resolvePool_WhenUnknownPool_Reverts() public {
@@ -231,7 +273,7 @@ contract CoverPoolRegistryTest is Test {
     }
 
     function _registerDefaultPool(bool active) internal returns (uint256 poolId) {
-        vm.startPrank(admin);
+        vm.startPrank(registrar);
         poolId = registry.registerPool(_defaultConfig(active));
         vm.stopPrank();
     }

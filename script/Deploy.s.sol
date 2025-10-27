@@ -5,6 +5,7 @@ import {Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Script, console2} from "forge-std/Script.sol";
 import {CoverPool} from "../src/CoverPool.sol";
 import {CoverPoolFactory} from "../src/CoverPoolFactory.sol";
+import {CoverPoolRegistry} from "../src/CoverPoolRegistry.sol";
 
 /**
  * @title Deploy
@@ -17,19 +18,19 @@ abstract contract Deploy is Script {
     /**
      * @notice Network-specific metadata used to validate deployments.
      * @param networkName Human-readable network label used in logs.
-     * @param chainId Chain id required for the deployment run.
+     * @param expectedChainId Chain id required for the deployment run.
      */
     struct DeploymentConfig {
         string networkName;
-        uint256 chainId;
+        uint256 expectedChainId;
     }
 
     /**
-     * @notice Deploys the CoverPool implementation and CoverPoolFactory proxy after validating chain id.
+     * @notice Deploys the CoverPool implementation, CoverPoolFactory proxy, and CoverPoolRegistry proxy.
      */
-    function run() external returns (address coverPoolFactoryProxy, address coverPoolFactoryImpl) {
+    function run() external {
         DeploymentConfig memory config = getDeploymentConfig();
-        require(config.chainId == block.chainid, string.concat("Must deploy on ", config.networkName));
+        require(config.expectedChainId == block.chainid, string.concat("Must deploy on ", config.networkName));
 
         uint256 deployerPrivateKey = vm.envOr("PRIVATE_KEY", DEFAULT_PRIVATE_KEY);
         address deployer = vm.addr(deployerPrivateKey);
@@ -37,19 +38,27 @@ abstract contract Deploy is Script {
         address coverPoolFactoryAdmin = vm.envOr("COVER_POOL_FACTORY_ADMIN", deployer);
         address coverPoolFactoryCreator = vm.envOr("COVER_POOL_FACTORY_CREATOR", coverPoolFactoryAdmin);
         address coverPoolPolicyManager = vm.envOr("COVER_POOL_POLICY_MANAGER", deployer);
+        address coverPoolRegistryAdmin = vm.envOr("COVER_POOL_REGISTRY_ADMIN", deployer);
+        address coverPoolRegistryRegistrar = vm.envOr("COVER_POOL_REGISTRY_REGISTRAR", coverPoolRegistryAdmin);
 
         vm.startBroadcast(deployerPrivateKey);
 
         address coverPoolImplementation = address(new CoverPool());
 
-        coverPoolFactoryProxy = Upgrades.deployUUPSProxy(
+        address coverPoolFactoryProxy = Upgrades.deployUUPSProxy(
             "CoverPoolFactory.sol:CoverPoolFactory",
             abi.encodeCall(
                 CoverPoolFactory.initialize,
                 (coverPoolFactoryAdmin, coverPoolFactoryCreator, coverPoolImplementation, coverPoolPolicyManager)
             )
         );
-        coverPoolFactoryImpl = Upgrades.getImplementationAddress(coverPoolFactoryProxy);
+        address coverPoolFactoryImpl = Upgrades.getImplementationAddress(coverPoolFactoryProxy);
+
+        address coverPoolRegistryProxy = Upgrades.deployUUPSProxy(
+            "CoverPoolRegistry.sol:CoverPoolRegistry",
+            abi.encodeCall(CoverPoolRegistry.initialize, (coverPoolRegistryAdmin, coverPoolRegistryRegistrar))
+        );
+        address coverPoolRegistryImpl = Upgrades.getImplementationAddress(coverPoolRegistryProxy);
 
         vm.stopBroadcast();
 
@@ -62,9 +71,11 @@ abstract contract Deploy is Script {
         console2.log("CoverPoolFactory Admin:", coverPoolFactoryAdmin);
         console2.log("CoverPoolFactory Creator:", coverPoolFactoryCreator);
         console2.log("Policy Manager:", coverPoolPolicyManager);
+        console2.log("CoverPoolRegistry Proxy:", coverPoolRegistryProxy);
+        console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImpl);
+        console2.log("CoverPoolRegistry Admin:", coverPoolRegistryAdmin);
+        console2.log("CoverPoolRegistry Registrar:", coverPoolRegistryRegistrar);
         console2.log("====================================");
-
-        return (coverPoolFactoryProxy, coverPoolFactoryImpl);
     }
 
     /**
