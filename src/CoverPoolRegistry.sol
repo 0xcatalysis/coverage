@@ -150,6 +150,53 @@ contract CoverPoolRegistry is
     /**
      * @inheritdoc ICoverPoolRegistry
      */
+    function listPools(
+        uint256 cursor,
+        uint256 size
+    )
+        external
+        view
+        override
+        returns (uint256[] memory poolIds, PoolConfig[] memory configs, uint256 nextCursor)
+    {
+        require(size != 0, InvalidPageSize());
+
+        uint256 totalPools = _nextPoolId;
+        if (totalPools == 0) {
+            return (new uint256[](0), new PoolConfig[](0), 0);
+        }
+
+        if (cursor == 0) {
+            cursor = 1;
+        }
+
+        if (cursor > totalPools) {
+            return (new uint256[](0), new PoolConfig[](0), 0);
+        }
+
+        uint256 remaining = totalPools - cursor + 1;
+        uint256 length = remaining < size ? remaining : size;
+
+        poolIds = new uint256[](length);
+        configs = new PoolConfig[](length);
+
+        for (uint256 i = 0; i < length; ++i) {
+            uint256 poolId = cursor + i;
+            PoolConfig memory config = _poolConfigs[poolId];
+            require(config.pool != address(0), PoolNotFound(poolId));
+            poolIds[i] = poolId;
+            configs[i] = config;
+        }
+
+        nextCursor = cursor + length;
+        if (nextCursor > totalPools) {
+            nextCursor = 0;
+        }
+    }
+
+    /**
+     * @inheritdoc ICoverPoolRegistry
+     */
     function resolvePool(address pool) external view override returns (uint256 poolId) {
         poolId = _poolIds[pool];
         require(poolId != 0, PoolNotRegistered(pool));

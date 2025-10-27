@@ -262,6 +262,55 @@ contract CoverPoolRegistryTest is Test {
         registry.setPoolStatus(poolId, false);
     }
 
+    function test_listPools_WhenPaginated_ReturnsBatches() public {
+        ICoverPoolRegistry.PoolConfig[] memory expected = new ICoverPoolRegistry.PoolConfig[](3);
+
+        vm.startPrank(registrar);
+        for (uint256 i = 0; i < expected.length; ++i) {
+            expected[i] = _makeIndexedConfig(i, true);
+            registry.registerPool(expected[i]);
+        }
+        vm.stopPrank();
+
+        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs, uint256 nextCursor) = registry.listPools(0, 2);
+
+        assertEq(poolIds.length, 2, "First page size mismatch");
+        assertEq(configs.length, 2, "First page configs size mismatch");
+        assertEq(poolIds[0], 1, "First id incorrect");
+        assertEq(poolIds[1], 2, "Second id incorrect");
+        assertEq(nextCursor, 3, "Next cursor mismatch");
+
+        for (uint256 i = 0; i < configs.length; ++i) {
+            _assertPoolConfigEqualsStruct(configs[i], expected[poolIds[i] - 1]);
+        }
+
+        (uint256[] memory poolIds2, ICoverPoolRegistry.PoolConfig[] memory configs2, uint256 nextCursor2) =
+            registry.listPools(nextCursor, 2);
+
+        assertEq(poolIds2.length, 1, "Second page size mismatch");
+        assertEq(configs2.length, 1, "Second page configs size mismatch");
+        assertEq(poolIds2[0], 3, "Third id incorrect");
+        assertEq(nextCursor2, 0, "Expected finished cursor");
+        _assertPoolConfigEqualsStruct(configs2[0], expected[poolIds2[0] - 1]);
+    }
+
+    function test_listPools_WhenPageSizeZero_Reverts() public {
+        vm.expectRevert(ICoverPoolRegistry.InvalidPageSize.selector);
+        registry.listPools(0, 0);
+    }
+
+    function test_listPools_WhenCursorPastEnd_ReturnsEmpty() public {
+        vm.startPrank(registrar);
+        registry.registerPool(_makeIndexedConfig(0, true));
+        vm.stopPrank();
+
+        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs, uint256 nextCursor) = registry.listPools(10, 2);
+
+        assertEq(poolIds.length, 0, "Expected empty pool ids");
+        assertEq(configs.length, 0, "Expected empty configs");
+        assertEq(nextCursor, 0, "Expected reset cursor");
+    }
+
     function test_resolvePool_WhenUnknownPool_Reverts() public {
         vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotRegistered.selector, address(0x1234)));
         registry.resolvePool(address(0x1234));
@@ -298,6 +347,37 @@ contract CoverPoolRegistryTest is Test {
             payoutToken: payoutToken,
             defaultSpecId: DEFAULT_SPEC_ID,
             poolFeeBps: 500,
+            platformFeeBps: 400,
+            active: active
+        });
+    }
+
+    function _assertPoolConfigEqualsStruct(
+        ICoverPoolRegistry.PoolConfig memory actual,
+        ICoverPoolRegistry.PoolConfig memory expected
+    )
+        internal
+        pure
+    {
+        assertEq(actual.curator, expected.curator, "Returned curator mismatch");
+        assertEq(actual.pool, expected.pool, "Returned pool mismatch");
+        assertEq(actual.premiumToken, expected.premiumToken, "Returned premium token mismatch");
+        assertEq(actual.payoutToken, expected.payoutToken, "Returned payout token mismatch");
+        assertEq(actual.defaultSpecId, expected.defaultSpecId, "Returned spec id mismatch");
+        assertEq(actual.poolFeeBps, expected.poolFeeBps, "Returned pool fee mismatch");
+        assertEq(actual.platformFeeBps, expected.platformFeeBps, "Returned platform fee mismatch");
+        assertEq(actual.active, expected.active, "Returned active mismatch");
+    }
+
+    function _makeIndexedConfig(uint256 index, bool active) internal returns (ICoverPoolRegistry.PoolConfig memory) {
+        string memory suffix = vm.toString(index);
+        return ICoverPoolRegistry.PoolConfig({
+            curator: makeAddr(string.concat("curator_", suffix)),
+            pool: makeAddr(string.concat("pool_", suffix)),
+            premiumToken: makeAddr(string.concat("premiumToken_", suffix)),
+            payoutToken: makeAddr(string.concat("payoutToken_", suffix)),
+            defaultSpecId: keccak256(bytes(string.concat("SPEC_", suffix))),
+            poolFeeBps: uint16(500 + index),
             platformFeeBps: 400,
             active: active
         });
