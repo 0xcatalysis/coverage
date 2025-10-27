@@ -31,25 +31,22 @@ abstract contract Show is Script {
     function run() external view {
         ShowConfig memory config = getShowConfig();
 
-        uint256 chainId = vm.envOr(config.chainIdEnvKey, config.defaultChainId);
-        require(block.chainid == chainId, string.concat("Must run on ", config.networkName));
+        uint256 expectedChainId = vm.envOr(config.chainIdEnvKey, config.defaultChainId);
+        require(block.chainid == expectedChainId, string.concat("Must run on ", config.networkName));
 
         string memory runFile = bytes(config.runFile).length == 0 ? "run-latest.json" : config.runFile;
         string memory artifactPath =
             string.concat("broadcast/", config.deploymentScript, "/", vm.toString(block.chainid), "/", runFile);
 
-        // forge-lint: disable-next-line(unsafe-cheatcode)
         string memory artifact = vm.readFile(artifactPath);
-        address coverPoolRegistryProxy =
-            abi.decode(vm.parseJson(artifact, ".returns.coverPoolRegistry.value"), (address));
-        address coverPoolRegistryImplementation =
-            abi.decode(vm.parseJson(artifact, ".returns.coverPoolRegistryImplementation.value"), (address));
+        address coverPool = abi.decode(vm.parseJson(artifact, ".returns.coverPool.value"), (address));
+        address coverPoolRegistry = abi.decode(vm.parseJson(artifact, ".returns.coverPoolRegistry.value"), (address));
 
         console2.log(string.concat("=== ", config.networkName, " Deployment ==="));
         console2.log("Chain ID:", block.chainid);
         console2.log("Deployment Script:", config.deploymentScript);
-        console2.log("CoverPoolRegistry Proxy:", coverPoolRegistryProxy);
-        console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImplementation);
+        console2.log("CoverPool Address:", coverPool);
+        console2.log("CoverPoolRegistry Address:", coverPoolRegistry);
         console2.log("=====================================");
     }
 
