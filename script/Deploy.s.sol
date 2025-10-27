@@ -16,7 +16,7 @@ abstract contract Deploy is Script {
     /**
      * @notice Network-specific metadata used to validate deployments.
      * @param networkName Human-readable network label used in logs.
-     * @param expectedChainId Chain id required for the deployment run (0 to skip validation).
+     * @param expectedChainId Chain id required for the deployment run.
      */
     struct DeploymentConfig {
         string networkName;
@@ -25,33 +25,30 @@ abstract contract Deploy is Script {
 
     /**
      * @notice Deploys the CoverPool implementation and CoverPoolRegistry proxy after validating chain id.
-     * @return coverPool Address of the deployed CoverPool contract.
-     * @return coverPoolRegistry Address of the deployed CoverPoolRegistry proxy.
      */
-    function run() external returns (address coverPool, address coverPoolRegistry) {
+    function run() external {
         DeploymentConfig memory config = getDeploymentConfig();
+        require(config.expectedChainId == block.chainid, string.concat("Must deploy on ", config.networkName));
 
         uint256 deployerPrivateKey = vm.envOr("PRIVATE_KEY", DEFAULT_PRIVATE_KEY);
         address deployer = vm.addr(deployerPrivateKey);
         address coverPoolRegistryAdmin = vm.envOr("COVER_POOL_REGISTRY_ADMIN", deployer);
 
-        if (config.expectedChainId != 0) {
-            require(block.chainid == config.expectedChainId, string.concat("Must deploy on ", config.networkName));
-        }
-
         vm.startBroadcast(deployerPrivateKey);
-        coverPool = address(new CoverPool());
-        coverPoolRegistry = Upgrades.deployUUPSProxy(
+
+        address coverPoolRegistryProxy = Upgrades.deployUUPSProxy(
             "CoverPoolRegistry.sol:CoverPoolRegistry", abi.encodeCall(CoverPoolRegistry.initialize, (coverPoolRegistryAdmin))
         );
+
         vm.stopBroadcast();
+
+        address coverPoolRegistryImpl = Upgrades.getImplementationAddress(coverPoolRegistryProxy);
 
         console2.log(string.concat("=== ", config.networkName, " Deployment ==="));
         console2.log("Chain ID:", block.chainid);
-        console2.log("CoverPool Address:", coverPool);
-        console2.log("CoverPoolRegistry Address:", coverPoolRegistry);
+        console2.log("CoverPoolRegistry Proxy:", coverPoolRegistryProxy);
+        console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImpl);
         console2.log("CoverPoolRegistry Admin:", coverPoolRegistryAdmin);
-        console2.log("Deployer:", deployer);
         console2.log("====================================");
     }
 
