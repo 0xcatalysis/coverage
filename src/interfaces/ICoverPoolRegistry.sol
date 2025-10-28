@@ -12,14 +12,9 @@ interface ICoverPoolRegistry {
     error ZeroAddress();
 
     /**
-     * @notice Reverts when supplied fee values exceed the basis point limit.
+     * @notice Reverts when supplied fee values exceed the defined basis-point cap.
      */
     error InvalidFeeBps();
-
-    /**
-     * @notice Reverts when the combined platform and pool fee basis points exceed 10_000.
-     */
-    error InvalidFeeSum();
 
     /**
      * @notice Reverts when attempting to register a pool whose address is already tracked.

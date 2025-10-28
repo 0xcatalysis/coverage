@@ -22,6 +22,7 @@ contract CoverPoolRegistry is
     bytes32 public constant override REGISTRAR_ROLE = keccak256("REGISTRAR_ROLE");
 
     uint16 private constant _BASIS_POINTS = 10_000;
+    uint16 private constant _MAX_FEE_BPS = 2000;
 
     uint256 private _nextPoolId;
     mapping(uint256 poolId => PoolConfig) private _poolConfigs;
@@ -37,8 +38,7 @@ contract CoverPoolRegistry is
                 && config.payoutToken != address(0),
             ZeroAddress()
         );
-        require(config.poolFeeBps <= _BASIS_POINTS && config.platformFeeBps <= _BASIS_POINTS, InvalidFeeBps());
-        require(uint256(config.poolFeeBps) + uint256(config.platformFeeBps) <= _BASIS_POINTS, InvalidFeeSum());
+        require(config.poolFeeBps <= _MAX_FEE_BPS && config.platformFeeBps <= _MAX_FEE_BPS, InvalidFeeBps());
         _;
     }
 
@@ -205,10 +205,9 @@ contract CoverPoolRegistry is
     /**
      * @inheritdoc ICoverPoolRegistry
      */
-    function getPoolConfig(uint256 poolId) external view override returns (PoolConfig memory) {
-        PoolConfig memory config = _poolConfigs[poolId];
+    function getPoolConfig(uint256 poolId) external view override returns (PoolConfig memory config) {
+        config = _poolConfigs[poolId];
         require(config.pool != address(0), PoolNotFound(poolId));
-        return config;
     }
 
     /**
