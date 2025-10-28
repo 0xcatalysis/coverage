@@ -196,7 +196,7 @@ contract CoverPoolRegistryTest is Test {
     function test_updatePoolConfig_WhenActiveFlagDiffers_Reverts() public {
         uint256 poolId = _registerDefaultPool(true);
 
-        vm.expectRevert(ICoverPoolRegistry.ActiveStatusMismatch.selector);
+        vm.expectRevert(ICoverPoolRegistry.PoolActiveStatusMismatch.selector);
         vm.startPrank(registrar);
         registry.updatePoolConfig(poolId, _defaultConfig(false));
         vm.stopPrank();
@@ -227,6 +227,23 @@ contract CoverPoolRegistryTest is Test {
         registry.resolvePool(pool);
 
         assertEq(registry.resolvePool(updatedPool), poolId, "Updated pool mapping incorrect");
+    }
+
+    function test_updatePoolConfig_WhenPoolAddressAlreadyRegistered_Reverts() public {
+        uint256 poolId = _registerDefaultPool(true);
+
+        ICoverPoolRegistry.PoolConfig memory otherConfig = _makeIndexedConfig(1, true);
+        vm.startPrank(registrar);
+        registry.registerPool(otherConfig);
+        vm.stopPrank();
+
+        ICoverPoolRegistry.PoolConfig memory updateConfig = _defaultConfig(true);
+        updateConfig.pool = otherConfig.pool;
+
+        vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolAlreadyRegistered.selector, updateConfig.pool));
+        vm.startPrank(registrar);
+        registry.updatePoolConfig(poolId, updateConfig);
+        vm.stopPrank();
     }
 
     function test_setPoolStatus_WhenStatusChanges_UpdatesActiveFlag() public {

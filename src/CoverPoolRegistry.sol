@@ -106,11 +106,11 @@ contract CoverPoolRegistry is Initializable, UUPSUpgradeable, AccessControlUpgra
     {
         PoolConfig storage config = _poolConfigs[poolId];
         require(config.pool != address(0), PoolNotFound(poolId));
-        require(config.active == newConfig.active, ActiveStatusMismatch());
+        require(config.active == newConfig.active, PoolActiveStatusMismatch());
 
         if (newConfig.pool != config.pool) {
             uint256 mappedPoolId = _poolIds[newConfig.pool];
-            require(mappedPoolId == 0, PoolAddressInUse(newConfig.pool));
+            require(mappedPoolId == 0, PoolAlreadyRegistered(newConfig.pool));
 
             delete _poolIds[config.pool];
             _poolIds[newConfig.pool] = poolId;
