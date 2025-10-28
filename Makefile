@@ -62,7 +62,6 @@ format:
 format-check:
 	@echo "Checking code format..."
 	@$(FORGE_DEFAULT) fmt --check
-
 lint:
 	@echo "Linting code..."
 	@$(FORGE_DEFAULT) lint
@@ -218,7 +217,10 @@ help:
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make format           - Format code"
+<<<<<<< HEAD
 	@echo "  make format-check     - Check code format"
+=======
+>>>>>>> 8146f6a (contracts/*: add code linting)
 	@echo "  make lint             - Lint code"
 	@echo "  make docs             - Generate documentation"
 	@echo "  make clean            - Clean build artifacts and localhost deployments"

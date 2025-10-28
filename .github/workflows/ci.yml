@@ -50,6 +50,9 @@ jobs:
       - name: Runt code linting
         run: make lint
 
+      - name: Runt code linting
+        run: make lint
+
       # - name: Check gas snapshot
       # run: make snapshot-check
 
