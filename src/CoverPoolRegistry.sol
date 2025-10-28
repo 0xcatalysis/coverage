@@ -19,7 +19,7 @@ contract CoverPoolRegistry is
     PausableUpgradeable,
     ICoverPoolRegistry
 {
-    bytes32 public constant REGISTRAR_ROLE = keccak256("REGISTRAR_ROLE");
+    bytes32 public constant override REGISTRAR_ROLE = keccak256("REGISTRAR_ROLE");
 
     uint16 private constant _BASIS_POINTS = 10_000;
 
@@ -66,14 +66,14 @@ contract CoverPoolRegistry is
     /**
      * @inheritdoc ICoverPoolRegistry
      */
-    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
         _pause();
     }
 
     /**
      * @inheritdoc ICoverPoolRegistry
      */
-    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
         _unpause();
     }
 
