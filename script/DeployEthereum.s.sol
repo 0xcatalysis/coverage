@@ -9,7 +9,7 @@ import {Deploy} from "./Deploy.s.sol";
  */
 contract DeployEthereum is Deploy {
     /// @inheritdoc Deploy
-    function getDeploymentConfig() internal pure override returns (DeploymentConfig memory) {
+    function getDeploymentConfig() internal view override returns (DeploymentConfig memory) {
         return DeploymentConfig({networkName: "Ethereum", chainId: 1});
     }
 }
