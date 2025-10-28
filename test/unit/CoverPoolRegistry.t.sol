@@ -383,7 +383,13 @@ contract CoverPoolRegistryTest is Test {
         poolId = registry.registerPool(_defaultConfig(active));
     }
 
-    function _assertPoolConfigEquals(uint256 poolId, ICoverPoolRegistry.PoolConfig memory expected) internal view {
+    function _assertPoolConfigEquals(
+        uint256 poolId,
+        ICoverPoolRegistry.PoolConfig memory expected
+    )
+        internal
+        view
+    {
         ICoverPoolRegistry.PoolConfig memory stored = registry.getPoolConfig(poolId);
         assertEq(stored.curator, expected.curator, "Curator mismatch");
         assertEq(stored.pool, expected.pool, "Pool mismatch");
