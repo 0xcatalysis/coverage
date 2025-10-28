@@ -46,6 +46,10 @@ abstract contract Show is Script {
             abi.decode(vm.parseJson(artifact, ".returns.coverPoolFactoryImpl.value"), (address));
         address coverPoolImplementation =
             abi.decode(vm.parseJson(artifact, ".transactions[0].contractAddress"), (address));
+        address coverPoolRegistryProxy =
+            abi.decode(vm.parseJson(artifact, ".returns.coverPoolRegistry.value"), (address));
+        address coverPoolRegistryImplementation =
+            abi.decode(vm.parseJson(artifact, ".returns.coverPoolRegistryImplementation.value"), (address));
 
         console2.log(string.concat("=== ", config.networkName, " Deployment ==="));
         console2.log("Chain ID:", block.chainid);
@@ -53,6 +57,8 @@ abstract contract Show is Script {
         console2.log("CoverPool Implementation:", coverPoolImplementation);
         console2.log("CoverPoolFactory Proxy:", coverPoolFactoryProxy);
         console2.log("CoverPoolFactory Implementation:", coverPoolFactoryImplementation);
+        console2.log("CoverPoolRegistry Proxy:", coverPoolRegistryProxy);
+        console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImplementation);
         console2.log("=====================================");
     }
 

@@ -27,8 +27,20 @@ abstract contract Deploy is Script {
 
     /**
      * @notice Deploys the CoverPool implementation, CoverPoolFactory proxy, and CoverPoolRegistry proxy.
+     * @return coverPoolFactoryProxy Address of the deployed CoverPoolFactory proxy.
+     * @return coverPoolFactoryImpl Implementation address for the CoverPoolFactory proxy.
+     * @return coverPoolRegistry Address of the deployed CoverPoolRegistry proxy.
+     * @return coverPoolRegistryImplementation Implementation address for the CoverPoolRegistry proxy.
      */
-    function run() external {
+    function run()
+        external
+        returns (
+            address coverPoolFactoryProxy,
+            address coverPoolFactoryImpl,
+            address coverPoolRegistry,
+            address coverPoolRegistryImplementation
+        )
+    {
         DeploymentConfig memory config = getDeploymentConfig();
         require(config.expectedChainId == block.chainid, string.concat("Must deploy on ", config.networkName));
 
@@ -45,43 +57,34 @@ abstract contract Deploy is Script {
 
         address coverPoolImplementation = address(new CoverPool());
 
-        address coverPoolFactoryProxy = Upgrades.deployUUPSProxy(
+        coverPoolFactoryProxy = Upgrades.deployUUPSProxy(
             "CoverPoolFactory.sol:CoverPoolFactory",
             abi.encodeCall(
                 CoverPoolFactory.initialize,
                 (coverPoolFactoryAdmin, coverPoolFactoryCreator, coverPoolImplementation, coverPoolPolicyManager)
             )
         );
-        address coverPoolFactoryImpl = Upgrades.getImplementationAddress(coverPoolFactoryProxy);
+        coverPoolFactoryImpl = Upgrades.getImplementationAddress(coverPoolFactoryProxy);
 
-        address coverPoolRegistryProxy = Upgrades.deployUUPSProxy(
+        coverPoolRegistry = Upgrades.deployUUPSProxy(
             "CoverPoolRegistry.sol:CoverPoolRegistry",
             abi.encodeCall(CoverPoolRegistry.initialize, (coverPoolRegistryAdmin, coverPoolRegistryRegistrar))
         );
-        address coverPoolRegistryImpl = Upgrades.getImplementationAddress(coverPoolRegistryProxy);
+        coverPoolRegistryImplementation = Upgrades.getImplementationAddress(coverPoolRegistry);
 
         vm.stopBroadcast();
 
         console2.log(string.concat("=== ", config.networkName, " Deployment ==="));
         console2.log("Chain ID:", block.chainid);
         console2.log("Deployer:", deployer);
-<<<<<<< HEAD
         console2.log("CoverPool Implementation:", coverPoolImplementation);
         console2.log("CoverPoolFactory Proxy:", coverPoolFactoryProxy);
         console2.log("CoverPoolFactory Implementation:", coverPoolFactoryImpl);
         console2.log("CoverPoolFactory Admin:", coverPoolFactoryAdmin);
         console2.log("CoverPoolFactory Creator:", coverPoolFactoryCreator);
         console2.log("Policy Manager:", coverPoolPolicyManager);
-=======
->>>>>>> b9b6dcc (contracts/deploy: update deployment data)
-        console2.log("CoverPool Implementation:", coverPoolImplementation);
-        console2.log("CoverPoolFactory Proxy:", coverPoolFactoryProxy);
-        console2.log("CoverPoolFactory Implementation:", coverPoolFactoryImpl);
-        console2.log("CoverPoolFactory Admin:", coverPoolFactoryAdmin);
-        console2.log("CoverPoolFactory Creator:", coverPoolFactoryCreator);
-        console2.log("Policy Manager:", coverPoolPolicyManager);
-        console2.log("CoverPoolRegistry Proxy:", coverPoolRegistryProxy);
-        console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImpl);
+        console2.log("CoverPoolRegistry Proxy:", coverPoolRegistry);
+        console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImplementation);
         console2.log("CoverPoolRegistry Admin:", coverPoolRegistryAdmin);
         console2.log("CoverPoolRegistry Registrar:", coverPoolRegistryRegistrar);
         console2.log("====================================");
