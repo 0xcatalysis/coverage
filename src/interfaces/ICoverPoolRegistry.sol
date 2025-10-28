@@ -100,13 +100,13 @@ interface ICoverPoolRegistry {
     event PoolStatusSet(uint256 indexed poolId, bool active);
 
     /**
-     * @notice Pauses registry mutations.
+     * @notice Pauses registry management.
      * @dev Only callable by DEFAULT_ADMIN_ROLE.
      */
     function pause() external;
 
     /**
-     * @notice Resumes registry mutations.
+     * @notice Resumes registry management.
      * @dev Only callable by DEFAULT_ADMIN_ROLE.
      */
     function unpause() external;
@@ -134,6 +134,11 @@ interface ICoverPoolRegistry {
      * @param active Desired active flag.
      */
     function setPoolStatus(uint256 poolId, bool active) external;
+
+    /**
+     * @notice Returns the role identifier that can manage the registry.
+     */
+    function REGISTRAR_ROLE() external pure returns (bytes32);
 
     /**
      * @notice Enumerates registered pools using cursor-based pagination.
