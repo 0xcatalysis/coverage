@@ -70,6 +70,9 @@ contract_new_lines = false
 override_spacing = true
 wrap_comments = true
 
+[lint]
+exclude_lints = ["mixed-case-function", "unwrapped-modifier-logic"]
+
 [doc]
 out = "docs"
 repository = "https://github.com/0xcatalysis/coverage"

@@ -408,6 +408,7 @@ contract CoverPoolRegistryTest is Test {
             premiumToken: makeAddr(string.concat("premiumToken_", suffix)),
             payoutToken: makeAddr(string.concat("payoutToken_", suffix)),
             defaultSpecId: keccak256(bytes(string.concat("SPEC_", suffix))),
+            // forge-lint: disable-next-line(unsafe-typecast)
             poolFeeBps: uint16(500 + index),
             platformFeeBps: 400,
             active: active
