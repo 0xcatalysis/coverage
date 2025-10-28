@@ -65,6 +65,15 @@ abstract contract Deploy is Script {
         console2.log(string.concat("=== ", config.networkName, " Deployment ==="));
         console2.log("Chain ID:", block.chainid);
         console2.log("Deployer:", deployer);
+<<<<<<< HEAD
+        console2.log("CoverPool Implementation:", coverPoolImplementation);
+        console2.log("CoverPoolFactory Proxy:", coverPoolFactoryProxy);
+        console2.log("CoverPoolFactory Implementation:", coverPoolFactoryImpl);
+        console2.log("CoverPoolFactory Admin:", coverPoolFactoryAdmin);
+        console2.log("CoverPoolFactory Creator:", coverPoolFactoryCreator);
+        console2.log("Policy Manager:", coverPoolPolicyManager);
+=======
+>>>>>>> b9b6dcc (contracts/deploy: update deployment data)
         console2.log("CoverPool Implementation:", coverPoolImplementation);
         console2.log("CoverPoolFactory Proxy:", coverPoolFactoryProxy);
         console2.log("CoverPoolFactory Implementation:", coverPoolFactoryImpl);
