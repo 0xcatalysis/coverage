@@ -47,10 +47,7 @@ jobs:
       - name: Check code format
         run: make format-check
 
-      - name: Runt code linting
-        run: make lint
-
-      - name: Runt code linting
+      - name: Run code linting
         run: make lint
 
       # - name: Check gas snapshot
