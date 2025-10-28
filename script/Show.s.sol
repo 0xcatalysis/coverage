@@ -38,6 +38,7 @@ abstract contract Show is Script {
         string memory artifactPath =
             string.concat("broadcast/", config.deploymentScript, "/", vm.toString(block.chainid), "/", runFile);
 
+        // forge-lint: disable-next-line(unsafe-cheatcode)
         string memory artifact = vm.readFile(artifactPath);
         address coverPool = abi.decode(vm.parseJson(artifact, ".returns.coverPool.value"), (address));
         address coverPoolRegistry = abi.decode(vm.parseJson(artifact, ".returns.coverPoolRegistry.value"), (address));
