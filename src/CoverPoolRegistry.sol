@@ -12,7 +12,13 @@ import {ICoverPoolRegistry} from "./interfaces/ICoverPoolRegistry.sol";
  * @notice Stores metadata and fee configuration for Cover Pool deployments.
  * @dev UUPS upgradeable with AccessControl governance and pausability hooks.
  */
-contract CoverPoolRegistry is Initializable, UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeable, ICoverPoolRegistry {
+contract CoverPoolRegistry is
+    Initializable,
+    UUPSUpgradeable,
+    AccessControlUpgradeable,
+    PausableUpgradeable,
+    ICoverPoolRegistry
+{
     bytes32 public constant REGISTRAR_ROLE = keccak256("REGISTRAR_ROLE");
 
     uint16 private constant _BASIS_POINTS = 10_000;
