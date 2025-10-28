@@ -28,12 +28,6 @@ interface ICoverPoolRegistry {
     error PoolAlreadyRegistered(address pool);
 
     /**
-     * @notice Reverts when updating a pool to an address that is already assigned to a different pool id.
-     * @param pool Address of the CoverPool contract that conflicts with an existing registration.
-     */
-    error PoolAddressInUse(address pool);
-
-    /**
      * @notice Reverts when the requested pool identifier does not exist in storage.
      * @param poolId Identifier that failed the lookup.
      */
@@ -53,7 +47,7 @@ interface ICoverPoolRegistry {
     /**
      * @notice Reverts when config updates request an active flag change instead of using setPoolStatus.
      */
-    error ActiveStatusMismatch();
+    error PoolActiveStatusMismatch();
 
     /**
      * @notice Reverts when a pagination request uses a zero page size.
