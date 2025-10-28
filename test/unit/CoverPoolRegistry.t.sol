@@ -332,7 +332,12 @@ contract CoverPoolRegistryTest is Test {
         }
         vm.stopPrank();
 
+<<<<<<< HEAD
         (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs) = registry.listPools(0, 2);
+=======
+        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs, uint256 nextCursor) =
+            registry.listPools(0, 2);
+>>>>>>> 7d2af70 (contracts/coverpoolregistry: update formatting rules)
 
         assertEq(poolIds.length, 2, "First page size mismatch");
         assertEq(configs.length, 2, "First page configs size mismatch");
@@ -362,6 +367,13 @@ contract CoverPoolRegistryTest is Test {
     function test_listPools_WhenCursorPastEnd_ReturnsEmpty() public {
         vm.prank(registrar);
         registry.registerPool(_makeIndexedConfig(0, true));
+<<<<<<< HEAD
+=======
+        vm.stopPrank();
+
+        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs, uint256 nextCursor) =
+            registry.listPools(10, 2);
+>>>>>>> 7d2af70 (contracts/coverpoolregistry: update formatting rules)
 
         (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs) = registry.listPools(10, 2);
         assertEq(poolIds.length, 0, "Expected empty pool ids");
@@ -378,11 +390,14 @@ contract CoverPoolRegistryTest is Test {
         registry.resolvePool(address(0x1234));
     }
 
+<<<<<<< HEAD
     function _registerDefaultPool(bool active) internal returns (uint256 poolId) {
         vm.prank(registrar);
         poolId = registry.registerPool(_defaultConfig(active));
     }
 
+=======
+>>>>>>> 7d2af70 (contracts/coverpoolregistry: update formatting rules)
     function _assertPoolConfigEquals(
         uint256 poolId,
         ICoverPoolRegistry.PoolConfig memory expected
