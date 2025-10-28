@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
@@ -42,7 +44,7 @@ jobs:
       - name: Clean build artifacts
         run: make clean
 
-      - name: Check contract formatting
+      - name: Check code format
         run: make format-check
 
       - name: Runt code linting
