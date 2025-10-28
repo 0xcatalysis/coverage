@@ -148,15 +148,27 @@ contract CoverPoolRegistryTest is Test {
         vm.stopPrank();
     }
 
-    function test_registerPool_WhenFeeSumInvalid_Reverts() public {
+    function test_registerPool_WhenFeeExceedsLimits_Reverts() public {
         ICoverPoolRegistry.PoolConfig memory config = _defaultConfig(true);
-        config.poolFeeBps = 6000;
-        config.platformFeeBps = 5000;
+        config.poolFeeBps = 2001;
 
-        vm.expectRevert(ICoverPoolRegistry.InvalidFeeSum.selector);
+        vm.expectRevert(ICoverPoolRegistry.InvalidFeeBps.selector);
         vm.startPrank(registrar);
         registry.registerPool(config);
         vm.stopPrank();
+    }
+
+    function test_registerPool_WhenFeeAtLimit_Succeeds() public {
+        ICoverPoolRegistry.PoolConfig memory config = _defaultConfig(true);
+        config.poolFeeBps = 2000;
+        config.platformFeeBps = 0;
+
+        vm.startPrank(registrar);
+        uint256 poolId = registry.registerPool(config);
+        vm.stopPrank();
+
+        assertEq(poolId, 1, "Pool id mismatch");
+        _assertPoolConfigEquals(poolId, config);
     }
 
     function test_updatePoolConfig_WhenCalledByRegistrar_UpdatesFields() public {
