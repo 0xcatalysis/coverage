@@ -37,7 +37,11 @@ ETHEREUM_VERIFY_OPTS = --etherscan-api-key "$(ETHERSCAN_API_KEY)" \
 	--rpc-url $(ETHEREUM_RPC_URL) \
 	$(VERIFY_COMPILER_OPTS)
 
+<<<<<<< HEAD
 .PHONY: all setup build test test-ci test-unit test-fuzz test-invariant cover cover-lcov gas snapshot snapshot-check build-prod deploy-anvil deploy-sepolia deploy-ethereum verify-coverpool-sepolia verify-coverpool-ethereum show-sepolia show-ethereum format format-check lint docs clean slither mythril help
+=======
+.PHONY: all setup build test test-ci test-unit test-fuzz test-invariant cover cover-lcov gas snapshot snapshot-check build-prod deploy-anvil deploy-sepolia deploy-ethereum verify-coverpool-sepolia verify-coverpool-ethereum show-sepolia show-ethereum format lint docs clean slither mythril help
+>>>>>>> 8146f6a (contracts/*: add code linting)
 
 all: clean build test
 
@@ -59,9 +63,12 @@ format:
 	@echo "Formatting code..."
 	@$(FORGE_DEFAULT) fmt
 
+<<<<<<< HEAD
 format-check:
 	@echo "Checking code format..."
 	@$(FORGE_DEFAULT) fmt --check
+=======
+>>>>>>> 8146f6a (contracts/*: add code linting)
 lint:
 	@echo "Linting code..."
 	@$(FORGE_DEFAULT) lint
@@ -217,7 +224,10 @@ help:
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make format           - Format code"
+<<<<<<< HEAD
 	@echo "  make format-check     - Check code format"
+=======
+>>>>>>> 8146f6a (contracts/*: add code linting)
 	@echo "  make lint             - Lint code"
 	@echo "  make docs             - Generate documentation"
 	@echo "  make clean            - Clean build artifacts and localhost deployments"
