@@ -37,7 +37,7 @@ ETHEREUM_VERIFY_OPTS = --etherscan-api-key "$(ETHERSCAN_API_KEY)" \
 	--rpc-url $(ETHEREUM_RPC_URL) \
 	$(VERIFY_COMPILER_OPTS)
 
-.PHONY: all setup build test test-ci test-unit test-fuzz test-invariant cover cover-lcov gas snapshot snapshot-check build-prod deploy-anvil deploy-sepolia deploy-ethereum verify-coverpool-sepolia verify-coverpool-ethereum show-sepolia show-ethereum format lint docs clean slither mythril help
+.PHONY: all setup build test test-ci test-unit test-fuzz test-invariant cover cover-lcov gas snapshot snapshot-check build-prod deploy-anvil deploy-sepolia deploy-ethereum verify-coverpool-sepolia verify-coverpool-ethereum show-sepolia show-ethereum format format-check lint docs clean slither mythril help
 
 all: clean build test
 
@@ -58,6 +58,10 @@ build-prod:
 format:
 	@echo "Formatting code..."
 	@$(FORGE_DEFAULT) fmt
+
+format-check:
+	@echo "Checking formatting..."
+	@$(FORGE_DEFAULT) fmt --check
 
 lint:
 	@echo "Linting code..."
@@ -214,6 +218,7 @@ help:
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make format           - Format code"
+	@echo "  make format-check     - Check code formatting"
 	@echo "  make lint             - Lint code"
 	@echo "  make docs             - Generate documentation"
 	@echo "  make clean            - Clean build artifacts and localhost deployments"

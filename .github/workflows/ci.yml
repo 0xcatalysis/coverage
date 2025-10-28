@@ -43,7 +43,7 @@ jobs:
         run: make clean
 
       - name: Check contract formatting
-        run: forge fmt --check
+        run: make format-check
 
       - name: Runt code linting
         run: make lint
