@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {
+    AccessControlEnumerableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
@@ -13,9 +16,15 @@ import {ICoverPool} from "./interfaces/ICoverPool.sol";
  * @dev Designed for use behind minimal proxy clones. Leverages AccessControl for role separation
  *      and EIP-712 signed quotes for deterministic policy commits.
  */
-contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable, ICoverPool {
-    bytes32 public constant override CURATOR_ROLE = keccak256("CURATOR_ROLE");
+contract CoverPool is
+    Initializable,
+    Ownable2StepUpgradeable,
+    AccessControlEnumerableUpgradeable,
+    EIP712Upgradeable,
+    ICoverPool
+{
     bytes32 public constant override POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
+    bytes32 public constant override QUOTE_SIGNER_ROLE = keccak256("QUOTE_SIGNER_ROLE");
 
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
@@ -24,8 +33,6 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
     );
 
     uint256 public override poolId;
-    address public override curator;
-    address public override quoteSigner;
     mapping(bytes32 policyCommit => bool bound) public override policyCommitBound;
 
     mapping(bytes32 poolPolicyId => BoundPolicy policy) private _poolPolicies;
@@ -55,40 +62,27 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
      */
     function initialize(
         uint256 poolId_,
-        address admin_,
         address curator_,
-        address policyManager,
+        address policyManager_,
         address quoteSigner_
     )
         external
         initializer
     {
         require(poolId_ != 0, InvalidPoolId());
-        require(
-            admin_ != address(0) && curator_ != address(0) && policyManager != address(0) && quoteSigner_ != address(0),
-            ZeroAddress()
-        );
+        require(curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0), ZeroAddress());
 
+        __Ownable_init(curator_);
+        __Ownable2Step_init();
+        __AccessControlEnumerable_init();
         __AccessControl_init();
         __EIP712_init(_NAME, _VERSION);
 
         poolId = poolId_;
-        curator = curator_;
 
-        _grantRole(DEFAULT_ADMIN_ROLE, admin_);
-        _grantRole(CURATOR_ROLE, curator_);
-        _grantRole(POLICY_MANAGER_ROLE, policyManager);
-
-        quoteSigner = quoteSigner_;
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
-    function setQuoteSigner(address newSigner) external override onlyRole(CURATOR_ROLE) {
-        require(newSigner != address(0), ZeroAddress());
-        quoteSigner = newSigner;
-        emit QuoteSignerSet(newSigner);
+        _grantRole(DEFAULT_ADMIN_ROLE, curator_);
+        _grantRole(POLICY_MANAGER_ROLE, policyManager_);
+        _grantRole(QUOTE_SIGNER_ROLE, quoteSigner_);
     }
 
     /**
@@ -159,17 +153,37 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
         validateQuoteInputs(quote)
         returns (bytes32)
     {
-        require(quoteSigner != address(0), ZeroAddress());
-
         bytes32 policyCommit = _hashQuote(quote);
         bytes32 digest = _hashTypedDataV4(policyCommit);
 
-        address recoveredSigner = ECDSA.recover(digest, signature);
-        if (recoveredSigner != quoteSigner) {
-            revert QuoteSignatureInvalid();
-        }
+        address signer = ECDSA.recover(digest, signature);
+        require(hasRole(QUOTE_SIGNER_ROLE, signer), QuoteSignatureInvalid());
 
         return policyCommit;
+    }
+
+    /**
+     * @dev Syncs AccessControl admin membership with ownership transfers.
+     * @param newOwner Address that will assume ownership of the contract.
+     */
+    function _transferOwnership(address newOwner) internal override {
+        address oldOwner = owner();
+        super._transferOwnership(newOwner);
+
+        if (oldOwner != address(0)) {
+            _revokeRole(DEFAULT_ADMIN_ROLE, oldOwner);
+        }
+
+        _grantRole(DEFAULT_ADMIN_ROLE, newOwner);
+    }
+
+    /**
+     * @dev Derives a pool-specific identifier for storing bound policy metadata.
+     * @param policyCommit Commit hash associated with the bound policy.
+     * @return poolPolicyId Unique identifier produced for the pool slice.
+     */
+    function _derivePoolPolicyId(bytes32 policyCommit) private view returns (bytes32 poolPolicyId) {
+        poolPolicyId = keccak256(abi.encodePacked(address(this), policyCommit));
     }
 
     /**
@@ -195,14 +209,5 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
                 quote.quoteExpiry
             )
         );
-    }
-
-    /**
-     * @dev Derives a pool-specific identifier for storing bound policy metadata.
-     * @param policyCommit Commit hash associated with the bound policy.
-     * @return poolPolicyId Unique identifier produced for the pool slice.
-     */
-    function _derivePoolPolicyId(bytes32 policyCommit) private view returns (bytes32 poolPolicyId) {
-        poolPolicyId = keccak256(abi.encodePacked(address(this), policyCommit));
     }
 }
