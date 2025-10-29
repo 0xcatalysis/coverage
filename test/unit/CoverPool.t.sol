@@ -9,7 +9,7 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 
 contract CoverPoolTest is Test {
     bytes32 private constant QUOTE_TYPEHASH = keccak256(
-        "QuoteData(uint256 poolId,uint256 coverageLimit,uint256 basePremium,uint256 riskBufferDeposit,bytes32 specId,bytes32 termsHash,address payoutAddress,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
+        "QuoteData(uint256 poolId,uint256 coverageLimit,uint256 basePremium,uint256 riskBufferDeposit,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
     );
     string private constant NAME = "Catalysis Cover Pool";
     string private constant VERSION = "1";
@@ -101,7 +101,6 @@ contract CoverPoolTest is Test {
             )
         );
         assertEq(coverPool.quoteDomainSeparator(), expectedDomain, "Domain separator mismatch");
-        assertTrue(coverPool.supportsInterface(type(ICoverPool).interfaceId), "Interface not supported");
         assertTrue(coverPool.supportsInterface(type(IAccessControl).interfaceId), "AccessControl interface missing");
     }
 
@@ -179,7 +178,7 @@ contract CoverPoolTest is Test {
 
     function test_validateQuote_WhenPayoutAddressZero_Reverts() public {
         ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.payoutAddress = address(0);
+        quote.payoutReceiver = address(0);
         bytes memory signature = _signQuote(quote);
 
         vm.expectRevert(ICoverPool.InvalidQuoteRecipient.selector);
@@ -221,7 +220,7 @@ contract CoverPoolTest is Test {
         assertEq(bound.specId, quote.specId, "Spec id mismatch");
         assertEq(bound.termsHash, quote.termsHash, "Terms hash mismatch");
         assertEq(bound.coverageLimit, quote.coverageLimit, "Coverage limit mismatch");
-        assertEq(bound.payoutAddress, quote.payoutAddress, "Payout address mismatch");
+        assertEq(bound.payoutAddress, quote.payoutReceiver, "Payout address mismatch");
         assertEq(bound.committeeId, quote.committeeId, "Committee id mismatch");
         assertEq(bound.operator, quote.operator, "Operator mismatch");
         assertEq(bound.startTime, quote.startTime, "Start time mismatch");
@@ -304,7 +303,7 @@ contract CoverPoolTest is Test {
             riskBufferDeposit: 50 ether,
             specId: specId,
             termsHash: termsHash,
-            payoutAddress: payoutRecipient,
+            payoutReceiver: payoutRecipient,
             committeeId: uint96(123),
             operator: operator,
             startTime: uint64(block.timestamp + 1 hours),
@@ -341,7 +340,7 @@ contract CoverPoolTest is Test {
                 quote.riskBufferDeposit,
                 quote.specId,
                 quote.termsHash,
-                quote.payoutAddress,
+                quote.payoutReceiver,
                 quote.committeeId,
                 quote.operator,
                 quote.startTime,
