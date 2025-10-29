@@ -5,10 +5,12 @@ import {
     AccessControlEnumerableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
+import {IOwnable2Step} from "./interfaces/IOwnable2Step.sol";
 
 /**
  * @title CoverPool
@@ -160,6 +162,34 @@ contract CoverPool is
         require(hasRole(QUOTE_SIGNER_ROLE, signer), QuoteSignatureInvalid());
 
         return policyCommit;
+    }
+
+    /**
+     * @inheritdoc IOwnable2Step
+     */
+    function owner() public view override (IOwnable2Step, OwnableUpgradeable) returns (address) {
+        return super.owner();
+    }
+
+    /**
+     * @inheritdoc IOwnable2Step
+     */
+    function pendingOwner() public view override (IOwnable2Step, Ownable2StepUpgradeable) returns (address) {
+        return super.pendingOwner();
+    }
+
+    /**
+     * @inheritdoc IOwnable2Step
+     */
+    function transferOwnership(address newOwner) public override (IOwnable2Step, Ownable2StepUpgradeable) {
+        super.transferOwnership(newOwner);
+    }
+
+    /**
+     * @inheritdoc IOwnable2Step
+     */
+    function acceptOwnership() public override (IOwnable2Step, Ownable2StepUpgradeable) {
+        super.acceptOwnership();
     }
 
     /**

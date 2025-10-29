@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+
 /**
  * @title ICoverPoolRegistry
  * @notice Registry interface that exposes metadata for Cover Pool deployments.
  */
-interface ICoverPoolRegistry {
+interface ICoverPoolRegistry is IAccessControl {
     /**
      * @notice Configuration snapshot for a registered CoverPool.
      * @dev Resolved by PolicyManager and PremiumManager to enforce fee and asset guards per pool.
