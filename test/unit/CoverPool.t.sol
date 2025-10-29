@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {Test} from "forge-std/Test.sol";
 import {CoverPool} from "../../src/CoverPool.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 
 contract CoverPoolTest is Test {
     bytes32 private constant QUOTE_TYPEHASH = keccak256(
-        "QuoteData(address pool,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
+        "QuoteData(uint256 poolId,uint256 coverageLimit,uint256 basePremium,uint256 riskBufferDeposit,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
     );
     string private constant NAME = "Catalysis Cover Pool";
     string private constant VERSION = "1";
 
+    uint256 private constant POOL_ID = 1;
+
     CoverPool private implementation;
     CoverPool private coverPool;
 
+    address private admin;
     address private curator;
     address private policyManager;
     address private payoutRecipient;
@@ -30,63 +30,66 @@ contract CoverPoolTest is Test {
 
     bytes32 private specId;
     bytes32 private termsHash;
-    uint16 private poolFeeBps;
 
     function setUp() public {
         vm.warp(1_000_000);
 
-        curator = makeAddr("curator");
-        policyManager = makeAddr("policyManager");
-        payoutRecipient = makeAddr("payoutRecipient");
-        operator = makeAddr("operator");
-        quoteSignerKey = uint256(keccak256("quote-signer-key"));
-        quoteSigner = vm.addr(quoteSignerKey);
-
-        vm.label(curator, "Curator");
-        vm.label(policyManager, "PolicyManager");
-        vm.label(payoutRecipient, "PayoutRecipient");
-        vm.label(operator, "Operator");
-        vm.label(quoteSigner, "QuoteSigner");
+        admin = makeAddr("Admin");
+        curator = makeAddr("Curator");
+        policyManager = makeAddr("PolicyManager");
+        payoutRecipient = makeAddr("PayoutRecipient");
+        operator = makeAddr("Operator");
 
         specId = keccak256("SPEC_ID");
         termsHash = keccak256("TERMS");
-        poolFeeBps = 125;
+
+        quoteSignerKey = uint256(keccak256("quote-signer-key"));
+        quoteSigner = vm.addr(quoteSignerKey);
+        vm.label(quoteSigner, "QuoteSigner");
 
         implementation = new CoverPool();
         address clone = Clones.clone(address(implementation));
         coverPool = CoverPool(clone);
-        coverPool.initialize(curator, policyManager, quoteSigner, poolFeeBps);
+        coverPool.initialize(POOL_ID, admin, curator, policyManager, quoteSigner);
+    }
+
+    function test_initialize_WhenPoolIdZero_Reverts() public {
+        CoverPool pool = CoverPool(Clones.clone(address(implementation)));
+        vm.expectRevert(ICoverPool.InvalidPoolId.selector);
+        pool.initialize(0, admin, curator, policyManager, quoteSigner);
+    }
+
+    function test_initialize_WhenAdminZero_Reverts() public {
+        CoverPool pool = CoverPool(Clones.clone(address(implementation)));
+        vm.expectRevert(ICoverPool.ZeroAddress.selector);
+        pool.initialize(POOL_ID, address(0), curator, policyManager, quoteSigner);
     }
 
     function test_initialize_WhenCuratorZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(address(0), policyManager, quoteSigner, poolFeeBps);
+        pool.initialize(POOL_ID, admin, address(0), policyManager, quoteSigner);
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, address(0), quoteSigner, poolFeeBps);
+        pool.initialize(POOL_ID, admin, curator, address(0), quoteSigner);
     }
 
     function test_initialize_WhenQuoteSignerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, policyManager, address(0), poolFeeBps);
-    }
-
-    function test_initialize_WhenFeeTooHigh_Reverts() public {
-        CoverPool pool = CoverPool(Clones.clone(address(implementation)));
-        vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
-        pool.initialize(curator, policyManager, quoteSigner, 2100);
+        pool.initialize(POOL_ID, admin, curator, policyManager, address(0));
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
-        assertEq(coverPool.owner(), curator, "Owner mismatch");
-        assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), curator), "Default admin role missing");
+        assertEq(coverPool.poolId(), POOL_ID, "Pool id mismatch");
+        assertEq(coverPool.curator(), curator, "Curator mismatch");
+        assertEq(coverPool.quoteSigner(), quoteSigner, "Quote signer mismatch");
+        assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), admin), "Admin role missing");
+        assertTrue(coverPool.hasRole(coverPool.CURATOR_ROLE(), curator), "Curator role missing");
         assertTrue(coverPool.hasRole(coverPool.POLICY_MANAGER_ROLE(), policyManager), "Policy manager role missing");
-        assertTrue(coverPool.hasRole(coverPool.QUOTE_SIGNER_ROLE(), quoteSigner), "Quote signer role missing");
 
         bytes32 expectedDomain = keccak256(
             abi.encode(
@@ -99,230 +102,34 @@ contract CoverPoolTest is Test {
         );
         assertEq(coverPool.quoteDomainSeparator(), expectedDomain, "Domain separator mismatch");
         assertTrue(coverPool.supportsInterface(type(IAccessControl).interfaceId), "AccessControl interface missing");
-        assertEq(coverPool.poolFeeBps(), poolFeeBps, "Pool fee mismatch");
-        assertFalse(coverPool.paused(), "Pool unexpectedly paused");
     }
 
-    function test_setPoolFeeBps_WhenCallerNotCurator_Reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager));
-        vm.prank(policyManager);
-        coverPool.setPoolFeeBps(poolFeeBps);
-    }
+    function test_setQuoteSigner_WhenCalledByCurator_UpdatesSigner() public {
+        address newSigner = makeAddr("NewSigner");
 
-    function test_setPoolFeeBps_WhenFeeTooHigh_Reverts() public {
-        vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
-        vm.prank(curator);
-        coverPool.setPoolFeeBps(2500);
-    }
-
-    function test_setPoolFeeBps_WhenValid_UpdatesState() public {
-        uint16 newFee = 250;
-
-        vm.expectEmit(true, true, true, true, address(coverPool));
-        emit ICoverPool.PoolFeeBpsSet(poolFeeBps, newFee);
+        vm.expectEmit(true, false, false, true, address(coverPool));
+        emit ICoverPool.QuoteSignerSet(newSigner);
 
         vm.prank(curator);
-        coverPool.setPoolFeeBps(newFee);
+        coverPool.setQuoteSigner(newSigner);
 
-        assertEq(coverPool.poolFeeBps(), newFee, "Pool fee not updated");
+        assertEq(coverPool.quoteSigner(), newSigner, "Quote signer not updated");
     }
 
-    function test_pause_WhenCallerNotCurator_Reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager));
-        vm.prank(policyManager);
-        coverPool.pause();
-    }
-
-    function test_pause_WhenCalledByCurator_PausesPool() public {
-        vm.prank(curator);
-        coverPool.pause();
-        assertTrue(coverPool.paused(), "Pool not paused");
-    }
-
-    function test_unpause_WhenCallerNotCurator_Reverts() public {
-        vm.prank(curator);
-        coverPool.pause();
-
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager));
-        vm.prank(policyManager);
-        coverPool.unpause();
-    }
-
-    function test_unpause_WhenCalledByCurator_ClearsPause() public {
-        vm.prank(curator);
-        coverPool.pause();
-        assertTrue(coverPool.paused(), "Pool not paused");
-
-        vm.prank(curator);
-        coverPool.unpause();
-        assertFalse(coverPool.paused(), "Pool still paused");
-    }
-
-    function test_bindPolicy_WhenPaused_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        bytes memory signature = _signQuote(quote);
-        bytes32 policyCommit = coverPool.validateQuote(quote, signature);
-
-        vm.prank(curator);
-        coverPool.pause();
-
-        vm.prank(policyManager);
-        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
-        coverPool.bindPolicy(policyCommit, quote, signature);
-    }
-
-    function test_validateQuote_WhenPaused_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        bytes memory signature = _signQuote(quote);
-
-        vm.prank(curator);
-        coverPool.pause();
-
-        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
-        coverPool.validateQuote(quote, signature);
-    }
-
-    function test_grantRole_WhenCalledByOwner_AddsQuoteSigner() public {
-        address newSigner = makeAddr("newSigner");
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-        vm.prank(curator);
-        coverPool.grantRole(signerRole, newSigner);
-
-        assertTrue(coverPool.hasRole(signerRole, newSigner), "Quote signer role not granted");
-    }
-
-    function test_grantRole_WhenCallerNotAdmin_Reverts() public {
-        address caller = makeAddr("notAdmin");
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, caller));
-        vm.prank(caller);
-        coverPool.grantRole(signerRole, makeAddr("randomSigner"));
-    }
-
-    function test_grantRole_WhenDefaultAdminRequested_Reverts() public {
-        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
-        vm.expectRevert(ICoverPool.DefaultAdminImmutable.selector);
-        vm.prank(curator);
-        coverPool.grantRole(adminRole, policyManager);
-    }
-
-    function test_revokeRole_WhenCalledByOwner_RemovesQuoteSigner() public {
-        address newSigner = makeAddr("newSigner");
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-
+    function test_setQuoteSigner_WhenZero_Reverts() public {
         vm.startPrank(curator);
-        coverPool.grantRole(signerRole, newSigner);
-        coverPool.revokeRole(signerRole, newSigner);
-        assertFalse(coverPool.hasRole(signerRole, newSigner), "Quote signer role not revoked");
+        vm.expectRevert(ICoverPool.ZeroAddress.selector);
+        coverPool.setQuoteSigner(address(0));
         vm.stopPrank();
     }
 
-    function test_revokeRole_WhenCallerNotAdmin_Reverts() public {
-        address caller = makeAddr("randomCaller");
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-
-        vm.prank(curator);
-        coverPool.grantRole(signerRole, caller);
-
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, caller));
-        vm.prank(caller);
-        coverPool.revokeRole(signerRole, quoteSigner);
-    }
-
-    function test_revokeRole_WhenDefaultAdminRequested_Reverts() public {
-        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
-        vm.expectRevert(ICoverPool.DefaultAdminImmutable.selector);
-        vm.prank(curator);
-        coverPool.revokeRole(adminRole, curator);
-    }
-
-    function test_renounceRole_WhenDefaultAdminRequested_Reverts() public {
-        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
-        vm.expectRevert(ICoverPool.DefaultAdminImmutable.selector);
-        vm.prank(curator);
-        coverPool.renounceRole(adminRole, curator);
-    }
-
-    function test_renounceRole_WhenQuoteSignerRenounces_RemovesRole() public {
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-        address newSigner = makeAddr("renouncingSigner");
-
-        vm.prank(curator);
-        coverPool.grantRole(signerRole, newSigner);
-
-        vm.prank(newSigner);
-        coverPool.renounceRole(signerRole, newSigner);
-
-        assertFalse(coverPool.hasRole(signerRole, newSigner), "Quote signer role not renounced");
-    }
-
-    function test_renounceRole_WhenOwnerRenouncesNonAdmin_RemovesRole() public {
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-
-        vm.prank(curator);
-        coverPool.grantRole(signerRole, curator);
-
-        vm.prank(curator);
-        coverPool.renounceRole(signerRole, curator);
-
-        assertFalse(coverPool.hasRole(signerRole, curator), "Owner role renounce failed");
-    }
-
-    function test_transferOwnershipTwoStep_UpdatesAdminRole() public {
-        address newOwner = makeAddr("newOwner");
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-        address additionalSigner = makeAddr("additionalSigner");
-
-        vm.prank(curator);
-        coverPool.transferOwnership(newOwner);
-        assertEq(coverPool.pendingOwner(), newOwner, "Pending owner mismatch");
-
-        vm.startPrank(newOwner);
-        coverPool.acceptOwnership();
-
-        assertEq(coverPool.owner(), newOwner, "Owner not updated");
-        assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), newOwner), "New owner missing admin");
-        assertFalse(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), curator), "Old owner still admin");
-
-        coverPool.grantRole(signerRole, additionalSigner);
-        assertTrue(coverPool.hasRole(signerRole, additionalSigner), "New owner failed to grant role");
-        vm.stopPrank();
-
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, curator));
-        vm.prank(curator);
-        coverPool.grantRole(signerRole, makeAddr("shouldFail"));
-    }
-
-    function test_acceptOwnership_WhenNotPendingOwner_Reverts() public {
-        address newOwner = makeAddr("nextOwner");
-        address unauthorized = makeAddr("unauthorized");
-
-        vm.prank(curator);
-        coverPool.transferOwnership(newOwner);
-
-        vm.expectRevert();
-        vm.prank(unauthorized);
-        coverPool.acceptOwnership();
-    }
-
-    function test_transferOwnershipTwoStep_UpdatesQuoteSignerAdmin() public {
-        address newOwner = makeAddr("newOwnerB");
-        address newSigner = makeAddr("signerAfterTransfer");
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-
-        vm.prank(curator);
-        coverPool.transferOwnership(newOwner);
-
-        vm.startPrank(newOwner);
-        coverPool.acceptOwnership();
-        coverPool.grantRole(signerRole, newSigner);
-        assertTrue(coverPool.hasRole(signerRole, newSigner), "New owner could not grant quote signer role");
-        vm.stopPrank();
-
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, curator));
-        vm.prank(curator);
-        coverPool.revokeRole(signerRole, newSigner);
+    function test_setQuoteSigner_WhenCallerNotCurator_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), coverPool.CURATOR_ROLE()
+            )
+        );
+        coverPool.setQuoteSigner(makeAddr("RandomSigner"));
     }
 
     function test_validateQuote_WhenValidSignature_ReturnsCommit() public view {
@@ -351,12 +158,12 @@ contract CoverPoolTest is Test {
         coverPool.validateQuote(quote, signature);
     }
 
-    function test_validateQuote_WhenPoolAddressMismatch_Reverts() public {
+    function test_validateQuote_WhenPoolIdMismatch_Reverts() public {
         ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.pool = makeAddr("otherPool");
+        quote.poolId = POOL_ID + 1;
         bytes memory signature = _signQuote(quote);
 
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PoolAddressMismatch.selector, address(coverPool), quote.pool));
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PoolIdMismatch.selector, POOL_ID, quote.poolId));
         coverPool.validateQuote(quote, signature);
     }
 
@@ -366,15 +173,6 @@ contract CoverPoolTest is Test {
         bytes memory signature = _signQuote(quote);
 
         vm.expectRevert(ICoverPool.InvalidCoverageLimit.selector);
-        coverPool.validateQuote(quote, signature);
-    }
-
-    function test_validateQuote_WhenSpecIdZero_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.specId = bytes32(0);
-        bytes memory signature = _signQuote(quote);
-
-        vm.expectRevert(ICoverPool.InvalidSpecId.selector);
         coverPool.validateQuote(quote, signature);
     }
 
@@ -410,26 +208,26 @@ contract CoverPoolTest is Test {
         bytes memory signature = _signQuote(quote);
         bytes32 policyCommit = coverPool.validateQuote(quote, signature);
 
-        bytes32 expectedPolicyId = keccak256(abi.encodePacked(address(coverPool), policyCommit));
+        bytes32 expectedPoolPolicyId = keccak256(abi.encodePacked(address(coverPool), policyCommit));
 
         vm.expectEmit(true, true, false, true, address(coverPool));
-        emit ICoverPool.PolicyBound(policyCommit, expectedPolicyId, quote.coverageLimit);
+        emit ICoverPool.PolicyBound(policyCommit, expectedPoolPolicyId, quote.coverageLimit);
 
         vm.prank(policyManager);
-        ICoverPool.BoundPolicy memory bound = coverPool.bindPolicy(policyCommit, quote, signature);
+        ICoverPool.BoundPolicy memory bound = coverPool.bindPolicy(policyCommit, quote);
 
-        assertEq(bound.policyId, expectedPolicyId, "Pool policy id mismatch");
+        assertEq(bound.poolPolicyId, expectedPoolPolicyId, "Pool policy id mismatch");
         assertEq(bound.specId, quote.specId, "Spec id mismatch");
         assertEq(bound.termsHash, quote.termsHash, "Terms hash mismatch");
         assertEq(bound.coverageLimit, quote.coverageLimit, "Coverage limit mismatch");
-        assertEq(bound.payoutReceiver, quote.payoutReceiver, "Payout receiver mismatch");
+        assertEq(bound.payoutAddress, quote.payoutReceiver, "Payout address mismatch");
         assertEq(bound.committeeId, quote.committeeId, "Committee id mismatch");
         assertEq(bound.operator, quote.operator, "Operator mismatch");
         assertEq(bound.startTime, quote.startTime, "Start time mismatch");
         assertEq(bound.maturityTime, quote.maturityTime, "Maturity time mismatch");
 
-        ICoverPool.BoundPolicy memory stored = coverPool.getBoundPolicy(bound.policyId);
-        assertEq(stored.policyId, bound.policyId, "Stored policy not found");
+        ICoverPool.BoundPolicy memory stored = coverPool.getPoolPolicy(bound.poolPolicyId);
+        assertEq(stored.poolPolicyId, bound.poolPolicyId, "Stored policy not found");
     }
 
     function test_bindPolicy_WhenCalledTwice_Reverts() public {
@@ -438,26 +236,25 @@ contract CoverPoolTest is Test {
         bytes32 policyCommit = coverPool.validateQuote(quote, signature);
 
         vm.prank(policyManager);
-        coverPool.bindPolicy(policyCommit, quote, signature);
+        coverPool.bindPolicy(policyCommit, quote);
 
         vm.prank(policyManager);
         vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyAlreadyBound.selector, policyCommit));
-        coverPool.bindPolicy(policyCommit, quote, signature);
+        coverPool.bindPolicy(policyCommit, quote);
     }
 
     function test_bindPolicy_WhenCommitMismatch_Reverts() public {
         ICoverPool.QuoteData memory quote = _defaultQuote();
-        bytes memory originalSignature = _signQuote(quote);
-        bytes32 validCommit = coverPool.validateQuote(quote, originalSignature);
+        bytes memory signature = _signQuote(quote);
+        bytes32 validCommit = coverPool.validateQuote(quote, signature);
 
         quote.coverageLimit += 1;
-        bytes memory mismatchedSignature = _signQuote(quote);
 
         vm.prank(policyManager);
         vm.expectRevert(
             abi.encodeWithSelector(ICoverPool.PolicyCommitMismatch.selector, _structHash(quote), validCommit)
         );
-        coverPool.bindPolicy(validCommit, quote, mismatchedSignature);
+        coverPool.bindPolicy(validCommit, quote);
     }
 
     function test_bindPolicy_WhenQuoteExpired_Reverts() public {
@@ -469,7 +266,7 @@ contract CoverPoolTest is Test {
 
         vm.prank(policyManager);
         vm.expectRevert(abi.encodeWithSelector(ICoverPool.QuoteExpired.selector, quote.quoteExpiry, block.timestamp));
-        coverPool.bindPolicy(policyCommit, quote, signature);
+        coverPool.bindPolicy(policyCommit, quote);
     }
 
     function test_bindPolicy_WhenCallerNotPolicyManager_Reverts() public {
@@ -482,30 +279,28 @@ contract CoverPoolTest is Test {
                 IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), coverPool.POLICY_MANAGER_ROLE()
             )
         );
-        coverPool.bindPolicy(policyCommit, quote, signature);
+        coverPool.bindPolicy(policyCommit, quote);
     }
 
     function test_bindPolicy_WhenPolicyCommitZero_Reverts() public {
         ICoverPool.QuoteData memory quote = _defaultQuote();
-        bytes memory signature = _signQuote(quote);
 
         vm.prank(policyManager);
         vm.expectRevert(ICoverPool.InvalidPolicyCommit.selector);
-        coverPool.bindPolicy(bytes32(0), quote, signature);
+        coverPool.bindPolicy(bytes32(0), quote);
     }
 
     function test_getPoolPolicy_WhenUnknown_Reverts() public {
-        // forge-lint: disable-next-line(unsafe-typecast)
         vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyNotFound.selector, bytes32("unknown")));
-        // forge-lint: disable-next-line(unsafe-typecast)
-        coverPool.getBoundPolicy(bytes32("unknown"));
+        coverPool.getPoolPolicy(bytes32("unknown"));
     }
 
     function _defaultQuote() private view returns (ICoverPool.QuoteData memory quote) {
         quote = ICoverPool.QuoteData({
-            pool: address(coverPool),
+            poolId: POOL_ID,
             coverageLimit: 1000 ether,
             basePremium: 100 ether,
+            riskBufferDeposit: 50 ether,
             specId: specId,
             termsHash: termsHash,
             payoutReceiver: payoutRecipient,
@@ -521,7 +316,14 @@ contract CoverPoolTest is Test {
         return _signQuoteWithKey(quote, quoteSignerKey);
     }
 
-    function _signQuoteWithKey(ICoverPool.QuoteData memory quote, uint256 key) private view returns (bytes memory) {
+    function _signQuoteWithKey(
+        ICoverPool.QuoteData memory quote,
+        uint256 key
+    )
+        private
+        view
+        returns (bytes memory)
+    {
         bytes32 structHash = _structHash(quote);
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", coverPool.quoteDomainSeparator(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, digest);
@@ -529,19 +331,22 @@ contract CoverPoolTest is Test {
     }
 
     function _structHash(ICoverPool.QuoteData memory quote) private pure returns (bytes32) {
-        return EfficientHashLib.hash(
-            uint256(QUOTE_TYPEHASH),
-            uint256(uint160(quote.pool)),
-            quote.coverageLimit,
-            quote.basePremium,
-            uint256(quote.specId),
-            uint256(quote.termsHash),
-            uint256(uint160(quote.payoutReceiver)),
-            uint256(quote.committeeId),
-            uint256(uint160(quote.operator)),
-            uint256(quote.startTime),
-            uint256(quote.maturityTime),
-            uint256(quote.quoteExpiry)
+        return keccak256(
+            abi.encode(
+                QUOTE_TYPEHASH,
+                quote.poolId,
+                quote.coverageLimit,
+                quote.basePremium,
+                quote.riskBufferDeposit,
+                quote.specId,
+                quote.termsHash,
+                quote.payoutReceiver,
+                quote.committeeId,
+                quote.operator,
+                quote.startTime,
+                quote.maturityTime,
+                quote.quoteExpiry
+            )
         );
     }
 }
