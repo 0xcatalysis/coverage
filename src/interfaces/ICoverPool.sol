@@ -213,27 +213,16 @@ interface ICoverPool {
     function policyCommitBound(bytes32 policyCommit) external view returns (bool);
 
     /**
-     * @notice Returns stored pool policy data for a given identifier.
-     */
-    function poolPolicies(bytes32 poolPolicyId)
-        external
-        view
-        returns (
-            bytes32 poolPolicyId_,
-            bytes32 specId,
-            bytes32 termsHash,
-            uint256 coverageLimit,
-            address payoutAddress,
-            uint96 committeeId,
-            address operator,
-            uint64 startTime,
-            uint64 maturityTime
-        );
-
-    /**
      * @notice EIP-712 domain separator used when verifying quote signatures.
      */
     function quoteDomainSeparator() external view returns (bytes32);
+
+    /**
+     * @notice Fetches bound policy metadata by pool-specific identifier.
+     * @param poolPolicyId Identifier returned during binding.
+     * @return BoundPolicy metadata describing the allocation.
+     */
+    function getPoolPolicy(bytes32 poolPolicyId) external view returns (BoundPolicy memory);
 
     /**
      * @notice Verifies a quoted policy slice and returns the resulting policy commit hash.
@@ -248,11 +237,4 @@ interface ICoverPool {
         external
         view
         returns (bytes32 policyCommit);
-
-    /**
-     * @notice Fetches bound policy metadata by pool-specific identifier.
-     * @param poolPolicyId Identifier returned during binding.
-     * @return BoundPolicy metadata describing the allocation.
-     */
-    function getPoolPolicy(bytes32 poolPolicyId) external view returns (BoundPolicy memory);
 }
