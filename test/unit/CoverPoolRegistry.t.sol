@@ -362,7 +362,6 @@ contract CoverPoolRegistryTest is Test {
     function test_listPools_WhenCursorPastEnd_ReturnsEmpty() public {
         vm.prank(registrar);
         registry.registerPool(_makeIndexedConfig(0, true));
-
         (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs) = registry.listPools(10, 2);
         assertEq(poolIds.length, 0, "Expected empty pool ids");
         assertEq(configs.length, 0, "Expected empty configs");
