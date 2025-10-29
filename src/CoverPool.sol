@@ -27,7 +27,8 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
     address public override curator;
     address public override quoteSigner;
     mapping(bytes32 policyCommit => bool bound) public override policyCommitBound;
-    mapping(bytes32 poolPolicyId => BoundPolicy policy) public override poolPolicies;
+
+    mapping(bytes32 poolPolicyId => BoundPolicy policy) private _poolPolicies;
 
     /**
      * @dev Ensures incoming quote data matches pool metadata and timing constraints before processing.
@@ -123,7 +124,7 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
             maturityTime: quote.maturityTime
         });
 
-        poolPolicies[poolPolicyId] = boundPolicy;
+        _poolPolicies[poolPolicyId] = boundPolicy;
 
         emit PolicyBound(policyCommit, poolPolicyId, quote.coverageLimit);
     }
@@ -133,6 +134,14 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
      */
     function quoteDomainSeparator() external view override returns (bytes32) {
         return _domainSeparatorV4();
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function getPoolPolicy(bytes32 poolPolicyId) external view override returns (BoundPolicy memory policy) {
+        policy = _poolPolicies[poolPolicyId];
+        require(policy.poolPolicyId != bytes32(0), PolicyNotFound(poolPolicyId));
     }
 
     /**
@@ -156,21 +165,6 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
         if (recovered != quoteSigner) {
             revert QuoteSignatureInvalid();
         }
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
-    function getPoolPolicy(bytes32 poolPolicyId) external view override returns (BoundPolicy memory policy) {
-        policy = poolPolicies[poolPolicyId];
-        require(policy.poolPolicyId != bytes32(0), PolicyNotFound(poolPolicyId));
-    }
-
-    /**
-     * @inheritdoc AccessControlUpgradeable
-     */
-    function supportsInterface(bytes4 interfaceId) public view override (AccessControlUpgradeable) returns (bool) {
-        return interfaceId == type(ICoverPool).interfaceId || super.supportsInterface(interfaceId);
     }
 
     /**

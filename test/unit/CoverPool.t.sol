@@ -138,7 +138,6 @@ contract CoverPoolTest is Test {
         bytes memory signature = _signQuote(quote);
 
         bytes32 policyCommit = coverPool.validateQuote(quote, signature);
-
         assertEq(policyCommit, _structHash(quote), "Policy commit mismatch");
     }
 
