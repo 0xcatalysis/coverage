@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {IOwnable2Step} from "./IOwnable2Step.sol";
+
 /**
  * @title ICoverPool
  * @notice Interface defining curator-controlled pool functionality for coverage quotes and bindings.
  */
-interface ICoverPool {
+interface ICoverPool is IAccessControl, IOwnable2Step {
     /**
      * @notice Signed coverage quote inputs produced by the pool curator.
      * @dev Consumed by PolicyManager to derive deterministic policy commits.
@@ -141,7 +144,7 @@ interface ICoverPool {
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param poolId_ Pool identifier assigned by the CoverPoolRegistry.
-     * @param curator_ Address assigned as owner.
+     * @param curator_ Address assigned as the owner (curator).
      * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
      */
