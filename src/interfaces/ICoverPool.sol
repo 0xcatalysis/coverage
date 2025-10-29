@@ -24,7 +24,7 @@ interface ICoverPool {
         /// @notice Hash of the pool's policy terms document anchoring off-chain clauses.
         bytes32 termsHash;
         /// @notice Address that will receive claim payouts for this pool slice.
-        address payoutAddress;
+        address payoutReceiver;
         /// @notice Restaking committee identifier associated with the policy slice.
         uint96 committeeId;
         /// @notice Operator address registered for this policy slice.
@@ -129,9 +129,9 @@ interface ICoverPool {
     /**
      * @notice Reverts when a supplied policy commit does not match the quote payload.
      * @param expected Recomputed commit derived from the quote payload.
-     * @param provided Commit supplied by the caller that failed validation.
+     * @param actual Commit supplied by the caller that failed validation.
      */
-    error PolicyCommitMismatch(bytes32 expected, bytes32 provided);
+    error PolicyCommitMismatch(bytes32 expected, bytes32 actual);
 
     /**
      * @notice Reverts when querying data for an unknown pool policy identifier.
@@ -183,16 +183,6 @@ interface ICoverPool {
     function bindPolicy(bytes32 policyCommit, QuoteData calldata quote) external returns (BoundPolicy memory);
 
     /**
-     * @notice AccessControl identifier for the curator role.
-     */
-    function CURATOR_ROLE() external pure returns (bytes32);
-
-    /**
-     * @notice AccessControl identifier for the PolicyManager binding role.
-     */
-    function POLICY_MANAGER_ROLE() external pure returns (bytes32);
-
-    /**
      * @notice Returns the registry identifier of this CoverPool.
      */
     function poolId() external view returns (uint256);
@@ -237,4 +227,14 @@ interface ICoverPool {
         external
         view
         returns (bytes32 policyCommit);
+
+    /**
+     * @notice AccessControl identifier for the CoverPool curator role.
+     */
+    function CURATOR_ROLE() external pure returns (bytes32);
+
+    /**
+     * @notice AccessControl identifier for the PolicyManager binding role.
+     */
+    function POLICY_MANAGER_ROLE() external pure returns (bytes32);
 }

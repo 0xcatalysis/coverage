@@ -20,7 +20,7 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "QuoteData(uint256 poolId,uint256 coverageLimit,uint256 basePremium,uint256 riskBufferDeposit,bytes32 specId,bytes32 termsHash,address payoutAddress,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
+        "QuoteData(uint256 poolId,uint256 coverageLimit,uint256 basePremium,uint256 riskBufferDeposit,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
     );
 
     uint256 public override poolId;
@@ -37,7 +37,7 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
     modifier validateQuoteInputs(QuoteData calldata quote) {
         require(quote.poolId == poolId, PoolIdMismatch(poolId, quote.poolId));
         require(quote.coverageLimit != 0, InvalidCoverageLimit());
-        require(quote.payoutAddress != address(0) && quote.operator != address(0), InvalidQuoteRecipient());
+        require(quote.payoutReceiver != address(0) && quote.operator != address(0), InvalidQuoteRecipient());
         require(quote.startTime < quote.maturityTime, InvalidCoverageWindow());
 
         uint256 currentTimestamp = block.timestamp;
@@ -117,7 +117,7 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
             specId: quote.specId,
             termsHash: quote.termsHash,
             coverageLimit: quote.coverageLimit,
-            payoutAddress: quote.payoutAddress,
+            payoutAddress: quote.payoutReceiver,
             committeeId: quote.committeeId,
             operator: quote.operator,
             startTime: quote.startTime,
@@ -155,16 +155,19 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
         view
         override
         validateQuoteInputs(quote)
-        returns (bytes32 policyCommit)
+        returns (bytes32)
     {
         require(quoteSigner != address(0), QuoteSignerNotSet());
 
-        policyCommit = _hashQuote(quote);
+        bytes32 policyCommit = _hashQuote(quote);
         bytes32 digest = _hashTypedDataV4(policyCommit);
-        address recovered = ECDSA.recover(digest, signature);
-        if (recovered != quoteSigner) {
+
+        address recoveredSigner = ECDSA.recover(digest, signature);
+        if (recoveredSigner != quoteSigner) {
             revert QuoteSignatureInvalid();
         }
+
+        return policyCommit;
     }
 
     /**
@@ -182,7 +185,7 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
                 quote.riskBufferDeposit,
                 quote.specId,
                 quote.termsHash,
-                quote.payoutAddress,
+                quote.payoutReceiver,
                 quote.committeeId,
                 quote.operator,
                 quote.startTime,
