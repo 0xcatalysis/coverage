@@ -197,21 +197,21 @@ contract CoverPoolRegistry is
     /**
      * @inheritdoc ICoverPoolRegistry
      */
-    function resolvePool(address pool) external view override returns (uint256 poolId) {
-        poolId = _poolIds[pool];
-        require(poolId != 0, PoolNotRegistered(pool));
-    }
-
-    /**
-     * @inheritdoc ICoverPoolRegistry
-     */
     function getPoolConfig(uint256 poolId) external view override returns (PoolConfig memory config) {
         config = _poolConfigs[poolId];
         require(config.pool != address(0), PoolNotFound(poolId));
     }
 
     /**
-     * @dev Authorises upgrades via UUPS pattern.
+     * @inheritdoc ICoverPoolRegistry
+     */
+    function resolvePool(address pool) external view override returns (uint256 poolId) {
+        poolId = _poolIds[pool];
+        require(poolId != 0, PoolNotRegistered(pool));
+    }
+
+    /**
+     * @dev Authorizes upgrades via UUPS pattern.
      */
     function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
 }

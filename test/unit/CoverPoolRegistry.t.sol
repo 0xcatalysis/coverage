@@ -342,14 +342,14 @@ contract CoverPoolRegistryTest is Test {
         assertEq(nextCursor, 0, "Expected reset cursor");
     }
 
-    function test_resolvePool_WhenUnknownPool_Reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotRegistered.selector, address(0x1234)));
-        registry.resolvePool(address(0x1234));
-    }
-
     function test_getPoolConfig_WhenUnknownPool_Reverts() public {
         vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotFound.selector, 42));
         registry.getPoolConfig(42);
+    }
+
+    function test_resolvePool_WhenUnknownPool_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotRegistered.selector, address(0x1234)));
+        registry.resolvePool(address(0x1234));
     }
 
     function _registerDefaultPool(bool active) internal returns (uint256 poolId) {
