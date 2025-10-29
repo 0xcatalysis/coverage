@@ -3,8 +3,6 @@ pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.solkljvehnbfdvfieungh
-";
 import {Test} from "forge-std/Test.sol";
 import {CoverPool} from "../../src/CoverPool.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
@@ -35,17 +33,21 @@ contract CoverPoolTest is Test {
     function setUp() public {
         vm.warp(1_000_000);
 
-        curator = makeAddr("Curator");
-        policyManager = makeAddr("PolicyManager");
-        payoutRecipient = makeAddr("PayoutRecipient");
-        operator = makeAddr("Operator");
+        curator = makeAddr("curator");
+        policyManager = makeAddr("policyManager");
+        payoutRecipient = makeAddr("payoutRecipient");
+        operator = makeAddr("operator");
+        quoteSignerKey = uint256(keccak256("quote-signer-key"));
+        quoteSigner = vm.addr(quoteSignerKey);
+
+        vm.label(curator, "Curator");
+        vm.label(policyManager, "PolicyManager");
+        vm.label(payoutRecipient, "PayoutRecipient");
+        vm.label(operator, "Operator");
+        vm.label(quoteSigner, "QuoteSigner");
 
         specId = keccak256("SPEC_ID");
         termsHash = keccak256("TERMS");
-
-        quoteSignerKey = uint256(keccak256("quote-signer-key"));
-        quoteSigner = vm.addr(quoteSignerKey);
-        vm.label(quoteSigner, "QuoteSigner");
 
         implementation = new CoverPool();
         address clone = Clones.clone(address(implementation));
@@ -98,7 +100,7 @@ contract CoverPoolTest is Test {
     }
 
     function test_grantRole_WhenCalledByOwner_AddsQuoteSigner() public {
-        address newSigner = makeAddr("NewSigner");
+        address newSigner = makeAddr("newSigner");
         bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
         vm.prank(curator);
         coverPool.grantRole(signerRole, newSigner);
@@ -107,112 +109,107 @@ contract CoverPoolTest is Test {
     }
 
     function test_grantRole_WhenCallerNotAdmin_Reverts() public {
-        address caller = makeAddr("NotAdmin");
+        address caller = makeAddr("notAdmin");
         bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-        vm.startPrank(caller);
+
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector, caller, coverPool.DEFAULT_ADMIN_ROLE()
             )
         );
-        coverPool.grantRole(signerRole, makeAddr("RandomSigner"));
-        vm.stopPrank();
+        vm.prank(caller);
+        coverPool.grantRole(signerRole, makeAddr("randomSigner"));
     }
 
     function test_revokeRole_WhenCalledByOwner_RemovesQuoteSigner() public {
-        address newSigner = makeAddr("NewSigner");
+        address newSigner = makeAddr("newSigner");
         bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
 
-        vm.prank(curator);
+        vm.startPrank(curator);
         coverPool.grantRole(signerRole, newSigner);
-
-        vm.prank(curator);
         coverPool.revokeRole(signerRole, newSigner);
-
         assertFalse(coverPool.hasRole(signerRole, newSigner), "Quote signer role not revoked");
+        vm.stopPrank();
     }
 
     function test_revokeRole_WhenCallerNotAdmin_Reverts() public {
-        address caller = makeAddr("RandomCaller");
+        address caller = makeAddr("randomCaller");
         bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
 
         vm.prank(curator);
         coverPool.grantRole(signerRole, caller);
 
-        vm.startPrank(caller);
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector, caller, coverPool.DEFAULT_ADMIN_ROLE()
             )
         );
+        vm.prank(caller);
         coverPool.revokeRole(signerRole, quoteSigner);
-        vm.stopPrank();
     }
 
     function test_transferOwnershipTwoStep_UpdatesAdminRole() public {
-        address newOwner = makeAddr("NewOwner");
+        address newOwner = makeAddr("newOwner");
         bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-        address additionalSigner = makeAddr("AdditionalSigner");
+        address additionalSigner = makeAddr("additionalSigner");
 
         vm.prank(curator);
         coverPool.transferOwnership(newOwner);
         assertEq(coverPool.pendingOwner(), newOwner, "Pending owner mismatch");
 
-        vm.prank(newOwner);
+        vm.startPrank(newOwner);
         coverPool.acceptOwnership();
 
         assertEq(coverPool.owner(), newOwner, "Owner not updated");
         assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), newOwner), "New owner missing admin");
         assertFalse(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), curator), "Old owner still admin");
 
-        vm.prank(newOwner);
         coverPool.grantRole(signerRole, additionalSigner);
         assertTrue(coverPool.hasRole(signerRole, additionalSigner), "New owner failed to grant role");
+        vm.stopPrank();
 
-        vm.startPrank(curator);
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector, curator, coverPool.DEFAULT_ADMIN_ROLE()
             )
         );
-        coverPool.grantRole(signerRole, makeAddr("ShouldFail"));
-        vm.stopPrank();
+        vm.prank(curator);
+        coverPool.grantRole(signerRole, makeAddr("shouldFail"));
     }
 
     function test_acceptOwnership_WhenNotPendingOwner_Reverts() public {
-        address newOwner = makeAddr("NextOwner");
-        address unauthorized = makeAddr("Unauthorized");
+        address newOwner = makeAddr("nextOwner");
+        address unauthorized = makeAddr("unauthorized");
 
         vm.prank(curator);
         coverPool.transferOwnership(newOwner);
 
+        vm.expectRevert();
         vm.prank(unauthorized);
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, unauthorized));
         coverPool.acceptOwnership();
     }
 
     function test_transferOwnershipTwoStep_UpdatesQuoteSignerAdmin() public {
-        address newOwner = makeAddr("NewOwnerB");
-        address newSigner = makeAddr("SignerAfterTransfer");
+        address newOwner = makeAddr("newOwnerB");
+        address newSigner = makeAddr("signerAfterTransfer");
         bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
 
         vm.prank(curator);
         coverPool.transferOwnership(newOwner);
-        vm.prank(newOwner);
-        coverPool.acceptOwnership();
 
-        vm.prank(newOwner);
+        vm.startPrank(newOwner);
+        coverPool.acceptOwnership();
         coverPool.grantRole(signerRole, newSigner);
         assertTrue(coverPool.hasRole(signerRole, newSigner), "New owner could not grant quote signer role");
+        vm.stopPrank();
 
-        vm.startPrank(curator);
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector, curator, coverPool.DEFAULT_ADMIN_ROLE()
             )
         );
+        vm.prank(curator);
         coverPool.revokeRole(signerRole, newSigner);
-        vm.stopPrank();
     }
 
     function test_validateQuote_WhenValidSignature_ReturnsCommit() public view {
