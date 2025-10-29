@@ -64,8 +64,10 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
         initializer
     {
         require(poolId_ != 0, InvalidPoolId());
-        require(admin_ != address(0) && curator_ != address(0) && policyManager != address(0), ZeroAddress());
-        require(quoteSigner_ != address(0), QuoteSignerNotSet());
+        require(
+            admin_ != address(0) && curator_ != address(0) && policyManager != address(0) && quoteSigner_ != address(0),
+            ZeroAddress()
+        );
 
         __AccessControl_init();
         __EIP712_init(_NAME, _VERSION);
@@ -157,7 +159,7 @@ contract CoverPool is Initializable, AccessControlUpgradeable, EIP712Upgradeable
         validateQuoteInputs(quote)
         returns (bytes32)
     {
-        require(quoteSigner != address(0), QuoteSignerNotSet());
+        require(quoteSigner != address(0), ZeroAddress());
 
         bytes32 policyCommit = _hashQuote(quote);
         bytes32 digest = _hashTypedDataV4(policyCommit);

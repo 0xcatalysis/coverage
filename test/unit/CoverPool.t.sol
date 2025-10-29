@@ -79,7 +79,7 @@ contract CoverPoolTest is Test {
 
     function test_initialize_WhenQuoteSignerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
-        vm.expectRevert(ICoverPool.QuoteSignerNotSet.selector);
+        vm.expectRevert(ICoverPool.ZeroAddress.selector);
         pool.initialize(POOL_ID, admin, curator, policyManager, address(0));
     }
 
