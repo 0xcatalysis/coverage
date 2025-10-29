@@ -145,11 +145,6 @@ interface ICoverPool {
     error InvalidPolicyCommit();
 
     /**
-     * @notice Reverts when attempting to validate quotes without an authorized signer.
-     */
-    error QuoteSignerNotSet();
-
-    /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param poolId_ Pool identifier assigned by the CoverPoolRegistry.
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
