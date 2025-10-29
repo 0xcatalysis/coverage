@@ -7,49 +7,6 @@ pragma solidity 0.8.28;
  */
 interface ICoverPoolRegistry {
     /**
-     * @notice Reverts when a required address argument is zero.
-     */
-    error ZeroAddress();
-
-    /**
-     * @notice Reverts when supplied fee values exceed the defined basis-point cap.
-     */
-    error InvalidFeeBps();
-
-    /**
-     * @notice Reverts when attempting to register a pool whose address is already tracked.
-     * @param pool Address of the CoverPool contract that was previously registered.
-     */
-    error PoolAlreadyRegistered(address pool);
-
-    /**
-     * @notice Reverts when the requested pool identifier does not exist in storage.
-     * @param poolId Identifier that failed the lookup.
-     */
-    error PoolNotFound(uint256 poolId);
-
-    /**
-     * @notice Reverts when resolving a pool address that has not been registered.
-     * @param pool Address that failed the lookup.
-     */
-    error PoolNotRegistered(address pool);
-
-    /**
-     * @notice Reverts when attempting to set a pool status flag to its existing value.
-     */
-    error PoolStatusUnchanged();
-
-    /**
-     * @notice Reverts when config updates request an active flag change instead of using setPoolStatus.
-     */
-    error PoolActiveStatusMismatch();
-
-    /**
-     * @notice Reverts when a pagination request uses a zero page size.
-     */
-    error InvalidPageSize();
-
-    /**
      * @notice Configuration snapshot for a registered CoverPool.
      * @dev Resolved by PolicyManager and PremiumManager to enforce fee and asset guards per pool.
      */
@@ -95,6 +52,49 @@ interface ICoverPoolRegistry {
     event PoolStatusSet(uint256 indexed poolId, bool active);
 
     /**
+     * @notice Reverts when a required address argument is zero.
+     */
+    error ZeroAddress();
+
+    /**
+     * @notice Reverts when supplied fee values exceed the defined basis-point cap.
+     */
+    error InvalidFeeBps();
+
+    /**
+     * @notice Reverts when attempting to register a pool whose address is already tracked.
+     * @param pool Address of the CoverPool contract that was previously registered.
+     */
+    error PoolAlreadyRegistered(address pool);
+
+    /**
+     * @notice Reverts when the requested pool identifier does not exist in storage.
+     * @param poolId Identifier that failed the lookup.
+     */
+    error PoolNotFound(uint256 poolId);
+
+    /**
+     * @notice Reverts when resolving a pool address that has not been registered.
+     * @param pool Address that failed the lookup.
+     */
+    error PoolNotRegistered(address pool);
+
+    /**
+     * @notice Reverts when attempting to set a pool status flag to its existing value.
+     */
+    error PoolStatusUnchanged();
+
+    /**
+     * @notice Reverts when config updates request an active flag change instead of using setPoolStatus.
+     */
+    error PoolActiveStatusMismatch();
+
+    /**
+     * @notice Reverts when a pagination request uses a zero page size.
+     */
+    error InvalidPageSize();
+
+    /**
      * @notice Pauses registry management.
      * @dev Only callable by DEFAULT_ADMIN_ROLE.
      */
@@ -131,11 +131,6 @@ interface ICoverPoolRegistry {
     function setPoolStatus(uint256 poolId, bool active) external;
 
     /**
-     * @notice Returns the role identifier that can manage the registry.
-     */
-    function REGISTRAR_ROLE() external pure returns (bytes32);
-
-    /**
      * @notice Enumerates registered pools using cursor-based pagination.
      * @param cursor Pool id to start from (use 0 to begin at the first pool).
      * @param size Maximum number of entries to return.
@@ -152,6 +147,13 @@ interface ICoverPoolRegistry {
         returns (uint256[] memory poolIds, PoolConfig[] memory configs, uint256 nextCursor);
 
     /**
+     * @notice Returns the stored configuration for a given pool identifier.
+     * @param poolId Identifier to resolve.
+     * @return PoolConfig struct describing the pool.
+     */
+    function getPoolConfig(uint256 poolId) external view returns (PoolConfig memory);
+
+    /**
      * @notice Resolves a pool identifier by CoverPool contract address.
      * @param pool Address of the CoverPool instance.
      * @return poolId Registry identifier associated with the address.
@@ -159,9 +161,7 @@ interface ICoverPoolRegistry {
     function resolvePool(address pool) external view returns (uint256 poolId);
 
     /**
-     * @notice Returns the stored configuration for a given pool identifier.
-     * @param poolId Identifier to resolve.
-     * @return PoolConfig struct describing the pool.
+     * @notice Returns the role identifier that can manage the registry.
      */
-    function getPoolConfig(uint256 poolId) external view returns (PoolConfig memory);
+    function REGISTRAR_ROLE() external pure returns (bytes32);
 }
