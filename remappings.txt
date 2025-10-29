@@ -1,4 +1,5 @@
 @openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
 @openzeppelin/upgrades/=lib/openzeppelin-foundry-upgrades/src/
+@solarity/=lib/solidity-lib/
 forge-std/=lib/forge-std/src/

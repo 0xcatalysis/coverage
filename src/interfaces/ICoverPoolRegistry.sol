@@ -90,9 +90,9 @@ interface ICoverPoolRegistry {
     error PoolActiveStatusMismatch();
 
     /**
-     * @notice Reverts when a pagination request uses a zero page size.
+     * @notice Reverts when a pagination request uses a zero limit.
      */
-    error InvalidPageSize();
+    error InvalidLimit();
 
     /**
      * @notice Pauses registry management.
@@ -131,20 +131,19 @@ interface ICoverPoolRegistry {
     function setPoolStatus(uint256 poolId, bool active) external;
 
     /**
-     * @notice Enumerates registered pools using cursor-based pagination.
-     * @param cursor Pool id to start from (use 0 to begin at the first pool).
-     * @param size Maximum number of entries to return.
+     * @notice Enumerates registered pools using offset-based pagination.
+     * @param offset Zero-based index to start the page from.
+     * @param limit Maximum number of entries to return. Must be greater than zero.
      * @return poolIds Sequence of pool identifiers contained in the page.
      * @return configs Matching pool configurations for the returned identifiers.
-     * @return nextCursor Cursor to supply in subsequent calls, or 0 when the end is reached.
      */
     function listPools(
-        uint256 cursor,
-        uint256 size
+        uint256 offset,
+        uint256 limit
     )
         external
         view
-        returns (uint256[] memory poolIds, PoolConfig[] memory configs, uint256 nextCursor);
+        returns (uint256[] memory poolIds, PoolConfig[] memory configs);
 
     /**
      * @notice Returns the stored configuration for a given pool identifier.

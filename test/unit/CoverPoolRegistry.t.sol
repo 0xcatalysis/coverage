@@ -301,31 +301,31 @@ contract CoverPoolRegistryTest is Test {
         }
         vm.stopPrank();
 
-        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs, uint256 nextCursor) =
-            registry.listPools(0, 2);
+        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs) = registry.listPools(0, 2);
 
         assertEq(poolIds.length, 2, "First page size mismatch");
         assertEq(configs.length, 2, "First page configs size mismatch");
         assertEq(poolIds[0], 1, "First id incorrect");
         assertEq(poolIds[1], 2, "Second id incorrect");
-        assertEq(nextCursor, 3, "Next cursor mismatch");
 
         for (uint256 i = 0; i < configs.length; ++i) {
             _assertPoolConfigEqualsStruct(configs[i], expected[poolIds[i] - 1]);
         }
 
-        (uint256[] memory poolIds2, ICoverPoolRegistry.PoolConfig[] memory configs2, uint256 nextCursor2) =
-            registry.listPools(nextCursor, 2);
+        (uint256[] memory poolIds2, ICoverPoolRegistry.PoolConfig[] memory configs2) = registry.listPools(2, 2);
 
         assertEq(poolIds2.length, 1, "Second page size mismatch");
         assertEq(configs2.length, 1, "Second page configs size mismatch");
         assertEq(poolIds2[0], 3, "Third id incorrect");
-        assertEq(nextCursor2, 0, "Expected finished cursor");
         _assertPoolConfigEqualsStruct(configs2[0], expected[poolIds2[0] - 1]);
     }
 
-    function test_listPools_WhenPageSizeZero_Reverts() public {
-        vm.expectRevert(ICoverPoolRegistry.InvalidPageSize.selector);
+    function test_listPools_WhenLimitZero_Reverts() public {
+        vm.startPrank(registrar);
+        registry.registerPool(_makeIndexedConfig(0, true));
+        vm.stopPrank();
+
+        vm.expectRevert(ICoverPoolRegistry.InvalidLimit.selector);
         registry.listPools(0, 0);
     }
 
@@ -334,12 +334,9 @@ contract CoverPoolRegistryTest is Test {
         registry.registerPool(_makeIndexedConfig(0, true));
         vm.stopPrank();
 
-        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs, uint256 nextCursor) =
-            registry.listPools(10, 2);
-
+        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs) = registry.listPools(10, 2);
         assertEq(poolIds.length, 0, "Expected empty pool ids");
         assertEq(configs.length, 0, "Expected empty configs");
-        assertEq(nextCursor, 0, "Expected reset cursor");
     }
 
     function test_getPoolConfig_WhenUnknownPool_Reverts() public {

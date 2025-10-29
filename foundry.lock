@@ -1,0 +1,8 @@
+{
+  "lib/solidity-lib": {
+    "tag": {
+      "name": "v3.2.8",
+      "rev": "d0c6c303a49c52be5f3f77742d7616847a601d62"
+    }
+  }
+}

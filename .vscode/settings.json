@@ -17,6 +17,7 @@
     "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
     "@openzeppelin/=lib/openzeppelin-contracts/",
     "@openzeppelin/upgrades/=lib/openzeppelin-foundry-upgrades/src/",
+    "@solarity/=lib/solidity-lib/",
     "forge-std/=lib/forge-std/src/"
   ],
   "[solidity]": {
