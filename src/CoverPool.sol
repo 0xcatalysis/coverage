@@ -43,7 +43,7 @@ contract CoverPool is
      * @dev Ensures incoming quote data matches pool metadata and timing constraints before processing.
      * @param quote Raw quote payload supplied by PolicyManager or validation callers.
      */
-    modifier validateQuoteInputs(QuoteData calldata quote) {
+    modifier validateQuoteData(QuoteData calldata quote) {
         require(quote.poolId == poolId, PoolIdMismatch(poolId, quote.poolId));
         require(quote.coverageLimit != 0, InvalidCoverageLimit());
         require(quote.payoutReceiver != address(0) && quote.operator != address(0), InvalidQuoteRecipient());
@@ -80,11 +80,11 @@ contract CoverPool is
         __AccessControl_init();
         __EIP712_init(_NAME, _VERSION);
 
-        poolId = poolId_;
-
         _grantRole(DEFAULT_ADMIN_ROLE, curator_);
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
         _grantRole(QUOTE_SIGNER_ROLE, quoteSigner_);
+
+        poolId = poolId_;
     }
 
     /**
@@ -97,15 +97,15 @@ contract CoverPool is
         external
         override
         onlyRole(POLICY_MANAGER_ROLE)
-        validateQuoteInputs(quote)
+        validateQuoteData(quote)
         returns (BoundPolicy memory boundPolicy)
     {
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
-        bytes32 expectedCommit = _hashQuote(quote);
-        require(expectedCommit == policyCommit, PolicyCommitMismatch(expectedCommit, policyCommit));
-
+        bytes32 calculatedPolicyCommit = _hashQuote(quote);
+        require(calculatedPolicyCommit == policyCommit, PolicyCommitMismatch(calculatedPolicyCommit, policyCommit));
         require(!policyCommitBound[policyCommit], PolicyAlreadyBound(policyCommit));
+
         policyCommitBound[policyCommit] = true;
 
         bytes32 poolPolicyId = _derivePoolPolicyId(policyCommit);
@@ -152,7 +152,7 @@ contract CoverPool is
         external
         view
         override
-        validateQuoteInputs(quote)
+        validateQuoteData(quote)
         returns (bytes32)
     {
         bytes32 policyCommit = _hashQuote(quote);

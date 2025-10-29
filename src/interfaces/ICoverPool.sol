@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {IAccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/IAccessControlEnumerable.sol";
 import {IOwnable2Step} from "./IOwnable2Step.sol";
 
 /**
  * @title ICoverPool
  * @notice Interface defining curator-controlled pool functionality for coverage quotes and bindings.
  */
-interface ICoverPool is IAccessControl, IOwnable2Step {
+interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
     /**
      * @notice Signed coverage quote inputs produced by the pool curator.
      * @dev Consumed by PolicyManager to derive deterministic policy commits.
