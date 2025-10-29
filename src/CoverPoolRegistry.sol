@@ -5,6 +5,7 @@ import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/acce
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {Paginator} from "@solarity/contracts/libs/arrays/Paginator.sol";
 import {ICoverPoolRegistry} from "./interfaces/ICoverPoolRegistry.sol";
 
 /**
@@ -151,46 +152,37 @@ contract CoverPoolRegistry is
      * @inheritdoc ICoverPoolRegistry
      */
     function listPools(
-        uint256 cursor,
-        uint256 size
+        uint256 offset,
+        uint256 limit
     )
         external
         view
         override
-        returns (uint256[] memory poolIds, PoolConfig[] memory configs, uint256 nextCursor)
+        returns (uint256[] memory poolIds, PoolConfig[] memory configs)
     {
-        require(size != 0, InvalidPageSize());
+        require(limit != 0, InvalidLimit());
 
         uint256 totalPools = _nextPoolId;
-        if (totalPools == 0) {
-            return (new uint256[](0), new PoolConfig[](0), 0);
+        if (totalPools == 0 || offset >= totalPools) {
+            return (new uint256[](0), new PoolConfig[](0));
         }
 
-        if (cursor == 0) {
-            cursor = 1;
+        uint256 to = Paginator.getTo(totalPools, offset, limit);
+        uint256 length = to - offset;
+        if (length == 0) {
+            return (new uint256[](0), new PoolConfig[](0));
         }
-
-        if (cursor > totalPools) {
-            return (new uint256[](0), new PoolConfig[](0), 0);
-        }
-
-        uint256 remaining = totalPools - cursor + 1;
-        uint256 length = remaining < size ? remaining : size;
 
         poolIds = new uint256[](length);
         configs = new PoolConfig[](length);
 
+        uint256 startId = offset + 1;
         for (uint256 i = 0; i < length; ++i) {
-            uint256 poolId = cursor + i;
+            uint256 poolId = startId + i;
             PoolConfig memory config = _poolConfigs[poolId];
             require(config.pool != address(0), PoolNotFound(poolId));
             poolIds[i] = poolId;
             configs[i] = config;
-        }
-
-        nextCursor = cursor + length;
-        if (nextCursor > totalPools) {
-            nextCursor = 0;
         }
     }
 
