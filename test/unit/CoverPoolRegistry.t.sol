@@ -333,11 +333,15 @@ contract CoverPoolRegistryTest is Test {
         vm.stopPrank();
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs) = registry.listPools(0, 2);
 =======
         (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs, uint256 nextCursor) =
             registry.listPools(0, 2);
 >>>>>>> 7d2af70 (contracts/coverpoolregistry: update formatting rules)
+=======
+        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs) = registry.listPools(0, 2);
+>>>>>>> 18b7393 (contracts/coverpoolregistry: add pagination to pool listing)
 
         assertEq(poolIds.length, 2, "First page size mismatch");
         assertEq(configs.length, 2, "First page configs size mismatch");
@@ -357,8 +361,14 @@ contract CoverPoolRegistryTest is Test {
     }
 
     function test_listPools_WhenLimitZero_Reverts() public {
+<<<<<<< HEAD
         vm.prank(registrar);
         registry.registerPool(_makeIndexedConfig(0, true));
+=======
+        vm.startPrank(registrar);
+        registry.registerPool(_makeIndexedConfig(0, true));
+        vm.stopPrank();
+>>>>>>> 18b7393 (contracts/coverpoolregistry: add pagination to pool listing)
 
         vm.expectRevert(ICoverPoolRegistry.InvalidLimit.selector);
         registry.listPools(0, 0);
@@ -371,10 +381,13 @@ contract CoverPoolRegistryTest is Test {
 =======
         vm.stopPrank();
 
+<<<<<<< HEAD
         (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs, uint256 nextCursor) =
             registry.listPools(10, 2);
 >>>>>>> 7d2af70 (contracts/coverpoolregistry: update formatting rules)
 
+=======
+>>>>>>> 18b7393 (contracts/coverpoolregistry: add pagination to pool listing)
         (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs) = registry.listPools(10, 2);
         assertEq(poolIds.length, 0, "Expected empty pool ids");
         assertEq(configs.length, 0, "Expected empty configs");
