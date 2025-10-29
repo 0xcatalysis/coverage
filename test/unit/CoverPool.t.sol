@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.solkljvehnbfdvfieungh
+";
 import {Test} from "forge-std/Test.sol";
 import {CoverPool} from "../../src/CoverPool.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
@@ -19,7 +21,6 @@ contract CoverPoolTest is Test {
     CoverPool private implementation;
     CoverPool private coverPool;
 
-    address private admin;
     address private curator;
     address private policyManager;
     address private payoutRecipient;
@@ -34,7 +35,6 @@ contract CoverPoolTest is Test {
     function setUp() public {
         vm.warp(1_000_000);
 
-        admin = makeAddr("Admin");
         curator = makeAddr("Curator");
         policyManager = makeAddr("PolicyManager");
         payoutRecipient = makeAddr("PayoutRecipient");
@@ -50,46 +50,39 @@ contract CoverPoolTest is Test {
         implementation = new CoverPool();
         address clone = Clones.clone(address(implementation));
         coverPool = CoverPool(clone);
-        coverPool.initialize(POOL_ID, admin, curator, policyManager, quoteSigner);
+        coverPool.initialize(POOL_ID, curator, policyManager, quoteSigner);
     }
 
     function test_initialize_WhenPoolIdZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.InvalidPoolId.selector);
-        pool.initialize(0, admin, curator, policyManager, quoteSigner);
-    }
-
-    function test_initialize_WhenAdminZero_Reverts() public {
-        CoverPool pool = CoverPool(Clones.clone(address(implementation)));
-        vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(POOL_ID, address(0), curator, policyManager, quoteSigner);
+        pool.initialize(0, curator, policyManager, quoteSigner);
     }
 
     function test_initialize_WhenCuratorZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(POOL_ID, admin, address(0), policyManager, quoteSigner);
+        pool.initialize(POOL_ID, address(0), policyManager, quoteSigner);
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(POOL_ID, admin, curator, address(0), quoteSigner);
+        pool.initialize(POOL_ID, curator, address(0), quoteSigner);
     }
 
     function test_initialize_WhenQuoteSignerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(POOL_ID, admin, curator, policyManager, address(0));
+        pool.initialize(POOL_ID, curator, policyManager, address(0));
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
         assertEq(coverPool.poolId(), POOL_ID, "Pool id mismatch");
-        assertEq(coverPool.curator(), curator, "Curator mismatch");
-        assertEq(coverPool.quoteSigner(), quoteSigner, "Quote signer mismatch");
-        assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), admin), "Admin role missing");
-        assertTrue(coverPool.hasRole(coverPool.CURATOR_ROLE(), curator), "Curator role missing");
+        assertEq(coverPool.owner(), curator, "Owner mismatch");
+        assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), curator), "Default admin role missing");
         assertTrue(coverPool.hasRole(coverPool.POLICY_MANAGER_ROLE(), policyManager), "Policy manager role missing");
+        assertTrue(coverPool.hasRole(coverPool.QUOTE_SIGNER_ROLE(), quoteSigner), "Quote signer role missing");
 
         bytes32 expectedDomain = keccak256(
             abi.encode(
@@ -104,32 +97,122 @@ contract CoverPoolTest is Test {
         assertTrue(coverPool.supportsInterface(type(IAccessControl).interfaceId), "AccessControl interface missing");
     }
 
-    function test_setQuoteSigner_WhenCalledByCurator_UpdatesSigner() public {
+    function test_grantRole_WhenCalledByOwner_AddsQuoteSigner() public {
         address newSigner = makeAddr("NewSigner");
-
-        vm.expectEmit(true, false, false, true, address(coverPool));
-        emit ICoverPool.QuoteSignerSet(newSigner);
-
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
         vm.prank(curator);
-        coverPool.setQuoteSigner(newSigner);
+        coverPool.grantRole(signerRole, newSigner);
 
-        assertEq(coverPool.quoteSigner(), newSigner, "Quote signer not updated");
+        assertTrue(coverPool.hasRole(signerRole, newSigner), "Quote signer role not granted");
     }
 
-    function test_setQuoteSigner_WhenZero_Reverts() public {
-        vm.startPrank(curator);
-        vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        coverPool.setQuoteSigner(address(0));
+    function test_grantRole_WhenCallerNotAdmin_Reverts() public {
+        address caller = makeAddr("NotAdmin");
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+        vm.startPrank(caller);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, caller, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        coverPool.grantRole(signerRole, makeAddr("RandomSigner"));
         vm.stopPrank();
     }
 
-    function test_setQuoteSigner_WhenCallerNotCurator_Reverts() public {
+    function test_revokeRole_WhenCalledByOwner_RemovesQuoteSigner() public {
+        address newSigner = makeAddr("NewSigner");
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+
+        vm.prank(curator);
+        coverPool.grantRole(signerRole, newSigner);
+
+        vm.prank(curator);
+        coverPool.revokeRole(signerRole, newSigner);
+
+        assertFalse(coverPool.hasRole(signerRole, newSigner), "Quote signer role not revoked");
+    }
+
+    function test_revokeRole_WhenCallerNotAdmin_Reverts() public {
+        address caller = makeAddr("RandomCaller");
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+
+        vm.prank(curator);
+        coverPool.grantRole(signerRole, caller);
+
+        vm.startPrank(caller);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), coverPool.CURATOR_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, caller, coverPool.DEFAULT_ADMIN_ROLE()
             )
         );
-        coverPool.setQuoteSigner(makeAddr("RandomSigner"));
+        coverPool.revokeRole(signerRole, quoteSigner);
+        vm.stopPrank();
+    }
+
+    function test_transferOwnershipTwoStep_UpdatesAdminRole() public {
+        address newOwner = makeAddr("NewOwner");
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+        address additionalSigner = makeAddr("AdditionalSigner");
+
+        vm.prank(curator);
+        coverPool.transferOwnership(newOwner);
+        assertEq(coverPool.pendingOwner(), newOwner, "Pending owner mismatch");
+
+        vm.prank(newOwner);
+        coverPool.acceptOwnership();
+
+        assertEq(coverPool.owner(), newOwner, "Owner not updated");
+        assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), newOwner), "New owner missing admin");
+        assertFalse(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), curator), "Old owner still admin");
+
+        vm.prank(newOwner);
+        coverPool.grantRole(signerRole, additionalSigner);
+        assertTrue(coverPool.hasRole(signerRole, additionalSigner), "New owner failed to grant role");
+
+        vm.startPrank(curator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, curator, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        coverPool.grantRole(signerRole, makeAddr("ShouldFail"));
+        vm.stopPrank();
+    }
+
+    function test_acceptOwnership_WhenNotPendingOwner_Reverts() public {
+        address newOwner = makeAddr("NextOwner");
+        address unauthorized = makeAddr("Unauthorized");
+
+        vm.prank(curator);
+        coverPool.transferOwnership(newOwner);
+
+        vm.prank(unauthorized);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, unauthorized));
+        coverPool.acceptOwnership();
+    }
+
+    function test_transferOwnershipTwoStep_UpdatesQuoteSignerAdmin() public {
+        address newOwner = makeAddr("NewOwnerB");
+        address newSigner = makeAddr("SignerAfterTransfer");
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+
+        vm.prank(curator);
+        coverPool.transferOwnership(newOwner);
+        vm.prank(newOwner);
+        coverPool.acceptOwnership();
+
+        vm.prank(newOwner);
+        coverPool.grantRole(signerRole, newSigner);
+        assertTrue(coverPool.hasRole(signerRole, newSigner), "New owner could not grant quote signer role");
+
+        vm.startPrank(curator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, curator, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        coverPool.revokeRole(signerRole, newSigner);
+        vm.stopPrank();
     }
 
     function test_validateQuote_WhenValidSignature_ReturnsCommit() public view {

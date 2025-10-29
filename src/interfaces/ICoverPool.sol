@@ -63,12 +63,6 @@ interface ICoverPool {
     }
 
     /**
-     * @notice Emitted whenever the curator updates the authorized quote signer.
-     * @param signer Address permitted to sign policy quotes.
-     */
-    event QuoteSignerSet(address indexed signer);
-
-    /**
      * @notice Emitted after a policy commit binds successfully against the pool.
      * @param policyCommit Deterministic hash referencing the multi-pool policy schedule.
      * @param poolPolicyId Pool-provided identifier for the policy slice.
@@ -147,26 +141,17 @@ interface ICoverPool {
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param poolId_ Pool identifier assigned by the CoverPoolRegistry.
-     * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
-     * @param curator_ Address receiving CURATOR_ROLE.
+     * @param curator_ Address assigned as owner.
      * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
-     * @param quoteSigner_ Address authorized to sign quotes.
+     * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
      */
     function initialize(
         uint256 poolId_,
-        address admin_,
         address curator_,
         address policyManager_,
         address quoteSigner_
     )
         external;
-
-    /**
-     * @notice Updates the authorized quote signer.
-     * @dev Requires CURATOR_ROLE.
-     * @param newSigner Address permitted to sign policy quotes.
-     */
-    function setQuoteSigner(address newSigner) external;
 
     /**
      * @notice Locks coverage for a previously validated policy commit.
@@ -181,16 +166,6 @@ interface ICoverPool {
      * @notice Returns the registry identifier of this CoverPool.
      */
     function poolId() external view returns (uint256);
-
-    /**
-     * @notice Returns the curator address controlling this pool.
-     */
-    function curator() external view returns (address);
-
-    /**
-     * @notice Returns the currently authorized quote signer.
-     */
-    function quoteSigner() external view returns (address);
 
     /**
      * @notice Returns whether a policy commit has already been bound.
@@ -211,7 +186,7 @@ interface ICoverPool {
 
     /**
      * @notice Verifies a quoted policy slice and returns the resulting policy commit hash.
-     * @param quote Quote data struct signed by the curator.
+     * @param quote Quote data struct signed by an authorized quote signer.
      * @param signature EIP-712 signature authorizing the quote.
      * @return policyCommit Hash tying the quote to the global policy schedule.
      */
@@ -224,12 +199,12 @@ interface ICoverPool {
         returns (bytes32 policyCommit);
 
     /**
-     * @notice AccessControl identifier for the CoverPool curator role.
-     */
-    function CURATOR_ROLE() external pure returns (bytes32);
-
-    /**
      * @notice AccessControl identifier for the PolicyManager binding role.
      */
     function POLICY_MANAGER_ROLE() external pure returns (bytes32);
+
+    /**
+     * @notice AccessControl identifier for approved quote signers.
+     */
+    function QUOTE_SIGNER_ROLE() external pure returns (bytes32);
 }
