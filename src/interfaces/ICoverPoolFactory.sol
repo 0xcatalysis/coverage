@@ -78,21 +78,6 @@ interface ICoverPoolFactory {
     error InvalidImplementation();
 
     /**
-     * @notice Reverts when trying to deploy without a configured CoverPool implementation.
-     */
-    error ImplementationNotSet();
-
-    /**
-     * @notice Reverts when trying to deploy without a configured CoverPoolRegistry.
-     */
-    error RegistryNotSet();
-
-    /**
-     * @notice Reverts when trying to deploy without a configured PolicyManager.
-     */
-    error PolicyManagerNotSet();
-
-    /**
      * @notice Deploys a CoverPool clone, registers it, and initializes configuration.
      * @param params Struct containing curator, token, and fee data.
      * @return coverPool Address of the deployed CoverPool clone.
