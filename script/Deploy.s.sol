@@ -26,7 +26,7 @@ abstract contract Deploy is Script {
     /**
      * @notice Deploys the CoverPool implementation and CoverPoolRegistry proxy after validating chain id.
      */
-    function run() external {
+    function run() external returns (address coverPoolRegistryProxy, address coverPoolRegistryImpl) {
         DeploymentConfig memory config = getDeploymentConfig();
         require(config.chainId == block.chainid, string.concat("Must deploy on ", config.networkName));
 
@@ -38,11 +38,11 @@ abstract contract Deploy is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        address coverPoolRegistryProxy = Upgrades.deployUUPSProxy(
+        coverPoolRegistryProxy = Upgrades.deployUUPSProxy(
             "CoverPoolRegistry.sol:CoverPoolRegistry",
             abi.encodeCall(CoverPoolRegistry.initialize, (coverPoolRegistryAdmin, coverPoolRegistryRegistrar))
         );
-        address coverPoolRegistryImpl = Upgrades.getImplementationAddress(coverPoolRegistryProxy);
+        coverPoolRegistryImpl = Upgrades.getImplementationAddress(coverPoolRegistryProxy);
 
         vm.stopBroadcast();
 
@@ -54,6 +54,8 @@ abstract contract Deploy is Script {
         console2.log("CoverPoolRegistry Admin:", coverPoolRegistryAdmin);
         console2.log("CoverPoolRegistry Registrar:", coverPoolRegistryRegistrar);
         console2.log("====================================");
+
+        return (coverPoolRegistryProxy, coverPoolRegistryImpl);
     }
 
     /**
