@@ -92,7 +92,8 @@ contract CoverPool is
      */
     function bindPolicy(
         bytes32 policyCommit,
-        QuoteData calldata quote
+        QuoteData calldata quote,
+        bytes calldata signature
     )
         external
         override
@@ -102,7 +103,7 @@ contract CoverPool is
     {
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
-        bytes32 calculatedPolicyCommit = _hashQuote(quote);
+        bytes32 calculatedPolicyCommit = _validateQuote(quote, signature);
         require(calculatedPolicyCommit == policyCommit, PolicyCommitMismatch(calculatedPolicyCommit, policyCommit));
         require(!policyCommitBound[policyCommit], PolicyAlreadyBound(policyCommit));
 
@@ -155,13 +156,7 @@ contract CoverPool is
         validateQuoteData(quote)
         returns (bytes32)
     {
-        bytes32 policyCommit = _hashQuote(quote);
-        bytes32 digest = _hashTypedDataV4(policyCommit);
-
-        address signer = ECDSA.recover(digest, signature);
-        require(hasRole(QUOTE_SIGNER_ROLE, signer), QuoteSignatureInvalid());
-
-        return policyCommit;
+        return _validateQuote(quote, signature);
     }
 
     /**
@@ -205,6 +200,27 @@ contract CoverPool is
         }
 
         _grantRole(DEFAULT_ADMIN_ROLE, newOwner);
+    }
+
+    /**
+     * @dev Validates a quote signature and returns the policy commit hash.
+     * @param quote Quote payload associated with the signature.
+     * @param signature EIP-712 signature produced by an authorized quote signer.
+     * @return policyCommit Deterministic commit hash derived from the quote.
+     */
+    function _validateQuote(
+        QuoteData calldata quote,
+        bytes calldata signature
+    )
+        private
+        view
+        returns (bytes32 policyCommit)
+    {
+        policyCommit = _hashQuote(quote);
+        bytes32 digest = _hashTypedDataV4(policyCommit);
+
+        address signer = ECDSA.recover(digest, signature);
+        require(hasRole(QUOTE_SIGNER_ROLE, signer), QuoteSignatureInvalid());
     }
 
     /**

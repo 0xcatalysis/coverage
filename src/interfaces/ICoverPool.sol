@@ -161,9 +161,16 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
      * @dev Requires POLICY_MANAGER_ROLE.
      * @param policyCommit Deterministic hash for the overall policy schedule.
      * @param quote Quote data that has been validated for binding.
+     * @param signature EIP-712 signature from an authorized quote signer.
      * @return BoundPolicy metadata describing the pool's final allocation.
      */
-    function bindPolicy(bytes32 policyCommit, QuoteData calldata quote) external returns (BoundPolicy memory);
+    function bindPolicy(
+        bytes32 policyCommit,
+        QuoteData calldata quote,
+        bytes calldata signature
+    )
+        external
+        returns (BoundPolicy memory);
 
     /**
      * @notice Returns the registry identifier of this CoverPool.
