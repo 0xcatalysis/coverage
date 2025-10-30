@@ -29,16 +29,16 @@ abstract contract Deploy is Script {
      * @notice Deploys the CoverPool implementation, CoverPoolFactory proxy, and CoverPoolRegistry proxy.
      * @return coverPoolFactoryProxy Address of the deployed CoverPoolFactory proxy.
      * @return coverPoolFactoryImpl Implementation address for the CoverPoolFactory proxy.
-     * @return coverPoolRegistry Address of the deployed CoverPoolRegistry proxy.
-     * @return coverPoolRegistryImplementation Implementation address for the CoverPoolRegistry proxy.
+     * @return coverPoolRegistryProxy Address of the deployed CoverPoolRegistry proxy.
+     * @return coverPoolRegistryImpl Implementation address for the CoverPoolRegistry proxy.
      */
     function run()
         external
         returns (
             address coverPoolFactoryProxy,
             address coverPoolFactoryImpl,
-            address coverPoolRegistry,
-            address coverPoolRegistryImplementation
+            address coverPoolRegistryProxy,
+            address coverPoolRegistryImpl
         )
     {
         DeploymentConfig memory config = getDeploymentConfig();
@@ -66,11 +66,11 @@ abstract contract Deploy is Script {
         );
         coverPoolFactoryImpl = Upgrades.getImplementationAddress(coverPoolFactoryProxy);
 
-        coverPoolRegistry = Upgrades.deployUUPSProxy(
+        coverPoolRegistryProxy = Upgrades.deployUUPSProxy(
             "CoverPoolRegistry.sol:CoverPoolRegistry",
             abi.encodeCall(CoverPoolRegistry.initialize, (coverPoolRegistryAdmin, coverPoolRegistryRegistrar))
         );
-        coverPoolRegistryImplementation = Upgrades.getImplementationAddress(coverPoolRegistry);
+        coverPoolRegistryImpl = Upgrades.getImplementationAddress(coverPoolRegistryProxy);
 
         vm.stopBroadcast();
 
@@ -83,11 +83,13 @@ abstract contract Deploy is Script {
         console2.log("CoverPoolFactory Admin:", coverPoolFactoryAdmin);
         console2.log("CoverPoolFactory Creator:", coverPoolFactoryCreator);
         console2.log("Policy Manager:", coverPoolPolicyManager);
-        console2.log("CoverPoolRegistry Proxy:", coverPoolRegistry);
-        console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImplementation);
+        console2.log("CoverPoolRegistry Proxy:", coverPoolRegistryProxy);
+        console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImpl);
         console2.log("CoverPoolRegistry Admin:", coverPoolRegistryAdmin);
         console2.log("CoverPoolRegistry Registrar:", coverPoolRegistryRegistrar);
         console2.log("====================================");
+
+        return (coverPoolFactoryProxy, coverPoolFactoryImpl, coverPoolRegistryProxy, coverPoolRegistryImpl);
     }
 
     /**
