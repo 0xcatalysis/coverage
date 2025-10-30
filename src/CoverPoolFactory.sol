@@ -24,6 +24,8 @@ contract CoverPoolFactory is
 {
     using Clones for address;
 
+    bytes32 public constant override CREATOR_ROLE = keccak256("CREATOR_ROLE");
+
     address public override coverPoolImplementation;
     address public override coverPoolRegistry;
     address public override policyManager;
@@ -36,12 +38,14 @@ contract CoverPoolFactory is
     /**
      * @notice Initializes factory configuration and admin role.
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
+     * @param creator_ Address receiving CREATOR_ROLE.
      * @param coverPoolImplementation_ Address of the CoverPool implementation contract.
      * @param coverPoolRegistry_ Address of the CoverPoolRegistry contract.
      * @param policyManager_ Address of the PolicyManager contract.
      */
     function initialize(
         address admin_,
+        address creator_,
         address coverPoolImplementation_,
         address coverPoolRegistry_,
         address policyManager_
@@ -50,8 +54,8 @@ contract CoverPoolFactory is
         initializer
     {
         require(
-            admin_ != address(0) && coverPoolImplementation_ != address(0) && coverPoolRegistry_ != address(0)
-                && policyManager_ != address(0),
+            admin_ != address(0) && creator_ != address(0) && coverPoolImplementation_ != address(0)
+                && coverPoolRegistry_ != address(0) && policyManager_ != address(0),
             ZeroAddress()
         );
         require(coverPoolImplementation_.code.length != 0, InvalidImplementation());
@@ -61,6 +65,7 @@ contract CoverPoolFactory is
         __ReentrancyGuard_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
+        _grantRole(CREATOR_ROLE, creator_);
 
         coverPoolImplementation = coverPoolImplementation_;
         coverPoolRegistry = coverPoolRegistry_;
@@ -74,7 +79,7 @@ contract CoverPoolFactory is
         external
         override
         nonReentrant
-        onlyRole(DEFAULT_ADMIN_ROLE)
+        onlyRole(CREATOR_ROLE)
         returns (address, uint256)
     {
         address coverPool = coverPoolImplementation.clone();
@@ -103,7 +108,7 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function setCoverPoolImplementation(address newImplementation) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setCoverPoolImplementation(address newImplementation) external override onlyRole(CREATOR_ROLE) {
         require(newImplementation != address(0), ZeroAddress());
         require(newImplementation.code.length != 0, InvalidImplementation());
 
@@ -116,7 +121,7 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function setCoverPoolRegistry(address newRegistry) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setCoverPoolRegistry(address newRegistry) external override onlyRole(CREATOR_ROLE) {
         require(newRegistry != address(0), ZeroAddress());
 
         address previousRegistry = coverPoolRegistry;
@@ -128,7 +133,7 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function setPolicyManager(address newPolicyManager) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setPolicyManager(address newPolicyManager) external override onlyRole(CREATOR_ROLE) {
         require(newPolicyManager != address(0), ZeroAddress());
 
         address previousPolicyManager = policyManager;
