@@ -2,38 +2,35 @@
 pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {CoverPool} from "../../src/CoverPool.sol";
 import {CoverPoolFactory} from "../../src/CoverPoolFactory.sol";
-import {CoverPoolRegistry} from "../../src/CoverPoolRegistry.sol";
-import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
 import {ICoverPoolRegistry} from "../../src/interfaces/ICoverPoolRegistry.sol";
 
 contract CoverPoolFactoryTest is Test {
     CoverPoolFactory internal factory;
     CoverPool internal implementation;
-    CoverPoolRegistry internal registry;
 
     address internal admin;
     address internal creator;
-    address internal registrar;
     address internal policyManager;
     address internal curator;
     address internal quoteSigner;
     address internal premiumToken;
     address internal payoutToken;
-    bytes32 internal registrarRole;
+
     bytes32 internal constant ADMIN_ROLE = 0x00;
     bytes32 internal creatorRole;
+
     Options internal opts;
 
     function setUp() public {
         admin = makeAddr("admin");
         creator = makeAddr("creator");
-        registrar = makeAddr("registrar");
         policyManager = makeAddr("policyManager");
         curator = makeAddr("curator");
         quoteSigner = makeAddr("quoteSigner");
@@ -42,7 +39,6 @@ contract CoverPoolFactoryTest is Test {
 
         vm.label(admin, "Admin");
         vm.label(creator, "Creator");
-        vm.label(registrar, "Registrar");
         vm.label(policyManager, "PolicyManager");
         vm.label(curator, "Curator");
         vm.label(quoteSigner, "QuoteSigner");
@@ -53,91 +49,36 @@ contract CoverPoolFactoryTest is Test {
 
         implementation = new CoverPool();
 
-        address registryProxy = Upgrades.deployUUPSProxy(
-            "CoverPoolRegistry.sol:CoverPoolRegistry",
-            abi.encodeCall(CoverPoolRegistry.initialize, (admin, registrar)),
-            opts
-        );
-        registry = CoverPoolRegistry(registryProxy);
-
-        address factoryProxy = Upgrades.deployUUPSProxy(
+        address proxy = Upgrades.deployUUPSProxy(
             "CoverPoolFactory.sol:CoverPoolFactory",
-            abi.encodeCall(
-                CoverPoolFactory.initialize,
-                (address(this), creator, address(implementation), address(registry), policyManager)
-            ),
+            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(implementation), policyManager)),
             opts
         );
-        factory = CoverPoolFactory(factoryProxy);
+        factory = CoverPoolFactory(proxy);
 
         creatorRole = factory.CREATOR_ROLE();
-        registrarRole = registry.REGISTRAR_ROLE();
-
-        vm.prank(admin);
-        registry.grantRole(registrarRole, address(factory));
     }
 
     function test_initialize_WhenImplementationZero_Reverts() public {
         CoverPoolFactory factoryImpl = new CoverPoolFactory();
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
         new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(
-                CoverPoolFactory.initialize, (address(this), creator, address(0), address(registry), policyManager)
-            )
-        );
-    }
-
-    function test_initialize_WhenAdminZero_Reverts() public {
-        CoverPoolFactory factoryImpl = new CoverPoolFactory();
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        new ERC1967Proxy(
-            address(factoryImpl),
-            abi.encodeCall(
-                CoverPoolFactory.initialize,
-                (address(0), creator, address(implementation), address(registry), policyManager)
-            )
-        );
-    }
-
-    function test_initialize_WhenCreatorZero_Reverts() public {
-        CoverPoolFactory factoryImpl = new CoverPoolFactory();
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        new ERC1967Proxy(
-            address(factoryImpl),
-            abi.encodeCall(
-                CoverPoolFactory.initialize,
-                (address(this), address(0), address(implementation), address(registry), policyManager)
-            )
-        );
-    }
-
-    function test_initialize_WhenRegistryZero_Reverts() public {
-        CoverPoolFactory factoryImpl = new CoverPoolFactory();
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        new ERC1967Proxy(
-            address(factoryImpl),
-            abi.encodeCall(
-                CoverPoolFactory.initialize,
-                (address(this), creator, address(implementation), address(0), policyManager)
-            )
+            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(0), policyManager))
         );
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         CoverPoolFactory factoryImpl = new CoverPoolFactory();
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
         new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(
-                CoverPoolFactory.initialize,
-                (address(this), creator, address(implementation), address(registry), address(0))
-            )
+            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(implementation), address(0)))
         );
     }
 
-    function test_setCoverPoolImplementation_WhenCallerNotOwner_Reverts() public {
-        address caller = makeAddr("notOwner");
+    function test_setCoverPoolImplementation_WhenCallerNotCreator_Reverts() public {
+        address caller = makeAddr("notCreator");
         CoverPool newImplementation = new CoverPool();
 
         vm.expectRevert(
@@ -165,56 +106,23 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.coverPoolImplementation(), address(newImplementation), "Implementation not updated");
     }
 
-    function test_setCoverPoolRegistry_WhenCallerNotOwner_Reverts() public {
-        address caller = makeAddr("registryNotOwner");
+    function test_setPolicyManager_WhenCallerNotCreator_Reverts() public {
+        address caller = makeAddr("notCreatorPolicy");
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
         );
         vm.prank(caller);
-        factory.setCoverPoolRegistry(makeAddr("registry"));
-    }
-
-    function test_setCoverPoolRegistry_WhenZero_Reverts() public {
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        vm.prank(creator);
-        factory.setCoverPoolRegistry(address(0));
-    }
-
-    function test_setCoverPoolRegistry_WhenValid_UpdatesStorage() public {
-        Options memory localOpts;
-        localOpts.unsafeSkipAllChecks = true;
-        address otherRegistryProxy = Upgrades.deployUUPSProxy(
-            "CoverPoolRegistry.sol:CoverPoolRegistry",
-            abi.encodeCall(CoverPoolRegistry.initialize, (admin, registrar)),
-            localOpts
-        );
-
-        vm.expectEmit(true, true, true, true, address(factory));
-        emit ICoverPoolFactory.CoverPoolRegistrySet(address(registry), otherRegistryProxy);
-
-        vm.prank(creator);
-        factory.setCoverPoolRegistry(otherRegistryProxy);
-
-        assertEq(factory.coverPoolRegistry(), otherRegistryProxy, "Registry not updated");
-    }
-
-    function test_setPolicyManager_WhenCallerNotOwner_Reverts() public {
-        address caller = makeAddr("policyManagerNotOwner");
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
-        );
-        vm.prank(caller);
-        factory.setPolicyManager(makeAddr("newPolicyManager"));
+        factory.setPolicyManager(makeAddr("policy2"));
     }
 
     function test_setPolicyManager_WhenZero_Reverts() public {
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
         vm.prank(creator);
         factory.setPolicyManager(address(0));
     }
 
-    function test_setPolicyManager_WhenValid_UpdatesStorage() public {
-        address newPolicyManager = makeAddr("newPolicyManager");
+    function test_setPolicyManager_WhenValid_UpdatesState() public {
+        address newPolicyManager = makeAddr("policyManagerNew");
 
         vm.expectEmit(true, true, true, true, address(factory));
         emit ICoverPoolFactory.PolicyManagerSet(policyManager, newPolicyManager);
@@ -225,186 +133,253 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.policyManager(), newPolicyManager, "Policy manager not updated");
     }
 
-    function test_createCoverPool_WhenCalledByOwner_DeploysRegistersAndInitializes() public {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: quoteSigner,
-            premiumToken: premiumToken,
-            payoutToken: payoutToken,
-            defaultSpecId: keccak256("SPEC"),
-            poolFeeBps: 500,
-            platformFeeBps: 200,
-            active: true
-        });
+    function test_createCoverPool_WhenPaused_Reverts() public {
+        vm.prank(admin);
+        factory.pause();
 
-        vm.expectEmit(true, false, true, true, address(factory));
-        emit ICoverPoolFactory.CoverPoolCreated(1, address(0), params.curator, params.quoteSigner, policyManager);
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
 
+        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
         vm.prank(creator);
-        (address poolAddress, uint256 poolId) = factory.createCoverPool(params);
-
-        assertEq(poolId, 1, "Pool id mismatch");
-        assertTrue(poolAddress != address(0), "Pool address zero");
-        assertTrue(poolAddress != address(implementation), "Pool address equals implementation");
-
-        CoverPool pool = CoverPool(poolAddress);
-        assertEq(pool.poolId(), poolId, "CoverPool stored pool id mismatch");
-        assertEq(pool.owner(), params.curator, "CoverPool owner mismatch");
-
-        bytes32 adminRole = pool.DEFAULT_ADMIN_ROLE();
-        bytes32 policyManagerRole = pool.POLICY_MANAGER_ROLE();
-        bytes32 quoteSignerRole = pool.QUOTE_SIGNER_ROLE();
-
-        assertTrue(pool.hasRole(adminRole, params.curator), "Curator lacks admin role");
-        assertTrue(pool.hasRole(policyManagerRole, policyManager), "Policy manager role missing");
-        assertTrue(pool.hasRole(quoteSignerRole, params.quoteSigner), "Quote signer role missing");
-
-        uint256 resolvedPoolId = registry.resolvePool(poolAddress);
-        assertEq(resolvedPoolId, poolId, "Registry resolution mismatch");
-
-        ICoverPoolRegistry.PoolConfig memory config = registry.getPoolConfig(poolId);
-        _assertPoolConfigEquals(config, params, poolAddress);
+        factory.createCoverPool(params);
     }
 
-    function test_createCoverPool_WhenCalledTwice_IncrementsPoolId() public {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: quoteSigner,
-            premiumToken: premiumToken,
-            payoutToken: payoutToken,
-            defaultSpecId: keccak256("SPEC"),
-            poolFeeBps: 500,
-            platformFeeBps: 200,
-            active: true
-        });
+    function test_createCoverPool_WhenValid_RegistersPool() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
 
         vm.prank(creator);
         factory.createCoverPool(params);
 
-        params.curator = makeAddr("curator2");
-        params.quoteSigner = makeAddr("quoteSigner2");
+        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs) = factory.listPools(0, 1);
+        assertEq(poolIds.length, 1, "Expected single pool id");
+        assertEq(configs.length, 1, "Expected single config");
 
-        vm.expectEmit(true, false, true, true, address(factory));
-        emit ICoverPoolFactory.CoverPoolCreated(2, address(0), params.curator, params.quoteSigner, policyManager);
+        uint256 poolId = poolIds[0];
+        address pool = configs[0].pool;
+        assertEq(poolId, 1, "Unexpected pool id");
+        assertEq(factory.resolvePool(pool), poolId, "Resolve mismatch");
 
-        vm.prank(creator);
-        (address poolAddress, uint256 poolId) = factory.createCoverPool(params);
-
-        assertEq(poolId, 2, "Second pool id mismatch");
-        assertEq(registry.resolvePool(poolAddress), poolId, "Registry resolution mismatch on second pool");
-    }
-
-    function test_createCoverPool_WhenCallerNotOwner_Reverts() public {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: quoteSigner,
-            premiumToken: premiumToken,
-            payoutToken: payoutToken,
-            defaultSpecId: bytes32(0),
-            poolFeeBps: 0,
-            platformFeeBps: 0,
-            active: true
-        });
-
-        address caller = makeAddr("notOwner");
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
-        );
-        vm.prank(caller);
-        factory.createCoverPool(params);
-    }
-
-    function test_createCoverPool_WhenCuratorZero_Reverts() public {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: address(0),
-            quoteSigner: quoteSigner,
-            premiumToken: premiumToken,
-            payoutToken: payoutToken,
-            defaultSpecId: bytes32(0),
-            poolFeeBps: 0,
-            platformFeeBps: 0,
-            active: true
-        });
-
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        vm.prank(creator);
-        factory.createCoverPool(params);
+        ICoverPoolRegistry.PoolConfig memory stored = factory.getPoolConfig(poolId);
+        _assertEqualConfig(stored, _expectedConfig(pool, params, true));
     }
 
     function test_createCoverPool_WhenQuoteSignerZero_Reverts() public {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: address(0),
-            premiumToken: premiumToken,
-            payoutToken: payoutToken,
-            defaultSpecId: bytes32(0),
-            poolFeeBps: 0,
-            platformFeeBps: 0,
-            active: true
-        });
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
+        params.quoteSigner = address(0);
 
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
         vm.prank(creator);
         factory.createCoverPool(params);
     }
 
     function test_createCoverPool_WhenPremiumTokenZero_Reverts() public {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: quoteSigner,
-            premiumToken: address(0),
-            payoutToken: payoutToken,
-            defaultSpecId: bytes32(0),
-            poolFeeBps: 0,
-            platformFeeBps: 0,
-            active: true
-        });
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
+        params.premiumToken = address(0);
 
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
         vm.prank(creator);
         factory.createCoverPool(params);
     }
 
-    function test_createCoverPool_WhenFactoryLacksRegistrarRole_Reverts() public {
-        vm.startPrank(admin);
-        registry.revokeRole(registrarRole, address(factory));
-        vm.stopPrank();
+    function test_createCoverPool_WhenPayoutTokenZero_Reverts() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
+        params.payoutToken = address(0);
 
-        ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
+        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
+        vm.prank(creator);
+        factory.createCoverPool(params);
+    }
+
+    function test_createCoverPool_WhenFeeTooHigh_Reverts() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
+        params.poolFeeBps = 3_000;
+
+        vm.expectRevert(ICoverPoolRegistry.InvalidFeeBps.selector);
+        vm.prank(creator);
+        factory.createCoverPool(params);
+    }
+
+    function test_updatePoolConfig_WhenValid_UpdatesStorage() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        (uint256[] memory poolIds, ) = factory.listPools(0, 1);
+        uint256 poolId = poolIds[0];
+
+        ICoverPoolRegistry.PoolConfig memory updated = ICoverPoolRegistry.PoolConfig({
+            pool: makeAddr("newPool"),
+            curator: makeAddr("newCurator"),
+            premiumToken: makeAddr("newPremium"),
+            payoutToken: makeAddr("newPayout"),
+            defaultSpecId: bytes32("newSpec"),
+            poolFeeBps: 150,
+            platformFeeBps: 175,
+            active: true
+        });
+
+        vm.prank(creator);
+        factory.updatePoolConfig(poolId, updated);
+
+        _assertEqualConfig(factory.getPoolConfig(poolId), updated);
+        assertEq(factory.resolvePool(updated.pool), poolId, "Resolve mismatch");
+    }
+
+    function test_updatePoolConfig_WhenPoolMissing_Reverts() public {
+        ICoverPoolRegistry.PoolConfig memory updated = _expectedConfig(makeAddr("missingPool"), _defaultCreateParams(true), true);
+
+        vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotFound.selector, 1));
+        vm.prank(creator);
+        factory.updatePoolConfig(1, updated);
+    }
+
+    function test_updatePoolConfig_WhenActiveMismatch_Reverts() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        (uint256[] memory poolIds, ) = factory.listPools(0, 1);
+        uint256 poolId = poolIds[0];
+
+        ICoverPoolRegistry.PoolConfig memory updated = _expectedConfig(makeAddr("pool2"), params, false);
+
+        vm.expectRevert(ICoverPoolRegistry.PoolActiveStatusMismatch.selector);
+        vm.prank(creator);
+        factory.updatePoolConfig(poolId, updated);
+    }
+
+    function test_setPoolStatus_WhenValid_TogglesFlag() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        (uint256[] memory poolIds, ) = factory.listPools(0, 1);
+        uint256 poolId = poolIds[0];
+
+        vm.expectEmit(true, true, true, true, address(factory));
+        emit ICoverPoolRegistry.PoolStatusSet(poolId, false);
+
+        vm.prank(creator);
+        factory.setPoolStatus(poolId, false);
+
+        assertFalse(factory.getPoolConfig(poolId).active, "Active flag not updated");
+    }
+
+    function test_setPoolStatus_WhenPoolMissing_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotFound.selector, 1));
+        vm.prank(creator);
+        factory.setPoolStatus(1, false);
+    }
+
+    function test_setPoolStatus_WhenNoChange_Reverts() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        (uint256[] memory poolIds, ) = factory.listPools(0, 1);
+        uint256 poolId = poolIds[0];
+
+        vm.expectRevert(ICoverPoolRegistry.PoolStatusUnchanged.selector);
+        vm.prank(creator);
+        factory.setPoolStatus(poolId, true);
+    }
+
+    function test_listPools_WhenMultiplePools_Paginates() public {
+        for (uint256 i = 0; i < 3; ++i) {
+            ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
+            params.curator = makeAddr(string(abi.encodePacked("curator", vm.toString(i))));
+            params.quoteSigner = makeAddr(string(abi.encodePacked("quoteSigner", vm.toString(i))));
+            params.premiumToken = makeAddr(string(abi.encodePacked("premium", vm.toString(i))));
+            params.payoutToken = makeAddr(string(abi.encodePacked("payout", vm.toString(i))));
+
+            vm.prank(creator);
+            factory.createCoverPool(params);
+        }
+
+        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs) = factory.listPools(0, 2);
+        assertEq(poolIds.length, 2, "Unexpected page size");
+        assertEq(configs.length, 2, "Config length mismatch");
+        assertEq(poolIds[0], 1, "Unexpected first id");
+        assertEq(poolIds[1], 2, "Unexpected second id");
+    }
+
+    function test_listPools_WhenLimitZero_Reverts() public {
+        vm.expectRevert(ICoverPoolRegistry.InvalidLimit.selector);
+        factory.listPools(0, 0);
+    }
+
+    function test_listPools_WhenOffsetPastEnd_ReturnsEmpty() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        (uint256[] memory poolIds, ICoverPoolRegistry.PoolConfig[] memory configs) = factory.listPools(5, 2);
+        assertEq(poolIds.length, 0, "Expected empty pool ids");
+        assertEq(configs.length, 0, "Expected empty configs");
+    }
+
+    function test_getPoolConfig_WhenUnknown_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotFound.selector, 1));
+        factory.getPoolConfig(1);
+    }
+
+    function test_resolvePool_WhenUnknown_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotRegistered.selector, address(0x1234)));
+        factory.resolvePool(address(0x1234));
+    }
+
+    function _defaultCreateParams(bool active)
+        internal
+        view
+        returns (ICoverPoolFactory.CreateCoverPoolParams memory params)
+    {
+        params = ICoverPoolFactory.CreateCoverPoolParams({
             curator: curator,
             quoteSigner: quoteSigner,
             premiumToken: premiumToken,
             payoutToken: payoutToken,
-            defaultSpecId: bytes32(0),
-            poolFeeBps: 0,
-            platformFeeBps: 0,
-            active: true
+            defaultSpecId: bytes32("spec"),
+            poolFeeBps: 100,
+            platformFeeBps: 200,
+            active: active
         });
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, address(factory), registrarRole
-            )
-        );
-        vm.prank(creator);
-        factory.createCoverPool(params);
     }
 
-    function _assertPoolConfigEquals(
-        ICoverPoolRegistry.PoolConfig memory config,
+    function _expectedConfig(
+        address pool,
         ICoverPoolFactory.CreateCoverPoolParams memory params,
-        address poolAddress
+        bool active
     )
-        private
+        internal
+        pure
+        returns (ICoverPoolRegistry.PoolConfig memory)
+    {
+        return ICoverPoolRegistry.PoolConfig({
+            pool: pool,
+            curator: params.curator,
+            premiumToken: params.premiumToken,
+            payoutToken: params.payoutToken,
+            defaultSpecId: params.defaultSpecId,
+            poolFeeBps: params.poolFeeBps,
+            platformFeeBps: params.platformFeeBps,
+            active: active
+        });
+    }
+
+    function _assertEqualConfig(
+        ICoverPoolRegistry.PoolConfig memory actual,
+        ICoverPoolRegistry.PoolConfig memory expected
+    )
+        internal
         pure
     {
-        assertEq(config.pool, poolAddress, "Config pool mismatch");
-        assertEq(config.curator, params.curator, "Config curator mismatch");
-        assertEq(config.premiumToken, params.premiumToken, "Config premium token mismatch");
-        assertEq(config.payoutToken, params.payoutToken, "Config payout token mismatch");
-        assertEq(config.defaultSpecId, params.defaultSpecId, "Config spec id mismatch");
-        assertEq(config.poolFeeBps, params.poolFeeBps, "Config pool fee mismatch");
-        assertEq(config.platformFeeBps, params.platformFeeBps, "Config platform fee mismatch");
-        assertEq(config.active, params.active, "Config active mismatch");
+        assertEq(actual.pool, expected.pool, "Pool mismatch");
+        assertEq(actual.curator, expected.curator, "Curator mismatch");
+        assertEq(actual.premiumToken, expected.premiumToken, "Premium token mismatch");
+        assertEq(actual.payoutToken, expected.payoutToken, "Payout token mismatch");
+        assertEq(actual.defaultSpecId, expected.defaultSpecId, "Spec mismatch");
+        assertEq(actual.poolFeeBps, expected.poolFeeBps, "Pool fee mismatch");
+        assertEq(actual.platformFeeBps, expected.platformFeeBps, "Platform fee mismatch");
+        assertEq(actual.active, expected.active, "Active mismatch");
     }
 }
