@@ -132,4 +132,9 @@ interface ICoverPoolFactory {
      * @notice Returns the PolicyManager address.
      */
     function policyManager() external view returns (address);
+
+    /**
+     * @notice Role identifier allowed to create cover pools.
+     */
+    function CREATOR_ROLE() external view returns (bytes32);
 }

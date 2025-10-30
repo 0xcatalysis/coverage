@@ -18,6 +18,7 @@ contract CoverPoolFactoryTest is Test {
     CoverPoolRegistry internal registry;
 
     address internal admin;
+    address internal creator;
     address internal registrar;
     address internal policyManager;
     address internal curator;
@@ -26,10 +27,12 @@ contract CoverPoolFactoryTest is Test {
     address internal payoutToken;
     bytes32 internal registrarRole;
     bytes32 internal constant ADMIN_ROLE = 0x00;
+    bytes32 internal creatorRole;
     Options internal opts;
 
     function setUp() public {
         admin = makeAddr("admin");
+        creator = makeAddr("creator");
         registrar = makeAddr("registrar");
         policyManager = makeAddr("policyManager");
         curator = makeAddr("curator");
@@ -38,6 +41,7 @@ contract CoverPoolFactoryTest is Test {
         payoutToken = makeAddr("payoutToken");
 
         vm.label(admin, "Admin");
+        vm.label(creator, "Creator");
         vm.label(registrar, "Registrar");
         vm.label(policyManager, "PolicyManager");
         vm.label(curator, "Curator");
@@ -59,12 +63,14 @@ contract CoverPoolFactoryTest is Test {
         address factoryProxy = Upgrades.deployUUPSProxy(
             "CoverPoolFactory.sol:CoverPoolFactory",
             abi.encodeCall(
-                CoverPoolFactory.initialize, (address(this), address(implementation), address(registry), policyManager)
+                CoverPoolFactory.initialize,
+                (address(this), creator, address(implementation), address(registry), policyManager)
             ),
             opts
         );
         factory = CoverPoolFactory(factoryProxy);
 
+        creatorRole = factory.CREATOR_ROLE();
         registrarRole = registry.REGISTRAR_ROLE();
 
         vm.prank(admin);
@@ -76,7 +82,9 @@ contract CoverPoolFactoryTest is Test {
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(CoverPoolFactory.initialize, (address(this), address(0), address(registry), policyManager))
+            abi.encodeCall(
+                CoverPoolFactory.initialize, (address(this), creator, address(0), address(registry), policyManager)
+            )
         );
     }
 
@@ -86,7 +94,20 @@ contract CoverPoolFactoryTest is Test {
         new ERC1967Proxy(
             address(factoryImpl),
             abi.encodeCall(
-                CoverPoolFactory.initialize, (address(0), address(implementation), address(registry), policyManager)
+                CoverPoolFactory.initialize,
+                (address(0), creator, address(implementation), address(registry), policyManager)
+            )
+        );
+    }
+
+    function test_initialize_WhenCreatorZero_Reverts() public {
+        CoverPoolFactory factoryImpl = new CoverPoolFactory();
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        new ERC1967Proxy(
+            address(factoryImpl),
+            abi.encodeCall(
+                CoverPoolFactory.initialize,
+                (address(this), address(0), address(implementation), address(registry), policyManager)
             )
         );
     }
@@ -97,7 +118,8 @@ contract CoverPoolFactoryTest is Test {
         new ERC1967Proxy(
             address(factoryImpl),
             abi.encodeCall(
-                CoverPoolFactory.initialize, (address(this), address(implementation), address(0), policyManager)
+                CoverPoolFactory.initialize,
+                (address(this), creator, address(implementation), address(0), policyManager)
             )
         );
     }
@@ -108,7 +130,8 @@ contract CoverPoolFactoryTest is Test {
         new ERC1967Proxy(
             address(factoryImpl),
             abi.encodeCall(
-                CoverPoolFactory.initialize, (address(this), address(implementation), address(registry), address(0))
+                CoverPoolFactory.initialize,
+                (address(this), creator, address(implementation), address(registry), address(0))
             )
         );
     }
@@ -118,7 +141,7 @@ contract CoverPoolFactoryTest is Test {
         CoverPool newImplementation = new CoverPool();
 
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, ADMIN_ROLE)
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
         );
         vm.prank(caller);
         factory.setCoverPoolImplementation(address(newImplementation));
@@ -126,6 +149,7 @@ contract CoverPoolFactoryTest is Test {
 
     function test_setCoverPoolImplementation_WhenImplementationHasNoCode_Reverts() public {
         vm.expectRevert(ICoverPoolFactory.InvalidImplementation.selector);
+        vm.prank(creator);
         factory.setCoverPoolImplementation(address(0xdead));
     }
 
@@ -135,6 +159,7 @@ contract CoverPoolFactoryTest is Test {
         vm.expectEmit(true, true, true, true, address(factory));
         emit ICoverPoolFactory.CoverPoolImplementationSet(address(implementation), address(newImplementation));
 
+        vm.prank(creator);
         factory.setCoverPoolImplementation(address(newImplementation));
 
         assertEq(factory.coverPoolImplementation(), address(newImplementation), "Implementation not updated");
@@ -143,7 +168,7 @@ contract CoverPoolFactoryTest is Test {
     function test_setCoverPoolRegistry_WhenCallerNotOwner_Reverts() public {
         address caller = makeAddr("registryNotOwner");
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, ADMIN_ROLE)
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
         );
         vm.prank(caller);
         factory.setCoverPoolRegistry(makeAddr("registry"));
@@ -151,6 +176,7 @@ contract CoverPoolFactoryTest is Test {
 
     function test_setCoverPoolRegistry_WhenZero_Reverts() public {
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(creator);
         factory.setCoverPoolRegistry(address(0));
     }
 
@@ -166,6 +192,7 @@ contract CoverPoolFactoryTest is Test {
         vm.expectEmit(true, true, true, true, address(factory));
         emit ICoverPoolFactory.CoverPoolRegistrySet(address(registry), otherRegistryProxy);
 
+        vm.prank(creator);
         factory.setCoverPoolRegistry(otherRegistryProxy);
 
         assertEq(factory.coverPoolRegistry(), otherRegistryProxy, "Registry not updated");
@@ -174,7 +201,7 @@ contract CoverPoolFactoryTest is Test {
     function test_setPolicyManager_WhenCallerNotOwner_Reverts() public {
         address caller = makeAddr("policyManagerNotOwner");
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, ADMIN_ROLE)
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
         );
         vm.prank(caller);
         factory.setPolicyManager(makeAddr("newPolicyManager"));
@@ -182,6 +209,7 @@ contract CoverPoolFactoryTest is Test {
 
     function test_setPolicyManager_WhenZero_Reverts() public {
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(creator);
         factory.setPolicyManager(address(0));
     }
 
@@ -191,6 +219,7 @@ contract CoverPoolFactoryTest is Test {
         vm.expectEmit(true, true, true, true, address(factory));
         emit ICoverPoolFactory.PolicyManagerSet(policyManager, newPolicyManager);
 
+        vm.prank(creator);
         factory.setPolicyManager(newPolicyManager);
 
         assertEq(factory.policyManager(), newPolicyManager, "Policy manager not updated");
@@ -211,6 +240,7 @@ contract CoverPoolFactoryTest is Test {
         vm.expectEmit(true, false, true, true, address(factory));
         emit ICoverPoolFactory.CoverPoolCreated(1, address(0), params.curator, params.quoteSigner, policyManager);
 
+        vm.prank(creator);
         (address poolAddress, uint256 poolId) = factory.createCoverPool(params);
 
         assertEq(poolId, 1, "Pool id mismatch");
@@ -248,6 +278,7 @@ contract CoverPoolFactoryTest is Test {
             active: true
         });
 
+        vm.prank(creator);
         factory.createCoverPool(params);
 
         params.curator = makeAddr("curator2");
@@ -256,6 +287,7 @@ contract CoverPoolFactoryTest is Test {
         vm.expectEmit(true, false, true, true, address(factory));
         emit ICoverPoolFactory.CoverPoolCreated(2, address(0), params.curator, params.quoteSigner, policyManager);
 
+        vm.prank(creator);
         (address poolAddress, uint256 poolId) = factory.createCoverPool(params);
 
         assertEq(poolId, 2, "Second pool id mismatch");
@@ -276,7 +308,7 @@ contract CoverPoolFactoryTest is Test {
 
         address caller = makeAddr("notOwner");
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, ADMIN_ROLE)
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
         );
         vm.prank(caller);
         factory.createCoverPool(params);
@@ -295,6 +327,7 @@ contract CoverPoolFactoryTest is Test {
         });
 
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(creator);
         factory.createCoverPool(params);
     }
 
@@ -311,6 +344,7 @@ contract CoverPoolFactoryTest is Test {
         });
 
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(creator);
         factory.createCoverPool(params);
     }
 
@@ -327,6 +361,7 @@ contract CoverPoolFactoryTest is Test {
         });
 
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(creator);
         factory.createCoverPool(params);
     }
 
@@ -351,6 +386,7 @@ contract CoverPoolFactoryTest is Test {
                 IAccessControl.AccessControlUnauthorizedAccount.selector, address(factory), registrarRole
             )
         );
+        vm.prank(creator);
         factory.createCoverPool(params);
     }
 
