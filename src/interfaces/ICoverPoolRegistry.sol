@@ -32,14 +32,6 @@ interface ICoverPoolRegistry is IAccessControl {
     }
 
     /**
-     * @notice Emitted when a new CoverPool is registered in the registry.
-     * @param poolId Deterministic identifier assigned to the pool.
-     * @param pool Address of the CoverPool contract.
-     * @param curator Address of the curator that controls the pool.
-     */
-    event PoolRegistered(uint256 indexed poolId, address indexed pool, address indexed curator, PoolConfig config);
-
-    /**
      * @notice Emitted when configuration fields for a pool are updated.
      * @param poolId Identifier of the pool being updated.
      * @param config Latest configuration snapshot persisted for the pool.
@@ -62,12 +54,6 @@ interface ICoverPoolRegistry is IAccessControl {
      * @notice Reverts when supplied fee values exceed the defined basis-point cap.
      */
     error InvalidFeeBps();
-
-    /**
-     * @notice Reverts when attempting to register a pool whose address is already tracked.
-     * @param pool Address of the CoverPool contract that was previously registered.
-     */
-    error PoolAlreadyRegistered(address pool);
 
     /**
      * @notice Reverts when the requested pool identifier does not exist in storage.
@@ -109,16 +95,7 @@ interface ICoverPoolRegistry is IAccessControl {
     function unpause() external;
 
     /**
-     * @notice Registers a new CoverPool and assigns it a deterministic identifier.
-     * @dev Requires REGISTRAR_ROLE.
-     * @param config Initial configuration parameters describing the pool.
-     * @return poolId Newly assigned pool identifier.
-     */
-    function registerPool(PoolConfig calldata config) external returns (uint256 poolId);
-
-    /**
      * @notice Updates the configuration metadata for an existing pool.
-     * @dev Requires REGISTRAR_ROLE.
      * @param poolId Identifier of the pool to update.
      * @param newConfig Replacement configuration struct.
      */
@@ -126,7 +103,6 @@ interface ICoverPoolRegistry is IAccessControl {
 
     /**
      * @notice Toggles whether a pool is eligible for new bindings.
-     * @dev Requires REGISTRAR_ROLE.
      * @param poolId Identifier of the pool to modify.
      * @param active Desired active flag.
      */
@@ -160,9 +136,4 @@ interface ICoverPoolRegistry is IAccessControl {
      * @return poolId Registry identifier associated with the address.
      */
     function resolvePool(address pool) external view returns (uint256 poolId);
-
-    /**
-     * @notice Returns the role identifier that can manage the registry.
-     */
-    function REGISTRAR_ROLE() external pure returns (bytes32);
 }

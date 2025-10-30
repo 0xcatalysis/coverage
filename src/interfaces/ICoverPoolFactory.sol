@@ -5,9 +5,9 @@ import {ICoverPoolRegistry} from "./ICoverPoolRegistry.sol";
 
 /**
  * @title ICoverPoolFactory
- * @notice Interface describing minimal clone deployments for CoverPool instances.
+ * @notice Interface describing deployment and registry management for CoverPool instances.
  */
-interface ICoverPoolFactory {
+interface ICoverPoolFactory is ICoverPoolRegistry {
     /**
      * @notice Creation parameters required to deploy and register a CoverPool.
      */
@@ -54,23 +54,11 @@ interface ICoverPoolFactory {
     event CoverPoolImplementationSet(address indexed previousImplementation, address indexed newImplementation);
 
     /**
-     * @notice Emitted when the CoverPoolRegistry reference is updated.
-     * @param previousRegistry Registry used before the update.
-     * @param newRegistry Registry set after the update.
-     */
-    event CoverPoolRegistrySet(address indexed previousRegistry, address indexed newRegistry);
-
-    /**
      * @notice Emitted when the PolicyManager reference is updated.
      * @param previousPolicyManager PolicyManager used before the update.
      * @param newPolicyManager PolicyManager set after the update.
      */
     event PolicyManagerSet(address indexed previousPolicyManager, address indexed newPolicyManager);
-
-    /**
-     * @notice Reverts when a required address argument is zero.
-     */
-    error ZeroAddress();
 
     /**
      * @notice Reverts when a supplied implementation address lacks contract code.
@@ -80,22 +68,14 @@ interface ICoverPoolFactory {
     /**
      * @notice Deploys a CoverPool clone, registers it, and initializes configuration.
      * @param params Struct containing curator, token, and fee data.
-     * @return coverPool Address of the deployed CoverPool clone.
-     * @return poolId Identifier assigned by the CoverPoolRegistry.
      */
-    function createCoverPool(CreateCoverPoolParams calldata params) external returns (address coverPool, uint256 poolId);
+    function createCoverPool(CreateCoverPoolParams calldata params) external;
 
     /**
      * @notice Updates the CoverPool implementation used for future clones.
      * @param newImplementation Address of the implementation contract.
      */
     function setCoverPoolImplementation(address newImplementation) external;
-
-    /**
-     * @notice Updates the registry used when registering pool metadata.
-     * @param newRegistry Address of the CoverPoolRegistry contract.
-     */
-    function setCoverPoolRegistry(address newRegistry) external;
 
     /**
      * @notice Updates the PolicyManager configured on new pools.
@@ -107,11 +87,6 @@ interface ICoverPoolFactory {
      * @notice Returns the CoverPool implementation address.
      */
     function coverPoolImplementation() external view returns (address);
-
-    /**
-     * @notice Returns the CoverPoolRegistry address.
-     */
-    function coverPoolRegistry() external view returns (address);
 
     /**
      * @notice Returns the PolicyManager address.

@@ -5,7 +5,6 @@ import {Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Script, console2} from "forge-std/Script.sol";
 import {CoverPool} from "../src/CoverPool.sol";
 import {CoverPoolFactory} from "../src/CoverPoolFactory.sol";
-import {CoverPoolRegistry} from "../src/CoverPoolRegistry.sol";
 
 /**
  * @title Deploy
@@ -18,31 +17,19 @@ abstract contract Deploy is Script {
     /**
      * @notice Network-specific metadata used to validate deployments.
      * @param networkName Human-readable network label used in logs.
-     * @param expectedChainId Chain id required for the deployment run.
+     * @param chainId Chain id required for the deployment run.
      */
     struct DeploymentConfig {
         string networkName;
-        uint256 expectedChainId;
+        uint256 chainId;
     }
 
     /**
-     * @notice Deploys the CoverPool implementation, CoverPoolFactory proxy, and CoverPoolRegistry proxy.
-     * @return coverPoolFactoryProxy Address of the deployed CoverPoolFactory proxy.
-     * @return coverPoolFactoryImpl Implementation address for the CoverPoolFactory proxy.
-     * @return coverPoolRegistryProxy Address of the deployed CoverPoolRegistry proxy.
-     * @return coverPoolRegistryImpl Implementation address for the CoverPoolRegistry proxy.
+     * @notice Deploys the CoverPool implementation and CoverPoolFactory proxy after validating chain id.
      */
-    function run()
-        external
-        returns (
-            address coverPoolFactoryProxy,
-            address coverPoolFactoryImpl,
-            address coverPoolRegistryProxy,
-            address coverPoolRegistryImpl
-        )
-    {
+    function run() external returns (address coverPoolFactoryProxy, address coverPoolFactoryImpl) {
         DeploymentConfig memory config = getDeploymentConfig();
-        require(config.expectedChainId == block.chainid, string.concat("Must deploy on ", config.networkName));
+        require(config.chainId == block.chainid, string.concat("Must deploy on ", config.networkName));
 
         uint256 deployerPrivateKey = vm.envOr("PRIVATE_KEY", DEFAULT_PRIVATE_KEY);
         address deployer = vm.addr(deployerPrivateKey);
@@ -50,8 +37,6 @@ abstract contract Deploy is Script {
         address coverPoolFactoryAdmin = vm.envOr("COVER_POOL_FACTORY_ADMIN", deployer);
         address coverPoolFactoryCreator = vm.envOr("COVER_POOL_FACTORY_CREATOR", coverPoolFactoryAdmin);
         address coverPoolPolicyManager = vm.envOr("COVER_POOL_POLICY_MANAGER", deployer);
-        address coverPoolRegistryAdmin = vm.envOr("COVER_POOL_REGISTRY_ADMIN", deployer);
-        address coverPoolRegistryRegistrar = vm.envOr("COVER_POOL_REGISTRY_REGISTRAR", coverPoolRegistryAdmin);
 
         vm.startBroadcast(deployerPrivateKey);
 
@@ -66,12 +51,6 @@ abstract contract Deploy is Script {
         );
         coverPoolFactoryImpl = Upgrades.getImplementationAddress(coverPoolFactoryProxy);
 
-        coverPoolRegistryProxy = Upgrades.deployUUPSProxy(
-            "CoverPoolRegistry.sol:CoverPoolRegistry",
-            abi.encodeCall(CoverPoolRegistry.initialize, (coverPoolRegistryAdmin, coverPoolRegistryRegistrar))
-        );
-        coverPoolRegistryImpl = Upgrades.getImplementationAddress(coverPoolRegistryProxy);
-
         vm.stopBroadcast();
 
         console2.log(string.concat("=== ", config.networkName, " Deployment ==="));
@@ -83,13 +62,9 @@ abstract contract Deploy is Script {
         console2.log("CoverPoolFactory Admin:", coverPoolFactoryAdmin);
         console2.log("CoverPoolFactory Creator:", coverPoolFactoryCreator);
         console2.log("Policy Manager:", coverPoolPolicyManager);
-        console2.log("CoverPoolRegistry Proxy:", coverPoolRegistryProxy);
-        console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImpl);
-        console2.log("CoverPoolRegistry Admin:", coverPoolRegistryAdmin);
-        console2.log("CoverPoolRegistry Registrar:", coverPoolRegistryRegistrar);
         console2.log("====================================");
 
-        return (coverPoolFactoryProxy, coverPoolFactoryImpl, coverPoolRegistryProxy, coverPoolRegistryImpl);
+        return (coverPoolFactoryProxy, coverPoolFactoryImpl);
     }
 
     /**
