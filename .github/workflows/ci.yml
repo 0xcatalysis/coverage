@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
@@ -42,8 +44,11 @@ jobs:
       - name: Clean build artifacts
         run: make clean
 
-      - name: Check contract formatting
-        run: forge fmt --check
+      - name: Check code format
+        run: make format-check
+
+      - name: Runt code linting
+        run: make lint
 
       # - name: Check gas snapshot
       # run: make snapshot-check

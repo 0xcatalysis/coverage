@@ -56,7 +56,7 @@ sepolia = { key = "${SEPOLIA_ETHERSCAN_API_KEY}", url = "https://api-sepolia.eth
 ethereum = { key = "${ETHERSCAN_API_KEY}", url = "https://api.etherscan.io/api" }
 
 [fmt]
-line_length = 130
+line_length = 120
 tab_width = 4
 bracket_spacing = false
 int_types = "long"
@@ -69,6 +69,9 @@ sort_imports = false
 contract_new_lines = false
 override_spacing = true
 wrap_comments = true
+
+[lint]
+exclude_lints = ["mixed-case-function", "unwrapped-modifier-logic"]
 
 [doc]
 out = "docs"

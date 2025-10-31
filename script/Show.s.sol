@@ -5,53 +5,56 @@ import {Script, console2} from "forge-std/Script.sol";
 
 /**
  * @title Show
- * @notice Shared inspection logic used to summarise a CoverPool deployment.
+ * @notice Shared inspection logic used to summarise CoverPool deployments from broadcast artifacts.
  */
 abstract contract Show is Script {
     /**
-     * @notice Network metadata used to validate and label inspection runs.
-     * @param networkName Human-readable network label.
-     * @param chainIdEnvKey Environment variable holding the expected chain id.
-     * @param defaultChainId Fallback chain id to use when the env variable is unset.
+     * @notice Metadata describing how to locate a broadcast artifact for a network.
+     * @param networkName Human-readable network label logged in the summary.
+     * @param chainIdEnvKey Environment variable containing the expected chain id.
+     * @param defaultChainId Fallback chain id used when the environment variable is unset.
+     * @param deploymentScript Name of the Forge script whose broadcast output should be inspected.
+     * @param runFile Broadcast artifact filename (typically `run-latest.json`).
      */
     struct ShowConfig {
         string networkName;
         string chainIdEnvKey;
         uint256 defaultChainId;
+        string deploymentScript;
+        string runFile;
     }
 
     /**
-     * @notice Reads environment variables and prints deployment metadata for a target network.
-     * @dev Reverts when the current chain id does not match `getShowConfig` or when `COVER_POOL_ADDRESS` is unset.
+     * @notice Loads the latest broadcast artifact for the target network and prints contract addresses.
+     * @dev Reverts when the active chain id does not match `getShowConfig` or when the broadcast artifact is missing.
      */
     function run() external view {
         ShowConfig memory config = getShowConfig();
 
-        uint256 expectedChainId = vm.envOr(config.chainIdEnvKey, config.defaultChainId);
-        require(block.chainid == expectedChainId, string.concat("Must run on ", config.networkName));
+        uint256 chainId = vm.envOr(config.chainIdEnvKey, config.defaultChainId);
+        require(block.chainid == chainId, string.concat("Must run on ", config.networkName));
 
-        address coverPoolAddr = vm.envOr("COVER_POOL_ADDRESS", address(0));
-        require(coverPoolAddr != address(0), "COVER_POOL_ADDRESS environment variable required");
+        string memory runFile = bytes(config.runFile).length == 0 ? "run-latest.json" : config.runFile;
+        string memory artifactPath =
+            string.concat("broadcast/", config.deploymentScript, "/", vm.toString(block.chainid), "/", runFile);
 
-        _printDeploymentBanner(config, coverPoolAddr);
+        // forge-lint: disable-next-line(unsafe-cheatcode)
+        string memory artifact = vm.readFile(artifactPath);
+        address coverPoolRegistryProxy =
+            abi.decode(vm.parseJson(artifact, ".returns.coverPoolRegistry.value"), (address));
+        address coverPoolRegistryImplementation =
+            abi.decode(vm.parseJson(artifact, ".returns.coverPoolRegistryImplementation.value"), (address));
+
+        console2.log(string.concat("=== ", config.networkName, " Deployment ==="));
+        console2.log("Chain ID:", block.chainid);
+        console2.log("Deployment Script:", config.deploymentScript);
+        console2.log("CoverPoolRegistry Proxy:", coverPoolRegistryProxy);
+        console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImplementation);
+        console2.log("=====================================");
     }
 
     /**
      * @notice Returns the network metadata used to validate and label a Show run.
      */
     function getShowConfig() internal view virtual returns (ShowConfig memory);
-
-    /**
-     * @notice Pretty-prints the CoverPool deployment information for the current network.
-     * @param config Network specific metadata.
-     * @param coverPoolAddr Address of the CoverPool deployment being inspected.
-     */
-    function _printDeploymentBanner(ShowConfig memory config, address coverPoolAddr) private view {
-        console2.log(string.concat("=== ", config.networkName, " CoverPool Deployment ==="));
-        console2.log("Network:", config.networkName);
-        console2.log("Chain ID:", block.chainid);
-        console2.log("CoverPool Address:", coverPoolAddr);
-        console2.log("Code Size:", coverPoolAddr.code.length);
-        console2.log("=====================================");
-    }
 }

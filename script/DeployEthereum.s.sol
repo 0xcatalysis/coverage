@@ -9,8 +9,7 @@ import {Deploy} from "./Deploy.s.sol";
  */
 contract DeployEthereum is Deploy {
     /// @inheritdoc Deploy
-    function getDeploymentConfig() internal view override returns (DeploymentConfig memory) {
-        uint256 expectedChainId = vm.envOr("ETHEREUM_CHAIN_ID", uint256(1));
-        return DeploymentConfig({networkName: "Ethereum", expectedChainId: expectedChainId});
+    function getDeploymentConfig() internal pure override returns (DeploymentConfig memory) {
+        return DeploymentConfig({networkName: "Ethereum", chainId: 1});
     }
 }
