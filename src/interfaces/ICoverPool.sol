@@ -14,8 +14,8 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
      * @dev Consumed by PolicyManager to derive deterministic policy commits.
      */
     struct QuoteData {
-        /// @notice Registry identifier for the CoverPool issuing the quote.
-        uint256 poolId;
+        /// @notice Address of the CoverPool issuing the quote.
+        address pool;
         /// @notice Maximum notional coverage in payout token units supplied by this pool.
         uint256 coverageLimit;
         /// @notice Base premium amount owed to the pool for this coverage slice.
@@ -79,11 +79,11 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
     error ZeroAddress();
 
     /**
-     * @notice Reverts when the provided pool id does not match contract storage.
-     * @param expected Correct pool id stored on the contract.
-     * @param actual Supplied pool id that failed validation.
+     * @notice Reverts when the provided pool address does not match contract storage.
+     * @param expected Correct pool address.
+     * @param actual Supplied pool address that failed validation.
      */
-    error PoolIdMismatch(uint256 expected, uint256 actual);
+    error PoolAddressMismatch(address expected, address actual);
 
     /**
      * @notice Reverts when coverage start and maturity timestamps are mis-ordered.
@@ -113,11 +113,6 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
     error QuoteSignatureInvalid();
 
     /**
-     * @notice Reverts when attempting to initialize or operate on an invalid pool id.
-     */
-    error InvalidPoolId();
-
-    /**
      * @notice Reverts when attempting to bind a policy with a commit hash that has already been processed.
      * @param policyCommit Commit hash that was previously bound.
      */
@@ -143,13 +138,11 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
 
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
-     * @param poolId_ Pool identifier assigned by the CoverPoolRegistry.
      * @param curator_ Address assigned as the owner (curator).
      * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
      */
     function initialize(
-        uint256 poolId_,
         address curator_,
         address policyManager_,
         address quoteSigner_
@@ -171,11 +164,6 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
     )
         external
         returns (BoundPolicy memory);
-
-    /**
-     * @notice Returns the registry identifier of this CoverPool.
-     */
-    function poolId() external view returns (uint256);
 
     /**
      * @notice Returns whether a policy commit has already been bound.

@@ -34,9 +34,8 @@ contract CoverPoolFactory is
     address public override coverPoolImplementation;
     address public override policyManager;
 
-    uint256 private _nextPoolId;
-    mapping(uint256 poolId => PoolConfig) private _poolConfigs;
-    mapping(address pool => uint256 poolId) private _poolIds;
+    mapping(address pool => PoolConfig) private _poolConfigs;
+    address[] private _pools;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -118,14 +117,13 @@ contract CoverPoolFactory is
         });
         _validateConfig(config);
 
-        uint256 poolId = ++_nextPoolId;
-        _poolConfigs[poolId] = config;
-        _poolIds[coverPool] = poolId;
+        _poolConfigs[coverPool] = config;
+        _pools.push(coverPool);
 
         address policyManager_ = policyManager;
-        ICoverPool(coverPool).initialize(poolId, params.curator, policyManager_, params.quoteSigner);
+        ICoverPool(coverPool).initialize(params.curator, policyManager_, params.quoteSigner);
 
-        emit CoverPoolCreated(poolId, coverPool, params.curator, params.quoteSigner, policyManager_);
+        emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager_);
     }
 
     /**
@@ -157,7 +155,7 @@ contract CoverPoolFactory is
      * @inheritdoc ICoverPoolRegistry
      */
     function updatePoolConfig(
-        uint256 poolId,
+        address pool,
         PoolConfig calldata newConfig
     )
         external
@@ -165,40 +163,44 @@ contract CoverPoolFactory is
         onlyRole(CREATOR_ROLE)
         whenNotPaused
     {
-        _validateConfig(newConfig);
+        require(_poolConfigs[pool].pool != address(0), PoolNotRegistered(pool));
 
-        PoolConfig storage config = _poolConfigs[poolId];
-        require(config.pool != address(0), PoolNotFound(poolId));
-        require(config.active == newConfig.active, PoolActiveStatusMismatch());
+        PoolConfig memory updated = PoolConfig({
+            pool: pool,
+            curator: newConfig.curator,
+            premiumToken: newConfig.premiumToken,
+            payoutToken: newConfig.payoutToken,
+            defaultSpecId: newConfig.defaultSpecId,
+            poolFeeBps: newConfig.poolFeeBps,
+            platformFeeBps: newConfig.platformFeeBps,
+            active: newConfig.active
+        });
+        _validateConfig(updated);
 
-        if (newConfig.pool != config.pool) {
-            delete _poolIds[config.pool];
-            _poolIds[newConfig.pool] = poolId;
+        PoolConfig storage config = _poolConfigs[pool];
+        require(config.active == updated.active, PoolActiveStatusMismatch());
 
-            config.pool = newConfig.pool;
-        }
+        config.curator = updated.curator;
+        config.premiumToken = updated.premiumToken;
+        config.payoutToken = updated.payoutToken;
+        config.defaultSpecId = updated.defaultSpecId;
+        config.poolFeeBps = updated.poolFeeBps;
+        config.platformFeeBps = updated.platformFeeBps;
 
-        config.curator = newConfig.curator;
-        config.premiumToken = newConfig.premiumToken;
-        config.payoutToken = newConfig.payoutToken;
-        config.defaultSpecId = newConfig.defaultSpecId;
-        config.poolFeeBps = newConfig.poolFeeBps;
-        config.platformFeeBps = newConfig.platformFeeBps;
-
-        emit PoolConfigUpdated(poolId, config);
+        emit PoolConfigUpdated(pool, config);
     }
 
     /**
      * @inheritdoc ICoverPoolRegistry
      */
-    function setPoolStatus(uint256 poolId, bool active) external override onlyRole(CREATOR_ROLE) {
-        PoolConfig storage config = _poolConfigs[poolId];
-        require(config.pool != address(0), PoolNotFound(poolId));
+    function setPoolStatus(address pool, bool active) external override onlyRole(CREATOR_ROLE) {
+        PoolConfig storage config = _poolConfigs[pool];
+        require(config.pool != address(0), PoolNotRegistered(pool));
         require(config.active != active, PoolStatusUnchanged());
 
         config.active = active;
 
-        emit PoolStatusSet(poolId, active);
+        emit PoolStatusSet(pool, active);
     }
 
     /**
@@ -211,48 +213,44 @@ contract CoverPoolFactory is
         external
         view
         override
-        returns (uint256[] memory poolIds, PoolConfig[] memory configs)
+        returns (address[] memory pools, PoolConfig[] memory configs)
     {
         require(limit != 0, InvalidLimit());
 
-        uint256 totalPools = _nextPoolId;
+        uint256 totalPools = _pools.length;
         if (totalPools == 0 || offset >= totalPools) {
-            return (new uint256[](0), new PoolConfig[](0));
+            return (new address[](0), new PoolConfig[](0));
         }
 
         uint256 to = Paginator.getTo(totalPools, offset, limit);
         uint256 length = to - offset;
         if (length == 0) {
-            return (new uint256[](0), new PoolConfig[](0));
+            return (new address[](0), new PoolConfig[](0));
         }
 
-        poolIds = new uint256[](length);
+        pools = new address[](length);
         configs = new PoolConfig[](length);
 
-        uint256 startId = offset + 1;
         for (uint256 i = 0; i < length; ++i) {
-            uint256 poolId = startId + i;
-            PoolConfig memory config = _poolConfigs[poolId];
-            require(config.pool != address(0), PoolNotFound(poolId));
-            poolIds[i] = poolId;
-            configs[i] = config;
+            address pool = _pools[offset + i];
+            pools[i] = pool;
+            configs[i] = _poolConfigs[pool];
         }
     }
 
     /**
      * @inheritdoc ICoverPoolRegistry
      */
-    function getPoolConfig(uint256 poolId) external view override returns (PoolConfig memory config) {
-        config = _poolConfigs[poolId];
-        require(config.pool != address(0), PoolNotFound(poolId));
+    function getPoolConfig(address pool) external view override returns (PoolConfig memory config) {
+        config = _poolConfigs[pool];
+        require(config.pool != address(0), PoolNotFound(pool));
     }
 
     /**
      * @inheritdoc ICoverPoolRegistry
      */
-    function resolvePool(address pool) external view override returns (uint256 poolId) {
-        poolId = _poolIds[pool];
-        require(poolId != 0, PoolNotRegistered(pool));
+    function isPoolRegistered(address pool) external view override returns (bool) {
+        return _poolConfigs[pool].pool != address(0);
     }
 
     /**

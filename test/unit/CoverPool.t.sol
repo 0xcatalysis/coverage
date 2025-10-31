@@ -9,12 +9,10 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 
 contract CoverPoolTest is Test {
     bytes32 private constant QUOTE_TYPEHASH = keccak256(
-        "QuoteData(uint256 poolId,uint256 coverageLimit,uint256 basePremium,uint256 riskBufferDeposit,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
+        "QuoteData(address pool,uint256 coverageLimit,uint256 basePremium,uint256 riskBufferDeposit,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
     );
     string private constant NAME = "Catalysis Cover Pool";
     string private constant VERSION = "1";
-
-    uint256 private constant POOL_ID = 1;
 
     CoverPool private implementation;
     CoverPool private coverPool;
@@ -52,35 +50,28 @@ contract CoverPoolTest is Test {
         implementation = new CoverPool();
         address clone = Clones.clone(address(implementation));
         coverPool = CoverPool(clone);
-        coverPool.initialize(POOL_ID, curator, policyManager, quoteSigner);
-    }
-
-    function test_initialize_WhenPoolIdZero_Reverts() public {
-        CoverPool pool = CoverPool(Clones.clone(address(implementation)));
-        vm.expectRevert(ICoverPool.InvalidPoolId.selector);
-        pool.initialize(0, curator, policyManager, quoteSigner);
+        coverPool.initialize(curator, policyManager, quoteSigner);
     }
 
     function test_initialize_WhenCuratorZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(POOL_ID, address(0), policyManager, quoteSigner);
+        pool.initialize(address(0), policyManager, quoteSigner);
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(POOL_ID, curator, address(0), quoteSigner);
+        pool.initialize(curator, address(0), quoteSigner);
     }
 
     function test_initialize_WhenQuoteSignerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(POOL_ID, curator, policyManager, address(0));
+        pool.initialize(curator, policyManager, address(0));
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
-        assertEq(coverPool.poolId(), POOL_ID, "Pool id mismatch");
         assertEq(coverPool.owner(), curator, "Owner mismatch");
         assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), curator), "Default admin role missing");
         assertTrue(coverPool.hasRole(coverPool.POLICY_MANAGER_ROLE(), policyManager), "Policy manager role missing");
@@ -238,12 +229,12 @@ contract CoverPoolTest is Test {
         coverPool.validateQuote(quote, signature);
     }
 
-    function test_validateQuote_WhenPoolIdMismatch_Reverts() public {
+    function test_validateQuote_WhenPoolAddressMismatch_Reverts() public {
         ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.poolId = POOL_ID + 1;
+        quote.pool = makeAddr("otherPool");
         bytes memory signature = _signQuote(quote);
 
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PoolIdMismatch.selector, POOL_ID, quote.poolId));
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PoolAddressMismatch.selector, address(coverPool), quote.pool));
         coverPool.validateQuote(quote, signature);
     }
 
@@ -379,7 +370,7 @@ contract CoverPoolTest is Test {
 
     function _defaultQuote() private view returns (ICoverPool.QuoteData memory quote) {
         quote = ICoverPool.QuoteData({
-            poolId: POOL_ID,
+            pool: address(coverPool),
             coverageLimit: 1000 ether,
             basePremium: 100 ether,
             riskBufferDeposit: 50 ether,
@@ -416,7 +407,7 @@ contract CoverPoolTest is Test {
         return keccak256(
             abi.encode(
                 QUOTE_TYPEHASH,
-                quote.poolId,
+                quote.pool,
                 quote.coverageLimit,
                 quote.basePremium,
                 quote.riskBufferDeposit,
