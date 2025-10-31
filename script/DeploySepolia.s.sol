@@ -9,8 +9,7 @@ import {Deploy} from "./Deploy.s.sol";
  */
 contract DeploySepolia is Deploy {
     /// @inheritdoc Deploy
-    function getDeploymentConfig() internal view override returns (DeploymentConfig memory) {
-        uint256 expectedChainId = vm.envOr("SEPOLIA_CHAIN_ID", uint256(11_155_111));
-        return DeploymentConfig({networkName: "Sepolia", expectedChainId: expectedChainId});
+    function getDeploymentConfig() internal pure override returns (DeploymentConfig memory) {
+        return DeploymentConfig({networkName: "Sepolia", chainId: 11_155_111});
     }
 }

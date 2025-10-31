@@ -1,10 +1,5 @@
 {
   "editor.trimAutoWhitespace": true,
-  "files.exclude": {
-    "**/broadcast": true,
-    "**/cache": true,
-    "**/out": true
-  },
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
   "search.exclude": {
@@ -22,6 +17,7 @@
     "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
     "@openzeppelin/=lib/openzeppelin-contracts/",
     "@openzeppelin/upgrades/=lib/openzeppelin-foundry-upgrades/src/",
+    "@solarity/=lib/solidity-lib/",
     "forge-std/=lib/forge-std/src/"
   ],
   "[solidity]": {

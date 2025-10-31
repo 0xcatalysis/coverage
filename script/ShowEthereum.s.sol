@@ -10,6 +10,12 @@ import {Show} from "./Show.s.sol";
 contract ShowEthereum is Show {
     /// @inheritdoc Show
     function getShowConfig() internal pure override returns (ShowConfig memory) {
-        return ShowConfig({networkName: "Ethereum", chainIdEnvKey: "ETHEREUM_CHAIN_ID", defaultChainId: 1});
+        return ShowConfig({
+            networkName: "Ethereum",
+            chainIdEnvKey: "ETHEREUM_CHAIN_ID",
+            defaultChainId: 1,
+            deploymentScript: "DeployEthereum.s.sol",
+            runFile: "run-latest.json"
+        });
     }
 }
