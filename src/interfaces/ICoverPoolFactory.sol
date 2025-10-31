@@ -38,10 +38,7 @@ interface ICoverPoolFactory is ICoverPoolRegistry {
      * @param policyManager PolicyManager address assigned on initialization.
      */
     event CoverPoolCreated(
-        address indexed coverPool,
-        address indexed curator,
-        address quoteSigner,
-        address policyManager
+        address indexed coverPool, address indexed curator, address quoteSigner, address policyManager
     );
 
     /**

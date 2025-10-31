@@ -130,7 +130,7 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.setPolicyManager(newPolicyManager);
 
-        assertEq(factory.policyManager(), newPolicyManager, "Policy manager not updated");
+        assertEq(factory.policyManager(), newPolicyManager, "Policy manager not updatedConfig");
     }
 
     function test_createCoverPool_WhenPaused_Reverts() public {
@@ -191,7 +191,7 @@ contract CoverPoolFactoryTest is Test {
 
     function test_createCoverPool_WhenFeeTooHigh_Reverts() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
-        params.poolFeeBps = 3_000;
+        params.poolFeeBps = 3000;
 
         vm.expectRevert(ICoverPoolRegistry.InvalidFeeBps.selector);
         vm.prank(creator);
@@ -203,10 +203,10 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.createCoverPool(params);
 
-        (address[] memory pools, ) = factory.listPools(0, 1);
+        (address[] memory pools,) = factory.listPools(0, 1);
         address pool = pools[0];
 
-        ICoverPoolRegistry.PoolConfig memory updated = ICoverPoolRegistry.PoolConfig({
+        ICoverPoolRegistry.PoolConfig memory updatedConfig = ICoverPoolRegistry.PoolConfig({
             pool: pool,
             curator: makeAddr("newCurator"),
             premiumToken: makeAddr("newPremium"),
@@ -218,20 +218,20 @@ contract CoverPoolFactoryTest is Test {
         });
 
         vm.prank(creator);
-        factory.updatePoolConfig(pool, updated);
+        factory.updatePoolConfig(updatedConfig);
 
-        _assertEqualConfig(factory.getPoolConfig(pool), updated);
+        _assertEqualConfig(factory.getPoolConfig(pool), updatedConfig);
         assertTrue(factory.isPoolRegistered(pool), "Resolve mismatch");
     }
 
     function test_updatePoolConfig_WhenPoolMissing_Reverts() public {
         address missingPool = makeAddr("missingPool");
-        ICoverPoolRegistry.PoolConfig memory updated =
+        ICoverPoolRegistry.PoolConfig memory updatedConfig =
             _expectedConfig(missingPool, _defaultCreateParams(true), true);
 
         vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotRegistered.selector, missingPool));
         vm.prank(creator);
-        factory.updatePoolConfig(missingPool, updated);
+        factory.updatePoolConfig(updatedConfig);
     }
 
     function test_updatePoolConfig_WhenActiveMismatch_Reverts() public {
@@ -239,14 +239,14 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.createCoverPool(params);
 
-        (address[] memory pools, ) = factory.listPools(0, 1);
+        (address[] memory pools,) = factory.listPools(0, 1);
         address pool = pools[0];
 
-        ICoverPoolRegistry.PoolConfig memory updated = _expectedConfig(pool, params, false);
+        ICoverPoolRegistry.PoolConfig memory updatedConfig = _expectedConfig(pool, params, false);
 
         vm.expectRevert(ICoverPoolRegistry.PoolActiveStatusMismatch.selector);
         vm.prank(creator);
-        factory.updatePoolConfig(pool, updated);
+        factory.updatePoolConfig(updatedConfig);
     }
 
     function test_setPoolStatus_WhenValid_TogglesFlag() public {
@@ -254,7 +254,7 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.createCoverPool(params);
 
-        (address[] memory pools, ) = factory.listPools(0, 1);
+        (address[] memory pools,) = factory.listPools(0, 1);
         address pool = pools[0];
 
         vm.expectEmit(true, true, true, true, address(factory));
@@ -263,7 +263,7 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.setPoolStatus(pool, false);
 
-        assertFalse(factory.getPoolConfig(pool).active, "Active flag not updated");
+        assertFalse(factory.getPoolConfig(pool).active, "Active flag not updatedConfig");
     }
 
     function test_setPoolStatus_WhenPoolMissing_Reverts() public {
@@ -278,7 +278,7 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.createCoverPool(params);
 
-        (address[] memory pools, ) = factory.listPools(0, 1);
+        (address[] memory pools,) = factory.listPools(0, 1);
         address pool = pools[0];
 
         vm.expectRevert(ICoverPoolRegistry.PoolStatusUnchanged.selector);
