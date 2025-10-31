@@ -32,14 +32,12 @@ interface ICoverPoolFactory is ICoverPoolRegistry {
 
     /**
      * @notice Emitted when a new CoverPool clone is deployed and registered.
-     * @param poolId Identifier assigned by the registry.
      * @param coverPool Address of the deployed CoverPool clone.
      * @param curator Curator that owns the pool.
      * @param quoteSigner Initial quote signer configured on the pool.
      * @param policyManager PolicyManager address assigned on initialization.
      */
     event CoverPoolCreated(
-        uint256 indexed poolId,
         address indexed coverPool,
         address indexed curator,
         address quoteSigner,

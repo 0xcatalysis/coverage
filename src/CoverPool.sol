@@ -31,10 +31,9 @@ contract CoverPool is
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "QuoteData(uint256 poolId,uint256 coverageLimit,uint256 basePremium,uint256 riskBufferDeposit,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
+        "QuoteData(address pool,uint256 coverageLimit,uint256 basePremium,uint256 riskBufferDeposit,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
     );
 
-    uint256 public override poolId;
     mapping(bytes32 policyCommit => bool bound) public override policyCommitBound;
 
     mapping(bytes32 poolPolicyId => BoundPolicy policy) private _poolPolicies;
@@ -44,7 +43,7 @@ contract CoverPool is
      * @param quote Raw quote payload supplied by PolicyManager or validation callers.
      */
     modifier validateQuoteData(QuoteData calldata quote) {
-        require(quote.poolId == poolId, PoolIdMismatch(poolId, quote.poolId));
+        require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
         require(quote.coverageLimit != 0, InvalidCoverageLimit());
         require(quote.payoutReceiver != address(0) && quote.operator != address(0), InvalidQuoteRecipient());
         require(quote.startTime < quote.maturityTime, InvalidCoverageWindow());
@@ -63,7 +62,6 @@ contract CoverPool is
      * @inheritdoc ICoverPool
      */
     function initialize(
-        uint256 poolId_,
         address curator_,
         address policyManager_,
         address quoteSigner_
@@ -71,7 +69,6 @@ contract CoverPool is
         external
         initializer
     {
-        require(poolId_ != 0, InvalidPoolId());
         require(curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0), ZeroAddress());
 
         __Ownable_init(curator_);
@@ -83,8 +80,6 @@ contract CoverPool is
         _grantRole(DEFAULT_ADMIN_ROLE, curator_);
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
         _grantRole(QUOTE_SIGNER_ROLE, quoteSigner_);
-
-        poolId = poolId_;
     }
 
     /**
@@ -241,7 +236,7 @@ contract CoverPool is
         return keccak256(
             abi.encode(
                 _QUOTE_TYPEHASH,
-                quote.poolId,
+                quote.pool,
                 quote.coverageLimit,
                 quote.basePremium,
                 quote.riskBufferDeposit,

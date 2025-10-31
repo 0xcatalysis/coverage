@@ -33,17 +33,17 @@ interface ICoverPoolRegistry is IAccessControl {
 
     /**
      * @notice Emitted when configuration fields for a pool are updated.
-     * @param poolId Identifier of the pool being updated.
+     * @param pool Address of the pool being updated.
      * @param config Latest configuration snapshot persisted for the pool.
      */
-    event PoolConfigUpdated(uint256 indexed poolId, PoolConfig config);
+    event PoolConfigUpdated(address indexed pool, PoolConfig config);
 
     /**
      * @notice Emitted when a pool's active status flips.
-     * @param poolId Identifier of the pool whose status changed.
+     * @param pool Address of the pool whose status changed.
      * @param active New activation flag.
      */
-    event PoolStatusSet(uint256 indexed poolId, bool active);
+    event PoolStatusSet(address indexed pool, bool active);
 
     /**
      * @notice Reverts when a required address argument is zero.
@@ -56,10 +56,10 @@ interface ICoverPoolRegistry is IAccessControl {
     error InvalidFeeBps();
 
     /**
-     * @notice Reverts when the requested pool identifier does not exist in storage.
-     * @param poolId Identifier that failed the lookup.
+     * @notice Reverts when the requested pool does not exist in storage.
+     * @param pool Address that failed the lookup.
      */
-    error PoolNotFound(uint256 poolId);
+    error PoolNotFound(address pool);
 
     /**
      * @notice Reverts when resolving a pool address that has not been registered.
@@ -96,24 +96,24 @@ interface ICoverPoolRegistry is IAccessControl {
 
     /**
      * @notice Updates the configuration metadata for an existing pool.
-     * @param poolId Identifier of the pool to update.
+     * @param pool Address of the pool to update.
      * @param newConfig Replacement configuration struct.
      */
-    function updatePoolConfig(uint256 poolId, PoolConfig calldata newConfig) external;
+    function updatePoolConfig(address pool, PoolConfig calldata newConfig) external;
 
     /**
      * @notice Toggles whether a pool is eligible for new bindings.
-     * @param poolId Identifier of the pool to modify.
+     * @param pool Address of the pool to modify.
      * @param active Desired active flag.
      */
-    function setPoolStatus(uint256 poolId, bool active) external;
+    function setPoolStatus(address pool, bool active) external;
 
     /**
      * @notice Enumerates registered pools using offset-based pagination.
      * @param offset Zero-based index to start the page from.
      * @param limit Maximum number of entries to return. Must be greater than zero.
-     * @return poolIds Sequence of pool identifiers contained in the page.
-     * @return configs Matching pool configurations for the returned identifiers.
+     * @return pools Sequence of pool addresses contained in the page.
+     * @return configs Matching pool configurations for the returned addresses.
      */
     function listPools(
         uint256 offset,
@@ -121,19 +121,18 @@ interface ICoverPoolRegistry is IAccessControl {
     )
         external
         view
-        returns (uint256[] memory poolIds, PoolConfig[] memory configs);
+        returns (address[] memory pools, PoolConfig[] memory configs);
 
     /**
-     * @notice Returns the stored configuration for a given pool identifier.
-     * @param poolId Identifier to resolve.
+     * @notice Returns the stored configuration for a given pool address.
+     * @param pool Address to resolve.
      * @return PoolConfig struct describing the pool.
      */
-    function getPoolConfig(uint256 poolId) external view returns (PoolConfig memory);
+    function getPoolConfig(address pool) external view returns (PoolConfig memory);
 
     /**
-     * @notice Resolves a pool identifier by CoverPool contract address.
+     * @notice Returns true when the pool has been registered.
      * @param pool Address of the CoverPool instance.
-     * @return poolId Registry identifier associated with the address.
      */
-    function resolvePool(address pool) external view returns (uint256 poolId);
+    function isPoolRegistered(address pool) external view returns (bool);
 }
