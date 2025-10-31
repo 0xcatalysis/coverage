@@ -142,12 +142,7 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
      * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
      */
-    function initialize(
-        address curator_,
-        address policyManager_,
-        address quoteSigner_
-    )
-        external;
+    function initialize(address curator_, address policyManager_, address quoteSigner_) external;
 
     /**
      * @notice Locks coverage for a previously validated policy commit.

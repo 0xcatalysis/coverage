@@ -154,38 +154,20 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolRegistry
      */
-    function updatePoolConfig(
-        address pool,
-        PoolConfig calldata newConfig
-    )
-        external
-        override
-        onlyRole(CREATOR_ROLE)
-        whenNotPaused
-    {
-        require(_poolConfigs[pool].pool != address(0), PoolNotRegistered(pool));
-
-        PoolConfig memory updated = PoolConfig({
-            pool: pool,
-            curator: newConfig.curator,
-            premiumToken: newConfig.premiumToken,
-            payoutToken: newConfig.payoutToken,
-            defaultSpecId: newConfig.defaultSpecId,
-            poolFeeBps: newConfig.poolFeeBps,
-            platformFeeBps: newConfig.platformFeeBps,
-            active: newConfig.active
-        });
-        _validateConfig(updated);
-
+    function updatePoolConfig(PoolConfig calldata newConfig) external override onlyRole(CREATOR_ROLE) whenNotPaused {
+        address pool = newConfig.pool;
         PoolConfig storage config = _poolConfigs[pool];
-        require(config.active == updated.active, PoolActiveStatusMismatch());
+        require(config.pool != address(0), PoolNotRegistered(pool));
 
-        config.curator = updated.curator;
-        config.premiumToken = updated.premiumToken;
-        config.payoutToken = updated.payoutToken;
-        config.defaultSpecId = updated.defaultSpecId;
-        config.poolFeeBps = updated.poolFeeBps;
-        config.platformFeeBps = updated.platformFeeBps;
+        _validateConfig(newConfig);
+        require(config.active == newConfig.active, PoolActiveStatusMismatch());
+
+        config.curator = newConfig.curator;
+        config.premiumToken = newConfig.premiumToken;
+        config.payoutToken = newConfig.payoutToken;
+        config.defaultSpecId = newConfig.defaultSpecId;
+        config.poolFeeBps = newConfig.poolFeeBps;
+        config.platformFeeBps = newConfig.platformFeeBps;
 
         emit PoolConfigUpdated(pool, config);
     }

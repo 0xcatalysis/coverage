@@ -61,14 +61,7 @@ contract CoverPool is
     /**
      * @inheritdoc ICoverPool
      */
-    function initialize(
-        address curator_,
-        address policyManager_,
-        address quoteSigner_
-    )
-        external
-        initializer
-    {
+    function initialize(address curator_, address policyManager_, address quoteSigner_) external initializer {
         require(curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0), ZeroAddress());
 
         __Ownable_init(curator_);

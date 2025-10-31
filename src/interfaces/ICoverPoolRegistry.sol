@@ -96,10 +96,9 @@ interface ICoverPoolRegistry is IAccessControl {
 
     /**
      * @notice Updates the configuration metadata for an existing pool.
-     * @param pool Address of the pool to update.
-     * @param newConfig Replacement configuration struct.
+     * @param newConfig Replacement configuration struct including the pool address.
      */
-    function updatePoolConfig(address pool, PoolConfig calldata newConfig) external;
+    function updatePoolConfig(PoolConfig calldata newConfig) external;
 
     /**
      * @notice Toggles whether a pool is eligible for new bindings.
