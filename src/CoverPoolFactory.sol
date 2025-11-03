@@ -95,6 +95,7 @@ contract CoverPoolFactory is
     {
         address coverPool = coverPoolImplementation.clone();
 
+        // slither-disable-next-line unused-return
         _pools.add(coverPool);
 
         ICoverPool(coverPool)
