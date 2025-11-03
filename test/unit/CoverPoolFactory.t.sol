@@ -9,7 +9,6 @@ import {Test} from "forge-std/Test.sol";
 import {CoverPool} from "../../src/CoverPool.sol";
 import {CoverPoolFactory} from "../../src/CoverPoolFactory.sol";
 import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
-import {ICoverPoolRegistry} from "../../src/interfaces/ICoverPoolRegistry.sol";
 
 contract CoverPoolFactoryTest is Test {
     CoverPoolFactory internal factory;
@@ -61,7 +60,7 @@ contract CoverPoolFactoryTest is Test {
 
     function test_initialize_WhenImplementationZero_Reverts() public {
         CoverPoolFactory factoryImpl = new CoverPoolFactory();
-        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         new ERC1967Proxy(
             address(factoryImpl),
             abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(0), policyManager))
@@ -70,7 +69,7 @@ contract CoverPoolFactoryTest is Test {
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         CoverPoolFactory factoryImpl = new CoverPoolFactory();
-        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         new ERC1967Proxy(
             address(factoryImpl),
             abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(implementation), address(0)))
@@ -116,7 +115,7 @@ contract CoverPoolFactoryTest is Test {
     }
 
     function test_setPolicyManager_WhenZero_Reverts() public {
-        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         vm.prank(creator);
         factory.setPolicyManager(address(0));
     }
@@ -150,7 +149,7 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.createCoverPool(params);
 
-        (address[] memory pools, ICoverPoolRegistry.PoolConfig[] memory configs) = factory.listPools(0, 1);
+        (address[] memory pools, ICoverPoolFactory.PoolConfig[] memory configs) = factory.listPools(0, 1);
         assertEq(pools.length, 1, "Expected single pool id");
         assertEq(configs.length, 1, "Expected single config");
 
@@ -158,7 +157,7 @@ contract CoverPoolFactoryTest is Test {
         assertEq(pool, configs[0].pool, "Pool mismatch");
         assertTrue(factory.isPoolRegistered(pool), "Resolve mismatch");
 
-        ICoverPoolRegistry.PoolConfig memory stored = factory.getPoolConfig(pool);
+        ICoverPoolFactory.PoolConfig memory stored = factory.getPoolConfig(pool);
         _assertEqualConfig(stored, _expectedConfig(pool, params, true));
     }
 
@@ -166,7 +165,7 @@ contract CoverPoolFactoryTest is Test {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
         params.quoteSigner = address(0);
 
-        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         vm.prank(creator);
         factory.createCoverPool(params);
     }
@@ -175,7 +174,7 @@ contract CoverPoolFactoryTest is Test {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
         params.premiumToken = address(0);
 
-        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         vm.prank(creator);
         factory.createCoverPool(params);
     }
@@ -184,7 +183,7 @@ contract CoverPoolFactoryTest is Test {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
         params.payoutToken = address(0);
 
-        vm.expectRevert(ICoverPoolRegistry.ZeroAddress.selector);
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         vm.prank(creator);
         factory.createCoverPool(params);
     }
@@ -193,7 +192,7 @@ contract CoverPoolFactoryTest is Test {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
         params.poolFeeBps = 3000;
 
-        vm.expectRevert(ICoverPoolRegistry.InvalidFeeBps.selector);
+        vm.expectRevert(ICoverPoolFactory.InvalidFeeBps.selector);
         vm.prank(creator);
         factory.createCoverPool(params);
     }
@@ -206,7 +205,7 @@ contract CoverPoolFactoryTest is Test {
         (address[] memory pools,) = factory.listPools(0, 1);
         address pool = pools[0];
 
-        ICoverPoolRegistry.PoolConfig memory updatedConfig = ICoverPoolRegistry.PoolConfig({
+        ICoverPoolFactory.PoolConfig memory updatedConfig = ICoverPoolFactory.PoolConfig({
             pool: pool,
             curator: makeAddr("newCurator"),
             premiumToken: makeAddr("newPremium"),
@@ -226,10 +225,10 @@ contract CoverPoolFactoryTest is Test {
 
     function test_updatePoolConfig_WhenPoolMissing_Reverts() public {
         address missingPool = makeAddr("missingPool");
-        ICoverPoolRegistry.PoolConfig memory updatedConfig =
+        ICoverPoolFactory.PoolConfig memory updatedConfig =
             _expectedConfig(missingPool, _defaultCreateParams(true), true);
 
-        vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotRegistered.selector, missingPool));
+        vm.expectRevert(abi.encodeWithSelector(ICoverPoolFactory.PoolNotRegistered.selector, missingPool));
         vm.prank(creator);
         factory.updatePoolConfig(updatedConfig);
     }
@@ -242,9 +241,9 @@ contract CoverPoolFactoryTest is Test {
         (address[] memory pools,) = factory.listPools(0, 1);
         address pool = pools[0];
 
-        ICoverPoolRegistry.PoolConfig memory updatedConfig = _expectedConfig(pool, params, false);
+        ICoverPoolFactory.PoolConfig memory updatedConfig = _expectedConfig(pool, params, false);
 
-        vm.expectRevert(ICoverPoolRegistry.PoolActiveStatusMismatch.selector);
+        vm.expectRevert(ICoverPoolFactory.PoolActiveStatusMismatch.selector);
         vm.prank(creator);
         factory.updatePoolConfig(updatedConfig);
     }
@@ -258,7 +257,7 @@ contract CoverPoolFactoryTest is Test {
         address pool = pools[0];
 
         vm.expectEmit(true, true, true, true, address(factory));
-        emit ICoverPoolRegistry.PoolStatusSet(pool, false);
+        emit ICoverPoolFactory.PoolStatusSet(pool, false);
 
         vm.prank(creator);
         factory.setPoolStatus(pool, false);
@@ -268,7 +267,7 @@ contract CoverPoolFactoryTest is Test {
 
     function test_setPoolStatus_WhenPoolMissing_Reverts() public {
         address missingPool = makeAddr("missingPool");
-        vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotRegistered.selector, missingPool));
+        vm.expectRevert(abi.encodeWithSelector(ICoverPoolFactory.PoolNotRegistered.selector, missingPool));
         vm.prank(creator);
         factory.setPoolStatus(missingPool, false);
     }
@@ -281,7 +280,7 @@ contract CoverPoolFactoryTest is Test {
         (address[] memory pools,) = factory.listPools(0, 1);
         address pool = pools[0];
 
-        vm.expectRevert(ICoverPoolRegistry.PoolStatusUnchanged.selector);
+        vm.expectRevert(ICoverPoolFactory.PoolStatusUnchanged.selector);
         vm.prank(creator);
         factory.setPoolStatus(pool, true);
     }
@@ -298,7 +297,7 @@ contract CoverPoolFactoryTest is Test {
             factory.createCoverPool(params);
         }
 
-        (address[] memory pools, ICoverPoolRegistry.PoolConfig[] memory configs) = factory.listPools(0, 2);
+        (address[] memory pools, ICoverPoolFactory.PoolConfig[] memory configs) = factory.listPools(0, 2);
         assertEq(pools.length, 2, "Unexpected page size");
         assertEq(configs.length, 2, "Config length mismatch");
         assertEq(pools[0], configs[0].pool, "Unexpected first pool");
@@ -306,7 +305,7 @@ contract CoverPoolFactoryTest is Test {
     }
 
     function test_listPools_WhenLimitZero_Reverts() public {
-        vm.expectRevert(ICoverPoolRegistry.InvalidLimit.selector);
+        vm.expectRevert(ICoverPoolFactory.InvalidLimit.selector);
         factory.listPools(0, 0);
     }
 
@@ -315,14 +314,14 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.createCoverPool(params);
 
-        (address[] memory pools, ICoverPoolRegistry.PoolConfig[] memory configs) = factory.listPools(5, 2);
+        (address[] memory pools, ICoverPoolFactory.PoolConfig[] memory configs) = factory.listPools(5, 2);
         assertEq(pools.length, 0, "Expected empty pool ids");
         assertEq(configs.length, 0, "Expected empty configs");
     }
 
     function test_getPoolConfig_WhenUnknown_Reverts() public {
         address missingPool = makeAddr("missingPool");
-        vm.expectRevert(abi.encodeWithSelector(ICoverPoolRegistry.PoolNotFound.selector, missingPool));
+        vm.expectRevert(abi.encodeWithSelector(ICoverPoolFactory.PoolNotFound.selector, missingPool));
         factory.getPoolConfig(missingPool);
     }
 
@@ -354,9 +353,9 @@ contract CoverPoolFactoryTest is Test {
     )
         internal
         pure
-        returns (ICoverPoolRegistry.PoolConfig memory)
+        returns (ICoverPoolFactory.PoolConfig memory)
     {
-        return ICoverPoolRegistry.PoolConfig({
+        return ICoverPoolFactory.PoolConfig({
             pool: pool,
             curator: params.curator,
             premiumToken: params.premiumToken,
@@ -369,8 +368,8 @@ contract CoverPoolFactoryTest is Test {
     }
 
     function _assertEqualConfig(
-        ICoverPoolRegistry.PoolConfig memory actual,
-        ICoverPoolRegistry.PoolConfig memory expected
+        ICoverPoolFactory.PoolConfig memory actual,
+        ICoverPoolFactory.PoolConfig memory expected
     )
         internal
         pure

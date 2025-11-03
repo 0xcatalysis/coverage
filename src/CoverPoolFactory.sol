@@ -10,7 +10,6 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Paginator} from "@solarity/contracts/libs/arrays/Paginator.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
-import {ICoverPoolRegistry} from "./interfaces/ICoverPoolRegistry.sol";
 
 /**
  * @title CoverPoolFactory
@@ -78,14 +77,14 @@ contract CoverPoolFactory is
     }
 
     /**
-     * @inheritdoc ICoverPoolRegistry
+     * @inheritdoc ICoverPoolFactory
      */
     function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
         _pause();
     }
 
     /**
-     * @inheritdoc ICoverPoolRegistry
+     * @inheritdoc ICoverPoolFactory
      */
     function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
         _unpause();
@@ -152,7 +151,7 @@ contract CoverPoolFactory is
     }
 
     /**
-     * @inheritdoc ICoverPoolRegistry
+     * @inheritdoc ICoverPoolFactory
      */
     function updatePoolConfig(PoolConfig calldata newConfig) external override onlyRole(CREATOR_ROLE) whenNotPaused {
         address pool = newConfig.pool;
@@ -173,7 +172,7 @@ contract CoverPoolFactory is
     }
 
     /**
-     * @inheritdoc ICoverPoolRegistry
+     * @inheritdoc ICoverPoolFactory
      */
     function setPoolStatus(address pool, bool active) external override onlyRole(CREATOR_ROLE) {
         PoolConfig storage config = _poolConfigs[pool];
@@ -186,7 +185,7 @@ contract CoverPoolFactory is
     }
 
     /**
-     * @inheritdoc ICoverPoolRegistry
+     * @inheritdoc ICoverPoolFactory
      */
     function listPools(
         uint256 offset,
@@ -221,7 +220,7 @@ contract CoverPoolFactory is
     }
 
     /**
-     * @inheritdoc ICoverPoolRegistry
+     * @inheritdoc ICoverPoolFactory
      */
     function getPoolConfig(address pool) external view override returns (PoolConfig memory config) {
         config = _poolConfigs[pool];
@@ -229,7 +228,7 @@ contract CoverPoolFactory is
     }
 
     /**
-     * @inheritdoc ICoverPoolRegistry
+     * @inheritdoc ICoverPoolFactory
      */
     function isPoolRegistered(address pool) external view override returns (bool) {
         return _poolConfigs[pool].pool != address(0);
