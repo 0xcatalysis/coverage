@@ -101,21 +101,21 @@ contract CoverPool is
     /**
      * @inheritdoc ICoverPool
      */
-    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function pause() external override onlyOwner {
         _pause();
     }
 
     /**
      * @inheritdoc ICoverPool
      */
-    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function unpause() external override onlyOwner {
         _unpause();
     }
 
     /**
      * @inheritdoc ICoverPool
      */
-    function setDefaultSpecId(bytes32 defaultSpecId_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setDefaultSpecId(bytes32 defaultSpecId_) external override onlyOwner {
         require(defaultSpecId_ != bytes32(0), InvalidSpecId());
 
         bytes32 previousSpecId = defaultSpecId;
@@ -127,7 +127,7 @@ contract CoverPool is
     /**
      * @inheritdoc ICoverPool
      */
-    function setPoolFeeBps(uint16 poolFeeBps_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setPoolFeeBps(uint16 poolFeeBps_) external override onlyOwner {
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
 
         uint16 previousPoolFeeBps = poolFeeBps;
