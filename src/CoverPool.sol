@@ -99,6 +99,42 @@ contract CoverPool is
     /**
      * @inheritdoc ICoverPool
      */
+    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function updateConfig(
+        bytes32 defaultSpecId_,
+        uint16 poolFeeBps_
+    )
+        external
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
+
+        bytes32 previousSpecId = defaultSpecId;
+        uint16 previousPoolFeeBps = poolFeeBps;
+
+        defaultSpecId = defaultSpecId_;
+        poolFeeBps = poolFeeBps_;
+
+        emit ConfigUpdated(previousSpecId, defaultSpecId_, previousPoolFeeBps, poolFeeBps_);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
     function bindPolicy(
         bytes32 policyCommit,
         QuoteData calldata quote,
@@ -168,42 +204,6 @@ contract CoverPool is
         returns (bytes32)
     {
         return _validateQuote(quote, signature);
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
-    function updateSettings(
-        bytes32 defaultSpecId_,
-        uint16 poolFeeBps_
-    )
-        external
-        override
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
-        require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
-
-        bytes32 previousSpecId = defaultSpecId;
-        uint16 previousPoolFeeBps = poolFeeBps;
-
-        defaultSpecId = defaultSpecId_;
-        poolFeeBps = poolFeeBps_;
-
-        emit SettingsUpdated(previousSpecId, defaultSpecId_, previousPoolFeeBps, poolFeeBps_);
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
-    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        _pause();
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
-    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        _unpause();
     }
 
     /**

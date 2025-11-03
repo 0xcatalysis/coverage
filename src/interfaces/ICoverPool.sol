@@ -74,13 +74,13 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
     event PolicyBound(bytes32 indexed policyCommit, bytes32 indexed poolPolicyId, uint256 coverageLimit);
 
     /**
-     * @notice Emitted when the curator updates default quote settings.
+     * @notice Emitted when the curator updates the pool confiuguration.
      * @param previousSpecId Default spec identifier before the update.
      * @param newSpecId Default spec identifier after the update.
      * @param previousPoolFeeBps Pool fee basis points before the update.
      * @param newPoolFeeBps Pool fee basis points after the update.
      */
-    event SettingsUpdated(
+    event ConfigUpdated(
         bytes32 indexed previousSpecId, bytes32 indexed newSpecId, uint16 previousPoolFeeBps, uint16 newPoolFeeBps
     );
 
@@ -170,6 +170,23 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
         external;
 
     /**
+     * @notice Pauses quoting and policy binding on the pool.
+     */
+    function pause() external;
+
+    /**
+     * @notice Resumes quoting and policy binding on the pool.
+     */
+    function unpause() external;
+
+    /**
+     * @notice Updates the default quoting parameters for the pool.
+     * @param defaultSpecId_ Default spec identifier applied to new quotes.
+     * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
+     */
+    function updateConfig(bytes32 defaultSpecId_, uint16 poolFeeBps_) external;
+
+    /**
      * @notice Locks coverage for a previously validated policy commit.
      * @dev Requires POLICY_MANAGER_ROLE.
      * @param policyCommit Deterministic hash for the overall policy schedule.
@@ -215,23 +232,6 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
         external
         view
         returns (bytes32 policyCommit);
-
-    /**
-     * @notice Updates the default quoting parameters for the pool.
-     * @param defaultSpecId_ Default spec identifier applied to new quotes.
-     * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
-     */
-    function updateSettings(bytes32 defaultSpecId_, uint16 poolFeeBps_) external;
-
-    /**
-     * @notice Pauses quoting and policy binding on the pool.
-     */
-    function pause() external;
-
-    /**
-     * @notice Resumes quoting and policy binding on the pool.
-     */
-    function unpause() external;
 
     /**
      * @notice AccessControl identifier for the PolicyManager binding role.
