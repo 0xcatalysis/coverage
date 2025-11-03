@@ -7,14 +7,12 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {Paginator} from "@solarity/contracts/libs/arrays/Paginator.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 
 /**
  * @title CoverPoolFactory
- * @notice Deploys CoverPool minimal clones and maintains registry metadata for created pools.
- * @dev Combines the previous factory and registry responsibilities into a single upgradeable contract.
+ * @notice Deploys CoverPool minimal clones and keeps a lightweight registry of created pools.
  */
 contract CoverPoolFactory is
     Initializable,
@@ -28,13 +26,11 @@ contract CoverPoolFactory is
 
     bytes32 public constant override CREATOR_ROLE = keccak256("CREATOR_ROLE");
 
-    uint16 private constant _MAX_FEE_BPS = 2000;
-
     address public override coverPoolImplementation;
     address public override policyManager;
 
-    mapping(address pool => PoolConfig) private _poolConfigs;
     address[] private _pools;
+    mapping(address pool => bool registered) private _poolRegistered;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -43,10 +39,6 @@ contract CoverPoolFactory is
 
     /**
      * @notice Initializes factory configuration and admin role.
-     * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
-     * @param creator_ Address receiving CREATOR_ROLE.
-     * @param coverPoolImplementation_ Address of the CoverPool implementation contract.
-     * @param policyManager_ Address of the PolicyManager contract.
      */
     function initialize(
         address admin_,
@@ -100,26 +92,17 @@ contract CoverPoolFactory is
         onlyRole(CREATOR_ROLE)
         whenNotPaused
     {
-        require(params.quoteSigner != address(0), ZeroAddress());
-
         address coverPool = coverPoolImplementation.clone();
 
-        PoolConfig memory config = PoolConfig({
-            pool: coverPool,
-            curator: params.curator,
-            defaultSpecId: params.defaultSpecId,
-            poolFeeBps: params.poolFeeBps,
-            active: params.active
-        });
-        _validateConfig(config);
+        ICoverPool(coverPool)
+            .initialize(params.curator, policyManager, params.quoteSigner, params.defaultSpecId, params.poolFeeBps);
 
-        _poolConfigs[coverPool] = config;
         _pools.push(coverPool);
+        _poolRegistered[coverPool] = true;
 
-        address policyManager_ = policyManager;
-        ICoverPool(coverPool).initialize(params.curator, policyManager_, params.quoteSigner);
-
-        emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager_);
+        emit CoverPoolCreated(
+            coverPool, params.curator, params.quoteSigner, policyManager, params.defaultSpecId, params.poolFeeBps
+        );
     }
 
     /**
@@ -150,95 +133,51 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function updatePoolConfig(PoolConfig calldata newConfig) external override onlyRole(CREATOR_ROLE) whenNotPaused {
-        address pool = newConfig.pool;
-        PoolConfig storage config = _poolConfigs[pool];
-        require(config.pool != address(0), PoolNotRegistered(pool));
-
-        _validateConfig(newConfig);
-        require(config.active == newConfig.active, PoolActiveStatusMismatch());
-
-        config.curator = newConfig.curator;
-        config.defaultSpecId = newConfig.defaultSpecId;
-        config.poolFeeBps = newConfig.poolFeeBps;
-
-        emit PoolConfigUpdated(pool, config);
+    function isPoolRegistered(address pool) external view override returns (bool) {
+        return _poolRegistered[pool];
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function setPoolStatus(address pool, bool active) external override onlyRole(CREATOR_ROLE) {
-        PoolConfig storage config = _poolConfigs[pool];
-        require(config.pool != address(0), PoolNotRegistered(pool));
-        require(config.active != active, PoolStatusUnchanged());
-
-        config.active = active;
-
-        emit PoolStatusSet(pool, active);
+    function totalPools() external view override returns (uint256) {
+        return _pools.length;
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function listPools(
-        uint256 offset,
-        uint256 limit
-    )
-        external
-        view
-        override
-        returns (address[] memory pools, PoolConfig[] memory configs)
-    {
+    function poolAt(uint256 index) external view override returns (address) {
+        require(index < _pools.length, InvalidLimit());
+        return _pools[index];
+    }
+
+    /**
+     * @inheritdoc ICoverPoolFactory
+     */
+    function getPools(uint256 offset, uint256 limit) external view override returns (address[] memory pools) {
         require(limit != 0, InvalidLimit());
 
-        uint256 totalPools = _pools.length;
-        if (totalPools == 0 || offset >= totalPools) {
-            return (new address[](0), new PoolConfig[](0));
+        uint256 total = _pools.length;
+        if (total == 0 || offset >= total) {
+            return new address[](0);
         }
 
-        uint256 to = Paginator.getTo(totalPools, offset, limit);
+        uint256 to = offset + limit;
+        if (to > total) {
+            to = total;
+        }
+
         uint256 length = to - offset;
-        if (length == 0) {
-            return (new address[](0), new PoolConfig[](0));
-        }
-
         pools = new address[](length);
-        configs = new PoolConfig[](length);
 
         for (uint256 i = 0; i < length; ++i) {
-            address pool = _pools[offset + i];
-            pools[i] = pool;
-            configs[i] = _poolConfigs[pool];
+            pools[i] = _pools[offset + i];
         }
-    }
-
-    /**
-     * @inheritdoc ICoverPoolFactory
-     */
-    function getPoolConfig(address pool) external view override returns (PoolConfig memory config) {
-        config = _poolConfigs[pool];
-        require(config.pool != address(0), PoolNotFound(pool));
-    }
-
-    /**
-     * @inheritdoc ICoverPoolFactory
-     */
-    function isPoolRegistered(address pool) external view override returns (bool) {
-        return _poolConfigs[pool].pool != address(0);
     }
 
     /**
      * @dev Authorizes UUPS upgrades.
      */
     function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
-
-    /**
-     * @notice Validates pool configuration invariants before persisting changes.
-     * @param config Proposed pool configuration.
-     */
-    function _validateConfig(PoolConfig memory config) private pure {
-        require(config.curator != address(0) && config.pool != address(0), ZeroAddress());
-        require(config.poolFeeBps <= _MAX_FEE_BPS, InvalidFeeBps());
-    }
 }

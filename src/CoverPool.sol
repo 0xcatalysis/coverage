@@ -8,9 +8,10 @@ import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/acces
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {IOwnable2Step} from "./interfaces/IOwnable2Step.sol";
+import {ICoverPool} from "./interfaces/ICoverPool.sol";
 
 /**
  * @title CoverPool
@@ -23,6 +24,7 @@ contract CoverPool is
     Ownable2StepUpgradeable,
     AccessControlEnumerableUpgradeable,
     EIP712Upgradeable,
+    PausableUpgradeable,
     ICoverPool
 {
     bytes32 public constant override POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
@@ -34,7 +36,12 @@ contract CoverPool is
         "QuoteData(address pool,uint256 coverageLimit,uint256 basePremium,uint256 riskBufferDeposit,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
     );
 
+    uint16 private constant _MAX_POOL_FEE_BPS = 2000;
+
     mapping(bytes32 policyCommit => bool bound) public override policyCommitBound;
+
+    bytes32 public override defaultSpecId;
+    uint16 public override poolFeeBps;
 
     mapping(bytes32 poolPolicyId => BoundPolicy policy) private _poolPolicies;
 
@@ -61,18 +68,32 @@ contract CoverPool is
     /**
      * @inheritdoc ICoverPool
      */
-    function initialize(address curator_, address policyManager_, address quoteSigner_) external initializer {
+    function initialize(
+        address curator_,
+        address policyManager_,
+        address quoteSigner_,
+        bytes32 defaultSpecId_,
+        uint16 poolFeeBps_
+    )
+        external
+        initializer
+    {
         require(curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0), ZeroAddress());
+        require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
 
         __Ownable_init(curator_);
         __Ownable2Step_init();
         __AccessControlEnumerable_init();
         __AccessControl_init();
         __EIP712_init(_NAME, _VERSION);
+        __Pausable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, curator_);
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
         _grantRole(QUOTE_SIGNER_ROLE, quoteSigner_);
+
+        defaultSpecId = defaultSpecId_;
+        poolFeeBps = poolFeeBps_;
     }
 
     /**
@@ -87,6 +108,7 @@ contract CoverPool is
         override
         onlyRole(POLICY_MANAGER_ROLE)
         validateQuoteData(quote)
+        whenNotPaused
         returns (BoundPolicy memory boundPolicy)
     {
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
@@ -142,9 +164,46 @@ contract CoverPool is
         view
         override
         validateQuoteData(quote)
+        whenNotPaused
         returns (bytes32)
     {
         return _validateQuote(quote, signature);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function updateSettings(
+        bytes32 defaultSpecId_,
+        uint16 poolFeeBps_
+    )
+        external
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
+
+        bytes32 previousSpecId = defaultSpecId;
+        uint16 previousPoolFeeBps = poolFeeBps;
+
+        defaultSpecId = defaultSpecId_;
+        poolFeeBps = poolFeeBps_;
+
+        emit SettingsUpdated(previousSpecId, defaultSpecId_, previousPoolFeeBps, poolFeeBps_);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
     }
 
     /**

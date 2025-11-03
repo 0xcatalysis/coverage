@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Test} from "forge-std/Test.sol";
@@ -27,6 +28,8 @@ contract CoverPoolTest is Test {
 
     bytes32 private specId;
     bytes32 private termsHash;
+    bytes32 private defaultSpecId;
+    uint16 private poolFeeBps;
 
     function setUp() public {
         vm.warp(1_000_000);
@@ -46,29 +49,37 @@ contract CoverPoolTest is Test {
 
         specId = keccak256("SPEC_ID");
         termsHash = keccak256("TERMS");
+        defaultSpecId = bytes32("DEFAULT_SPEC");
+        poolFeeBps = 125;
 
         implementation = new CoverPool();
         address clone = Clones.clone(address(implementation));
         coverPool = CoverPool(clone);
-        coverPool.initialize(curator, policyManager, quoteSigner);
+        coverPool.initialize(curator, policyManager, quoteSigner, defaultSpecId, poolFeeBps);
     }
 
     function test_initialize_WhenCuratorZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(address(0), policyManager, quoteSigner);
+        pool.initialize(address(0), policyManager, quoteSigner, defaultSpecId, poolFeeBps);
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, address(0), quoteSigner);
+        pool.initialize(curator, address(0), quoteSigner, defaultSpecId, poolFeeBps);
     }
 
     function test_initialize_WhenQuoteSignerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, policyManager, address(0));
+        pool.initialize(curator, policyManager, address(0), defaultSpecId, poolFeeBps);
+    }
+
+    function test_initialize_WhenFeeTooHigh_Reverts() public {
+        CoverPool pool = CoverPool(Clones.clone(address(implementation)));
+        vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
+        pool.initialize(curator, policyManager, quoteSigner, defaultSpecId, 2100);
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -88,6 +99,104 @@ contract CoverPoolTest is Test {
         );
         assertEq(coverPool.quoteDomainSeparator(), expectedDomain, "Domain separator mismatch");
         assertTrue(coverPool.supportsInterface(type(IAccessControl).interfaceId), "AccessControl interface missing");
+        assertEq(coverPool.defaultSpecId(), defaultSpecId, "Default spec id mismatch");
+        assertEq(coverPool.poolFeeBps(), poolFeeBps, "Pool fee mismatch");
+        assertFalse(coverPool.paused(), "Pool unexpectedly paused");
+    }
+
+    function test_updateSettings_WhenCallerNotCurator_Reverts() public {
+        bytes32 newSpecId = bytes32("newSpec");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(policyManager);
+        coverPool.updateSettings(newSpecId, poolFeeBps);
+    }
+
+    function test_updateSettings_WhenFeeTooHigh_Reverts() public {
+        vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
+        vm.prank(curator);
+        coverPool.updateSettings(bytes32("newSpec"), 2500);
+    }
+
+    function test_updateSettings_WhenValid_UpdatesState() public {
+        bytes32 newSpecId = bytes32("newSpec");
+        uint16 newFee = 250;
+
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.SettingsUpdated(defaultSpecId, newSpecId, poolFeeBps, newFee);
+
+        vm.prank(curator);
+        coverPool.updateSettings(newSpecId, newFee);
+
+        assertEq(coverPool.defaultSpecId(), newSpecId, "Spec id not updated");
+        assertEq(coverPool.poolFeeBps(), newFee, "Pool fee not updated");
+    }
+
+    function test_pause_WhenCallerNotCurator_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(policyManager);
+        coverPool.pause();
+    }
+
+    function test_pause_WhenCalledByCurator_PausesPool() public {
+        vm.prank(curator);
+        coverPool.pause();
+        assertTrue(coverPool.paused(), "Pool not paused");
+    }
+
+    function test_unpause_WhenCallerNotCurator_Reverts() public {
+        vm.prank(curator);
+        coverPool.pause();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(policyManager);
+        coverPool.unpause();
+    }
+
+    function test_unpause_WhenCalledByCurator_ClearsPause() public {
+        vm.prank(curator);
+        coverPool.pause();
+        assertTrue(coverPool.paused(), "Pool not paused");
+
+        vm.prank(curator);
+        coverPool.unpause();
+        assertFalse(coverPool.paused(), "Pool still paused");
+    }
+
+    function test_bindPolicy_WhenPaused_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        bytes memory signature = _signQuote(quote);
+        bytes32 policyCommit = coverPool.validateQuote(quote, signature);
+
+        vm.prank(curator);
+        coverPool.pause();
+
+        vm.prank(policyManager);
+        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        coverPool.bindPolicy(policyCommit, quote, signature);
+    }
+
+    function test_validateQuote_WhenPaused_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        bytes memory signature = _signQuote(quote);
+
+        vm.prank(curator);
+        coverPool.pause();
+
+        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        coverPool.validateQuote(quote, signature);
     }
 
     function test_grantRole_WhenCalledByOwner_AddsQuoteSigner() public {

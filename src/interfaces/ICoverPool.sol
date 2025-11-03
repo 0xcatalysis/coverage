@@ -74,6 +74,17 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
     event PolicyBound(bytes32 indexed policyCommit, bytes32 indexed poolPolicyId, uint256 coverageLimit);
 
     /**
+     * @notice Emitted when the curator updates default quote settings.
+     * @param previousSpecId Default spec identifier before the update.
+     * @param newSpecId Default spec identifier after the update.
+     * @param previousPoolFeeBps Pool fee basis points before the update.
+     * @param newPoolFeeBps Pool fee basis points after the update.
+     */
+    event SettingsUpdated(
+        bytes32 indexed previousSpecId, bytes32 indexed newSpecId, uint16 previousPoolFeeBps, uint16 newPoolFeeBps
+    );
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -137,12 +148,26 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
     error InvalidPolicyCommit();
 
     /**
+     * @notice Reverts when supplied fee values exceed the defined basis-point cap.
+     */
+    error InvalidFeeBps();
+
+    /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param curator_ Address assigned as the owner (curator).
      * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
+     * @param defaultSpecId_ Default spec identifier applied when quotes omit a value.
+     * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
      */
-    function initialize(address curator_, address policyManager_, address quoteSigner_) external;
+    function initialize(
+        address curator_,
+        address policyManager_,
+        address quoteSigner_,
+        bytes32 defaultSpecId_,
+        uint16 poolFeeBps_
+    )
+        external;
 
     /**
      * @notice Locks coverage for a previously validated policy commit.
@@ -192,6 +217,23 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
         returns (bytes32 policyCommit);
 
     /**
+     * @notice Updates the default quoting parameters for the pool.
+     * @param defaultSpecId_ Default spec identifier applied to new quotes.
+     * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
+     */
+    function updateSettings(bytes32 defaultSpecId_, uint16 poolFeeBps_) external;
+
+    /**
+     * @notice Pauses quoting and policy binding on the pool.
+     */
+    function pause() external;
+
+    /**
+     * @notice Resumes quoting and policy binding on the pool.
+     */
+    function unpause() external;
+
+    /**
      * @notice AccessControl identifier for the PolicyManager binding role.
      */
     function POLICY_MANAGER_ROLE() external pure returns (bytes32);
@@ -200,4 +242,14 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
      * @notice AccessControl identifier for approved quote signers.
      */
     function QUOTE_SIGNER_ROLE() external pure returns (bytes32);
+
+    /**
+     * @notice Default spec identifier used when quotes omit a value.
+     */
+    function defaultSpecId() external view returns (bytes32);
+
+    /**
+     * @notice Pool fee expressed in basis points that is applied to premiums.
+     */
+    function poolFeeBps() external view returns (uint16);
 }
