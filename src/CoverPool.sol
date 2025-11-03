@@ -81,6 +81,7 @@ contract CoverPool is
     {
         require(curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0), ZeroAddress());
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
+        require(defaultSpecId_ != bytes32(0), InvalidSpecId());
 
         __Ownable_init(curator_);
         __Ownable2Step_init();
@@ -114,23 +115,25 @@ contract CoverPool is
     /**
      * @inheritdoc ICoverPool
      */
-    function updateConfig(
-        bytes32 defaultSpecId_,
-        uint16 poolFeeBps_
-    )
-        external
-        override
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
-        require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
+    function setDefaultSpecId(bytes32 defaultSpecId_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(defaultSpecId_ != bytes32(0), InvalidSpecId());
 
         bytes32 previousSpecId = defaultSpecId;
-        uint16 previousPoolFeeBps = poolFeeBps;
-
         defaultSpecId = defaultSpecId_;
+
+        emit DefaultSpecIdSet(previousSpecId, defaultSpecId_);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function setPoolFeeBps(uint16 poolFeeBps_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
+
+        uint16 previousPoolFeeBps = poolFeeBps;
         poolFeeBps = poolFeeBps_;
 
-        emit ConfigUpdated(previousSpecId, defaultSpecId_, previousPoolFeeBps, poolFeeBps_);
+        emit PoolFeeBpsSet(previousPoolFeeBps, poolFeeBps_);
     }
 
     /**

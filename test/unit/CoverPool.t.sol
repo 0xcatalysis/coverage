@@ -83,6 +83,12 @@ contract CoverPoolTest is Test {
         pool.initialize(curator, policyManager, quoteSigner, defaultSpecId, 2100);
     }
 
+    function test_initialize_WhenDefaultSpecIdZero_Reverts() public {
+        CoverPool pool = CoverPool(Clones.clone(address(implementation)));
+        vm.expectRevert(ICoverPool.InvalidSpecId.selector);
+        pool.initialize(curator, policyManager, quoteSigner, bytes32(0), poolFeeBps);
+    }
+
     function test_initialize_SetsRolesAndConfiguration() public view {
         assertEq(coverPool.owner(), curator, "Owner mismatch");
         assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), curator), "Default admin role missing");
@@ -105,7 +111,7 @@ contract CoverPoolTest is Test {
         assertFalse(coverPool.paused(), "Pool unexpectedly paused");
     }
 
-    function test_updateConfig_WhenCallerNotCurator_Reverts() public {
+    function test_setDefaultSpecId_WhenCallerNotCurator_Reverts() public {
         // forge-lint: disable-next-line(unsafe-typecast)
         bytes32 newSpecId = bytes32("newSpec");
 
@@ -115,28 +121,53 @@ contract CoverPoolTest is Test {
             )
         );
         vm.prank(policyManager);
-        coverPool.updateConfig(newSpecId, poolFeeBps);
+        coverPool.setDefaultSpecId(newSpecId);
     }
 
-    function test_updateConfig_WhenFeeTooHigh_Reverts() public {
-        vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
-        vm.prank(curator);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        coverPool.updateConfig(bytes32("newSpec"), 2500);
-    }
-
-    function test_updateConfig_WhenValid_UpdatesState() public {
+    function test_setDefaultSpecId_WhenValid_UpdatesState() public {
         // forge-lint: disable-next-line(unsafe-typecast)
         bytes32 newSpecId = bytes32("newSpec");
+
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.DefaultSpecIdSet(defaultSpecId, newSpecId);
+
+        vm.prank(curator);
+        coverPool.setDefaultSpecId(newSpecId);
+
+        assertEq(coverPool.defaultSpecId(), newSpecId, "Spec id not updated");
+    }
+
+    function test_setDefaultSpecId_WhenZero_Reverts() public {
+        vm.expectRevert(ICoverPool.InvalidSpecId.selector);
+        vm.prank(curator);
+        coverPool.setDefaultSpecId(bytes32(0));
+    }
+
+    function test_setPoolFeeBps_WhenCallerNotCurator_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(policyManager);
+        coverPool.setPoolFeeBps(poolFeeBps);
+    }
+
+    function test_setPoolFeeBps_WhenFeeTooHigh_Reverts() public {
+        vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(2500);
+    }
+
+    function test_setPoolFeeBps_WhenValid_UpdatesState() public {
         uint16 newFee = 250;
 
         vm.expectEmit(true, true, true, true, address(coverPool));
-        emit ICoverPool.ConfigUpdated(defaultSpecId, newSpecId, poolFeeBps, newFee);
+        emit ICoverPool.PoolFeeBpsSet(poolFeeBps, newFee);
 
         vm.prank(curator);
-        coverPool.updateConfig(newSpecId, newFee);
+        coverPool.setPoolFeeBps(newFee);
 
-        assertEq(coverPool.defaultSpecId(), newSpecId, "Spec id not updated");
         assertEq(coverPool.poolFeeBps(), newFee, "Pool fee not updated");
     }
 
