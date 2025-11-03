@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
@@ -117,7 +118,7 @@ contract CoverPoolTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager
             )
         );
         vm.prank(policyManager);
@@ -146,7 +147,7 @@ contract CoverPoolTest is Test {
     function test_setPoolFeeBps_WhenCallerNotCurator_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager
             )
         );
         vm.prank(policyManager);
@@ -174,7 +175,7 @@ contract CoverPoolTest is Test {
     function test_pause_WhenCallerNotCurator_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager
             )
         );
         vm.prank(policyManager);
@@ -193,7 +194,7 @@ contract CoverPoolTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager
             )
         );
         vm.prank(policyManager);
