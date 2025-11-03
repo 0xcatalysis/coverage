@@ -74,15 +74,18 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
     event PolicyBound(bytes32 indexed policyCommit, bytes32 indexed poolPolicyId, uint256 coverageLimit);
 
     /**
-     * @notice Emitted when the curator updates the pool confiuguration.
+     * @notice Emitted when the curator updates the default spec identifier.
      * @param previousSpecId Default spec identifier before the update.
      * @param newSpecId Default spec identifier after the update.
+     */
+    event DefaultSpecIdSet(bytes32 indexed previousSpecId, bytes32 indexed newSpecId);
+
+    /**
+     * @notice Emitted when the curator updates the pool fee basis points.
      * @param previousPoolFeeBps Pool fee basis points before the update.
      * @param newPoolFeeBps Pool fee basis points after the update.
      */
-    event ConfigUpdated(
-        bytes32 indexed previousSpecId, bytes32 indexed newSpecId, uint16 previousPoolFeeBps, uint16 newPoolFeeBps
-    );
+    event PoolFeeBpsSet(uint16 previousPoolFeeBps, uint16 newPoolFeeBps);
 
     /**
      * @notice Reverts when a required address argument is zero.
@@ -117,6 +120,11 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
      * @notice Reverts when payout or operator addresses are missing.
      */
     error InvalidQuoteRecipient();
+
+    /**
+     * @notice Reverts when a required spec identifier is empty.
+     */
+    error InvalidSpecId();
 
     /**
      * @notice Reverts when a quote is validated but its signature cannot be recovered to the authorized signer.
@@ -180,11 +188,16 @@ interface ICoverPool is IAccessControlEnumerable, IOwnable2Step {
     function unpause() external;
 
     /**
-     * @notice Updates the default quoting parameters for the pool.
+     * @notice Updates the default spec identifier applied to new quotes.
      * @param defaultSpecId_ Default spec identifier applied to new quotes.
+     */
+    function setDefaultSpecId(bytes32 defaultSpecId_) external;
+
+    /**
+     * @notice Updates the pool fee expressed in basis points.
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
      */
-    function updateConfig(bytes32 defaultSpecId_, uint16 poolFeeBps_) external;
+    function setPoolFeeBps(uint16 poolFeeBps_) external;
 
     /**
      * @notice Locks coverage for a previously validated policy commit.
