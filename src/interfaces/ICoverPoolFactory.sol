@@ -66,6 +66,12 @@ interface ICoverPoolFactory is IAccessControl {
     error InvalidLimit();
 
     /**
+     * @notice Reverts when attempting to deploy a pool that already exists.
+     * @param pool Address that would be redeployed.
+     */
+    error CoverPoolAlreadyDeployed(address pool);
+
+    /**
      * @notice Pauses cover pool creation.
      */
     function pause() external;
@@ -77,7 +83,7 @@ interface ICoverPoolFactory is IAccessControl {
 
     /**
      * @notice Deploys a CoverPool clone and configures initial settings.
-     * @param params Struct containing curator, signer, and default settings.
+     * @param params Struct containing cover pool parameters.
      */
     function createCoverPool(CreateCoverPoolParams calldata params) external;
 
@@ -105,6 +111,12 @@ interface ICoverPoolFactory is IAccessControl {
      * @notice Role identifier allowed to create cover pools.
      */
     function CREATOR_ROLE() external view returns (bytes32);
+
+    /**
+     * @notice Returns the deterministic address that would be used for a cover pool deployment.
+     * @param params Struct containing cover pool parameters.
+     */
+    function computeCoverPoolAddress(CreateCoverPoolParams calldata params) external view returns (address);
 
     /**
      * @notice Returns true when the pool has been registered.
