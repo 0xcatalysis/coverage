@@ -20,8 +20,6 @@ interface ICoverPoolFactory is IAccessControl {
         bytes32 defaultSpecId;
         /// @notice Basis points routed to the curator on premium settlement.
         uint16 poolFeeBps;
-        /// @notice Basis points routed to the platform treasury on settlement.
-        uint16 platformFeeBps;
         /// @notice Activation flag recorded on the registry.
         bool active;
     }
@@ -35,7 +33,6 @@ interface ICoverPoolFactory is IAccessControl {
         address curator;
         bytes32 defaultSpecId;
         uint16 poolFeeBps;
-        uint16 platformFeeBps;
         bool active;
     }
 
