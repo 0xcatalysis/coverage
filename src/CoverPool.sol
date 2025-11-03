@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {
-    AccessControlEnumerableUpgradeable
-} from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -24,7 +22,7 @@ import {ICoverPool} from "./interfaces/ICoverPool.sol";
 contract CoverPool is
     Initializable,
     Ownable2StepUpgradeable,
-    AccessControlEnumerableUpgradeable,
+    AccessControlUpgradeable,
     EIP712Upgradeable,
     PausableUpgradeable,
     ICoverPool
@@ -85,7 +83,6 @@ contract CoverPool is
 
         __Ownable_init(curator_);
         __Ownable2Step_init();
-        __AccessControlEnumerable_init();
         __AccessControl_init();
         __EIP712_init(_NAME, _VERSION);
         __Pausable_init();

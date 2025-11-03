@@ -116,11 +116,7 @@ contract CoverPoolTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         bytes32 newSpecId = bytes32("newSpec");
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager));
         vm.prank(policyManager);
         coverPool.setDefaultSpecId(newSpecId);
     }
@@ -145,11 +141,7 @@ contract CoverPoolTest is Test {
     }
 
     function test_setPoolFeeBps_WhenCallerNotCurator_Reverts() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager));
         vm.prank(policyManager);
         coverPool.setPoolFeeBps(poolFeeBps);
     }
@@ -173,11 +165,7 @@ contract CoverPoolTest is Test {
     }
 
     function test_pause_WhenCallerNotCurator_Reverts() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager));
         vm.prank(policyManager);
         coverPool.pause();
     }
@@ -192,11 +180,7 @@ contract CoverPoolTest is Test {
         vm.prank(curator);
         coverPool.pause();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager));
         vm.prank(policyManager);
         coverPool.unpause();
     }
