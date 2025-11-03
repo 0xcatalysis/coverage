@@ -107,7 +107,6 @@ contract CoverPoolFactory is
         PoolConfig memory config = PoolConfig({
             pool: coverPool,
             curator: params.curator,
-            payoutToken: params.payoutToken,
             defaultSpecId: params.defaultSpecId,
             poolFeeBps: params.poolFeeBps,
             platformFeeBps: params.platformFeeBps,
@@ -161,7 +160,6 @@ contract CoverPoolFactory is
         require(config.active == newConfig.active, PoolActiveStatusMismatch());
 
         config.curator = newConfig.curator;
-        config.payoutToken = newConfig.payoutToken;
         config.defaultSpecId = newConfig.defaultSpecId;
         config.poolFeeBps = newConfig.poolFeeBps;
         config.platformFeeBps = newConfig.platformFeeBps;
@@ -242,9 +240,7 @@ contract CoverPoolFactory is
      * @param config Proposed pool configuration.
      */
     function _validateConfig(PoolConfig memory config) private pure {
-        require(
-            config.curator != address(0) && config.pool != address(0) && config.payoutToken != address(0), ZeroAddress()
-        );
+        require(config.curator != address(0) && config.pool != address(0), ZeroAddress());
         require(config.poolFeeBps <= _MAX_FEE_BPS && config.platformFeeBps <= _MAX_FEE_BPS, InvalidFeeBps());
     }
 }
