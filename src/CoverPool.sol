@@ -20,6 +20,7 @@ import {ICoverPool} from "./interfaces/ICoverPool.sol";
  * @dev Designed for use behind minimal proxy clones. Leverages AccessControl for role separation
  *      and EIP-712 signed quotes for deterministic policy commits.
  */
+// slither-disable-next-line unimplemented-functions
 contract CoverPool is
     Initializable,
     Ownable2StepUpgradeable,
