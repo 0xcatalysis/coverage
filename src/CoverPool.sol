@@ -10,6 +10,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {IOwnable2Step} from "./interfaces/IOwnable2Step.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 
@@ -284,23 +285,20 @@ contract CoverPool is
      * @return struct hash encoded as bytes32.
      */
     function _hashQuote(QuoteData calldata quote) private pure returns (bytes32) {
-        // forge-lint: disable-next-line(asm-keccak256)
-        return keccak256(
-            abi.encode(
-                _QUOTE_TYPEHASH,
-                quote.pool,
-                quote.coverageLimit,
-                quote.basePremium,
-                quote.riskBufferDeposit,
-                quote.specId,
-                quote.termsHash,
-                quote.payoutReceiver,
-                quote.committeeId,
-                quote.operator,
-                quote.startTime,
-                quote.maturityTime,
-                quote.quoteExpiry
-            )
+        return EfficientHashLib.hash(
+            uint256(_QUOTE_TYPEHASH),
+            uint256(uint160(quote.pool)),
+            quote.coverageLimit,
+            quote.basePremium,
+            quote.riskBufferDeposit,
+            uint256(quote.specId),
+            uint256(quote.termsHash),
+            uint256(uint160(quote.payoutReceiver)),
+            uint256(quote.committeeId),
+            uint256(uint160(quote.operator)),
+            uint256(quote.startTime),
+            uint256(quote.maturityTime),
+            uint256(quote.quoteExpiry)
         );
     }
 }
