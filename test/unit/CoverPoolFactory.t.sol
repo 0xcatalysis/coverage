@@ -19,7 +19,6 @@ contract CoverPoolFactoryTest is Test {
     address internal policyManager;
     address internal curator;
     address internal quoteSigner;
-    address internal premiumToken;
     address internal payoutToken;
 
     bytes32 internal constant ADMIN_ROLE = 0x00;
@@ -33,7 +32,6 @@ contract CoverPoolFactoryTest is Test {
         policyManager = makeAddr("policyManager");
         curator = makeAddr("curator");
         quoteSigner = makeAddr("quoteSigner");
-        premiumToken = makeAddr("premiumToken");
         payoutToken = makeAddr("payoutToken");
 
         vm.label(admin, "Admin");
@@ -41,7 +39,6 @@ contract CoverPoolFactoryTest is Test {
         vm.label(policyManager, "PolicyManager");
         vm.label(curator, "Curator");
         vm.label(quoteSigner, "QuoteSigner");
-        vm.label(premiumToken, "PremiumToken");
         vm.label(payoutToken, "PayoutToken");
 
         opts.unsafeSkipAllChecks = true;
@@ -170,15 +167,6 @@ contract CoverPoolFactoryTest is Test {
         factory.createCoverPool(params);
     }
 
-    function test_createCoverPool_WhenPremiumTokenZero_Reverts() public {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
-        params.premiumToken = address(0);
-
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        vm.prank(creator);
-        factory.createCoverPool(params);
-    }
-
     function test_createCoverPool_WhenPayoutTokenZero_Reverts() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
         params.payoutToken = address(0);
@@ -208,7 +196,6 @@ contract CoverPoolFactoryTest is Test {
         ICoverPoolFactory.PoolConfig memory updatedConfig = ICoverPoolFactory.PoolConfig({
             pool: pool,
             curator: makeAddr("newCurator"),
-            premiumToken: makeAddr("newPremium"),
             payoutToken: makeAddr("newPayout"),
             defaultSpecId: bytes32("newSpec"),
             poolFeeBps: 150,
@@ -290,7 +277,6 @@ contract CoverPoolFactoryTest is Test {
             ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams(true);
             params.curator = makeAddr(string(abi.encodePacked("curator", vm.toString(i))));
             params.quoteSigner = makeAddr(string(abi.encodePacked("quoteSigner", vm.toString(i))));
-            params.premiumToken = makeAddr(string(abi.encodePacked("premium", vm.toString(i))));
             params.payoutToken = makeAddr(string(abi.encodePacked("payout", vm.toString(i))));
 
             vm.prank(creator);
@@ -337,7 +323,6 @@ contract CoverPoolFactoryTest is Test {
         params = ICoverPoolFactory.CreateCoverPoolParams({
             curator: curator,
             quoteSigner: quoteSigner,
-            premiumToken: premiumToken,
             payoutToken: payoutToken,
             defaultSpecId: bytes32("spec"),
             poolFeeBps: 100,
@@ -358,7 +343,6 @@ contract CoverPoolFactoryTest is Test {
         return ICoverPoolFactory.PoolConfig({
             pool: pool,
             curator: params.curator,
-            premiumToken: params.premiumToken,
             payoutToken: params.payoutToken,
             defaultSpecId: params.defaultSpecId,
             poolFeeBps: params.poolFeeBps,
@@ -376,7 +360,6 @@ contract CoverPoolFactoryTest is Test {
     {
         assertEq(actual.pool, expected.pool, "Pool mismatch");
         assertEq(actual.curator, expected.curator, "Curator mismatch");
-        assertEq(actual.premiumToken, expected.premiumToken, "Premium token mismatch");
         assertEq(actual.payoutToken, expected.payoutToken, "Payout token mismatch");
         assertEq(actual.defaultSpecId, expected.defaultSpecId, "Spec mismatch");
         assertEq(actual.poolFeeBps, expected.poolFeeBps, "Pool fee mismatch");
