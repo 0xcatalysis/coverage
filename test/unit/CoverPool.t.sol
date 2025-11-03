@@ -104,7 +104,7 @@ contract CoverPoolTest is Test {
         assertFalse(coverPool.paused(), "Pool unexpectedly paused");
     }
 
-    function test_updateSettings_WhenCallerNotCurator_Reverts() public {
+    function test_updateConfig_WhenCallerNotCurator_Reverts() public {
         bytes32 newSpecId = bytes32("newSpec");
 
         vm.expectRevert(
@@ -113,24 +113,24 @@ contract CoverPoolTest is Test {
             )
         );
         vm.prank(policyManager);
-        coverPool.updateSettings(newSpecId, poolFeeBps);
+        coverPool.updateConfig(newSpecId, poolFeeBps);
     }
 
-    function test_updateSettings_WhenFeeTooHigh_Reverts() public {
+    function test_updateConfig_WhenFeeTooHigh_Reverts() public {
         vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
         vm.prank(curator);
-        coverPool.updateSettings(bytes32("newSpec"), 2500);
+        coverPool.updateConfig(bytes32("newSpec"), 2500);
     }
 
-    function test_updateSettings_WhenValid_UpdatesState() public {
+    function test_updateConfig_WhenValid_UpdatesState() public {
         bytes32 newSpecId = bytes32("newSpec");
         uint16 newFee = 250;
 
         vm.expectEmit(true, true, true, true, address(coverPool));
-        emit ICoverPool.SettingsUpdated(defaultSpecId, newSpecId, poolFeeBps, newFee);
+        emit ICoverPool.ConfigUpdated(defaultSpecId, newSpecId, poolFeeBps, newFee);
 
         vm.prank(curator);
-        coverPool.updateSettings(newSpecId, newFee);
+        coverPool.updateConfig(newSpecId, newFee);
 
         assertEq(coverPool.defaultSpecId(), newSpecId, "Spec id not updated");
         assertEq(coverPool.poolFeeBps(), newFee, "Pool fee not updated");
