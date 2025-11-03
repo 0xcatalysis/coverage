@@ -49,6 +49,7 @@ contract CoverPoolTest is Test {
 
         specId = keccak256("SPEC_ID");
         termsHash = keccak256("TERMS");
+        // forge-lint: disable-next-line(unsafe-typecast)
         defaultSpecId = bytes32("DEFAULT_SPEC");
         poolFeeBps = 125;
 
@@ -105,6 +106,7 @@ contract CoverPoolTest is Test {
     }
 
     function test_updateConfig_WhenCallerNotCurator_Reverts() public {
+        // forge-lint: disable-next-line(unsafe-typecast)
         bytes32 newSpecId = bytes32("newSpec");
 
         vm.expectRevert(
@@ -119,10 +121,12 @@ contract CoverPoolTest is Test {
     function test_updateConfig_WhenFeeTooHigh_Reverts() public {
         vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
         vm.prank(curator);
+        // forge-lint: disable-next-line(unsafe-typecast)
         coverPool.updateConfig(bytes32("newSpec"), 2500);
     }
 
     function test_updateConfig_WhenValid_UpdatesState() public {
+        // forge-lint: disable-next-line(unsafe-typecast)
         bytes32 newSpecId = bytes32("newSpec");
         uint16 newFee = 250;
 
@@ -473,7 +477,9 @@ contract CoverPoolTest is Test {
     }
 
     function test_getPoolPolicy_WhenUnknown_Reverts() public {
+        // forge-lint: disable-next-line(unsafe-typecast)
         vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyNotFound.selector, bytes32("unknown")));
+        // forge-lint: disable-next-line(unsafe-typecast)
         coverPool.getPoolPolicy(bytes32("unknown"));
     }
 
