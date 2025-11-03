@@ -186,7 +186,6 @@ contract CoverPoolFactoryTest is Test {
             curator: makeAddr("newCurator"),
             defaultSpecId: bytes32("newSpec"),
             poolFeeBps: 150,
-            platformFeeBps: 175,
             active: true
         });
 
@@ -307,12 +306,7 @@ contract CoverPoolFactoryTest is Test {
         returns (ICoverPoolFactory.CreateCoverPoolParams memory params)
     {
         params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: quoteSigner,
-            defaultSpecId: bytes32("spec"),
-            poolFeeBps: 100,
-            platformFeeBps: 200,
-            active: active
+            curator: curator, quoteSigner: quoteSigner, defaultSpecId: bytes32("spec"), poolFeeBps: 100, active: active
         });
     }
 
@@ -330,7 +324,6 @@ contract CoverPoolFactoryTest is Test {
             curator: params.curator,
             defaultSpecId: params.defaultSpecId,
             poolFeeBps: params.poolFeeBps,
-            platformFeeBps: params.platformFeeBps,
             active: active
         });
     }
@@ -346,7 +339,6 @@ contract CoverPoolFactoryTest is Test {
         assertEq(actual.curator, expected.curator, "Curator mismatch");
         assertEq(actual.defaultSpecId, expected.defaultSpecId, "Spec mismatch");
         assertEq(actual.poolFeeBps, expected.poolFeeBps, "Pool fee mismatch");
-        assertEq(actual.platformFeeBps, expected.platformFeeBps, "Platform fee mismatch");
         assertEq(actual.active, expected.active, "Active mismatch");
     }
 }

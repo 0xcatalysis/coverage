@@ -109,7 +109,6 @@ contract CoverPoolFactory is
             curator: params.curator,
             defaultSpecId: params.defaultSpecId,
             poolFeeBps: params.poolFeeBps,
-            platformFeeBps: params.platformFeeBps,
             active: params.active
         });
         _validateConfig(config);
@@ -162,7 +161,6 @@ contract CoverPoolFactory is
         config.curator = newConfig.curator;
         config.defaultSpecId = newConfig.defaultSpecId;
         config.poolFeeBps = newConfig.poolFeeBps;
-        config.platformFeeBps = newConfig.platformFeeBps;
 
         emit PoolConfigUpdated(pool, config);
     }
@@ -241,6 +239,6 @@ contract CoverPoolFactory is
      */
     function _validateConfig(PoolConfig memory config) private pure {
         require(config.curator != address(0) && config.pool != address(0), ZeroAddress());
-        require(config.poolFeeBps <= _MAX_FEE_BPS && config.platformFeeBps <= _MAX_FEE_BPS, InvalidFeeBps());
+        require(config.poolFeeBps <= _MAX_FEE_BPS, InvalidFeeBps());
     }
 }
