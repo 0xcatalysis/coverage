@@ -61,11 +61,6 @@ interface ICoverPoolFactory is IAccessControl {
     error InvalidImplementation();
 
     /**
-     * @notice Reverts when supplied fee values exceed the defined basis-point cap.
-     */
-    error InvalidFeeBps();
-
-    /**
      * @notice Reverts when a pagination request uses a zero limit.
      */
     error InvalidLimit();

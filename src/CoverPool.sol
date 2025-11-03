@@ -284,6 +284,7 @@ contract CoverPool is
      * @return struct hash encoded as bytes32.
      */
     function _hashQuote(QuoteData calldata quote) private pure returns (bytes32) {
+        // forge-lint: disable-next-line(asm-keccak256)
         return keccak256(
             abi.encode(
                 _QUOTE_TYPEHASH,

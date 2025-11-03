@@ -22,6 +22,7 @@ contract CoverPoolFactoryTest is Test {
     address internal quoteSigner;
 
     bytes32 internal constant ADMIN_ROLE = 0x00;
+    // forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant DEFAULT_SPEC_ID = bytes32("spec");
     uint16 internal constant DEFAULT_POOL_FEE = 100;
 
@@ -196,7 +197,7 @@ contract CoverPoolFactoryTest is Test {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
         params.poolFeeBps = 2001;
 
-        vm.expectRevert(ICoverPoolFactory.InvalidFeeBps.selector);
+        vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
         vm.prank(creator);
         factory.createCoverPool(params);
     }
