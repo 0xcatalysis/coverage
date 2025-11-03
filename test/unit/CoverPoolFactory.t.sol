@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Errors} from "@openzeppelin/contracts/utils/Errors.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {CoverPool} from "../../src/CoverPool.sol";
@@ -204,6 +205,7 @@ contract CoverPoolFactoryTest is Test {
 
     function test_createCoverPool_WhenValid_RegistersPool() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+        address expected = factory.computeCoverPoolAddress(params);
 
         vm.expectEmit(false, true, true, true, address(factory));
         emit ICoverPoolFactory.CoverPoolCreated(
@@ -215,6 +217,7 @@ contract CoverPoolFactoryTest is Test {
 
         assertEq(factory.totalPools(), 1, "Unexpected total pools");
         assertTrue(factory.poolExists(factory.poolAt(0)), "Pool not exists");
+        assertEq(factory.poolAt(0), expected, "Unexpected pool address");
 
         address[] memory pools = factory.getPools(0, 1);
         assertEq(pools.length, 1, "Unexpected pool count");
@@ -225,6 +228,67 @@ contract CoverPoolFactoryTest is Test {
         assertTrue(deployed.hasRole(deployed.QUOTE_SIGNER_ROLE(), params.quoteSigner), "Quote signer role missing");
         assertEq(deployed.defaultSpecId(), params.defaultSpecId, "Default spec mismatch");
         assertEq(deployed.poolFeeBps(), params.poolFeeBps, "Pool fee mismatch");
+    }
+
+    function test_createCoverPool_WhenParamsReused_Reverts() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        vm.expectRevert(Errors.FailedDeployment.selector);
+        vm.prank(creator);
+        factory.createCoverPool(params);
+    }
+
+    function test_computeCoverPoolAddress_PredictsDeployment() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+        address expected = factory.computeCoverPoolAddress(params);
+
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        assertEq(factory.poolAt(0), expected, "Predicted address mismatch");
+    }
+
+    function test_computeCoverPoolAddress_WhenPolicyManagerChanges_UpdatesSalt() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+        address initialPrediction = factory.computeCoverPoolAddress(params);
+
+        address newPolicyManager = makeAddr("policyManagerNewSalt");
+        vm.prank(creator);
+        factory.setPolicyManager(newPolicyManager);
+
+        address updatedPrediction = factory.computeCoverPoolAddress(params);
+        assertNotEq(updatedPrediction, initialPrediction, "Expected salt to incorporate policy manager");
+
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        assertEq(factory.poolAt(0), updatedPrediction, "Deployment should use updated prediction");
+        CoverPool deployed = CoverPool(factory.poolAt(0));
+        assertTrue(deployed.hasRole(deployed.POLICY_MANAGER_ROLE(), newPolicyManager), "Updated policy manager not set");
+    }
+
+    function test_createCoverPool_WhenImplementationChanges_AllowsRedeployWithSameParams() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+
+        address firstPrediction = factory.computeCoverPoolAddress(params);
+        vm.prank(creator);
+        factory.createCoverPool(params);
+        assertEq(factory.poolAt(0), firstPrediction, "First deployment mismatch");
+
+        CoverPool newImplementation = new CoverPool();
+        vm.prank(creator);
+        factory.setCoverPoolImplementation(address(newImplementation));
+
+        address secondPrediction = factory.computeCoverPoolAddress(params);
+        assertNotEq(secondPrediction, firstPrediction, "Implementation change should affect prediction");
+
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        assertEq(factory.totalPools(), 2, "Unexpected total pools after second deployment");
+        assertEq(factory.poolAt(1), secondPrediction, "Second deployment mismatch");
     }
 
     function test_totalPools_WhenMultiplePools_Increments() public {

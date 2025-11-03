@@ -8,6 +8,7 @@ import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/ut
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 
@@ -93,10 +94,10 @@ contract CoverPoolFactory is
         onlyRole(CREATOR_ROLE)
         whenNotPaused
     {
-        address coverPool = coverPoolImplementation.clone();
+        bytes32 salt = _computeSalt(params);
 
-        // slither-disable-next-line unused-return
-        _pools.add(coverPool);
+        address coverPool = coverPoolImplementation.cloneDeterministic(salt);
+        require(_pools.add(coverPool), CoverPoolAlreadyDeployed(coverPool));
 
         ICoverPool(coverPool)
             .initialize(params.curator, policyManager, params.quoteSigner, params.defaultSpecId, params.poolFeeBps);
@@ -173,7 +174,30 @@ contract CoverPoolFactory is
     }
 
     /**
+     * @inheritdoc ICoverPoolFactory
+     */
+    function computeCoverPoolAddress(CreateCoverPoolParams calldata params) public view override returns (address) {
+        bytes32 salt = _computeSalt(params);
+        return coverPoolImplementation.predictDeterministicAddress(salt, address(this));
+    }
+
+    /**
      * @dev Authorizes UUPS upgrades.
      */
     function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+
+    /**
+     * @dev Computes the deterministic salt used with CREATE2.
+     * @param params Deployment inputs for the pool that anchor address derivation.
+     * @return Salt that uniquely identifies the pool for a given implementation and policy manager.
+     */
+    function _computeSalt(CreateCoverPoolParams calldata params) private view returns (bytes32) {
+        return EfficientHashLib.hash(
+            uint256(uint160(params.curator)),
+            uint256(uint160(params.quoteSigner)),
+            uint256(params.defaultSpecId),
+            uint256(params.poolFeeBps),
+            uint256(uint160(policyManager))
+        );
+    }
 }
