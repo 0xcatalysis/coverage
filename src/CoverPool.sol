@@ -38,10 +38,9 @@ contract CoverPool is
 
     uint16 private constant _MAX_POOL_FEE_BPS = 2000;
 
-    mapping(bytes32 policyCommit => bool bound) public override policyCommitBound;
-
     bytes32 public override defaultSpecId;
     uint16 public override poolFeeBps;
+    mapping(bytes32 policyCommit => bool bound) public override policyCommitBound;
 
     mapping(bytes32 poolPolicyId => BoundPolicy policy) private _poolPolicies;
 

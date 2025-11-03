@@ -213,7 +213,7 @@ contract CoverPoolFactoryTest is Test {
         factory.createCoverPool(params);
 
         assertEq(factory.totalPools(), 1, "Unexpected total pools");
-        assertTrue(factory.isPoolRegistered(factory.poolAt(0)), "Pool not registered");
+        assertTrue(factory.poolExists(factory.poolAt(0)), "Pool not exists");
 
         address[] memory pools = factory.getPools(0, 1);
         assertEq(pools.length, 1, "Unexpected pool count");
@@ -272,13 +272,57 @@ contract CoverPoolFactoryTest is Test {
         assertNotEq(firstPage[0], secondPage[0], "Overlap across pages");
     }
 
-    function test_isPoolRegistered_WhenUnknown_ReturnsFalse() public view {
-        assertFalse(factory.isPoolRegistered(address(0x1234)));
+    function test_poolExists_WhenUnknown_ReturnsFalse() public view {
+        assertFalse(factory.poolExists(address(0x1234)));
+    }
+
+    function test_poolAt_WhenPoolsDeployed_ReturnsExpectedAddress() public {
+        address pool = _createPool("primary");
+        assertEq(factory.poolAt(0), pool, "Pool address mismatch");
+    }
+
+    function test_totalPools_WhenNone_ReturnsZero() public view {
+        assertEq(factory.totalPools(), 0, "Expected zero pools");
+    }
+
+    function test_getPools_WhenOffsetNonZero_ReturnsSlice() public {
+        address first = _createPool("first");
+        address second = _createPool("second");
+        assertNotEq(first, second, "Pools should differ");
+
+        address[] memory slice = factory.getPools(1, 1);
+        assertEq(slice.length, 1, "Unexpected slice length");
+        assertEq(slice[0], second, "Unexpected pool returned");
+    }
+
+    function test_getPools_WhenLimitExceedsRemaining_Truncates() public {
+        _createPool("a");
+        _createPool("b");
+        _createPool("c");
+
+        uint256 total = factory.totalPools();
+        address[] memory slice = factory.getPools(1, 10);
+        assertEq(slice.length, total - 1, "Slice should truncate to remaining pools");
+
+        for (uint256 i = 0; i < slice.length; ++i) {
+            assertEq(slice[i], factory.poolAt(i + 1), "Unexpected pool order");
+        }
     }
 
     function _defaultCreateParams() internal view returns (ICoverPoolFactory.CreateCoverPoolParams memory params) {
         params = ICoverPoolFactory.CreateCoverPoolParams({
             curator: curator, quoteSigner: quoteSigner, defaultSpecId: DEFAULT_SPEC_ID, poolFeeBps: DEFAULT_POOL_FEE
         });
+    }
+
+    function _createPool(string memory label) internal returns (address pool) {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+        params.curator = makeAddr(string.concat("curator_", label));
+        params.quoteSigner = makeAddr(string.concat("signer_", label));
+
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        pool = factory.poolAt(factory.totalPools() - 1);
     }
 }

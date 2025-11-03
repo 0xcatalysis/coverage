@@ -114,18 +114,18 @@ interface ICoverPoolFactory is IAccessControl {
     /**
      * @notice Returns true when the pool has been registered.
      */
-    function isPoolRegistered(address pool) external view returns (bool);
-
-    /**
-     * @notice Returns the number of pools deployed by the factory.
-     */
-    function totalPools() external view returns (uint256);
+    function poolExists(address pool) external view returns (bool);
 
     /**
      * @notice Returns the pool address stored at the given index.
      * @param index Position in the pool array.
      */
     function poolAt(uint256 index) external view returns (address);
+
+    /**
+     * @notice Returns the number of pools deployed by the factory.
+     */
+    function totalPools() external view returns (uint256);
 
     /**
      * @notice Returns a slice of pool addresses.

@@ -7,6 +7,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 
@@ -23,14 +24,14 @@ contract CoverPoolFactory is
     ICoverPoolFactory
 {
     using Clones for address;
+    using EnumerableSet for EnumerableSet.AddressSet;
 
     bytes32 public constant override CREATOR_ROLE = keccak256("CREATOR_ROLE");
 
     address public override coverPoolImplementation;
     address public override policyManager;
 
-    address[] private _pools;
-    mapping(address pool => bool registered) private _poolRegistered;
+    EnumerableSet.AddressSet private _pools;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -94,11 +95,10 @@ contract CoverPoolFactory is
     {
         address coverPool = coverPoolImplementation.clone();
 
+        _pools.add(coverPool);
+
         ICoverPool(coverPool)
             .initialize(params.curator, policyManager, params.quoteSigner, params.defaultSpecId, params.poolFeeBps);
-
-        _pools.push(coverPool);
-        _poolRegistered[coverPool] = true;
 
         emit CoverPoolCreated(
             coverPool, params.curator, params.quoteSigner, policyManager, params.defaultSpecId, params.poolFeeBps
@@ -133,47 +133,42 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function isPoolRegistered(address pool) external view override returns (bool) {
-        return _poolRegistered[pool];
-    }
-
-    /**
-     * @inheritdoc ICoverPoolFactory
-     */
-    function totalPools() external view override returns (uint256) {
-        return _pools.length;
+    function poolExists(address pool) external view override returns (bool) {
+        return _pools.contains(pool);
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
     function poolAt(uint256 index) external view override returns (address) {
-        require(index < _pools.length, InvalidLimit());
-        return _pools[index];
+        require(index < _pools.length(), InvalidLimit());
+        return _pools.at(index);
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function getPools(uint256 offset, uint256 limit) external view override returns (address[] memory pools) {
+    function totalPools() external view override returns (uint256) {
+        return _pools.length();
+    }
+
+    /**
+     * @inheritdoc ICoverPoolFactory
+     */
+    function getPools(uint256 offset, uint256 limit) external view override returns (address[] memory) {
         require(limit != 0, InvalidLimit());
 
-        uint256 total = _pools.length;
+        uint256 total = _pools.length();
         if (total == 0 || offset >= total) {
             return new address[](0);
         }
 
-        uint256 to = offset + limit;
-        if (to > total) {
-            to = total;
+        uint256 end = offset + limit;
+        if (end > total) {
+            end = total;
         }
 
-        uint256 length = to - offset;
-        pools = new address[](length);
-
-        for (uint256 i = 0; i < length; ++i) {
-            pools[i] = _pools[offset + i];
-        }
+        return _pools.values(offset, end);
     }
 
     /**
