@@ -135,14 +135,14 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function poolExists(address pool) external view override returns (bool) {
+    function coverPoolExists(address pool) external view override returns (bool) {
         return _pools.contains(pool);
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function poolAt(uint256 index) external view override returns (address) {
+    function coverPoolAt(uint256 index) external view override returns (address) {
         require(index < _pools.length(), InvalidLimit());
         return _pools.at(index);
     }
@@ -150,14 +150,14 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function totalPools() external view override returns (uint256) {
+    function coverTotalPools() external view override returns (uint256) {
         return _pools.length();
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function getPools(uint256 offset, uint256 limit) external view override returns (address[] memory) {
+    function getCoverPools(uint256 offset, uint256 limit) external view override returns (address[] memory) {
         require(limit != 0, InvalidLimit());
 
         uint256 total = _pools.length();

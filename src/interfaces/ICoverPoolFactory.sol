@@ -121,23 +121,23 @@ interface ICoverPoolFactory is IAccessControl {
     /**
      * @notice Returns true when the pool has been registered.
      */
-    function poolExists(address pool) external view returns (bool);
+    function coverPoolExists(address pool) external view returns (bool);
 
     /**
      * @notice Returns the pool address stored at the given index.
      * @param index Position in the pool array.
      */
-    function poolAt(uint256 index) external view returns (address);
+    function coverPoolAt(uint256 index) external view returns (address);
 
     /**
      * @notice Returns the number of pools deployed by the factory.
      */
-    function totalPools() external view returns (uint256);
+    function coverTotalPools() external view returns (uint256);
 
     /**
      * @notice Returns a slice of pool addresses.
      * @param offset Zero-based index to start the page from.
      * @param limit Maximum number of entries to return. Must be greater than zero.
      */
-    function getPools(uint256 offset, uint256 limit) external view returns (address[] memory pools);
+    function getCoverPools(uint256 offset, uint256 limit) external view returns (address[] memory pools);
 }
