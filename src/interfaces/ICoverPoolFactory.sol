@@ -16,8 +16,6 @@ interface ICoverPoolFactory is IAccessControl {
         address curator;
         /// @notice Initial EIP-712 quote signer authorized on the pool.
         address quoteSigner;
-        /// @notice ERC20 token used for claim payouts.
-        address payoutToken;
         /// @notice Default spec identifier applied when quotes omit an override.
         bytes32 defaultSpecId;
         /// @notice Basis points routed to the curator on premium settlement.
@@ -35,7 +33,6 @@ interface ICoverPoolFactory is IAccessControl {
     struct PoolConfig {
         address pool;
         address curator;
-        address payoutToken;
         bytes32 defaultSpecId;
         uint16 poolFeeBps;
         uint16 platformFeeBps;
