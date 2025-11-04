@@ -4,9 +4,11 @@ pragma solidity 0.8.28;
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Errors} from "@openzeppelin/contracts/utils/Errors.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
+import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {CoverPool} from "../../src/CoverPool.sol";
 import {CoverPoolFactory} from "../../src/CoverPoolFactory.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
@@ -205,7 +207,8 @@ contract CoverPoolFactoryTest is Test {
 
     function test_createCoverPool_WhenValid_RegistersPool() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
-        address expected = factory.computeCoverPoolAddress(params);
+        address expected = _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
+        assertEq(factory.computeCoverPoolAddress(params), expected, "Prediction mismatch");
 
         vm.expectEmit(false, true, true, true, address(factory));
         emit ICoverPoolFactory.CoverPoolCreated(
@@ -242,7 +245,8 @@ contract CoverPoolFactoryTest is Test {
 
     function test_computeCoverPoolAddress_PredictsDeployment() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
-        address expected = factory.computeCoverPoolAddress(params);
+        address expected = _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
+        assertEq(factory.computeCoverPoolAddress(params), expected, "Prediction mismatch");
 
         vm.prank(creator);
         factory.createCoverPool(params);
@@ -252,13 +256,17 @@ contract CoverPoolFactoryTest is Test {
 
     function test_computeCoverPoolAddress_WhenPolicyManagerChanges_UpdatesSalt() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
-        address initialPrediction = factory.computeCoverPoolAddress(params);
+        address initialPrediction =
+            _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
+        assertEq(factory.computeCoverPoolAddress(params), initialPrediction, "Prediction mismatch");
 
         address newPolicyManager = makeAddr("policyManagerNewSalt");
         vm.prank(creator);
         factory.setPolicyManager(newPolicyManager);
 
-        address updatedPrediction = factory.computeCoverPoolAddress(params);
+        address updatedPrediction =
+            _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
+        assertEq(factory.computeCoverPoolAddress(params), updatedPrediction, "Prediction mismatch");
         assertNotEq(updatedPrediction, initialPrediction, "Expected salt to incorporate policy manager");
 
         vm.prank(creator);
@@ -272,7 +280,9 @@ contract CoverPoolFactoryTest is Test {
     function test_createCoverPool_WhenImplementationChanges_AllowsRedeployWithSameParams() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
 
-        address firstPrediction = factory.computeCoverPoolAddress(params);
+        address firstPrediction =
+            _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
+        assertEq(factory.computeCoverPoolAddress(params), firstPrediction, "Prediction mismatch");
         vm.prank(creator);
         factory.createCoverPool(params);
         assertEq(factory.coverPoolAt(0), firstPrediction, "First deployment mismatch");
@@ -281,7 +291,9 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.setCoverPoolImplementation(address(newImplementation));
 
-        address secondPrediction = factory.computeCoverPoolAddress(params);
+        address secondPrediction =
+            _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
+        assertEq(factory.computeCoverPoolAddress(params), secondPrediction, "Prediction mismatch");
         assertNotEq(secondPrediction, firstPrediction, "Implementation change should affect prediction");
 
         vm.prank(creator);
@@ -372,6 +384,36 @@ contract CoverPoolFactoryTest is Test {
         for (uint256 i = 0; i < slice.length; ++i) {
             assertEq(slice[i], factory.coverPoolAt(i + 1), "Unexpected pool order");
         }
+    }
+
+    function _predictCoverPoolAddress(
+        ICoverPoolFactory.CreateCoverPoolParams memory params,
+        address implementationAddress,
+        address policyManagerAddress
+    )
+        internal
+        view
+        returns (address)
+    {
+        bytes32 salt = _computeSalt(params, policyManagerAddress);
+        return Clones.predictDeterministicAddress(implementationAddress, salt, address(factory));
+    }
+
+    function _computeSalt(
+        ICoverPoolFactory.CreateCoverPoolParams memory params,
+        address policyManagerAddress
+    )
+        internal
+        pure
+        returns (bytes32)
+    {
+        return EfficientHashLib.hash(
+            uint256(uint160(params.curator)),
+            uint256(uint160(params.quoteSigner)),
+            uint256(params.defaultSpecId),
+            uint256(params.poolFeeBps),
+            uint256(uint160(policyManagerAddress))
+        );
     }
 
     function _defaultCreateParams() internal view returns (ICoverPoolFactory.CreateCoverPoolParams memory params) {
