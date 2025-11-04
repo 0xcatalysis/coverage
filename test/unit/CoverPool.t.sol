@@ -520,14 +520,7 @@ contract CoverPoolTest is Test {
         return _signQuoteWithKey(quote, quoteSignerKey);
     }
 
-    function _signQuoteWithKey(
-        ICoverPool.QuoteData memory quote,
-        uint256 key
-    )
-        private
-        view
-        returns (bytes memory)
-    {
+    function _signQuoteWithKey(ICoverPool.QuoteData memory quote, uint256 key) private view returns (bytes memory) {
         bytes32 structHash = _structHash(quote);
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", coverPool.quoteDomainSeparator(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, digest);
