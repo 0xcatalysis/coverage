@@ -5,6 +5,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {Test} from "forge-std/Test.sol";
 import {CoverPool} from "../../src/CoverPool.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
@@ -528,22 +529,20 @@ contract CoverPoolTest is Test {
     }
 
     function _structHash(ICoverPool.QuoteData memory quote) private pure returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                QUOTE_TYPEHASH,
-                quote.pool,
-                quote.coverageLimit,
-                quote.basePremium,
-                quote.riskBufferDeposit,
-                quote.specId,
-                quote.termsHash,
-                quote.payoutReceiver,
-                quote.committeeId,
-                quote.operator,
-                quote.startTime,
-                quote.maturityTime,
-                quote.quoteExpiry
-            )
+        return EfficientHashLib.hash(
+            uint256(QUOTE_TYPEHASH),
+            uint256(uint160(quote.pool)),
+            quote.coverageLimit,
+            quote.basePremium,
+            quote.riskBufferDeposit,
+            uint256(quote.specId),
+            uint256(quote.termsHash),
+            uint256(uint160(quote.payoutReceiver)),
+            uint256(quote.committeeId),
+            uint256(uint160(quote.operator)),
+            uint256(quote.startTime),
+            uint256(quote.maturityTime),
+            uint256(quote.quoteExpiry)
         );
     }
 }
