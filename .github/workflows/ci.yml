@@ -85,7 +85,7 @@ jobs:
       - name: Generate abis
         run: |
           mkdir -p abis
-          for contract in CoverPoolFactory CoverPoolRegistry CoverPool ICoverPoolFactory ICoverPoolRegistry ICoverPool; do
+          for contract in CoverPoolFactory CoverPool ICoverPoolFactory ICoverPool; do
             find out -name "$contract.json" | while read file; do
               dir_name=$(dirname "$file" | sed 's|^out/||')
               mkdir -p "abis/$dir_name"
