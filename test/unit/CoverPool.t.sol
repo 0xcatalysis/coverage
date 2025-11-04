@@ -233,13 +233,16 @@ contract CoverPoolTest is Test {
         address caller = makeAddr("notAdmin");
         bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, caller, coverPool.DEFAULT_ADMIN_ROLE()
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, caller));
         vm.prank(caller);
         coverPool.grantRole(signerRole, makeAddr("randomSigner"));
+    }
+
+    function test_grantRole_WhenDefaultAdminRequested_Reverts() public {
+        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
+        vm.expectRevert(ICoverPool.DefaultAdminImmutable.selector);
+        vm.prank(curator);
+        coverPool.grantRole(adminRole, policyManager);
     }
 
     function test_revokeRole_WhenCalledByOwner_RemovesQuoteSigner() public {
@@ -260,13 +263,48 @@ contract CoverPoolTest is Test {
         vm.prank(curator);
         coverPool.grantRole(signerRole, caller);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, caller, coverPool.DEFAULT_ADMIN_ROLE()
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, caller));
         vm.prank(caller);
         coverPool.revokeRole(signerRole, quoteSigner);
+    }
+
+    function test_revokeRole_WhenDefaultAdminRequested_Reverts() public {
+        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
+        vm.expectRevert(ICoverPool.DefaultAdminImmutable.selector);
+        vm.prank(curator);
+        coverPool.revokeRole(adminRole, curator);
+    }
+
+    function test_renounceRole_WhenDefaultAdminRequested_Reverts() public {
+        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
+        vm.expectRevert(ICoverPool.DefaultAdminImmutable.selector);
+        vm.prank(curator);
+        coverPool.renounceRole(adminRole, curator);
+    }
+
+    function test_renounceRole_WhenQuoteSignerRenounces_RemovesRole() public {
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+        address newSigner = makeAddr("renouncingSigner");
+
+        vm.prank(curator);
+        coverPool.grantRole(signerRole, newSigner);
+
+        vm.prank(newSigner);
+        coverPool.renounceRole(signerRole, newSigner);
+
+        assertFalse(coverPool.hasRole(signerRole, newSigner), "Quote signer role not renounced");
+    }
+
+    function test_renounceRole_WhenOwnerRenouncesNonAdmin_RemovesRole() public {
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+
+        vm.prank(curator);
+        coverPool.grantRole(signerRole, curator);
+
+        vm.prank(curator);
+        coverPool.renounceRole(signerRole, curator);
+
+        assertFalse(coverPool.hasRole(signerRole, curator), "Owner role renounce failed");
     }
 
     function test_transferOwnershipTwoStep_UpdatesAdminRole() public {
@@ -289,11 +327,7 @@ contract CoverPoolTest is Test {
         assertTrue(coverPool.hasRole(signerRole, additionalSigner), "New owner failed to grant role");
         vm.stopPrank();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, curator, coverPool.DEFAULT_ADMIN_ROLE()
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, curator));
         vm.prank(curator);
         coverPool.grantRole(signerRole, makeAddr("shouldFail"));
     }
@@ -324,11 +358,7 @@ contract CoverPoolTest is Test {
         assertTrue(coverPool.hasRole(signerRole, newSigner), "New owner could not grant quote signer role");
         vm.stopPrank();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, curator, coverPool.DEFAULT_ADMIN_ROLE()
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, curator));
         vm.prank(curator);
         coverPool.revokeRole(signerRole, newSigner);
     }

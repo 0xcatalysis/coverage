@@ -161,6 +161,11 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
     error InvalidFeeBps();
 
     /**
+     * @notice Reverts when attempting to modify the default admin role outside ownership transfers.
+     */
+    error DefaultAdminImmutable();
+
+    /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param curator_ Address assigned as the owner (curator).
      * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
