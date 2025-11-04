@@ -9,6 +9,7 @@ import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/crypt
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {IOwnable2Step} from "./interfaces/IOwnable2Step.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 
@@ -56,6 +57,14 @@ contract CoverPool is
 
         uint256 currentTimestamp = block.timestamp;
         require(quote.quoteExpiry >= currentTimestamp, QuoteExpired(quote.quoteExpiry, currentTimestamp));
+        _;
+    }
+
+    /**
+     * @dev Prevents direct interaction with the default admin role outside ownership transfers.
+     */
+    modifier nonAdminRole(bytes32 role) {
+        require(role != DEFAULT_ADMIN_ROLE, ICoverPool.DefaultAdminImmutable());
         _;
     }
 
@@ -233,6 +242,53 @@ contract CoverPool is
      */
     function acceptOwnership() public override (IOwnable2Step, Ownable2StepUpgradeable) {
         super.acceptOwnership();
+    }
+
+    /**
+     * @inheritdoc AccessControlUpgradeable
+     * @dev Restricted to the owner; DEFAULT_ADMIN_ROLE cannot be delegated manually.
+     */
+    function grantRole(
+        bytes32 role,
+        address account
+    )
+        public
+        override (AccessControlUpgradeable, IAccessControl)
+        onlyOwner
+        nonAdminRole(role)
+    {
+        _grantRole(role, account);
+    }
+
+    /**
+     * @inheritdoc AccessControlUpgradeable
+     * @dev Restricted to the owner; DEFAULT_ADMIN_ROLE cannot be revoked manually.
+     */
+    function revokeRole(
+        bytes32 role,
+        address account
+    )
+        public
+        override (AccessControlUpgradeable, IAccessControl)
+        onlyOwner
+        nonAdminRole(role)
+    {
+        _revokeRole(role, account);
+    }
+
+    /**
+     * @inheritdoc AccessControlUpgradeable
+     * @dev DEFAULT_ADMIN_ROLE cannot be renounced; ownership transfer handles admin rotation.
+     */
+    function renounceRole(
+        bytes32 role,
+        address callerConfirmation
+    )
+        public
+        override (AccessControlUpgradeable, IAccessControl)
+        nonAdminRole(role)
+    {
+        super.renounceRole(role, callerConfirmation);
     }
 
     /**
