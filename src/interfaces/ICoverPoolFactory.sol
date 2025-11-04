@@ -66,12 +66,6 @@ interface ICoverPoolFactory is IAccessControl {
     error InvalidLimit();
 
     /**
-     * @notice Reverts when attempting to deploy a pool that already exists.
-     * @param pool Address that would be redeployed.
-     */
-    error CoverPoolAlreadyDeployed(address pool);
-
-    /**
      * @notice Pauses cover pool creation.
      */
     function pause() external;

@@ -97,7 +97,8 @@ contract CoverPoolFactory is
         bytes32 salt = _computeSalt(params);
 
         address coverPool = coverPoolImplementation.cloneDeterministic(salt);
-        require(_pools.add(coverPool), CoverPoolAlreadyDeployed(coverPool));
+        // slither-disable-next-line unused-return
+        _pools.add(coverPool);
 
         ICoverPool(coverPool)
             .initialize(params.curator, policyManager, params.quoteSigner, params.defaultSpecId, params.poolFeeBps);
