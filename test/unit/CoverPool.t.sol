@@ -30,7 +30,6 @@ contract CoverPoolTest is Test {
 
     bytes32 private specId;
     bytes32 private termsHash;
-    bytes32 private defaultSpecId;
     uint16 private poolFeeBps;
 
     function setUp() public {
@@ -51,44 +50,36 @@ contract CoverPoolTest is Test {
 
         specId = keccak256("SPEC_ID");
         termsHash = keccak256("TERMS");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        defaultSpecId = bytes32("DEFAULT_SPEC");
         poolFeeBps = 125;
 
         implementation = new CoverPool();
         address clone = Clones.clone(address(implementation));
         coverPool = CoverPool(clone);
-        coverPool.initialize(curator, policyManager, quoteSigner, defaultSpecId, poolFeeBps);
+        coverPool.initialize(curator, policyManager, quoteSigner, poolFeeBps);
     }
 
     function test_initialize_WhenCuratorZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(address(0), policyManager, quoteSigner, defaultSpecId, poolFeeBps);
+        pool.initialize(address(0), policyManager, quoteSigner, poolFeeBps);
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, address(0), quoteSigner, defaultSpecId, poolFeeBps);
+        pool.initialize(curator, address(0), quoteSigner, poolFeeBps);
     }
 
     function test_initialize_WhenQuoteSignerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, policyManager, address(0), defaultSpecId, poolFeeBps);
+        pool.initialize(curator, policyManager, address(0), poolFeeBps);
     }
 
     function test_initialize_WhenFeeTooHigh_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
-        pool.initialize(curator, policyManager, quoteSigner, defaultSpecId, 2100);
-    }
-
-    function test_initialize_WhenDefaultSpecIdZero_Reverts() public {
-        CoverPool pool = CoverPool(Clones.clone(address(implementation)));
-        vm.expectRevert(ICoverPool.InvalidSpecId.selector);
-        pool.initialize(curator, policyManager, quoteSigner, bytes32(0), poolFeeBps);
+        pool.initialize(curator, policyManager, quoteSigner, 2100);
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -108,37 +99,8 @@ contract CoverPoolTest is Test {
         );
         assertEq(coverPool.quoteDomainSeparator(), expectedDomain, "Domain separator mismatch");
         assertTrue(coverPool.supportsInterface(type(IAccessControl).interfaceId), "AccessControl interface missing");
-        assertEq(coverPool.defaultSpecId(), defaultSpecId, "Default spec id mismatch");
         assertEq(coverPool.poolFeeBps(), poolFeeBps, "Pool fee mismatch");
         assertFalse(coverPool.paused(), "Pool unexpectedly paused");
-    }
-
-    function test_setDefaultSpecId_WhenCallerNotCurator_Reverts() public {
-        // forge-lint: disable-next-line(unsafe-typecast)
-        bytes32 newSpecId = bytes32("newSpec");
-
-        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager));
-        vm.prank(policyManager);
-        coverPool.setDefaultSpecId(newSpecId);
-    }
-
-    function test_setDefaultSpecId_WhenValid_UpdatesState() public {
-        // forge-lint: disable-next-line(unsafe-typecast)
-        bytes32 newSpecId = bytes32("newSpec");
-
-        vm.expectEmit(true, true, true, true, address(coverPool));
-        emit ICoverPool.DefaultSpecIdSet(defaultSpecId, newSpecId);
-
-        vm.prank(curator);
-        coverPool.setDefaultSpecId(newSpecId);
-
-        assertEq(coverPool.defaultSpecId(), newSpecId, "Spec id not updated");
-    }
-
-    function test_setDefaultSpecId_WhenZero_Reverts() public {
-        vm.expectRevert(ICoverPool.InvalidSpecId.selector);
-        vm.prank(curator);
-        coverPool.setDefaultSpecId(bytes32(0));
     }
 
     function test_setPoolFeeBps_WhenCallerNotCurator_Reverts() public {
@@ -404,6 +366,15 @@ contract CoverPoolTest is Test {
         bytes memory signature = _signQuote(quote);
 
         vm.expectRevert(ICoverPool.InvalidCoverageLimit.selector);
+        coverPool.validateQuote(quote, signature);
+    }
+
+    function test_validateQuote_WhenSpecIdZero_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        quote.specId = bytes32(0);
+        bytes memory signature = _signQuote(quote);
+
+        vm.expectRevert(ICoverPool.InvalidSpecId.selector);
         coverPool.validateQuote(quote, signature);
     }
 

@@ -25,8 +25,6 @@ contract CoverPoolFactoryTest is Test {
     address internal quoteSigner;
 
     bytes32 internal constant ADMIN_ROLE = 0x00;
-    // forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant DEFAULT_SPEC_ID = bytes32("spec");
     uint16 internal constant DEFAULT_POOL_FEE = 100;
 
     bytes32 internal creatorRole;
@@ -212,7 +210,7 @@ contract CoverPoolFactoryTest is Test {
 
         vm.expectEmit(false, true, true, true, address(factory));
         emit ICoverPoolFactory.CoverPoolCreated(
-            address(0), params.curator, params.quoteSigner, policyManager, params.defaultSpecId, params.poolFeeBps
+            address(0), params.curator, params.quoteSigner, policyManager, params.poolFeeBps
         );
 
         vm.prank(creator);
@@ -229,7 +227,6 @@ contract CoverPoolFactoryTest is Test {
         assertEq(deployed.owner(), params.curator, "Curator not set");
         assertTrue(deployed.hasRole(deployed.POLICY_MANAGER_ROLE(), policyManager), "Policy manager role missing");
         assertTrue(deployed.hasRole(deployed.QUOTE_SIGNER_ROLE(), params.quoteSigner), "Quote signer role missing");
-        assertEq(deployed.defaultSpecId(), params.defaultSpecId, "Default spec mismatch");
         assertEq(deployed.poolFeeBps(), params.poolFeeBps, "Pool fee mismatch");
     }
 
@@ -410,7 +407,6 @@ contract CoverPoolFactoryTest is Test {
         return EfficientHashLib.hash(
             uint256(uint160(params.curator)),
             uint256(uint160(params.quoteSigner)),
-            uint256(params.defaultSpecId),
             uint256(params.poolFeeBps),
             uint256(uint160(policyManagerAddress))
         );
@@ -418,7 +414,7 @@ contract CoverPoolFactoryTest is Test {
 
     function _defaultCreateParams() internal view returns (ICoverPoolFactory.CreateCoverPoolParams memory params) {
         params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator, quoteSigner: quoteSigner, defaultSpecId: DEFAULT_SPEC_ID, poolFeeBps: DEFAULT_POOL_FEE
+            curator: curator, quoteSigner: quoteSigner, poolFeeBps: DEFAULT_POOL_FEE
         });
     }
 

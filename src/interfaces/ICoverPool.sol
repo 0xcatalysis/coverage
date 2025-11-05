@@ -72,13 +72,6 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
     event PolicyBound(bytes32 indexed policyCommit, bytes32 indexed poolPolicyId, uint256 coverageLimit);
 
     /**
-     * @notice Emitted when the curator updates the default spec identifier.
-     * @param previousSpecId Default spec identifier before the update.
-     * @param newSpecId Default spec identifier after the update.
-     */
-    event DefaultSpecIdSet(bytes32 indexed previousSpecId, bytes32 indexed newSpecId);
-
-    /**
      * @notice Emitted when the curator updates the pool fee basis points.
      * @param previousPoolFeeBps Pool fee basis points before the update.
      * @param newPoolFeeBps Pool fee basis points after the update.
@@ -168,17 +161,9 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
      * @param curator_ Address assigned as the owner (curator).
      * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
-     * @param defaultSpecId_ Default spec identifier applied when quotes omit a value.
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
      */
-    function initialize(
-        address curator_,
-        address policyManager_,
-        address quoteSigner_,
-        bytes32 defaultSpecId_,
-        uint16 poolFeeBps_
-    )
-        external;
+    function initialize(address curator_, address policyManager_, address quoteSigner_, uint16 poolFeeBps_) external;
 
     /**
      * @notice Pauses quoting and policy binding on the pool.
@@ -189,12 +174,6 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
      * @notice Resumes quoting and policy binding on the pool.
      */
     function unpause() external;
-
-    /**
-     * @notice Updates the default spec identifier applied to new quotes.
-     * @param defaultSpecId_ Default spec identifier applied to new quotes.
-     */
-    function setDefaultSpecId(bytes32 defaultSpecId_) external;
 
     /**
      * @notice Updates the pool fee expressed in basis points.
@@ -258,11 +237,6 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
      * @notice AccessControl identifier for approved quote signers.
      */
     function QUOTE_SIGNER_ROLE() external pure returns (bytes32);
-
-    /**
-     * @notice Default spec identifier used when quotes omit a value.
-     */
-    function defaultSpecId() external view returns (bytes32);
 
     /**
      * @notice Pool fee expressed in basis points that is applied to premiums.

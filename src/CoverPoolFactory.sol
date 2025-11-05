@@ -97,15 +97,12 @@ contract CoverPoolFactory is
         bytes32 salt = _computeSalt(params);
 
         address coverPool = coverPoolImplementation.cloneDeterministic(salt);
-        ICoverPool(coverPool)
-            .initialize(params.curator, policyManager, params.quoteSigner, params.defaultSpecId, params.poolFeeBps);
+        ICoverPool(coverPool).initialize(params.curator, policyManager, params.quoteSigner, params.poolFeeBps);
 
         // slither-disable-next-line unused-return
         _pools.add(coverPool);
 
-        emit CoverPoolCreated(
-            coverPool, params.curator, params.quoteSigner, policyManager, params.defaultSpecId, params.poolFeeBps
-        );
+        emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager, params.poolFeeBps);
     }
 
     /**
@@ -196,7 +193,6 @@ contract CoverPoolFactory is
         return EfficientHashLib.hash(
             uint256(uint160(params.curator)),
             uint256(uint160(params.quoteSigner)),
-            uint256(params.defaultSpecId),
             uint256(params.poolFeeBps),
             uint256(uint160(policyManager))
         );

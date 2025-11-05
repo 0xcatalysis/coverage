@@ -38,8 +38,6 @@ contract CoverPool is
     );
 
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
-
-    bytes32 public override defaultSpecId;
     uint16 public override poolFeeBps;
     mapping(bytes32 policyCommit => bool bound) public override policyCommitBound;
 
@@ -52,6 +50,7 @@ contract CoverPool is
     modifier validateQuoteData(QuoteData calldata quote) {
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
         require(quote.coverageLimit != 0, InvalidCoverageLimit());
+        require(quote.specId != bytes32(0), InvalidSpecId());
         require(quote.payoutReceiver != address(0) && quote.operator != address(0), InvalidQuoteRecipient());
         require(quote.startTime < quote.maturityTime, InvalidCoverageWindow());
 
@@ -80,7 +79,6 @@ contract CoverPool is
         address curator_,
         address policyManager_,
         address quoteSigner_,
-        bytes32 defaultSpecId_,
         uint16 poolFeeBps_
     )
         external
@@ -88,7 +86,6 @@ contract CoverPool is
     {
         require(curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0), ZeroAddress());
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
-        require(defaultSpecId_ != bytes32(0), InvalidSpecId());
 
         __Ownable_init(curator_);
         __Ownable2Step_init();
@@ -100,7 +97,6 @@ contract CoverPool is
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
         _grantRole(QUOTE_SIGNER_ROLE, quoteSigner_);
 
-        defaultSpecId = defaultSpecId_;
         poolFeeBps = poolFeeBps_;
     }
 
@@ -116,18 +112,6 @@ contract CoverPool is
      */
     function unpause() external override onlyOwner {
         _unpause();
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
-    function setDefaultSpecId(bytes32 defaultSpecId_) external override onlyOwner {
-        require(defaultSpecId_ != bytes32(0), InvalidSpecId());
-
-        bytes32 previousSpecId = defaultSpecId;
-        defaultSpecId = defaultSpecId_;
-
-        emit DefaultSpecIdSet(previousSpecId, defaultSpecId_);
     }
 
     /**

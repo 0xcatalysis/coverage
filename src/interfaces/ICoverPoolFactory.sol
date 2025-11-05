@@ -16,8 +16,6 @@ interface ICoverPoolFactory is IAccessControl {
         address curator;
         /// @notice Initial EIP-712 quote signer authorized on the pool.
         address quoteSigner;
-        /// @notice Default spec identifier applied when quotes omit an override.
-        bytes32 defaultSpecId;
         /// @notice Basis points routed to the curator on premium settlement.
         uint16 poolFeeBps;
     }
@@ -28,7 +26,6 @@ interface ICoverPoolFactory is IAccessControl {
      * @param curator Curator that owns the pool.
      * @param quoteSigner Initial quote signer configured on the pool.
      * @param policyManager PolicyManager address assigned on initialization.
-     * @param defaultSpecId Default spec configured for the pool.
      * @param poolFeeBps Default pool fee configured for the pool.
      */
     event CoverPoolCreated(
@@ -36,7 +33,6 @@ interface ICoverPoolFactory is IAccessControl {
         address indexed curator,
         address quoteSigner,
         address policyManager,
-        bytes32 defaultSpecId,
         uint16 poolFeeBps
     );
 
