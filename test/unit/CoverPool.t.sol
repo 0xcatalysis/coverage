@@ -410,15 +410,15 @@ contract CoverPoolTest is Test {
         bytes memory signature = _signQuote(quote);
         bytes32 policyCommit = coverPool.validateQuote(quote, signature);
 
-        bytes32 expectedPoolPolicyId = keccak256(abi.encodePacked(address(coverPool), policyCommit));
+        bytes32 expectedPolicyId = keccak256(abi.encodePacked(address(coverPool), policyCommit));
 
         vm.expectEmit(true, true, false, true, address(coverPool));
-        emit ICoverPool.PolicyBound(policyCommit, expectedPoolPolicyId, quote.coverageLimit);
+        emit ICoverPool.PolicyBound(policyCommit, expectedPolicyId, quote.coverageLimit);
 
         vm.prank(policyManager);
         ICoverPool.BoundPolicy memory bound = coverPool.bindPolicy(policyCommit, quote, signature);
 
-        assertEq(bound.poolPolicyId, expectedPoolPolicyId, "Pool policy id mismatch");
+        assertEq(bound.policyId, expectedPolicyId, "Pool policy id mismatch");
         assertEq(bound.specId, quote.specId, "Spec id mismatch");
         assertEq(bound.termsHash, quote.termsHash, "Terms hash mismatch");
         assertEq(bound.coverageLimit, quote.coverageLimit, "Coverage limit mismatch");
@@ -428,8 +428,8 @@ contract CoverPoolTest is Test {
         assertEq(bound.startTime, quote.startTime, "Start time mismatch");
         assertEq(bound.maturityTime, quote.maturityTime, "Maturity time mismatch");
 
-        ICoverPool.BoundPolicy memory stored = coverPool.getPoolPolicy(bound.poolPolicyId);
-        assertEq(stored.poolPolicyId, bound.poolPolicyId, "Stored policy not found");
+        ICoverPool.BoundPolicy memory stored = coverPool.getBoundPolicy(bound.policyId);
+        assertEq(stored.policyId, bound.policyId, "Stored policy not found");
     }
 
     function test_bindPolicy_WhenCalledTwice_Reverts() public {
@@ -498,7 +498,7 @@ contract CoverPoolTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyNotFound.selector, bytes32("unknown")));
         // forge-lint: disable-next-line(unsafe-typecast)
-        coverPool.getPoolPolicy(bytes32("unknown"));
+        coverPool.getBoundPolicy(bytes32("unknown"));
     }
 
     function _defaultQuote() private view returns (ICoverPool.QuoteData memory quote) {

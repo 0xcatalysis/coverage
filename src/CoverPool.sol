@@ -38,10 +38,11 @@ contract CoverPool is
     );
 
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
-    uint16 public override poolFeeBps;
-    mapping(bytes32 policyCommit => bool bound) public override policyCommitBound;
 
-    mapping(bytes32 poolPolicyId => BoundPolicy policy) private _poolPolicies;
+    uint16 public override poolFeeBps;
+    mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
+
+    mapping(bytes32 policyId => BoundPolicy policy) private boundPolicies;
 
     /**
      * @dev Ensures incoming quote data matches pool metadata and timing constraints before processing.
@@ -145,14 +146,14 @@ contract CoverPool is
 
         bytes32 calculatedPolicyCommit = _validateQuote(quote, signature);
         require(calculatedPolicyCommit == policyCommit, PolicyCommitMismatch(calculatedPolicyCommit, policyCommit));
-        require(!policyCommitBound[policyCommit], PolicyAlreadyBound(policyCommit));
+        require(!boundPolicyCommits[policyCommit], PolicyAlreadyBound(policyCommit));
 
-        policyCommitBound[policyCommit] = true;
+        boundPolicyCommits[policyCommit] = true;
 
-        bytes32 poolPolicyId = _derivePoolPolicyId(policyCommit);
+        bytes32 policyId = _derivePolicyId(policyCommit);
 
         boundPolicy = BoundPolicy({
-            poolPolicyId: poolPolicyId,
+            policyId: policyId,
             specId: quote.specId,
             termsHash: quote.termsHash,
             coverageLimit: quote.coverageLimit,
@@ -163,9 +164,9 @@ contract CoverPool is
             maturityTime: quote.maturityTime
         });
 
-        _poolPolicies[poolPolicyId] = boundPolicy;
+        boundPolicies[policyId] = boundPolicy;
 
-        emit PolicyBound(policyCommit, poolPolicyId, quote.coverageLimit);
+        emit PolicyBound(policyCommit, policyId, quote.coverageLimit);
     }
 
     /**
@@ -178,9 +179,9 @@ contract CoverPool is
     /**
      * @inheritdoc ICoverPool
      */
-    function getPoolPolicy(bytes32 poolPolicyId) external view override returns (BoundPolicy memory policy) {
-        policy = _poolPolicies[poolPolicyId];
-        require(policy.poolPolicyId != bytes32(0), PolicyNotFound(poolPolicyId));
+    function getBoundPolicy(bytes32 policyId) external view override returns (BoundPolicy memory policy) {
+        policy = boundPolicies[policyId];
+        require(policy.policyId != bytes32(0), PolicyNotFound(policyId));
     }
 
     /**
@@ -314,10 +315,10 @@ contract CoverPool is
     /**
      * @dev Derives a pool-specific identifier for storing bound policy metadata.
      * @param policyCommit Commit hash associated with the bound policy.
-     * @return poolPolicyId Unique identifier produced for the pool slice.
+     * @return policyId Unique identifier produced for the pool slice.
      */
-    function _derivePoolPolicyId(bytes32 policyCommit) private view returns (bytes32 poolPolicyId) {
-        poolPolicyId = keccak256(abi.encodePacked(address(this), policyCommit));
+    function _derivePolicyId(bytes32 policyCommit) private view returns (bytes32 policyId) {
+        policyId = keccak256(abi.encodePacked(address(this), policyCommit));
     }
 
     /**

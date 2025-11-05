@@ -44,7 +44,7 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
      */
     struct BoundPolicy {
         /// @notice Pool-chosen identifier for the bound policy slice.
-        bytes32 poolPolicyId;
+        bytes32 policyId;
         /// @notice Spec identifier attached to the bound policy slice.
         bytes32 specId;
         /// @notice Terms hash anchored for the bound policy slice.
@@ -66,10 +66,10 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
     /**
      * @notice Emitted after a policy commit binds successfully against the pool.
      * @param policyCommit Deterministic hash referencing the multi-pool policy schedule.
-     * @param poolPolicyId Pool-provided identifier for the policy slice.
+     * @param policyId Pool-provided identifier for the policy slice.
      * @param coverageLimit Coverage notional locked from the pool.
      */
-    event PolicyBound(bytes32 indexed policyCommit, bytes32 indexed poolPolicyId, uint256 coverageLimit);
+    event PolicyBound(bytes32 indexed policyCommit, bytes32 indexed policyId, uint256 coverageLimit);
 
     /**
      * @notice Emitted when the curator updates the pool fee basis points.
@@ -137,9 +137,9 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
 
     /**
      * @notice Reverts when querying data for an unknown pool policy identifier.
-     * @param poolPolicyId Identifier that failed the lookup.
+     * @param policyId Identifier that failed the lookup.
      */
-    error PolicyNotFound(bytes32 poolPolicyId);
+    error PolicyNotFound(bytes32 policyId);
 
     /**
      * @notice Reverts when attempting to bind using an empty policy commit value.
@@ -200,7 +200,7 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
     /**
      * @notice Returns whether a policy commit has already been bound.
      */
-    function policyCommitBound(bytes32 policyCommit) external view returns (bool);
+    function boundPolicyCommits(bytes32 policyCommit) external view returns (bool);
 
     /**
      * @notice EIP-712 domain separator used when verifying quote signatures.
@@ -209,10 +209,10 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
 
     /**
      * @notice Fetches bound policy metadata by pool-specific identifier.
-     * @param poolPolicyId Identifier returned during binding.
+     * @param policyId Identifier returned during binding.
      * @return BoundPolicy metadata describing the allocation.
      */
-    function getPoolPolicy(bytes32 poolPolicyId) external view returns (BoundPolicy memory);
+    function getBoundPolicy(bytes32 policyId) external view returns (BoundPolicy memory);
 
     /**
      * @notice Verifies a quoted policy slice and returns the resulting policy commit hash.
