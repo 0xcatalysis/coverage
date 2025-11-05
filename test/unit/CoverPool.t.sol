@@ -12,7 +12,7 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 
 contract CoverPoolTest is Test {
     bytes32 private constant QUOTE_TYPEHASH = keccak256(
-        "QuoteData(address pool,uint256 coverageLimit,uint256 basePremium,uint256 riskBufferDeposit,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
+        "QuoteData(address pool,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
     );
     string private constant NAME = "Catalysis Cover Pool";
     string private constant VERSION = "1";
@@ -451,7 +451,7 @@ contract CoverPoolTest is Test {
         assertEq(bound.specId, quote.specId, "Spec id mismatch");
         assertEq(bound.termsHash, quote.termsHash, "Terms hash mismatch");
         assertEq(bound.coverageLimit, quote.coverageLimit, "Coverage limit mismatch");
-        assertEq(bound.payoutAddress, quote.payoutReceiver, "Payout address mismatch");
+        assertEq(bound.payoutReceiver, quote.payoutReceiver, "Payout receiver mismatch");
         assertEq(bound.committeeId, quote.committeeId, "Committee id mismatch");
         assertEq(bound.operator, quote.operator, "Operator mismatch");
         assertEq(bound.startTime, quote.startTime, "Start time mismatch");
@@ -535,7 +535,6 @@ contract CoverPoolTest is Test {
             pool: address(coverPool),
             coverageLimit: 1000 ether,
             basePremium: 100 ether,
-            riskBufferDeposit: 50 ether,
             specId: specId,
             termsHash: termsHash,
             payoutReceiver: payoutRecipient,
@@ -564,7 +563,6 @@ contract CoverPoolTest is Test {
             uint256(uint160(quote.pool)),
             quote.coverageLimit,
             quote.basePremium,
-            quote.riskBufferDeposit,
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.payoutReceiver)),

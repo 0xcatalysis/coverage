@@ -20,17 +20,15 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
         uint256 coverageLimit;
         /// @notice Base premium amount owed to the pool for this coverage slice.
         uint256 basePremium;
-        /// @notice Risk buffer deposit that must be escrowed alongside the premium.
-        uint256 riskBufferDeposit;
         /// @notice Spec identifier the pool intends to use for parametric claims.
         bytes32 specId;
         /// @notice Hash of the pool's policy terms document anchoring off-chain clauses.
         bytes32 termsHash;
-        /// @notice Address that will receive claim payouts for this pool slice.
+        /// @notice Address that will receive claim payouts for this pool slice (policy buyer/holder).
         address payoutReceiver;
         /// @notice Restaking committee identifier associated with the policy slice.
         uint96 committeeId;
-        /// @notice Operator address registered for this policy slice.
+        /// @notice Restaking operator whose delegation is being covered for this slice.
         address operator;
         /// @notice Policy coverage start timestamp proposed in the quote.
         uint64 startTime;
@@ -53,11 +51,11 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
         bytes32 termsHash;
         /// @notice Coverage notional allocated from this pool.
         uint256 coverageLimit;
-        /// @notice Destination address for potential claim payouts.
-        address payoutAddress;
+        /// @notice Destination address for potential claim payouts (the policy holder).
+        address payoutReceiver;
         /// @notice Restaking committee identifier for the bound policy slice.
         uint96 committeeId;
-        /// @notice Operator address responsible for this policy slice.
+        /// @notice Restaking operator whose delegation the coverage protects.
         address operator;
         /// @notice Policy coverage start timestamp confirmed at bind.
         uint64 startTime;
