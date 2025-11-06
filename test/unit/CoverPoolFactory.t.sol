@@ -15,8 +15,8 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
 
 contract CoverPoolFactoryTest is Test {
-    CoverPoolFactory internal factory;
-    CoverPool internal implementation;
+    bytes32 internal constant ADMIN_ROLE = 0x00;
+    uint16 internal constant DEFAULT_POOL_FEE = 100;
 
     address internal admin;
     address internal creator;
@@ -24,13 +24,14 @@ contract CoverPoolFactoryTest is Test {
     address internal curator;
     address internal quoteSigner;
 
-    bytes32 internal constant ADMIN_ROLE = 0x00;
-    uint16 internal constant DEFAULT_POOL_FEE = 100;
-
+    CoverPoolFactory internal factory;
+    CoverPool internal implementation;
     bytes32 internal creatorRole;
-
     Options internal opts;
 
+    /*//////////////////////////////////////////////////////////////
+                                  SETUP
+    //////////////////////////////////////////////////////////////*/
     function setUp() public {
         admin = makeAddr("admin");
         creator = makeAddr("creator");
@@ -58,6 +59,9 @@ contract CoverPoolFactoryTest is Test {
         creatorRole = factory.CREATOR_ROLE();
     }
 
+    /*//////////////////////////////////////////////////////////////
+                              INITIALIZATION
+    //////////////////////////////////////////////////////////////*/
     function test_initialize_WhenImplementationZero_Reverts() public {
         CoverPoolFactory factoryImpl = new CoverPoolFactory();
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
@@ -76,6 +80,9 @@ contract CoverPoolFactoryTest is Test {
         );
     }
 
+    /*//////////////////////////////////////////////////////////////
+                              CONFIGURATION
+    //////////////////////////////////////////////////////////////*/
     function test_setCoverPoolImplementation_WhenCallerNotCreator_Reverts() public {
         address caller = makeAddr("notCreator");
         CoverPool newImplementation = new CoverPool();
@@ -132,6 +139,9 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.policyManager(), newPolicyManager, "Policy manager not updated");
     }
 
+    /*//////////////////////////////////////////////////////////////
+                                PAUSING
+    //////////////////////////////////////////////////////////////*/
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, creator, ADMIN_ROLE)
@@ -167,6 +177,9 @@ contract CoverPoolFactoryTest is Test {
         assertFalse(factory.paused(), "Factory still paused");
     }
 
+    /*//////////////////////////////////////////////////////////////
+                               POOL CREATION
+    //////////////////////////////////////////////////////////////*/
     function test_createCoverPool_WhenPaused_Reverts() public {
         vm.prank(admin);
         factory.pause();
@@ -300,6 +313,9 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.coverPoolAt(1), secondPrediction, "Second deployment mismatch");
     }
 
+    /*//////////////////////////////////////////////////////////////
+                                  VIEWS
+    //////////////////////////////////////////////////////////////*/
     function test_totalPools_WhenMultiplePools_Increments() public {
         for (uint256 i = 0; i < 3; ++i) {
             ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
@@ -383,6 +399,9 @@ contract CoverPoolFactoryTest is Test {
         }
     }
 
+    /*//////////////////////////////////////////////////////////////
+                                HELPERS
+    //////////////////////////////////////////////////////////////*/
     function _predictCoverPoolAddress(
         ICoverPoolFactory.CreateCoverPoolParams memory params,
         address implementationAddress,
