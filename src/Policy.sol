@@ -2,11 +2,11 @@
 pragma solidity 0.8.28;
 
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
-import {IPolicy} from "./interfaces/IPolicy.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {IPolicy} from "./interfaces/IPolicy.sol";
 
 /**
  * @title Policy
@@ -14,19 +14,13 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
  * @dev Uses AccessControl for role separation and enforces permanent transfer locks so receipts
  *      remain non-transferable.
  */
-contract Policy is Initializable, ERC721Upgradeable, AccessControlUpgradeable, UUPSUpgradeable, IPolicy {
-    /// @notice Role identifier that allows minting new policy receipts.
+contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC721Upgradeable, IPolicy {
     bytes32 public constant override POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
-    /// @notice Collection name surfaced through ERC-721 metadata.
     string private constant _NAME = "Catalysis Policy";
-    /// @notice Collection symbol surfaced through ERC-721 metadata.
     string private constant _SYMBOL = "POLICY";
 
-    /// @notice Canonical storage for policy metadata excluding dynamic bindings.
     mapping(uint256 policyId => StoredPolicyMetadata) private _policies;
-    /// @notice Policy identifier to array of pool bindings composing the schedule.
     mapping(uint256 policyId => PoolBinding[]) private _policyBindings;
-    /// @notice Tracks registered policy commits to prevent duplicate schedules.
     mapping(bytes32 policyCommit => bool recorded) private registeredPolicyCommits;
 
     /// @custom:oz-upgrades-unsafe-allow constructor

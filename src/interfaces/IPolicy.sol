@@ -155,11 +155,6 @@ interface IPolicy is IAccessControl, IERC721Metadata {
     error TransfersLocked(uint256 policyId);
 
     /**
-     * @notice AccessControl identifier for the PolicyManager role.
-     */
-    function POLICY_MANAGER_ROLE() external view returns (bytes32);
-
-    /**
      * @notice Mints a new policy SBT and stores associated metadata.
      * @dev Requires POLICY_MANAGER_ROLE.
      * @param to Recipient address for the policy token.
@@ -174,4 +169,9 @@ interface IPolicy is IAccessControl, IERC721Metadata {
      * @return PolicyMetadata snapshot for the policy.
      */
     function policyMetadata(uint256 policyId) external view returns (PolicyMetadata memory);
+
+    /**
+     * @notice AccessControl identifier that allows minting new policy receipts.
+     */
+    function POLICY_MANAGER_ROLE() external view returns (bytes32);
 }
