@@ -151,7 +151,7 @@ contract PolicyTest is Test {
 
     function test_mintPolicy_WhenNoBindings_Reverts() public {
         IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
-        metadata.poolBindings = new IPolicy.PoolBinding[](0);
+        metadata.policyBindings = new IPolicy.PolicyBinding[](0);
         vm.expectRevert(IPolicy.EmptyPoolBindings.selector);
         vm.prank(policyManager);
         policy.mintPolicy(buyer, POLICY_ID, metadata);
@@ -203,7 +203,7 @@ contract PolicyTest is Test {
 
     function test_mintPolicy_WhenBindingInvalid_Reverts() public {
         IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
-        metadata.poolBindings[0].pool = address(0);
+        metadata.policyBindings[0].pool = address(0);
         vm.expectRevert(abi.encodeWithSelector(IPolicy.InvalidPoolBinding.selector, uint256(0)));
         vm.prank(policyManager);
         policy.mintPolicy(buyer, POLICY_ID, metadata);
@@ -224,15 +224,15 @@ contract PolicyTest is Test {
         assertEq(stored.policyCommit, metadata.policyCommit, "Policy commit mismatch");
         assertEq(stored.startTime, metadata.startTime, "Start time mismatch");
         assertEq(stored.maturityTime, metadata.maturityTime, "Maturity time mismatch");
-        assertEq(stored.poolBindings.length, 1, "Pool binding length mismatch");
+        assertEq(stored.policyBindings.length, 1, "Pool binding length mismatch");
 
-        IPolicy.PoolBinding memory binding = stored.poolBindings[0];
+        IPolicy.PolicyBinding memory binding = stored.policyBindings[0];
         assertEq(binding.pool, pool, "Pool mismatch");
-        assertEq(binding.coverageLimit, metadata.poolBindings[0].coverageLimit, "Coverage limit mismatch");
+        assertEq(binding.coverageLimit, metadata.policyBindings[0].coverageLimit, "Coverage limit mismatch");
         assertEq(binding.payoutReceiver, payoutReceiver, "Payout receiver mismatch");
-        assertEq(binding.policyId, metadata.poolBindings[0].policyId, "Pool policy id mismatch");
-        assertEq(binding.termsHash, metadata.poolBindings[0].termsHash, "Terms hash mismatch");
-        assertEq(binding.committeeId, metadata.poolBindings[0].committeeId, "Committee id mismatch");
+        assertEq(binding.policyId, metadata.policyBindings[0].policyId, "Pool policy id mismatch");
+        assertEq(binding.termsHash, metadata.policyBindings[0].termsHash, "Terms hash mismatch");
+        assertEq(binding.committeeId, metadata.policyBindings[0].committeeId, "Committee id mismatch");
         assertEq(binding.operator, operator, "Operator mismatch");
     }
 
@@ -263,8 +263,8 @@ contract PolicyTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function _defaultMetadata() private view returns (IPolicy.PolicyMetadata memory metadata) {
-        IPolicy.PoolBinding[] memory bindings = new IPolicy.PoolBinding[](1);
-        bindings[0] = IPolicy.PoolBinding({
+        IPolicy.PolicyBinding[] memory bindings = new IPolicy.PolicyBinding[](1);
+        bindings[0] = IPolicy.PolicyBinding({
             pool: pool,
             coverageLimit: 1000,
             payoutReceiver: payoutReceiver,
@@ -283,7 +283,7 @@ contract PolicyTest is Test {
             policyCommit: policyCommit,
             startTime: uint64(block.timestamp),
             maturityTime: uint64(block.timestamp + 30 days),
-            poolBindings: bindings
+            policyBindings: bindings
         });
     }
 

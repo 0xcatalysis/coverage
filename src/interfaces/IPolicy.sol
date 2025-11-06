@@ -13,7 +13,7 @@ interface IPolicy is IAccessControl, IERC721Metadata {
      * @notice Per-pool schedule entry recorded within a policy.
      * @dev Aggregated into PolicyMetadata so claims and reporting can reference exact pool terms.
      */
-    struct PoolBinding {
+    struct PolicyBinding {
         /// @notice Address of the pool providing coverage.
         address pool;
         /// @notice Coverage notional allocated from the pool.
@@ -52,12 +52,12 @@ interface IPolicy is IAccessControl, IERC721Metadata {
         /// @notice Policy coverage end timestamp.
         uint64 maturityTime;
         /// @notice Breakdown of pool allocations that compose the policy.
-        PoolBinding[] poolBindings;
+        PolicyBinding[] policyBindings;
     }
 
     /**
      * @notice Storage-friendly snapshot of policy metadata excluding dynamic bindings.
-     * @dev Mirrors PolicyMetadata without the poolBindings array to simplify storage mappings. This
+     * @dev Mirrors PolicyMetadata without the policyBindings array to simplify storage mappings. This
      *      struct is used for storage slots and then expanded to PolicyMetadata in view helpers.
      */
     struct StoredPolicyMetadata {

@@ -20,8 +20,8 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
     string private constant _SYMBOL = "POLICY";
 
     mapping(uint256 policyId => StoredPolicyMetadata) private _policies;
-    mapping(uint256 policyId => PoolBinding[]) private _policyBindings;
-    mapping(bytes32 policyCommit => bool recorded) private registeredPolicyCommits;
+    mapping(uint256 policyId => PolicyBinding[]) private _policyBindings;
+    mapping(bytes32 policyCommit => bool registered) private _registeredPolicyCommits;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -67,16 +67,16 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
                 && metadata.premiumToken != address(0) && metadata.payoutToken != address(0),
             ZeroAddress()
         );
-        require(metadata.poolBindings.length != 0, EmptyPoolBindings());
+        require(metadata.policyBindings.length != 0, EmptyPoolBindings());
         require(metadata.policyCommit != bytes32(0), InvalidPolicyCommit());
         require(metadata.totalCoverage != 0, InvalidTotalCoverage());
         require(
             metadata.startTime < metadata.maturityTime, InvalidCoverageWindow(metadata.startTime, metadata.maturityTime)
         );
         require(_ownerOf(policyId) == address(0), PolicyAlreadyMinted(policyId));
-        require(!registeredPolicyCommits[metadata.policyCommit], PolicyCommitAlreadyRegistered(metadata.policyCommit));
+        require(!_registeredPolicyCommits[metadata.policyCommit], PolicyCommitAlreadyRegistered(metadata.policyCommit));
 
-        registeredPolicyCommits[metadata.policyCommit] = true;
+        _registeredPolicyCommits[metadata.policyCommit] = true;
 
         _policies[policyId] = StoredPolicyMetadata({
             buyer: metadata.buyer,
@@ -90,18 +90,18 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
         });
 
         delete _policyBindings[policyId];
-        PoolBinding[] storage bindings = _policyBindings[policyId];
+        PolicyBinding[] storage bindings = _policyBindings[policyId];
 
-        uint256 bindingsLength = metadata.poolBindings.length;
+        uint256 bindingsLength = metadata.policyBindings.length;
         for (uint256 i = 0; i < bindingsLength; ++i) {
-            PoolBinding calldata binding = metadata.poolBindings[i];
+            PolicyBinding calldata binding = metadata.policyBindings[i];
             require(
                 binding.pool != address(0) && binding.payoutReceiver != address(0) && binding.operator != address(0)
                     && binding.coverageLimit != 0 && binding.policyId != bytes32(0) && binding.termsHash != bytes32(0),
                 InvalidPoolBinding(i)
             );
 
-            PoolBinding storage storedBinding = bindings.push();
+            PolicyBinding storage storedBinding = bindings.push();
             storedBinding.pool = binding.pool;
             storedBinding.coverageLimit = binding.coverageLimit;
             storedBinding.payoutReceiver = binding.payoutReceiver;
@@ -137,13 +137,13 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
         metadata.startTime = storedMetadata.startTime;
         metadata.maturityTime = storedMetadata.maturityTime;
 
-        PoolBinding[] storage bindings = _policyBindings[policyId];
+        PolicyBinding[] storage bindings = _policyBindings[policyId];
         uint256 bindingsLength = bindings.length;
-        metadata.poolBindings = new PoolBinding[](bindingsLength);
+        metadata.policyBindings = new PolicyBinding[](bindingsLength);
 
         for (uint256 i = 0; i < bindingsLength; ++i) {
-            PoolBinding storage binding = bindings[i];
-            metadata.poolBindings[i] = PoolBinding({
+            PolicyBinding storage binding = bindings[i];
+            metadata.policyBindings[i] = PolicyBinding({
                 pool: binding.pool,
                 coverageLimit: binding.coverageLimit,
                 payoutReceiver: binding.payoutReceiver,
