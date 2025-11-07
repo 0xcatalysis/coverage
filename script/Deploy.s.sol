@@ -3,7 +3,8 @@ pragma solidity 0.8.28;
 
 import {Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Script, console2} from "forge-std/Script.sol";
-import {CoverPoolRegistry} from "../src/CoverPoolRegistry.sol";
+import {CoverPool} from "../src/CoverPool.sol";
+import {CoverPoolFactory} from "../src/CoverPoolFactory.sol";
 
 /**
  * @title Deploy
@@ -24,38 +25,46 @@ abstract contract Deploy is Script {
     }
 
     /**
-     * @notice Deploys the CoverPool implementation and CoverPoolRegistry proxy after validating chain id.
+     * @notice Deploys the CoverPool implementation and CoverPoolFactory proxy after validating chain id.
      */
-    function run() external returns (address coverPoolRegistryProxy, address coverPoolRegistryImpl) {
+    function run() external returns (address coverPoolFactoryProxy, address coverPoolFactoryImpl) {
         DeploymentConfig memory config = getDeploymentConfig();
         require(config.chainId == block.chainid, string.concat("Must deploy on ", config.networkName));
 
         uint256 deployerPrivateKey = vm.envOr("PRIVATE_KEY", DEFAULT_PRIVATE_KEY);
         address deployer = vm.addr(deployerPrivateKey);
 
-        address coverPoolRegistryAdmin = vm.envOr("COVER_POOL_REGISTRY_ADMIN", deployer);
-        address coverPoolRegistryRegistrar = vm.envOr("COVER_POOL_REGISTRY_REGISTRAR", coverPoolRegistryAdmin);
+        address coverPoolFactoryAdmin = vm.envOr("COVER_POOL_FACTORY_ADMIN", deployer);
+        address coverPoolFactoryCreator = vm.envOr("COVER_POOL_FACTORY_CREATOR", coverPoolFactoryAdmin);
+        address coverPoolPolicyManager = vm.envOr("COVER_POOL_POLICY_MANAGER", deployer);
 
         vm.startBroadcast(deployerPrivateKey);
 
-        coverPoolRegistryProxy = Upgrades.deployUUPSProxy(
-            "CoverPoolRegistry.sol:CoverPoolRegistry",
-            abi.encodeCall(CoverPoolRegistry.initialize, (coverPoolRegistryAdmin, coverPoolRegistryRegistrar))
+        address coverPoolImplementation = address(new CoverPool());
+
+        coverPoolFactoryProxy = Upgrades.deployUUPSProxy(
+            "CoverPoolFactory.sol:CoverPoolFactory",
+            abi.encodeCall(
+                CoverPoolFactory.initialize,
+                (coverPoolFactoryAdmin, coverPoolFactoryCreator, coverPoolImplementation, coverPoolPolicyManager)
+            )
         );
-        coverPoolRegistryImpl = Upgrades.getImplementationAddress(coverPoolRegistryProxy);
+        coverPoolFactoryImpl = Upgrades.getImplementationAddress(coverPoolFactoryProxy);
 
         vm.stopBroadcast();
 
         console2.log(string.concat("=== ", config.networkName, " Deployment ==="));
         console2.log("Chain ID:", block.chainid);
         console2.log("Deployer:", deployer);
-        console2.log("CoverPoolRegistry Proxy:", coverPoolRegistryProxy);
-        console2.log("CoverPoolRegistry Implementation:", coverPoolRegistryImpl);
-        console2.log("CoverPoolRegistry Admin:", coverPoolRegistryAdmin);
-        console2.log("CoverPoolRegistry Registrar:", coverPoolRegistryRegistrar);
+        console2.log("CoverPool Implementation:", coverPoolImplementation);
+        console2.log("CoverPoolFactory Proxy:", coverPoolFactoryProxy);
+        console2.log("CoverPoolFactory Implementation:", coverPoolFactoryImpl);
+        console2.log("CoverPoolFactory Admin:", coverPoolFactoryAdmin);
+        console2.log("CoverPoolFactory Creator:", coverPoolFactoryCreator);
+        console2.log("Policy Manager:", coverPoolPolicyManager);
         console2.log("====================================");
 
-        return (coverPoolRegistryProxy, coverPoolRegistryImpl);
+        return (coverPoolFactoryProxy, coverPoolFactoryImpl);
     }
 
     /**

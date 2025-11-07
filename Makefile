@@ -62,7 +62,6 @@ format:
 format-check:
 	@echo "Checking code format..."
 	@$(FORGE_DEFAULT) fmt --check
-
 lint:
 	@echo "Linting code..."
 	@$(FORGE_DEFAULT) lint
