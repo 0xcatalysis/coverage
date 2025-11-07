@@ -10,6 +10,6 @@ import {Deploy} from "./Deploy.s.sol";
 contract DeployAnvil is Deploy {
     /// @inheritdoc Deploy
     function getDeploymentConfig() internal pure override returns (DeploymentConfig memory) {
-        return DeploymentConfig({networkName: "Anvil", expectedChainId: 31_337});
+        return DeploymentConfig({networkName: "Anvil", chainId: 31_337});
     }
 }
