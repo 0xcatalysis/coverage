@@ -8,9 +8,13 @@ Coverage contracts live in `src/`. Tests in `test/unit`, `test/fuzz`, and `test/
 - `make build` / `make build-prod` – compile with the default or production optimizer profile.
 - `make test`, `make test-unit`, `make test-fuzz`, `make test-invariant` – targeted suites (`-vvv --fail-fast`).
 - `make gas`, `make cover`, `make cover-lcov` – gas, summary coverage, or LCOV + HTML reports.
+- `make format` / `make format-check` – enforce the `forge fmt` style before committing.
+- `make docs` – regenerate NatSpec documentation into `docs/`.
+- `make snapshot` / `make snapshot-check` – capture or verify gas baselines for regression tracking.
+- `make slither`, `make mythril` – optional static and symbolic analysis passes mirroring CI.
 
 ## Coding Style & Naming Conventions
-Formatting is enforced by `make format` (`forge fmt`) with 4-space indentation, 130-character lines, double-quoted strings, and long integer types. Contracts, interfaces and libraries use PascalCase (`Example`, `IExample`, `LExample` respectively). Follow the official [Solidity Style Guide](https://docs.soliditylang.org/en/latest/style-guide.html) for naming and layout; prefer descriptive camelCase function names, past-tense events, explicit `uint256`/`int256`, and NatSpec around tricky invariants.
+Formatting is enforced by `make format` (`forge fmt`) with 4-space indentation, 120-character lines, double-quoted strings, and long integer types. Contracts, interfaces and libraries use PascalCase (`Example`, `IExample`, `LExample` respectively). Follow the official [Solidity Style Guide](https://docs.soliditylang.org/en/latest/style-guide.html) for naming and layout; prefer descriptive camelCase function names, past-tense events, explicit `uint256`/`int256`, and NatSpec around tricky invariants.
 
 ## Testing Guidelines
 Add `.t.sol` files alongside each feature in the appropriate `test` subfolder and prefix test methods with `test_<Scenario>()`. Keep fuzz seeds deterministic unless randomness is required; defaults sit in `foundry.toml`. Run `make test` before every PR and include `make gas` or `make cover` output when altering gas-sensitive logic. Generate `make cover-lcov` only when CI or auditors request HTML artifacts.
