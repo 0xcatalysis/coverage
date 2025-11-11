@@ -19,8 +19,7 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
     string private constant _NAME = "Catalysis Policy";
     string private constant _SYMBOL = "POLICY";
 
-    mapping(uint256 policyId => StoredPolicyMetadata) private _policies;
-    mapping(uint256 policyId => PolicyBinding[]) private _policyBindings;
+    mapping(uint256 policyId => PolicyMetadata) private _policies;
     mapping(bytes32 policyCommit => bool registered) private _registeredPolicyCommits;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -47,8 +46,9 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
 
     /**
      * @notice Mints a new policy receipt and persists the provided metadata.
-     * @dev Enforces that all referenced addresses and bindings are non-zero and that the policy
-     *      commit has not been previously registered. Emits PolicyMinted on success.
+     * @dev Enforces that all referenced addresses are non-zero and that the policy commit has
+     *      not been previously registered. Each policy represents coverage from a single pool.
+     *      Emits PolicyMinted on success.
      * @param to Recipient address receiving the soulbound policy token.
      * @param policyId Identifier to assign to the new policy token.
      * @param metadata Full policy metadata snapshot supplied by PolicyManager.
@@ -64,12 +64,14 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
     {
         require(
             to != address(0) && metadata.buyer != address(0) && metadata.beneficiary != address(0)
-                && metadata.premiumToken != address(0) && metadata.payoutToken != address(0),
+                && metadata.premiumToken != address(0) && metadata.payoutToken != address(0)
+                && metadata.pool != address(0) && metadata.payoutReceiver != address(0)
+                && metadata.operator != address(0),
             ZeroAddress()
         );
-        require(metadata.policyBindings.length != 0, EmptyPoolBindings());
         require(metadata.policyCommit != bytes32(0), InvalidPolicyCommit());
-        require(metadata.totalCoverage != 0, InvalidTotalCoverage());
+        require(metadata.coverageLimit != 0, InvalidCoverageLimit());
+        require(metadata.poolPolicyId != bytes32(0) && metadata.termsHash != bytes32(0), InvalidPolicyMetadata());
         require(
             metadata.startTime < metadata.maturityTime, InvalidCoverageWindow(metadata.startTime, metadata.maturityTime)
         );
@@ -77,83 +79,30 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
         require(!_registeredPolicyCommits[metadata.policyCommit], PolicyCommitAlreadyRegistered(metadata.policyCommit));
 
         _registeredPolicyCommits[metadata.policyCommit] = true;
-
-        _policies[policyId] = StoredPolicyMetadata({
-            buyer: metadata.buyer,
-            beneficiary: metadata.beneficiary,
-            premiumToken: metadata.premiumToken,
-            payoutToken: metadata.payoutToken,
-            totalCoverage: metadata.totalCoverage,
-            policyCommit: metadata.policyCommit,
-            startTime: metadata.startTime,
-            maturityTime: metadata.maturityTime
-        });
-
-        delete _policyBindings[policyId];
-        PolicyBinding[] storage policyBindings = _policyBindings[policyId];
-
-        uint256 policyBindingsLength = metadata.policyBindings.length;
-        for (uint256 i = 0; i < policyBindingsLength; ++i) {
-            PolicyBinding calldata metadataPolicyBinding = metadata.policyBindings[i];
-            require(
-                metadataPolicyBinding.pool != address(0) && metadataPolicyBinding.payoutReceiver != address(0)
-                    && metadataPolicyBinding.operator != address(0) && metadataPolicyBinding.coverageLimit != 0
-                    && metadataPolicyBinding.policyId != bytes32(0) && metadataPolicyBinding.termsHash != bytes32(0),
-                InvalidPoolBinding(i)
-            );
-
-            PolicyBinding storage policyBinding = policyBindings.push();
-            policyBinding.pool = metadataPolicyBinding.pool;
-            policyBinding.coverageLimit = metadataPolicyBinding.coverageLimit;
-            policyBinding.payoutReceiver = metadataPolicyBinding.payoutReceiver;
-            policyBinding.policyId = metadataPolicyBinding.policyId;
-            policyBinding.termsHash = metadataPolicyBinding.termsHash;
-            policyBinding.committeeId = metadataPolicyBinding.committeeId;
-            policyBinding.operator = metadataPolicyBinding.operator;
-        }
+        _policies[policyId] = metadata;
 
         _safeMint(to, policyId);
 
         emit PolicyMinted(
-            policyId, to, metadata.startTime, metadata.maturityTime, metadata.totalCoverage, metadata.policyCommit
+            policyId,
+            to,
+            metadata.pool,
+            metadata.startTime,
+            metadata.maturityTime,
+            metadata.coverageLimit,
+            metadata.policyCommit
         );
     }
 
     /**
      * @notice Returns the full metadata snapshot for a policy.
-     * @dev Reconstructs the dynamic pool bindings in memory. Reverts with PolicyNotFound if the
-     *      policy has not been minted.
+     * @dev Reverts with PolicyNotFound if the policy has not been minted.
      * @param policyId Identifier of the policy to read.
      * @return metadata Fully populated PolicyMetadata struct.
      */
     function policyMetadata(uint256 policyId) external view override returns (PolicyMetadata memory metadata) {
-        StoredPolicyMetadata storage storedMetadata = _policyMetadata(policyId);
-
-        metadata.buyer = storedMetadata.buyer;
-        metadata.beneficiary = storedMetadata.beneficiary;
-        metadata.premiumToken = storedMetadata.premiumToken;
-        metadata.payoutToken = storedMetadata.payoutToken;
-        metadata.totalCoverage = storedMetadata.totalCoverage;
-        metadata.policyCommit = storedMetadata.policyCommit;
-        metadata.startTime = storedMetadata.startTime;
-        metadata.maturityTime = storedMetadata.maturityTime;
-
-        PolicyBinding[] storage policyBindings = _policyBindings[policyId];
-        uint256 policyBindingsLength = policyBindings.length;
-        metadata.policyBindings = new PolicyBinding[](policyBindingsLength);
-
-        for (uint256 i = 0; i < policyBindingsLength; ++i) {
-            PolicyBinding storage policyBinding = policyBindings[i];
-            metadata.policyBindings[i] = PolicyBinding({
-                pool: policyBinding.pool,
-                coverageLimit: policyBinding.coverageLimit,
-                payoutReceiver: policyBinding.payoutReceiver,
-                policyId: policyBinding.policyId,
-                termsHash: policyBinding.termsHash,
-                committeeId: policyBinding.committeeId,
-                operator: policyBinding.operator
-            });
-        }
+        metadata = _policies[policyId];
+        require(metadata.buyer != address(0), PolicyNotFound(policyId));
     }
 
     /**
@@ -189,14 +138,4 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
      * @dev Restricts upgrade authorization to DEFAULT_ADMIN_ROLE holders.
      */
     function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
-
-    /**
-     * @notice Retrieves storage metadata for a policy, reverting if missing.
-     * @param policyId Identifier of the policy to load.
-     * @return metadata Storage pointer to the stored metadata.
-     */
-    function _policyMetadata(uint256 policyId) private view returns (StoredPolicyMetadata storage metadata) {
-        metadata = _policies[policyId];
-        require(metadata.buyer != address(0), PolicyNotFound(policyId));
-    }
 }

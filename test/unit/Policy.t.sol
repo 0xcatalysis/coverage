@@ -29,9 +29,10 @@ contract PolicyTest is Test {
     event PolicyMinted(
         uint256 indexed policyId,
         address indexed to,
+        address indexed pool,
         uint64 startTime,
         uint64 maturityTime,
-        uint256 totalCoverage,
+        uint256 coverageLimit,
         bytes32 policyCommit
     );
 
@@ -149,10 +150,26 @@ contract PolicyTest is Test {
         policy.mintPolicy(buyer, POLICY_ID, metadata);
     }
 
-    function test_mintPolicy_WhenNoBindings_Reverts() public {
+    function test_mintPolicy_WhenPoolZero_Reverts() public {
         IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
-        metadata.policyBindings = new IPolicy.PolicyBinding[](0);
-        vm.expectRevert(IPolicy.EmptyPoolBindings.selector);
+        metadata.pool = address(0);
+        vm.expectRevert(IPolicy.ZeroAddress.selector);
+        vm.prank(policyManager);
+        policy.mintPolicy(buyer, POLICY_ID, metadata);
+    }
+
+    function test_mintPolicy_WhenPayoutReceiverZero_Reverts() public {
+        IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.payoutReceiver = address(0);
+        vm.expectRevert(IPolicy.ZeroAddress.selector);
+        vm.prank(policyManager);
+        policy.mintPolicy(buyer, POLICY_ID, metadata);
+    }
+
+    function test_mintPolicy_WhenOperatorZero_Reverts() public {
+        IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.operator = address(0);
+        vm.expectRevert(IPolicy.ZeroAddress.selector);
         vm.prank(policyManager);
         policy.mintPolicy(buyer, POLICY_ID, metadata);
     }
@@ -165,10 +182,10 @@ contract PolicyTest is Test {
         policy.mintPolicy(buyer, POLICY_ID, metadata);
     }
 
-    function test_mintPolicy_WhenTotalCoverageZero_Reverts() public {
+    function test_mintPolicy_WhenCoverageLimitZero_Reverts() public {
         IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
-        metadata.totalCoverage = 0;
-        vm.expectRevert(IPolicy.InvalidTotalCoverage.selector);
+        metadata.coverageLimit = 0;
+        vm.expectRevert(IPolicy.InvalidCoverageLimit.selector);
         vm.prank(policyManager);
         policy.mintPolicy(buyer, POLICY_ID, metadata);
     }
@@ -201,10 +218,18 @@ contract PolicyTest is Test {
         policy.mintPolicy(buyer, newPolicyId, metadata);
     }
 
-    function test_mintPolicy_WhenBindingInvalid_Reverts() public {
+    function test_mintPolicy_WhenPoolPolicyIdEmpty_Reverts() public {
         IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
-        metadata.policyBindings[0].pool = address(0);
-        vm.expectRevert(abi.encodeWithSelector(IPolicy.InvalidPoolBinding.selector, uint256(0)));
+        metadata.poolPolicyId = bytes32(0);
+        vm.expectRevert(IPolicy.InvalidPolicyMetadata.selector);
+        vm.prank(policyManager);
+        policy.mintPolicy(buyer, POLICY_ID, metadata);
+    }
+
+    function test_mintPolicy_WhenTermsHashEmpty_Reverts() public {
+        IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.termsHash = bytes32(0);
+        vm.expectRevert(IPolicy.InvalidPolicyMetadata.selector);
         vm.prank(policyManager);
         policy.mintPolicy(buyer, POLICY_ID, metadata);
     }
@@ -220,20 +245,16 @@ contract PolicyTest is Test {
         assertEq(stored.beneficiary, metadata.beneficiary, "Beneficiary mismatch");
         assertEq(stored.premiumToken, metadata.premiumToken, "Premium token mismatch");
         assertEq(stored.payoutToken, metadata.payoutToken, "Payout token mismatch");
-        assertEq(stored.totalCoverage, metadata.totalCoverage, "Coverage mismatch");
+        assertEq(stored.pool, metadata.pool, "Pool mismatch");
+        assertEq(stored.coverageLimit, metadata.coverageLimit, "Coverage limit mismatch");
+        assertEq(stored.payoutReceiver, metadata.payoutReceiver, "Payout receiver mismatch");
+        assertEq(stored.poolPolicyId, metadata.poolPolicyId, "Pool policy id mismatch");
+        assertEq(stored.termsHash, metadata.termsHash, "Terms hash mismatch");
         assertEq(stored.policyCommit, metadata.policyCommit, "Policy commit mismatch");
+        assertEq(stored.committeeId, metadata.committeeId, "Committee id mismatch");
         assertEq(stored.startTime, metadata.startTime, "Start time mismatch");
         assertEq(stored.maturityTime, metadata.maturityTime, "Maturity time mismatch");
-        assertEq(stored.policyBindings.length, 1, "Pool binding length mismatch");
-
-        IPolicy.PolicyBinding memory binding = stored.policyBindings[0];
-        assertEq(binding.pool, pool, "Pool mismatch");
-        assertEq(binding.coverageLimit, metadata.policyBindings[0].coverageLimit, "Coverage limit mismatch");
-        assertEq(binding.payoutReceiver, payoutReceiver, "Payout receiver mismatch");
-        assertEq(binding.policyId, metadata.policyBindings[0].policyId, "Pool policy id mismatch");
-        assertEq(binding.termsHash, metadata.policyBindings[0].termsHash, "Terms hash mismatch");
-        assertEq(binding.committeeId, metadata.policyBindings[0].committeeId, "Committee id mismatch");
-        assertEq(binding.operator, operator, "Operator mismatch");
+        assertEq(stored.operator, metadata.operator, "Operator mismatch");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -263,27 +284,21 @@ contract PolicyTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function _defaultMetadata() private view returns (IPolicy.PolicyMetadata memory metadata) {
-        IPolicy.PolicyBinding[] memory bindings = new IPolicy.PolicyBinding[](1);
-        bindings[0] = IPolicy.PolicyBinding({
-            pool: pool,
-            coverageLimit: 1000,
-            payoutReceiver: payoutReceiver,
-            policyId: keccak256("pool-policy-id"),
-            termsHash: keccak256("terms-hash"),
-            committeeId: uint96(123),
-            operator: operator
-        });
-
         metadata = IPolicy.PolicyMetadata({
             buyer: buyer,
             beneficiary: beneficiary,
             premiumToken: premiumToken,
             payoutToken: payoutToken,
-            totalCoverage: 1000,
+            pool: pool,
+            coverageLimit: 1000,
+            payoutReceiver: payoutReceiver,
+            poolPolicyId: keccak256("pool-policy-id"),
+            termsHash: keccak256("terms-hash"),
             policyCommit: policyCommit,
+            committeeId: uint96(123),
             startTime: uint64(block.timestamp),
             maturityTime: uint64(block.timestamp + 30 days),
-            policyBindings: bindings
+            operator: operator
         });
     }
 
@@ -292,7 +307,13 @@ contract PolicyTest is Test {
 
         vm.expectEmit(true, true, true, true, address(policy));
         emit PolicyMinted(
-            POLICY_ID, buyer, metadata.startTime, metadata.maturityTime, metadata.totalCoverage, metadata.policyCommit
+            POLICY_ID,
+            buyer,
+            metadata.pool,
+            metadata.startTime,
+            metadata.maturityTime,
+            metadata.coverageLimit,
+            metadata.policyCommit
         );
 
         vm.prank(policyManager);

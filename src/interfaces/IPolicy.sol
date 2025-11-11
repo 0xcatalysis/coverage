@@ -10,29 +10,9 @@ import {IERC721Metadata} from "@openzeppelin/contracts/token/ERC721/extensions/I
  */
 interface IPolicy is IAccessControl, IERC721Metadata {
     /**
-     * @notice Per-pool schedule entry recorded within a policy.
-     * @dev Aggregated into PolicyMetadata so claims and reporting can reference exact pool terms.
-     */
-    struct PolicyBinding {
-        /// @notice Address of the pool providing coverage.
-        address pool;
-        /// @notice Coverage notional allocated from the pool.
-        uint256 coverageLimit;
-        /// @notice Destination address for claim payouts specific to this pool slice.
-        address payoutReceiver;
-        /// @notice Pool-provided identifier for the policy slice.
-        bytes32 policyId;
-        /// @notice Hash of referenced terms governing this slice.
-        bytes32 termsHash;
-        /// @notice Restaking committee identifier that backs this policy slice.
-        uint96 committeeId;
-        /// @notice Operator address delegated for this policy slice.
-        address operator;
-    }
-
-    /**
      * @notice Comprehensive metadata persisted alongside each policy.
      * @dev Serves as canonical storage for policy, buyer, and pool schedule information.
+     *      Each policy represents coverage from a single pool.
      */
     struct PolicyMetadata {
         /// @notice Buyer wallet responsible for paying premiums.
@@ -43,57 +23,45 @@ interface IPolicy is IAccessControl, IERC721Metadata {
         address premiumToken;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
-        /// @notice Total coverage across all contributing pools.
-        uint256 totalCoverage;
+        /// @notice Address of the pool providing coverage.
+        address pool;
+        /// @notice Coverage notional allocated from the pool.
+        uint256 coverageLimit;
+        /// @notice Destination address for claim payouts.
+        address payoutReceiver;
+        /// @notice Pool-provided identifier for the policy.
+        bytes32 poolPolicyId;
+        /// @notice Hash of referenced terms governing this policy.
+        bytes32 termsHash;
         /// @notice Deterministic hash representing the policy schedule.
         bytes32 policyCommit;
+        /// @notice Restaking committee identifier that backs this policy.
+        uint96 committeeId;
         /// @notice Policy coverage start timestamp.
         uint64 startTime;
         /// @notice Policy coverage end timestamp.
         uint64 maturityTime;
-        /// @notice Breakdown of pool allocations that compose the policy.
-        PolicyBinding[] policyBindings;
-    }
-
-    /**
-     * @notice Storage-friendly snapshot of policy metadata excluding dynamic bindings.
-     * @dev Mirrors PolicyMetadata without the policyBindings array to simplify storage mappings. This
-     *      struct is used for storage slots and then expanded to PolicyMetadata in view helpers.
-     */
-    struct StoredPolicyMetadata {
-        /// @notice Buyer wallet responsible for paying premiums.
-        address buyer;
-        /// @notice Beneficiary receiving payouts upon approved claims.
-        address beneficiary;
-        /// @notice ERC20 token used for premium payments.
-        address premiumToken;
-        /// @notice ERC20 token used for claim payouts.
-        address payoutToken;
-        /// @notice Total coverage across all contributing pools.
-        uint256 totalCoverage;
-        /// @notice Deterministic hash representing the policy schedule.
-        bytes32 policyCommit;
-        /// @notice Policy coverage start timestamp.
-        uint64 startTime;
-        /// @notice Policy coverage end timestamp.
-        uint64 maturityTime;
+        /// @notice Operator address delegated for this policy.
+        address operator;
     }
 
     /**
      * @notice Emitted when a new policy token is minted to represent bound coverage.
      * @param policyId Non-transferable token identifier.
      * @param to Recipient address receiving the policy SBT.
+     * @param pool Address of the pool providing coverage.
      * @param startTime Coverage start timestamp.
      * @param maturityTime Coverage maturity timestamp.
-     * @param totalCoverage Aggregate coverage for the policy.
+     * @param coverageLimit Coverage notional from the pool.
      * @param policyCommit Schedule commit hash associated with the policy.
      */
     event PolicyMinted(
         uint256 indexed policyId,
         address indexed to,
+        address indexed pool,
         uint64 startTime,
         uint64 maturityTime,
-        uint256 totalCoverage,
+        uint256 coverageLimit,
         bytes32 policyCommit
     );
 
@@ -116,11 +84,6 @@ interface IPolicy is IAccessControl, IERC721Metadata {
     error InvalidCoverageWindow(uint64 startTime, uint64 maturityTime);
 
     /**
-     * @notice Reverts when supplied metadata does not include any pool bindings.
-     */
-    error EmptyPoolBindings();
-
-    /**
      * @notice Reverts when a policy commit hash is empty.
      */
     error InvalidPolicyCommit();
@@ -132,15 +95,14 @@ interface IPolicy is IAccessControl, IERC721Metadata {
     error PolicyCommitAlreadyRegistered(bytes32 policyCommit);
 
     /**
-     * @notice Reverts when total coverage is zero.
+     * @notice Reverts when coverage limit is zero.
      */
-    error InvalidTotalCoverage();
+    error InvalidCoverageLimit();
 
     /**
-     * @notice Reverts when a provided pool binding contains invalid parameters.
-     * @param index Index of the binding that failed validation.
+     * @notice Reverts when required policy metadata fields are invalid.
      */
-    error InvalidPoolBinding(uint256 index);
+    error InvalidPolicyMetadata();
 
     /**
      * @notice Reverts when attempting to reference a policy that has not been minted.

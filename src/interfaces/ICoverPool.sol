@@ -12,23 +12,24 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
     /**
      * @notice Signed coverage quote inputs produced by the pool curator.
      * @dev Consumed by PolicyManager to derive deterministic policy commits.
+     *      Each quote represents a complete policy from a single pool.
      */
     struct QuoteData {
         /// @notice Address of the CoverPool issuing the quote.
         address pool;
         /// @notice Maximum notional coverage in payout token units supplied by this pool.
         uint256 coverageLimit;
-        /// @notice Base premium amount owed to the pool for this coverage slice.
+        /// @notice Base premium amount owed to the pool for this coverage.
         uint256 basePremium;
         /// @notice Spec identifier the pool intends to use for parametric claims.
         bytes32 specId;
         /// @notice Hash of the pool's policy terms document anchoring off-chain clauses.
         bytes32 termsHash;
-        /// @notice Address that will receive claim payouts for this pool slice (policy buyer/holder).
+        /// @notice Address that will receive claim payouts for this policy.
         address payoutReceiver;
-        /// @notice Restaking committee identifier associated with the policy slice.
+        /// @notice Restaking committee identifier associated with the policy.
         uint96 committeeId;
-        /// @notice Restaking operator whose delegation is being covered for this slice.
+        /// @notice Restaking operator whose delegation is being covered.
         address operator;
         /// @notice Policy coverage start timestamp proposed in the quote.
         uint64 startTime;
@@ -39,21 +40,21 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
     }
 
     /**
-     * @notice Pool-specific binding metadata returned after a successful bind.
-     * @dev Persisted by PolicyManager and PolicyToken to reconstruct per-pool schedules.
+     * @notice Binding metadata returned after a successful policy bind.
+     * @dev Contains the confirmed terms and coverage details for the bound policy.
      */
     struct BoundPolicy {
-        /// @notice Pool-chosen identifier for the bound policy slice.
+        /// @notice Pool-chosen identifier for the bound policy.
         bytes32 policyId;
-        /// @notice Spec identifier attached to the bound policy slice.
+        /// @notice Spec identifier attached to the bound policy.
         bytes32 specId;
-        /// @notice Terms hash anchored for the bound policy slice.
+        /// @notice Terms hash anchored for the bound policy.
         bytes32 termsHash;
         /// @notice Coverage notional allocated from this pool.
         uint256 coverageLimit;
         /// @notice Destination address for potential claim payouts (the policy holder).
         address payoutReceiver;
-        /// @notice Restaking committee identifier for the bound policy slice.
+        /// @notice Restaking committee identifier for the bound policy.
         uint96 committeeId;
         /// @notice Restaking operator whose delegation the coverage protects.
         address operator;
@@ -65,8 +66,8 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
 
     /**
      * @notice Emitted after a policy commit binds successfully against the pool.
-     * @param policyCommit Deterministic hash referencing the multi-pool policy schedule.
-     * @param policyId Pool-provided identifier for the policy slice.
+     * @param policyCommit Deterministic hash representing the policy.
+     * @param policyId Pool-provided identifier for the policy.
      * @param coverageLimit Coverage notional locked from the pool.
      */
     event PolicyBound(bytes32 indexed policyCommit, bytes32 indexed policyId, uint256 coverageLimit);
@@ -183,11 +184,11 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
 
     /**
      * @notice Locks coverage for a previously validated policy commit.
-     * @dev Requires POLICY_MANAGER_ROLE.
-     * @param policyCommit Deterministic hash for the overall policy schedule.
+     * @dev Requires POLICY_MANAGER_ROLE. Each binding represents a complete policy from this pool.
+     * @param policyCommit Deterministic hash representing the policy.
      * @param quote Quote data that has been validated for binding.
      * @param signature EIP-712 signature from an authorized quote signer.
-     * @return BoundPolicy metadata describing the pool's final allocation.
+     * @return BoundPolicy metadata describing the pool's coverage allocation.
      */
     function bindPolicy(
         bytes32 policyCommit,
@@ -215,10 +216,10 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
     function getBoundPolicy(bytes32 policyId) external view returns (BoundPolicy memory);
 
     /**
-     * @notice Verifies a quoted policy slice and returns the resulting policy commit hash.
+     * @notice Verifies a coverage quote and returns the resulting policy commit hash.
      * @param quote Quote data struct signed by an authorized quote signer.
      * @param signature EIP-712 signature authorizing the quote.
-     * @return policyCommit Hash tying the quote to the global policy schedule.
+     * @return policyCommit Deterministic hash representing the policy.
      */
     function validateQuote(
         QuoteData calldata quote,
