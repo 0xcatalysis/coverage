@@ -90,25 +90,26 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
         });
 
         delete _policyBindings[policyId];
-        PolicyBinding[] storage bindings = _policyBindings[policyId];
+        PolicyBinding[] storage policyBindings = _policyBindings[policyId];
 
-        uint256 bindingsLength = metadata.policyBindings.length;
-        for (uint256 i = 0; i < bindingsLength; ++i) {
-            PolicyBinding calldata binding = metadata.policyBindings[i];
+        uint256 policyBindingsLength = metadata.policyBindings.length;
+        for (uint256 i = 0; i < policyBindingsLength; ++i) {
+            PolicyBinding calldata metadataPolicyBinding = metadata.policyBindings[i];
             require(
-                binding.pool != address(0) && binding.payoutReceiver != address(0) && binding.operator != address(0)
-                    && binding.coverageLimit != 0 && binding.policyId != bytes32(0) && binding.termsHash != bytes32(0),
+                metadataPolicyBinding.pool != address(0) && metadataPolicyBinding.payoutReceiver != address(0)
+                    && metadataPolicyBinding.operator != address(0) && metadataPolicyBinding.coverageLimit != 0
+                    && metadataPolicyBinding.policyId != bytes32(0) && metadataPolicyBinding.termsHash != bytes32(0),
                 InvalidPoolBinding(i)
             );
 
-            PolicyBinding storage storedBinding = bindings.push();
-            storedBinding.pool = binding.pool;
-            storedBinding.coverageLimit = binding.coverageLimit;
-            storedBinding.payoutReceiver = binding.payoutReceiver;
-            storedBinding.policyId = binding.policyId;
-            storedBinding.termsHash = binding.termsHash;
-            storedBinding.committeeId = binding.committeeId;
-            storedBinding.operator = binding.operator;
+            PolicyBinding storage policyBinding = policyBindings.push();
+            policyBinding.pool = metadataPolicyBinding.pool;
+            policyBinding.coverageLimit = metadataPolicyBinding.coverageLimit;
+            policyBinding.payoutReceiver = metadataPolicyBinding.payoutReceiver;
+            policyBinding.policyId = metadataPolicyBinding.policyId;
+            policyBinding.termsHash = metadataPolicyBinding.termsHash;
+            policyBinding.committeeId = metadataPolicyBinding.committeeId;
+            policyBinding.operator = metadataPolicyBinding.operator;
         }
 
         _safeMint(to, policyId);
@@ -137,20 +138,20 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
         metadata.startTime = storedMetadata.startTime;
         metadata.maturityTime = storedMetadata.maturityTime;
 
-        PolicyBinding[] storage bindings = _policyBindings[policyId];
-        uint256 bindingsLength = bindings.length;
-        metadata.policyBindings = new PolicyBinding[](bindingsLength);
+        PolicyBinding[] storage policyBindings = _policyBindings[policyId];
+        uint256 policyBindingsLength = policyBindings.length;
+        metadata.policyBindings = new PolicyBinding[](policyBindingsLength);
 
-        for (uint256 i = 0; i < bindingsLength; ++i) {
-            PolicyBinding storage binding = bindings[i];
+        for (uint256 i = 0; i < policyBindingsLength; ++i) {
+            PolicyBinding storage policyBinding = policyBindings[i];
             metadata.policyBindings[i] = PolicyBinding({
-                pool: binding.pool,
-                coverageLimit: binding.coverageLimit,
-                payoutReceiver: binding.payoutReceiver,
-                policyId: binding.policyId,
-                termsHash: binding.termsHash,
-                committeeId: binding.committeeId,
-                operator: binding.operator
+                pool: policyBinding.pool,
+                coverageLimit: policyBinding.coverageLimit,
+                payoutReceiver: policyBinding.payoutReceiver,
+                policyId: policyBinding.policyId,
+                termsHash: policyBinding.termsHash,
+                committeeId: policyBinding.committeeId,
+                operator: policyBinding.operator
             });
         }
     }
