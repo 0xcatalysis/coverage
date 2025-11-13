@@ -2,12 +2,8 @@
 pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {
-    IAccessControlDefaultAdminRules
-} from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {Swapper} from "../../src/Swapper.sol";
@@ -73,17 +69,6 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           RECEIVE FUNCTION
-    //////////////////////////////////////////////////////////////*/
-
-    function test_receive_AcceptsNativeToken() public {
-        uint256 amount = 1 ether;
-        (bool success,) = address(swapper).call{value: amount}("");
-        assertTrue(success, "Should accept native token");
-        assertEq(address(swapper).balance, amount, "Balance mismatch");
-    }
-
-    /*//////////////////////////////////////////////////////////////
                             INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
@@ -120,147 +105,6 @@ contract SwapperTest is Test {
         assertTrue(swapper.hasRole(swapper.SWAP_MANAGER_ROLE(), swapManager), "Swap manager role missing");
         assertTrue(swapper.hasRole(swapper.SWAP_EXECUTOR_ROLE(), swapExecutor), "Swap executor role missing");
         assertEq(swapper.nativeWrapper(), nativeWrapper, "Native wrapper mismatch");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                            ACCESS CONTROL
-    //////////////////////////////////////////////////////////////*/
-
-    function test_adminTransfer_BeginTransfer_Success() public {
-        address newAdmin = makeAddr("newAdmin");
-
-        vm.prank(admin);
-        vm.expectEmit(true, true, false, true);
-        emit IAccessControlDefaultAdminRules.DefaultAdminTransferScheduled(newAdmin, uint48(block.timestamp + 1 days));
-        swapper.beginDefaultAdminTransfer(newAdmin);
-
-        (address pendingAdmin, uint48 schedule) = swapper.pendingDefaultAdmin();
-        assertEq(pendingAdmin, newAdmin);
-        assertEq(schedule, uint48(block.timestamp + 1 days));
-    }
-
-    function test_adminTransfer_AcceptTransfer_Success() public {
-        address newAdmin = makeAddr("newAdmin");
-
-        vm.prank(admin);
-        swapper.beginDefaultAdminTransfer(newAdmin);
-
-        vm.warp(block.timestamp + 1 days + 1);
-
-        vm.prank(newAdmin);
-        swapper.acceptDefaultAdminTransfer();
-
-        assertTrue(swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), newAdmin));
-        assertFalse(swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), admin));
-    }
-
-    function test_adminTransfer_AcceptBeforeDelay_Reverts() public {
-        address newAdmin = makeAddr("newAdmin");
-
-        vm.prank(admin);
-        swapper.beginDefaultAdminTransfer(newAdmin);
-
-        vm.prank(newAdmin);
-        vm.expectRevert();
-        swapper.acceptDefaultAdminTransfer();
-    }
-
-    function test_adminTransfer_CancelTransfer_Success() public {
-        address newAdmin = makeAddr("newAdmin");
-
-        vm.prank(admin);
-        swapper.beginDefaultAdminTransfer(newAdmin);
-
-        vm.prank(admin);
-        vm.expectEmit(false, false, false, false);
-        emit IAccessControlDefaultAdminRules.DefaultAdminTransferCanceled();
-        swapper.cancelDefaultAdminTransfer();
-
-        (address pendingAdmin,) = swapper.pendingDefaultAdmin();
-        assertEq(pendingAdmin, address(0));
-        assertTrue(swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), admin));
-    }
-
-    function test_adminTransfer_NonAdminCannotBegin_Reverts() public {
-        address newAdmin = makeAddr("newAdmin");
-        address attacker = makeAddr("attacker");
-
-        vm.prank(attacker);
-        vm.expectRevert();
-        swapper.beginDefaultAdminTransfer(newAdmin);
-    }
-
-    function test_adminTransfer_WrongAccountCannotAccept_Reverts() public {
-        address newAdmin = makeAddr("newAdmin");
-        address attacker = makeAddr("attacker");
-
-        vm.prank(admin);
-        swapper.beginDefaultAdminTransfer(newAdmin);
-
-        vm.warp(block.timestamp + 1 days);
-
-        vm.prank(attacker);
-        vm.expectRevert();
-        swapper.acceptDefaultAdminTransfer();
-    }
-
-    function test_adminProtection_CannotGrantDefaultAdminRole_Reverts() public {
-        address attacker = makeAddr("attacker");
-        bytes32 defaultAdminRole = swapper.DEFAULT_ADMIN_ROLE();
-
-        vm.startPrank(admin);
-        vm.expectRevert();
-        swapper.grantRole(defaultAdminRole, attacker);
-        vm.stopPrank();
-    }
-
-    function test_adminProtection_CannotRevokeDefaultAdminRole_Reverts() public {
-        bytes32 defaultAdminRole = swapper.DEFAULT_ADMIN_ROLE();
-
-        vm.startPrank(admin);
-        vm.expectRevert();
-        swapper.revokeRole(defaultAdminRole, admin);
-        vm.stopPrank();
-    }
-
-    function test_adminProtection_CannotRenounceDefaultAdminRole_Reverts() public {
-        bytes32 defaultAdminRole = swapper.DEFAULT_ADMIN_ROLE();
-
-        vm.startPrank(admin);
-        vm.expectRevert();
-        swapper.renounceRole(defaultAdminRole, admin);
-        vm.stopPrank();
-    }
-
-    function test_adminProtection_CanGrantOtherRoles_Success() public {
-        address newManager = makeAddr("newManager");
-        bytes32 managerRole = swapper.SWAP_MANAGER_ROLE();
-
-        vm.startPrank(admin);
-        swapper.grantRole(managerRole, newManager);
-        vm.stopPrank();
-
-        assertTrue(swapper.hasRole(managerRole, newManager));
-    }
-
-    function test_adminProtection_CanRevokeOtherRoles_Success() public {
-        bytes32 managerRole = swapper.SWAP_MANAGER_ROLE();
-
-        vm.startPrank(admin);
-        swapper.revokeRole(managerRole, swapManager);
-        vm.stopPrank();
-
-        assertFalse(swapper.hasRole(managerRole, swapManager));
-    }
-
-    function test_adminProtection_CanRenounceOtherRoles_Success() public {
-        bytes32 managerRole = swapper.SWAP_MANAGER_ROLE();
-
-        vm.startPrank(swapManager);
-        swapper.renounceRole(managerRole, swapManager);
-        vm.stopPrank();
-
-        assertFalse(swapper.hasRole(managerRole, swapManager));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -350,11 +194,9 @@ contract SwapperTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_setNativeWrapper_WhenWrapperZero_Reverts() public {
-        vm.startPrank(admin);
-        swapper.pause();
+        vm.prank(admin);
         vm.expectRevert(ISwapper.ZeroAddress.selector);
         swapper.setNativeWrapper(address(0));
-        vm.stopPrank();
     }
 
     function test_setNativeWrapper_WhenCallerNotAdmin_Reverts() public {
@@ -367,59 +209,13 @@ contract SwapperTest is Test {
         swapper.setNativeWrapper(newWrapper);
     }
 
-    function test_setNativeWrapper_WhenNotPaused_Reverts() public {
-        address newWrapper = makeAddr("newWrapper");
-        vm.prank(admin);
-        vm.expectRevert(PausableUpgradeable.ExpectedPause.selector);
-        swapper.setNativeWrapper(newWrapper);
-    }
-
     function test_setNativeWrapper_WhenValid_UpdatesWrapper() public {
         address newWrapper = makeAddr("newWrapper");
         vm.startPrank(admin);
-        swapper.pause();
         vm.expectEmit(true, false, false, false);
         emit NativeWrapperSet(newWrapper);
         swapper.setNativeWrapper(newWrapper);
         vm.stopPrank();
-
-        assertEq(swapper.nativeWrapper(), newWrapper, "Native wrapper should be updated");
-    }
-
-    function test_setNativeWrapper_PreventsBrokenRoutesWorkflow() public {
-        address originalWrapper = nativeWrapper;
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-        vm.prank(swapManager);
-        swapper.setSwapRoute(originalWrapper, address(tokenOut), dexTarget, true, "");
-
-        ISwapper.SwapRoute memory route = swapper.getSwapRoute(originalWrapper, address(tokenOut));
-        assertTrue(route.enabled, "Route should be enabled");
-
-        address newWrapper = makeAddr("newWrapper");
-        vm.startPrank(admin);
-
-        vm.expectRevert(PausableUpgradeable.ExpectedPause.selector);
-        swapper.setNativeWrapper(newWrapper);
-
-        swapper.pause();
-        swapper.setNativeWrapper(newWrapper);
-        vm.stopPrank();
-
-        ISwapper.SwapRoute memory oldRoute = swapper.getSwapRoute(originalWrapper, address(tokenOut));
-        assertTrue(oldRoute.enabled, "Old route still exists");
-
-        ISwapper.SwapRoute memory newRoute = swapper.getSwapRoute(newWrapper, address(tokenOut));
-        assertFalse(newRoute.enabled, "New route should not exist yet");
-
-        vm.prank(swapManager);
-        swapper.setSwapRoute(newWrapper, address(tokenOut), dexTarget, true, "");
-
-        newRoute = swapper.getSwapRoute(newWrapper, address(tokenOut));
-        assertTrue(newRoute.enabled, "New route should be enabled");
-
-        vm.prank(admin);
-        swapper.unpause();
 
         assertEq(swapper.nativeWrapper(), newWrapper, "Native wrapper should be updated");
     }
@@ -468,34 +264,6 @@ contract SwapperTest is Test {
         assertEq(tokenIn.balanceOf(address(swapper)), 0, "Swapper balance should be zero");
     }
 
-    function test_recoverTokens_WhenNativeETH_TransfersNativeETH() public {
-        uint256 rescueAmount = 5 ether;
-
-        vm.deal(address(swapper), rescueAmount);
-
-        uint256 balanceBefore = recipient.balance;
-        address nativeEth = swapper.NATIVE_ETH();
-
-        vm.prank(admin);
-        swapper.recoverTokens(nativeEth, recipient, rescueAmount);
-
-        assertEq(recipient.balance, balanceBefore + rescueAmount, "Native ETH should be transferred");
-        assertEq(address(swapper).balance, 0, "Swapper balance should be zero");
-    }
-
-    function test_recoverTokens_WhenNativeETHTransferFails_Reverts() public {
-        uint256 rescueAmount = 5 ether;
-
-        vm.deal(address(swapper), rescueAmount);
-
-        RejectEther rejectEther = new RejectEther();
-        address nativeEth = swapper.NATIVE_ETH();
-
-        vm.prank(admin);
-        vm.expectRevert();
-        swapper.recoverTokens(nativeEth, address(rejectEther), rescueAmount);
-    }
-
     /*//////////////////////////////////////////////////////////////
                             SET SWAP ROUTE
     //////////////////////////////////////////////////////////////*/
@@ -534,30 +302,6 @@ contract SwapperTest is Test {
         vm.prank(swapManager);
         vm.expectRevert(abi.encodeWithSelector(ISwapper.IdenticalTokens.selector, address(tokenIn)));
         swapper.setSwapRoute(address(tokenIn), address(tokenIn), dexTarget, true, "");
-    }
-
-    function test_setSwapRoute_WhenTokenInIsNativeETH_Reverts() public {
-        vm.startPrank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-        vm.stopPrank();
-
-        address nativeEth = swapper.NATIVE_ETH();
-
-        vm.prank(swapManager);
-        vm.expectRevert(abi.encodeWithSelector(ISwapper.InvalidRouteToken.selector, nativeEth));
-        swapper.setSwapRoute(nativeEth, address(tokenOut), dexTarget, true, "");
-    }
-
-    function test_setSwapRoute_WhenTokenOutIsNativeETH_Reverts() public {
-        vm.startPrank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-        vm.stopPrank();
-
-        address nativeEth = swapper.NATIVE_ETH();
-
-        vm.prank(swapManager);
-        vm.expectRevert(abi.encodeWithSelector(ISwapper.InvalidRouteToken.selector, nativeEth));
-        swapper.setSwapRoute(address(tokenIn), nativeEth, dexTarget, true, "");
     }
 
     function test_setSwapRoute_WhenTargetNotWhitelisted_Reverts() public {
@@ -690,7 +434,7 @@ contract SwapperTest is Test {
         swapper.executeSwap(params);
     }
 
-    function test_executeSwap_WhenRouteNotEnabled_Reverts() public {
+    function test_executeSwap_WhenRouteNotConfigured_Reverts() public {
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
             tokenIn: address(tokenIn),
             tokenOut: address(tokenOut),
@@ -702,7 +446,7 @@ contract SwapperTest is Test {
 
         vm.prank(swapExecutor);
         vm.expectRevert(
-            abi.encodeWithSelector(ISwapper.SwapRouteNotEnabled.selector, address(tokenIn), address(tokenOut))
+            abi.encodeWithSelector(ISwapper.SwapRouteNotConfigured.selector, address(tokenIn), address(tokenOut))
         );
         swapper.executeSwap(params);
     }
@@ -725,7 +469,7 @@ contract SwapperTest is Test {
 
         vm.prank(swapExecutor);
         vm.expectRevert(
-            abi.encodeWithSelector(ISwapper.SwapRouteNotEnabled.selector, address(tokenIn), address(tokenOut))
+            abi.encodeWithSelector(ISwapper.SwapRouteNotConfigured.selector, address(tokenIn), address(tokenOut))
         );
         swapper.executeSwap(params);
     }
@@ -892,354 +636,14 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            EXECUTE SWAP - NATIVE ETH
+                           RECEIVE FUNCTION
     //////////////////////////////////////////////////////////////*/
 
-    function test_executeSwap_WhenNativeETHInput_WrapsAndSwaps() public {
-        MockWETH mockWeth = new MockWETH();
-
-        vm.startPrank(admin);
-        swapper.pause();
-        swapper.setNativeWrapper(address(mockWeth));
-        swapper.unpause();
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-        vm.stopPrank();
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true, "");
-
-        uint256 amountIn = 1 ether;
-        uint256 amountOut = 0.95 ether;
-        tokenOut.mint(dexTarget, amountOut);
-
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(mockWeth), address(tokenOut));
-        ISwapper.SwapParams memory params = ISwapper.SwapParams({
-            tokenIn: swapper.NATIVE_ETH(),
-            tokenOut: address(tokenOut),
-            amountIn: amountIn,
-            amountOutMin: 0.9 ether,
-            recipient: recipient,
-            swapCalldata: swapCalldata
-        });
-
-        vm.deal(swapExecutor, amountIn);
-        vm.prank(swapExecutor);
-        uint256 actualAmountOut = swapper.executeSwap{value: amountIn}(params);
-
-        assertEq(actualAmountOut, amountOut, "Amount out mismatch");
-        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient should receive output tokens");
-        assertEq(swapExecutor.balance, 0, "Executor should have sent all ETH");
-    }
-
-    function test_executeSwap_WhenNativeETHOutput_SwapsAndUnwraps() public {
-        MockWETH mockWeth = new MockWETH();
-
-        vm.startPrank(admin);
-        swapper.pause();
-        swapper.setNativeWrapper(address(mockWeth));
-        swapper.unpause();
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-        vm.stopPrank();
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true, "");
-
-        uint256 amountIn = 100 ether;
-        uint256 amountOut = 1 ether;
-
-        tokenIn.mint(swapExecutor, amountIn);
-        vm.deal(dexTarget, amountOut);
-
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(mockWeth));
-        ISwapper.SwapParams memory params = ISwapper.SwapParams({
-            tokenIn: address(tokenIn),
-            tokenOut: swapper.NATIVE_ETH(),
-            amountIn: amountIn,
-            amountOutMin: 0.9 ether,
-            recipient: recipient,
-            swapCalldata: swapCalldata
-        });
-
-        uint256 recipientBalanceBefore = recipient.balance;
-
-        vm.startPrank(swapExecutor);
-        tokenIn.approve(address(swapper), amountIn);
-        uint256 actualAmountOut = swapper.executeSwap(params);
-        vm.stopPrank();
-
-        assertEq(actualAmountOut, amountOut, "Amount out mismatch");
-        assertEq(recipient.balance, recipientBalanceBefore + amountOut, "Recipient should receive ETH");
-    }
-
-    function test_executeSwap_WhenNativeETHInput_WrongMsgValue_Reverts() public {
-        MockWETH mockWeth = new MockWETH();
-
-        vm.startPrank(admin);
-        swapper.pause();
-        swapper.setNativeWrapper(address(mockWeth));
-        swapper.unpause();
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-        vm.stopPrank();
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true, "");
-
-        uint256 amountIn = 1 ether;
-        uint256 wrongValue = 0.5 ether;
-
-        ISwapper.SwapParams memory params = ISwapper.SwapParams({
-            tokenIn: swapper.NATIVE_ETH(),
-            tokenOut: address(tokenOut),
-            amountIn: amountIn,
-            amountOutMin: 0.9 ether,
-            recipient: recipient,
-            swapCalldata: ""
-        });
-
-        vm.deal(swapExecutor, amountIn);
-        vm.prank(swapExecutor);
-        vm.expectRevert(abi.encodeWithSelector(ISwapper.InsufficientNativeAmount.selector, wrongValue, amountIn));
-        swapper.executeSwap{value: wrongValue}(params);
-    }
-
-    function test_executeSwap_WhenERC20Swap_UnexpectedNativePayment_Reverts() public {
-        _setupRoute();
-
-        ISwapper.SwapParams memory params = ISwapper.SwapParams({
-            tokenIn: address(tokenIn),
-            tokenOut: address(tokenOut),
-            amountIn: 100 ether,
-            amountOutMin: 90 ether,
-            recipient: recipient,
-            swapCalldata: ""
-        });
-
-        vm.deal(swapExecutor, 1 ether);
-        vm.prank(swapExecutor);
-        vm.expectRevert(ISwapper.UnexpectedNativePayment.selector);
-        swapper.executeSwap{value: 1 ether}(params);
-    }
-
-    function test_executeSwap_WhenNativeETHOutput_TransferFails_Reverts() public {
-        MockWETH mockWeth = new MockWETH();
-
-        vm.startPrank(admin);
-        swapper.pause();
-        swapper.setNativeWrapper(address(mockWeth));
-        swapper.unpause();
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-        vm.stopPrank();
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true, "");
-
-        uint256 amountIn = 100 ether;
-        uint256 amountOut = 1 ether;
-
-        tokenIn.mint(swapExecutor, amountIn);
-        vm.deal(dexTarget, amountOut);
-
-        RejectEther rejecter = new RejectEther();
-
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(mockWeth));
-        ISwapper.SwapParams memory params = ISwapper.SwapParams({
-            tokenIn: address(tokenIn),
-            tokenOut: swapper.NATIVE_ETH(),
-            amountIn: amountIn,
-            amountOutMin: 0.9 ether,
-            recipient: address(rejecter),
-            swapCalldata: swapCalldata
-        });
-
-        vm.startPrank(swapExecutor);
-        tokenIn.approve(address(swapper), amountIn);
-        vm.expectRevert(ISwapper.NativeTransferFailed.selector);
-        swapper.executeSwap(params);
-        vm.stopPrank();
-    }
-
-    function test_executeSwap_SequentialSwaps_BothSucceed() public {
-        _setupRoute();
-
-        uint256 amountIn1 = 100 ether;
-        uint256 amountOut1 = 95 ether;
-        tokenIn.mint(swapExecutor, amountIn1);
-        tokenOut.mint(dexTarget, amountOut1);
-
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
-        ISwapper.SwapParams memory params1 = ISwapper.SwapParams({
-            tokenIn: address(tokenIn),
-            tokenOut: address(tokenOut),
-            amountIn: amountIn1,
-            amountOutMin: 90 ether,
-            recipient: recipient,
-            swapCalldata: swapCalldata
-        });
-
-        vm.startPrank(swapExecutor);
-        tokenIn.approve(address(swapper), amountIn1);
-        uint256 actualOut1 = swapper.executeSwap(params1);
-        assertEq(actualOut1, amountOut1, "First swap amount mismatch");
-
-        uint256 amountIn2 = 50 ether;
-        uint256 amountOut2 = 48 ether;
-        tokenIn.mint(swapExecutor, amountIn2);
-        tokenOut.mint(dexTarget, amountOut2);
-
-        ISwapper.SwapParams memory params2 = ISwapper.SwapParams({
-            tokenIn: address(tokenIn),
-            tokenOut: address(tokenOut),
-            amountIn: amountIn2,
-            amountOutMin: 45 ether,
-            recipient: recipient,
-            swapCalldata: swapCalldata
-        });
-
-        tokenIn.approve(address(swapper), amountIn2);
-        uint256 actualOut2 = swapper.executeSwap(params2);
-        vm.stopPrank();
-
-        assertEq(actualOut2, amountOut2, "Second swap amount mismatch");
-        assertEq(tokenOut.balanceOf(recipient), amountOut1 + amountOut2, "Total recipient balance mismatch");
-        assertEq(tokenIn.balanceOf(swapExecutor), 0, "Executor should have no tokenIn left");
-        assertEq(tokenOut.balanceOf(address(swapper)), 0, "Swapper should have no tokenOut left");
-        assertEq(tokenIn.balanceOf(address(swapper)), 0, "Swapper should have no tokenIn left");
-    }
-
-    function test_executeSwap_SequentialSwaps_DifferentRecipients_BothSucceed() public {
-        _setupRoute();
-
-        address recipient2 = makeAddr("recipient2");
-
-        uint256 amountIn = 100 ether;
-        uint256 amountOut = 95 ether;
-
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
-
-        vm.startPrank(swapExecutor);
-
-        tokenIn.mint(swapExecutor, amountIn);
-        tokenOut.mint(dexTarget, amountOut);
-        tokenIn.approve(address(swapper), amountIn);
-        ISwapper.SwapParams memory params1 = ISwapper.SwapParams({
-            tokenIn: address(tokenIn),
-            tokenOut: address(tokenOut),
-            amountIn: amountIn,
-            amountOutMin: 90 ether,
-            recipient: recipient,
-            swapCalldata: swapCalldata
-        });
-        swapper.executeSwap(params1);
-
-        tokenIn.mint(swapExecutor, amountIn);
-        tokenOut.mint(dexTarget, amountOut);
-        tokenIn.approve(address(swapper), amountIn);
-        ISwapper.SwapParams memory params2 = ISwapper.SwapParams({
-            tokenIn: address(tokenIn),
-            tokenOut: address(tokenOut),
-            amountIn: amountIn,
-            amountOutMin: 90 ether,
-            recipient: recipient2,
-            swapCalldata: swapCalldata
-        });
-        swapper.executeSwap(params2);
-
-        vm.stopPrank();
-
-        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient1 balance mismatch");
-        assertEq(tokenOut.balanceOf(recipient2), amountOut, "Recipient2 balance mismatch");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                         SET SWAP ROUTE
-    //////////////////////////////////////////////////////////////*/
-
-    function test_setSwapRoute_UpdateExistingRoute_UpdatesTarget() public {
-        address dexTarget2 = makeAddr("dexTarget2");
-
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
-
-        ISwapper.SwapRoute memory route1 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertEq(route1.swapTarget, dexTarget, "Initial target mismatch");
-
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget2, true);
-
-        vm.startPrank(swapManager);
-        vm.expectEmit(true, true, false, true);
-        emit SwapRouteSet(address(tokenIn), address(tokenOut), dexTarget2, true);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true, "");
-        vm.stopPrank();
-
-        ISwapper.SwapRoute memory route2 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertEq(route2.swapTarget, dexTarget2, "Updated target mismatch");
-        assertEq(route2.tokenIn, address(tokenIn), "TokenIn should remain same");
-        assertEq(route2.tokenOut, address(tokenOut), "TokenOut should remain same");
-        assertTrue(route2.enabled, "Route should remain enabled");
-    }
-
-    function test_setSwapRoute_UpdateRouteTarget_OldTargetSwapsFail() public {
-        address dexTarget2 = makeAddr("dexTarget2");
-        MockDEX mockDex2 = new MockDEX();
-        dexTarget2 = address(mockDex2);
-
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
-
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget2, true);
-
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true, "");
-
-        uint256 amountIn = 100 ether;
-        uint256 amountOut = 95 ether;
-
-        tokenIn.mint(swapExecutor, amountIn);
-        tokenOut.mint(dexTarget2, amountOut);
-
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
-        ISwapper.SwapParams memory params = ISwapper.SwapParams({
-            tokenIn: address(tokenIn),
-            tokenOut: address(tokenOut),
-            amountIn: amountIn,
-            amountOutMin: 90 ether,
-            recipient: recipient,
-            swapCalldata: swapCalldata
-        });
-
-        vm.startPrank(swapExecutor);
-        tokenIn.approve(address(swapper), amountIn);
-        uint256 actualOut = swapper.executeSwap(params);
-        vm.stopPrank();
-
-        assertEq(actualOut, amountOut, "Swap should use new target");
-        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient should receive tokens");
-    }
-
-    function test_setSwapRoute_UpdateRouteEnabled_TogglesCorrectly() public {
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-
-        vm.startPrank(swapManager);
-
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
-        ISwapper.SwapRoute memory route1 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertTrue(route1.enabled, "Route should be enabled");
-
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, false, "");
-        ISwapper.SwapRoute memory route2 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertFalse(route2.enabled, "Route should be disabled");
-        assertEq(route2.swapTarget, dexTarget, "Target should remain same");
-
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
-        ISwapper.SwapRoute memory route3 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertTrue(route3.enabled, "Route should be re-enabled");
-
-        vm.stopPrank();
+    function test_receive_AcceptsNativeToken() public {
+        uint256 amount = 1 ether;
+        (bool success,) = address(swapper).call{value: amount}("");
+        assertTrue(success, "Should accept native token");
+        assertEq(address(swapper).balance, amount, "Balance mismatch");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1298,36 +702,19 @@ contract MockDEX {
         reentrancyTarget = _target;
     }
 
-    function swap(address tokenIn, address tokenOut) external {
+    function swap(
+        address,
+        /* tokenIn */
+        address tokenOut
+    )
+        external
+    {
         require(!shouldRevert, "Mock swap failed");
 
-        // Pull input tokens from caller (mimics real DEX behavior)
-        if (tokenIn != address(0)) {
-            try MockToken(tokenIn)
-                .transferFrom(
-                    msg.sender, address(this), MockToken(tokenIn).allowance(msg.sender, address(this))
-                ) returns (
-                bool
-            ) {}
-                catch {}
-        }
+        MockToken outToken = MockToken(tokenOut);
+        uint256 amountOut = outToken.balanceOf(address(this));
 
-        // Handle both ERC20 and WETH
-        if (tokenOut.code.length > 0) {
-            try MockToken(tokenOut).balanceOf(address(this)) returns (uint256 balance) {
-                if (balance > 0) {
-                    require(MockToken(tokenOut).transfer(msg.sender, balance), "Transfer failed");
-                    return;
-                }
-            } catch {}
-        }
-
-        // If tokenOut is WETH or has ETH balance, wrap and send
-        if (address(this).balance > 0) {
-            MockWETH(payable(tokenOut)).deposit{value: address(this).balance}();
-            uint256 wethBalance = MockWETH(payable(tokenOut)).balanceOf(address(this));
-            require(MockWETH(payable(tokenOut)).transfer(msg.sender, wethBalance), "WETH transfer failed");
-        }
+        require(outToken.transfer(msg.sender, amountOut), "Transfer failed");
     }
 
     function swapWithReentrancy(address tokenIn, address tokenOut) external {
@@ -1337,31 +724,5 @@ contract MockDEX {
 
         ISwapper(reentrancyTarget).executeSwap(params);
     }
-
-    receive() external payable {}
 }
 
-contract MockWETH is ERC20 {
-    constructor() ERC20("Wrapped Ether", "WETH") {}
-
-    function deposit() external payable {
-        _mint(msg.sender, msg.value);
-    }
-
-    function withdraw(uint256 amount) external {
-        _burn(msg.sender, amount);
-        (bool success,) = msg.sender.call{value: amount}("");
-        require(success, "ETH transfer failed");
-    }
-
-    receive() external payable {
-        _mint(msg.sender, msg.value);
-    }
-}
-
-contract RejectEther {
-    // Contract that rejects all ETH transfers
-    receive() external payable {
-        revert("ETH not accepted");
-    }
-}
