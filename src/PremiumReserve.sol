@@ -97,6 +97,7 @@ contract PremiumReserve is
     {
         require(position.premiumToken != address(0) && position.buyer != address(0), ZeroAddress());
         require(position.policyCommit != bytes32(0), InvalidPolicyCommit());
+        require(position.restakerPremiumTotal != 0, ZeroRestakerPremium());
         require(
             position.startTime < position.maturityTime, InvalidCoverageWindow(position.startTime, position.maturityTime)
         );
@@ -108,11 +109,7 @@ contract PremiumReserve is
         require(poolPremiums.length == 0, EscrowAlreadyExists(position.policyId));
 
         uint256 poolsLength = position.poolPremiums.length;
-        if (position.restakerPremiumTotal == 0) {
-            require(poolsLength == 0, InvalidPoolPremiums());
-        } else {
-            require(poolsLength != 0, InvalidPoolPremiums());
-        }
+        require(poolsLength != 0, InvalidPoolPremiums());
 
         uint256 observedTotal = 0;
         for (uint256 i = 0; i < poolsLength; ++i) {

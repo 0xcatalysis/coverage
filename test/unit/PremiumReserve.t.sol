@@ -121,6 +121,23 @@ contract PremiumReserveTest is Test {
         reserve.openEscrow(position);
     }
 
+    function test_openEscrow_WhenZeroRestakerPremium_Reverts() public {
+        IPremiumReserve.EscrowPosition memory position = _defaultPosition();
+        position.restakerPremiumTotal = 0;
+        position.poolPremiums = new IPremiumReserve.PoolPremium[](0);
+        vm.prank(premiumManager);
+        vm.expectRevert(IPremiumReserve.ZeroRestakerPremium.selector);
+        reserve.openEscrow(position);
+    }
+
+    function test_openEscrow_WhenZeroPoolsWithNonZeroPremium_Reverts() public {
+        IPremiumReserve.EscrowPosition memory position = _defaultPosition();
+        position.poolPremiums = new IPremiumReserve.PoolPremium[](0);
+        vm.prank(premiumManager);
+        vm.expectRevert(IPremiumReserve.InvalidPoolPremiums.selector);
+        reserve.openEscrow(position);
+    }
+
     function test_openEscrow_StoresStateAndEmits() public {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
 

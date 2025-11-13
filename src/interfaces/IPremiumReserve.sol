@@ -156,6 +156,11 @@ interface IPremiumReserve is IAccessControl {
     error ZeroSettledAmount();
 
     /**
+     * @notice Reverts when attempting to open an escrow with zero restaker premium.
+     */
+    error ZeroRestakerPremium();
+
+    /**
      * @notice Reverts when attempting to release funds while a claim lock is active.
      * @param policyId Identifier of the locked escrow.
      */
