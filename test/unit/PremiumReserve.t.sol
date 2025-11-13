@@ -135,8 +135,30 @@ contract PremiumReserveTest is Test {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
         position.poolPremiums = new IPremiumReserve.PoolPremium[](0);
         vm.prank(premiumManager);
-        vm.expectRevert(IPremiumReserve.InvalidPoolPremiums.selector);
+        vm.expectRevert(IPremiumReserve.TooFewPools.selector);
         reserve.openEscrow(position);
+    }
+
+    function test_openEscrow_WhenTooManyPools_Reverts() public {
+        IPremiumReserve.EscrowPosition memory position = _defaultPosition();
+        position.poolPremiums = new IPremiumReserve.PoolPremium[](2);
+        position.poolPremiums[0] =
+            IPremiumReserve.PoolPremium({pool: pool0, operator: operator0, restakerPremium: 600 ether});
+        position.poolPremiums[1] =
+            IPremiumReserve.PoolPremium({pool: pool1, operator: operator1, restakerPremium: 400 ether});
+
+        vm.expectRevert(abi.encodeWithSelector(IPremiumReserve.TooManyPools.selector, 2, 1));
+        vm.prank(premiumManager);
+        reserve.openEscrow(position);
+    }
+
+    function test_openEscrow_WithMaxPools_Succeeds() public {
+        IPremiumReserve.EscrowPosition memory position = _defaultPosition();
+
+        vm.prank(premiumManager);
+        reserve.openEscrow(position);
+
+        assertEq(reserve.getPoolCount(POLICY_ID), 1, "should create escrow with 1 pool");
     }
 
     function test_openEscrow_StoresStateAndEmits() public {
@@ -153,9 +175,8 @@ contract PremiumReserveTest is Test {
         assertEq(stored.restakerPremiumTotal, RESTAKER_PREMIUM, "restaker premium mismatch");
         assertEq(stored.premiumToken, address(premiumToken), "premium token mismatch");
         assertEq(stored.buyer, buyer, "buyer mismatch");
-        assertEq(stored.poolPremiums.length, 2, "pool length");
-        assertEq(stored.poolPremiums[0].restakerPremium, 600 ether, "pool0 share");
-        assertEq(stored.poolPremiums[1].restakerPremium, 400 ether, "pool1 share");
+        assertEq(stored.poolPremiums.length, 1, "pool length");
+        assertEq(stored.poolPremiums[0].restakerPremium, RESTAKER_PREMIUM, "pool0 share");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -214,8 +235,7 @@ contract PremiumReserveTest is Test {
         IPremiumReserve.EscrowPosition memory stored = reserve.escrowPosition(POLICY_ID);
         assertEq(stored.policyCommit, policyCommit, "policy commit should persist after claim");
         assertEq(stored.restakerPremiumTotal, RESTAKER_PREMIUM - 600 ether, "restaker remainder");
-        assertEq(stored.poolPremiums[0].restakerPremium, 240 ether, "pool0 remainder");
-        assertEq(stored.poolPremiums[1].restakerPremium, 160 ether, "pool1 remainder");
+        assertEq(stored.poolPremiums[0].restakerPremium, 400 ether, "pool0 remainder");
     }
 
     function test_payClaim_MultipleSequentialClaims_MaintainsProportions() public {
@@ -229,16 +249,14 @@ contract PremiumReserveTest is Test {
 
         IPremiumReserve.EscrowPosition memory stored1 = reserve.escrowPosition(POLICY_ID);
         assertEq(stored1.restakerPremiumTotal, 700 ether, "after first claim total");
-        assertEq(stored1.poolPremiums[0].restakerPremium, 420 ether, "after first claim pool0");
-        assertEq(stored1.poolPremiums[1].restakerPremium, 280 ether, "after first claim pool1");
+        assertEq(stored1.poolPremiums[0].restakerPremium, 700 ether, "after first claim pool0");
         assertEq(premiumToken.balanceOf(payoutRecipient), 300 ether, "first payout");
 
         reserve.payClaim(POLICY_ID, payoutRecipient, 200 ether);
 
         IPremiumReserve.EscrowPosition memory stored2 = reserve.escrowPosition(POLICY_ID);
         assertEq(stored2.restakerPremiumTotal, 500 ether, "after second claim total");
-        assertEq(stored2.poolPremiums[0].restakerPremium, 300 ether, "after second claim pool0");
-        assertEq(stored2.poolPremiums[1].restakerPremium, 200 ether, "after second claim pool1");
+        assertEq(stored2.poolPremiums[0].restakerPremium, 500 ether, "after second claim pool0");
         assertEq(premiumToken.balanceOf(payoutRecipient), 500 ether, "cumulative payout");
 
         reserve.payClaim(POLICY_ID, payoutRecipient, 500 ether);
@@ -247,7 +265,6 @@ contract PremiumReserveTest is Test {
         IPremiumReserve.EscrowPosition memory stored3 = reserve.escrowPosition(POLICY_ID);
         assertEq(stored3.restakerPremiumTotal, 0, "after third claim total depleted");
         assertEq(stored3.poolPremiums[0].restakerPremium, 0, "after third claim pool0 depleted");
-        assertEq(stored3.poolPremiums[1].restakerPremium, 0, "after third claim pool1 depleted");
         assertEq(premiumToken.balanceOf(payoutRecipient), 1000 ether, "full payout");
     }
 
@@ -266,43 +283,8 @@ contract PremiumReserveTest is Test {
         IPremiumReserve.EscrowPosition memory stored = reserve.escrowPosition(POLICY_ID);
         assertEq(stored.restakerPremiumTotal, 0, "total should be zero");
         assertEq(stored.poolPremiums[0].restakerPremium, 0, "pool0 should be zero");
-        assertEq(stored.poolPremiums[1].restakerPremium, 0, "pool1 should be zero");
         assertEq(premiumToken.balanceOf(payoutRecipient), RESTAKER_PREMIUM, "recipient gets full amount");
         assertEq(premiumToken.balanceOf(address(reserve)), 0, "reserve fully depleted");
-    }
-
-    function test_payClaim_WithOddPremiumSplits_HandlesRoundingCorrectly() public {
-        IPremiumReserve.EscrowPosition memory position = _defaultPosition();
-        position.restakerPremiumTotal = 1000 ether;
-        position.poolPremiums = new IPremiumReserve.PoolPremium[](3);
-        position.poolPremiums[0] =
-            IPremiumReserve.PoolPremium({pool: pool0, operator: operator0, restakerPremium: 333 ether});
-        position.poolPremiums[1] =
-            IPremiumReserve.PoolPremium({pool: pool1, operator: operator1, restakerPremium: 333 ether});
-        position.poolPremiums[2] = IPremiumReserve.PoolPremium({
-            pool: makeAddr("pool2"), operator: makeAddr("operator2"), restakerPremium: 334 ether
-        });
-
-        vm.prank(premiumManager);
-        reserve.openEscrow(position);
-
-        premiumToken.mint(address(reserve), 1000 ether);
-
-        vm.startPrank(claimManager);
-        reserve.setClaimLockStatus(POLICY_ID, true);
-        reserve.payClaim(POLICY_ID, payoutRecipient, 250 ether);
-        vm.stopPrank();
-
-        IPremiumReserve.EscrowPosition memory stored = reserve.escrowPosition(POLICY_ID);
-        assertEq(stored.restakerPremiumTotal, 750 ether, "total after 25% claim");
-
-        uint256 pool0Remainder = stored.poolPremiums[0].restakerPremium;
-        uint256 pool1Remainder = stored.poolPremiums[1].restakerPremium;
-        uint256 pool2Remainder = stored.poolPremiums[2].restakerPremium;
-
-        assertEq(pool0Remainder + pool1Remainder + pool2Remainder, 750 ether, "sum must equal total");
-        assertApproxEqAbs(pool0Remainder, 249.75 ether, 1 ether, "pool0 roughly proportional");
-        assertApproxEqAbs(pool1Remainder, 249.75 ether, 1 ether, "pool1 roughly proportional");
     }
 
     function test_payClaim_AfterPartialClaim_RemainingCanBeReleased() public {
@@ -359,13 +341,9 @@ contract PremiumReserveTest is Test {
         vm.warp(maturityTime);
 
         vm.expectEmit(true, true, true, true, address(rewardsManagerMock));
-        emit RewardsManagerMock.RewardsDistributed(COVERAGE_POLICY_TASK, operator0, policyCommit, 600 ether);
+        emit RewardsManagerMock.RewardsDistributed(COVERAGE_POLICY_TASK, operator0, policyCommit, RESTAKER_PREMIUM);
         vm.expectEmit();
-        emit PoolPremiumReleased(POLICY_ID, pool0, 600 ether);
-        vm.expectEmit(true, true, true, true, address(rewardsManagerMock));
-        emit RewardsManagerMock.RewardsDistributed(COVERAGE_POLICY_TASK, operator1, policyCommit, 400 ether);
-        vm.expectEmit();
-        emit PoolPremiumReleased(POLICY_ID, pool1, 400 ether);
+        emit PoolPremiumReleased(POLICY_ID, pool0, RESTAKER_PREMIUM);
         vm.expectEmit();
         emit PremiumReleased(POLICY_ID, rewardsManager, RESTAKER_PREMIUM);
         vm.expectEmit();
@@ -494,25 +472,18 @@ contract PremiumReserveTest is Test {
 
     function test_getPoolCount_ReturnsCorrectCount() public {
         _openEscrow();
-        assertEq(reserve.getPoolCount(POLICY_ID), 2, "should return 2 pools");
+        assertEq(reserve.getPoolCount(POLICY_ID), 1, "should return 1 pool");
     }
 
-    function test_getPoolCount_WithDifferentPoolCounts() public {
+    function test_getPoolCount_WithDifferentPolicyIds() public {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
         position.policyId = 999;
-        position.poolPremiums = new IPremiumReserve.PoolPremium[](3);
-        position.poolPremiums[0] =
-            IPremiumReserve.PoolPremium({pool: pool0, operator: operator0, restakerPremium: 400 ether});
-        position.poolPremiums[1] =
-            IPremiumReserve.PoolPremium({pool: pool1, operator: operator1, restakerPremium: 300 ether});
-        position.poolPremiums[2] = IPremiumReserve.PoolPremium({
-            pool: makeAddr("pool2"), operator: makeAddr("operator2"), restakerPremium: 300 ether
-        });
 
         vm.prank(premiumManager);
         reserve.openEscrow(position);
 
-        assertEq(reserve.getPoolCount(999), 3, "should return 3 pools");
+        assertEq(reserve.getPoolCount(999), 1, "should return 1 pool for policy 999");
+        assertEq(reserve.getPoolCount(POLICY_ID), 0, "should return 0 for non-opened policy");
     }
 
     function test_getPoolCount_ForNonexistentEscrow_ReturnsZero() public {
@@ -542,11 +513,9 @@ contract PremiumReserveTest is Test {
         position.startTime = uint64(block.timestamp);
         position.maturityTime = uint64(block.timestamp + MATURITY_OFFSET);
         position.claimLocked = false;
-        position.poolPremiums = new IPremiumReserve.PoolPremium[](2);
+        position.poolPremiums = new IPremiumReserve.PoolPremium[](1);
         position.poolPremiums[0] =
-            IPremiumReserve.PoolPremium({pool: pool0, operator: operator0, restakerPremium: 600 ether});
-        position.poolPremiums[1] =
-            IPremiumReserve.PoolPremium({pool: pool1, operator: operator1, restakerPremium: 400 ether});
+            IPremiumReserve.PoolPremium({pool: pool0, operator: operator0, restakerPremium: RESTAKER_PREMIUM});
     }
 }
 

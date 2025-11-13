@@ -151,6 +151,18 @@ interface IPremiumReserve is IAccessControl {
     error InvalidPoolPremiums();
 
     /**
+     * @notice Reverts when no pools are provided for an escrow.
+     */
+    error TooFewPools();
+
+    /**
+     * @notice Reverts when the number of pools exceeds the maximum allowed.
+     * @param poolCount Number of pools provided.
+     * @param maxPools Maximum allowed pool count.
+     */
+    error TooManyPools(uint256 poolCount, uint256 maxPools);
+
+    /**
      * @notice Reverts when the pool premium breakdown does not match the aggregate total.
      * @param expected Expected aggregate value.
      * @param observed Observed sum across pool entries.

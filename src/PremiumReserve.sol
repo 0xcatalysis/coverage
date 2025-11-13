@@ -29,6 +29,7 @@ contract PremiumReserve is
     bytes32 public constant override CLAIM_MANAGER_ROLE = keccak256("CLAIM_MANAGER_ROLE");
     bytes32 public constant override POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
     bytes private constant _COVERAGE_POLICY_TASK = "COVERAGE_POLICY";
+    uint256 private constant _MAX_POOL_COUNT = 1;
 
     mapping(uint256 => EscrowAccount) private _escrows;
     // slither-disable-next-line uninitialized-state
@@ -106,10 +107,9 @@ contract PremiumReserve is
         require(escrow.premiumToken == address(0), EscrowAlreadyExists(position.policyId));
 
         PoolPremium[] storage poolPremiums = _poolPremiums[position.policyId];
-        require(poolPremiums.length == 0, EscrowAlreadyExists(position.policyId));
-
         uint256 poolsLength = position.poolPremiums.length;
-        require(poolsLength != 0, InvalidPoolPremiums());
+        require(poolsLength != 0, TooFewPools());
+        require(poolsLength <= _MAX_POOL_COUNT, TooManyPools(poolsLength, _MAX_POOL_COUNT));
 
         uint256 observedTotal = 0;
         for (uint256 i = 0; i < poolsLength; ++i) {
@@ -329,7 +329,7 @@ contract PremiumReserve is
     {
         PoolPremium[] storage poolPremiums = _poolPremiums[policyId];
         uint256 poolsLength = poolPremiums.length;
-        require(poolsLength != 0, InvalidPoolPremiums());
+        require(poolsLength != 0, TooFewPools());
 
         uint256 totalInitial = escrow.restakerPremiumInitial;
         uint256 distributed = 0;
