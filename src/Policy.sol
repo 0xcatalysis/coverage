@@ -71,6 +71,7 @@ contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC
         );
         require(metadata.policyCommit != bytes32(0), InvalidPolicyCommit());
         require(metadata.coverageLimit != 0, InvalidCoverageLimit());
+        require(metadata.basePremium != 0, InvalidBasePremium());
         require(metadata.poolPolicyId != bytes32(0) && metadata.termsHash != bytes32(0), InvalidPolicyMetadata());
         require(
             metadata.startTime < metadata.maturityTime, InvalidCoverageWindow(metadata.startTime, metadata.maturityTime)

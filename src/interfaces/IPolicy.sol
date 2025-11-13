@@ -21,6 +21,8 @@ interface IPolicy is IAccessControl, IERC721Metadata {
         address beneficiary;
         /// @notice ERC20 token used for premium payments.
         address premiumToken;
+        /// @notice Base premium paid by the buyer for coverage (excluding refundable deposits).
+        uint256 basePremium;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
         /// @notice Address of the pool providing coverage.
@@ -98,6 +100,11 @@ interface IPolicy is IAccessControl, IERC721Metadata {
      * @notice Reverts when coverage limit is zero.
      */
     error InvalidCoverageLimit();
+
+    /**
+     * @notice Reverts when base premium is zero.
+     */
+    error InvalidBasePremium();
 
     /**
      * @notice Reverts when required policy metadata fields are invalid.

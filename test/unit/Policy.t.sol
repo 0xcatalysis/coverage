@@ -190,6 +190,14 @@ contract PolicyTest is Test {
         policy.mintPolicy(buyer, POLICY_ID, metadata);
     }
 
+    function test_mintPolicy_WhenBasePremiumZero_Reverts() public {
+        IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.basePremium = 0;
+        vm.expectRevert(IPolicy.InvalidBasePremium.selector);
+        vm.prank(policyManager);
+        policy.mintPolicy(buyer, POLICY_ID, metadata);
+    }
+
     function test_mintPolicy_WhenCoverageWindowInvalid_Reverts() public {
         IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
         metadata.startTime = metadata.maturityTime;
@@ -244,6 +252,7 @@ contract PolicyTest is Test {
         assertEq(stored.buyer, metadata.buyer, "Buyer mismatch");
         assertEq(stored.beneficiary, metadata.beneficiary, "Beneficiary mismatch");
         assertEq(stored.premiumToken, metadata.premiumToken, "Premium token mismatch");
+        assertEq(stored.basePremium, metadata.basePremium, "Base premium mismatch");
         assertEq(stored.payoutToken, metadata.payoutToken, "Payout token mismatch");
         assertEq(stored.pool, metadata.pool, "Pool mismatch");
         assertEq(stored.coverageLimit, metadata.coverageLimit, "Coverage limit mismatch");
@@ -288,6 +297,7 @@ contract PolicyTest is Test {
             buyer: buyer,
             beneficiary: beneficiary,
             premiumToken: premiumToken,
+            basePremium: 100e18,
             payoutToken: payoutToken,
             pool: pool,
             coverageLimit: 1000,
