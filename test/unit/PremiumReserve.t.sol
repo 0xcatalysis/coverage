@@ -191,31 +191,137 @@ contract PremiumReserveTest is Test {
         _openEscrow();
         _fundReserve();
 
-        vm.prank(claimManager);
+        vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
 
         vm.expectRevert(
             abi.encodeWithSelector(IPremiumReserve.InsufficientEscrow.selector, POLICY_ID, 1100 ether, RESTAKER_PREMIUM)
         );
-        vm.prank(claimManager);
         reserve.payClaim(POLICY_ID, payoutRecipient, 1100 ether);
+        vm.stopPrank();
     }
 
     function test_payClaim_ReducesRestakerPremiumsProRata() public {
         _openEscrow();
         _fundReserve();
 
-        vm.prank(claimManager);
+        vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
-
-        vm.prank(claimManager);
         reserve.payClaim(POLICY_ID, payoutRecipient, 600 ether);
+        vm.stopPrank();
 
         IPremiumReserve.EscrowPosition memory stored = reserve.escrowPosition(POLICY_ID);
         assertEq(stored.policyCommit, policyCommit, "policy commit should persist after claim");
         assertEq(stored.restakerPremiumTotal, RESTAKER_PREMIUM - 600 ether, "restaker remainder");
         assertEq(stored.poolPremiums[0].restakerPremium, 240 ether, "pool0 remainder");
         assertEq(stored.poolPremiums[1].restakerPremium, 160 ether, "pool1 remainder");
+    }
+
+    function test_payClaim_MultipleSequentialClaims_MaintainsProportions() public {
+        _openEscrow();
+        _fundReserve();
+
+        vm.startPrank(claimManager);
+        reserve.setClaimLockStatus(POLICY_ID, true);
+
+        reserve.payClaim(POLICY_ID, payoutRecipient, 300 ether);
+
+        IPremiumReserve.EscrowPosition memory stored1 = reserve.escrowPosition(POLICY_ID);
+        assertEq(stored1.restakerPremiumTotal, 700 ether, "after first claim total");
+        assertEq(stored1.poolPremiums[0].restakerPremium, 420 ether, "after first claim pool0");
+        assertEq(stored1.poolPremiums[1].restakerPremium, 280 ether, "after first claim pool1");
+        assertEq(premiumToken.balanceOf(payoutRecipient), 300 ether, "first payout");
+
+        reserve.payClaim(POLICY_ID, payoutRecipient, 200 ether);
+
+        IPremiumReserve.EscrowPosition memory stored2 = reserve.escrowPosition(POLICY_ID);
+        assertEq(stored2.restakerPremiumTotal, 500 ether, "after second claim total");
+        assertEq(stored2.poolPremiums[0].restakerPremium, 300 ether, "after second claim pool0");
+        assertEq(stored2.poolPremiums[1].restakerPremium, 200 ether, "after second claim pool1");
+        assertEq(premiumToken.balanceOf(payoutRecipient), 500 ether, "cumulative payout");
+
+        reserve.payClaim(POLICY_ID, payoutRecipient, 500 ether);
+        vm.stopPrank();
+
+        IPremiumReserve.EscrowPosition memory stored3 = reserve.escrowPosition(POLICY_ID);
+        assertEq(stored3.restakerPremiumTotal, 0, "after third claim total depleted");
+        assertEq(stored3.poolPremiums[0].restakerPremium, 0, "after third claim pool0 depleted");
+        assertEq(stored3.poolPremiums[1].restakerPremium, 0, "after third claim pool1 depleted");
+        assertEq(premiumToken.balanceOf(payoutRecipient), 1000 ether, "full payout");
+    }
+
+    function test_payClaim_ExactEscrowAmount_DepletesCompletely() public {
+        _openEscrow();
+        _fundReserve();
+
+        vm.startPrank(claimManager);
+        reserve.setClaimLockStatus(POLICY_ID, true);
+
+        vm.expectEmit();
+        emit ClaimPaid(POLICY_ID, RESTAKER_PREMIUM);
+        reserve.payClaim(POLICY_ID, payoutRecipient, RESTAKER_PREMIUM);
+        vm.stopPrank();
+
+        IPremiumReserve.EscrowPosition memory stored = reserve.escrowPosition(POLICY_ID);
+        assertEq(stored.restakerPremiumTotal, 0, "total should be zero");
+        assertEq(stored.poolPremiums[0].restakerPremium, 0, "pool0 should be zero");
+        assertEq(stored.poolPremiums[1].restakerPremium, 0, "pool1 should be zero");
+        assertEq(premiumToken.balanceOf(payoutRecipient), RESTAKER_PREMIUM, "recipient gets full amount");
+        assertEq(premiumToken.balanceOf(address(reserve)), 0, "reserve fully depleted");
+    }
+
+    function test_payClaim_WithOddPremiumSplits_HandlesRoundingCorrectly() public {
+        IPremiumReserve.EscrowPosition memory position = _defaultPosition();
+        position.restakerPremiumTotal = 1000 ether;
+        position.poolPremiums = new IPremiumReserve.PoolPremium[](3);
+        position.poolPremiums[0] =
+            IPremiumReserve.PoolPremium({pool: pool0, operator: operator0, restakerPremium: 333 ether});
+        position.poolPremiums[1] =
+            IPremiumReserve.PoolPremium({pool: pool1, operator: operator1, restakerPremium: 333 ether});
+        position.poolPremiums[2] = IPremiumReserve.PoolPremium({
+            pool: makeAddr("pool2"), operator: makeAddr("operator2"), restakerPremium: 334 ether
+        });
+
+        vm.prank(premiumManager);
+        reserve.openEscrow(position);
+
+        premiumToken.mint(address(reserve), 1000 ether);
+
+        vm.startPrank(claimManager);
+        reserve.setClaimLockStatus(POLICY_ID, true);
+        reserve.payClaim(POLICY_ID, payoutRecipient, 250 ether);
+        vm.stopPrank();
+
+        IPremiumReserve.EscrowPosition memory stored = reserve.escrowPosition(POLICY_ID);
+        assertEq(stored.restakerPremiumTotal, 750 ether, "total after 25% claim");
+
+        uint256 pool0Remainder = stored.poolPremiums[0].restakerPremium;
+        uint256 pool1Remainder = stored.poolPremiums[1].restakerPremium;
+        uint256 pool2Remainder = stored.poolPremiums[2].restakerPremium;
+
+        assertEq(pool0Remainder + pool1Remainder + pool2Remainder, 750 ether, "sum must equal total");
+        assertApproxEqAbs(pool0Remainder, 249.75 ether, 1 ether, "pool0 roughly proportional");
+        assertApproxEqAbs(pool1Remainder, 249.75 ether, 1 ether, "pool1 roughly proportional");
+    }
+
+    function test_payClaim_AfterPartialClaim_RemainingCanBeReleased() public {
+        _openEscrow();
+        _fundReserve();
+
+        vm.startPrank(claimManager);
+        reserve.setClaimLockStatus(POLICY_ID, true);
+        reserve.payClaim(POLICY_ID, payoutRecipient, 400 ether);
+        reserve.setClaimLockStatus(POLICY_ID, false);
+        vm.stopPrank();
+
+        uint64 maturityTime = reserve.escrowPosition(POLICY_ID).maturityTime;
+        vm.warp(maturityTime);
+
+        vm.prank(policyManager);
+        reserve.releasePremium(POLICY_ID, rewardsManager);
+
+        assertEq(premiumToken.balanceOf(rewardsManager), 600 ether, "rewards manager gets remainder");
+        assertEq(premiumToken.balanceOf(payoutRecipient), 400 ether, "payout recipient keeps claim amount");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -276,12 +382,11 @@ contract PremiumReserveTest is Test {
         _openEscrow();
         _fundReserve();
 
-        vm.prank(claimManager);
+        vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
-        vm.prank(claimManager);
         reserve.payClaim(POLICY_ID, payoutRecipient, 300 ether);
-        vm.prank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, false);
+        vm.stopPrank();
 
         uint64 maturityTime = reserve.escrowPosition(POLICY_ID).maturityTime;
         vm.warp(maturityTime);
