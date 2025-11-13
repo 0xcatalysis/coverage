@@ -13,9 +13,19 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
 
 /**
  * @title Swapper
- * @notice Facilitates token swaps to enable premium payments in different tokens.
- * @dev Integrates with external DEX protocols and aggregators to execute swaps with proper slippage protection.
- *      Uses role-based access control to restrict swap execution and route configuration.
+ * @notice Converts slashed collateral into payout tokens during claim settlements.
+ * @dev The ClaimManager receives slashed assets (ETH, wBTC, etc.) from the SlashingManager and uses
+ *      this contract to convert them to the policy's designated payout token (USDC, DAI, etc.) before
+ *      transferring to beneficiaries or reimbursing the PremiumReserve.
+ *
+ *      Integration Pattern:
+ *      1. ClaimManager receives slashed collateral from SlashingManager
+ *      2. ClaimManager approves Swapper for the collateral amount
+ *      3. ClaimManager calls executeSwap() with recipient as the final destination
+ *      4. Swapper pulls tokens, executes swap via pre-approved DEX routes, and transfers output to recipient
+ *
+ *      Supported DEX Protocols:
+ *      Integrates with any DEX or aggregator (Uniswap, Curve, 1inch, ParaSwap) via generic calldata approach.
  */
 contract Swapper is
     Initializable,
