@@ -277,4 +277,3 @@ interface ISwapper is IAccessControlDefaultAdminRules {
      */
     function paused() external view returns (bool);
 }
-
