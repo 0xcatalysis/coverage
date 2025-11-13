@@ -17,7 +17,8 @@ import {ICoverPool} from "./interfaces/ICoverPool.sol";
  * @title CoverPool
  * @notice Curator-controlled pool that validates coverage quotes and records bound policy metadata.
  * @dev Designed for use behind minimal proxy clones. Leverages AccessControl for role separation
- *      and EIP-712 signed quotes for deterministic policy commits.
+ *      and EIP-712 signed quotes for deterministic policy commits. Each policy represents coverage
+ *      from a single pool.
  */
 // slither-disable-next-line unimplemented-functions
 contract CoverPool is
@@ -315,7 +316,7 @@ contract CoverPool is
     /**
      * @dev Derives a pool-specific identifier for storing bound policy metadata.
      * @param policyCommit Commit hash associated with the bound policy.
-     * @return policyId Unique identifier produced for the pool slice.
+     * @return policyId Unique identifier produced for the bound policy.
      */
     function _derivePolicyId(bytes32 policyCommit) private view returns (bytes32 policyId) {
         policyId = keccak256(abi.encodePacked(address(this), policyCommit));
