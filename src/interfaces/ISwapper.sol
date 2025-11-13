@@ -5,8 +5,9 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 
 /**
  * @title ISwapper
- * @notice Interface for handling token swaps to facilitate premium payments in different tokens.
- * @dev Enables buyers to pay premiums in any whitelisted token by swapping to the required premium token.
+ * @notice Interface for converting slashed collateral into payout tokens during claim settlements.
+ * @dev Used by ClaimManager to convert various collateral types (ETH, wBTC) received from slashing
+ *      into the policy's designated payout token (USDC, DAI, etc.) via pre-approved DEX routes.
  */
 interface ISwapper is IAccessControl {
     /**
@@ -187,9 +188,25 @@ interface ISwapper is IAccessControl {
 
     /**
      * @notice Executes a token swap using a configured route.
-     * @dev Requires SWAP_EXECUTOR_ROLE. Transfers tokenIn from caller, executes swap, and sends tokenOut to recipient.
-     * @param params Swap parameters including tokens, amounts, and calldata.
-     * @return amountOut Actual amount of tokenOut received.
+     * @dev Requires SWAP_EXECUTOR_ROLE (typically granted to ClaimManager).
+     *
+     *      Execution Flow:
+     *      1. Validates route configuration and whitelist status
+     *      2. Pulls tokenIn from msg.sender via transferFrom (requires prior approval)
+     *      3. Approves swapTarget for the input amount
+     *      4. Executes swap via external call with provided swapCalldata
+     *      5. Verifies output amount via balance diff (trustless verification)
+     *      6. Clears approval to minimize attack surface
+     *      7. Transfers tokenOut to specified recipient
+     *
+     *      Typical ClaimManager Usage:
+     *      - ClaimManager receives slashed collateral (e.g., WETH) from SlashingManager
+     *      - ClaimManager approves Swapper for collateral amount
+     *      - ClaimManager calls executeSwap with recipient as PremiumReserve or beneficiary
+     *      - Swapper converts WETH → USDC and sends to recipient
+     *
+     * @param params Swap parameters including tokens, amounts, slippage limits, recipient, and DEX calldata.
+     * @return amountOut Actual amount of tokenOut received and transferred to recipient.
      */
     function executeSwap(SwapParams calldata params) external returns (uint256 amountOut);
 
