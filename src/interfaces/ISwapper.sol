@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {
-    IAccessControlDefaultAdminRules
-} from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 /**
  * @title ISwapper
- * @notice Interface for converting slashed collateral into payout tokens during claim settlements.
- * @dev Used by ClaimManager to convert various collateral types (ETH, wBTC) received from slashing
- *      into the policy's designated payout token (USDC, DAI, etc.) via pre-approved DEX routes.
+ * @notice Interface for handling token swaps to facilitate premium payments in different tokens.
+ * @dev Enables buyers to pay premiums in any whitelisted token by swapping to the required premium token.
  */
-interface ISwapper is IAccessControlDefaultAdminRules {
+interface ISwapper is IAccessControl {
     /**
      * @notice Configuration for a swap route between two tokens.
      * @dev Stores parameters needed to execute swaps through external protocols.
@@ -93,11 +90,11 @@ interface ISwapper is IAccessControlDefaultAdminRules {
     error ZeroAmount();
 
     /**
-     * @notice Reverts when attempting to use a swap route that is not enabled.
+     * @notice Reverts when attempting to use a swap route that is not configured.
      * @param tokenIn Source token address.
      * @param tokenOut Destination token address.
      */
-    error SwapRouteNotEnabled(address tokenIn, address tokenOut);
+    error SwapRouteNotConfigured(address tokenIn, address tokenOut);
 
     /**
      * @notice Reverts when attempting to use a swap target that is not whitelisted.
@@ -132,29 +129,6 @@ interface ISwapper is IAccessControlDefaultAdminRules {
     error UnexpectedBalanceChange(uint256 expected, uint256 actual);
 
     /**
-     * @notice Reverts when native ETH is sent but ERC20 swap was expected.
-     */
-    error UnexpectedNativePayment();
-
-    /**
-     * @notice Reverts when insufficient native ETH is sent for a native swap.
-     * @param sent Amount of native ETH sent.
-     * @param required Amount of native ETH required.
-     */
-    error InsufficientNativeAmount(uint256 sent, uint256 required);
-
-    /**
-     * @notice Reverts when native ETH transfer fails.
-     */
-    error NativeTransferFailed();
-
-    /**
-     * @notice Reverts when attempting to configure a route using NATIVE_ETH instead of nativeWrapper.
-     * @param token The NATIVE_ETH constant that was incorrectly used.
-     */
-    error InvalidRouteToken(address token);
-
-    /**
      * @notice Pauses swap operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
@@ -176,18 +150,15 @@ interface ISwapper is IAccessControlDefaultAdminRules {
 
     /**
      * @notice Sets the native token wrapper address (e.g., WETH).
-     * @dev Requires DEFAULT_ADMIN_ROLE. Contract must be paused to prevent breaking existing routes.
-     *      Changing the wrapper invalidates all existing native ETH routes, which must be reconfigured
-     *      with the new wrapper address before unpausing.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
      * @param wrapper Address of the native token wrapper contract.
      */
     function setNativeWrapper(address wrapper) external;
 
     /**
-     * @notice Recovers tokens or native Ether that are stuck in the contract.
+     * @notice Recovers tokens that are stuck in the contract.
      * @dev Requires DEFAULT_ADMIN_ROLE. Used to recover accidentally sent tokens or residual amounts.
-     *      Use NATIVE_ETH constant (0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) to recover native ETH.
-     * @param token Address of the token to recover, or NATIVE_ETH for native currency.
+     * @param token Address of the token to recover.
      * @param to Recipient address.
      * @param amount Amount to recover.
      */
@@ -216,34 +187,11 @@ interface ISwapper is IAccessControlDefaultAdminRules {
 
     /**
      * @notice Executes a token swap using a configured route.
-     * @dev Requires SWAP_EXECUTOR_ROLE (typically granted to ClaimManager).
-     *
-     *      Native ETH Handling:
-     *      - Use NATIVE_ETH (0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) for tokenIn or tokenOut
-     *      - When tokenIn is NATIVE_ETH, send ETH via msg.value (wraps to WETH automatically)
-     *      - When tokenOut is NATIVE_ETH, recipient receives unwrapped ETH
-     *      - Routes must be configured using nativeWrapper address (WETH), not NATIVE_ETH
-     *
-     *      Execution Flow:
-     *      1. Validates route configuration and whitelist status
-     *      2. If tokenIn is NATIVE_ETH, wraps msg.value to WETH; else pulls ERC20 via transferFrom
-     *      3. Approves swapTarget for the input amount
-     *      4. Executes swap via external call with provided swapCalldata
-     *      5. Verifies output amount via balance diff (trustless verification)
-     *      6. Clears approval to minimize attack surface
-     *      7. If tokenOut is NATIVE_ETH, unwraps WETH and sends ETH; else transfers ERC20
-     *
-     *      Typical ClaimManager Usage:
-     *      - ClaimManager receives slashed collateral (ETH or WETH) from SlashingManager
-     *      - For ERC20: ClaimManager approves Swapper for collateral amount
-     *      - For native ETH: ClaimManager sends ETH via msg.value
-     *      - ClaimManager calls executeSwap with recipient as PremiumReserve or beneficiary
-     *      - Swapper converts collateral → payout token and sends to recipient
-     *
-     * @param params Swap parameters including tokens, amounts, slippage limits, recipient, and DEX calldata.
-     * @return amountOut Actual amount of tokenOut received and transferred to recipient.
+     * @dev Requires SWAP_EXECUTOR_ROLE. Transfers tokenIn from caller, executes swap, and sends tokenOut to recipient.
+     * @param params Swap parameters including tokens, amounts, and calldata.
+     * @return amountOut Actual amount of tokenOut received.
      */
-    function executeSwap(SwapParams calldata params) external payable returns (uint256 amountOut);
+    function executeSwap(SwapParams calldata params) external returns (uint256 amountOut);
 
     /**
      * @notice AccessControl identifier for the swap manager role.
@@ -254,15 +202,6 @@ interface ISwapper is IAccessControlDefaultAdminRules {
      * @notice AccessControl identifier for the swap executor role.
      */
     function SWAP_EXECUTOR_ROLE() external view returns (bytes32);
-
-    /**
-     * @notice Canonical address representing native ETH in swap operations.
-     * @dev Use this constant as tokenIn or tokenOut in executeSwap to swap native ETH.
-     *      Always returns 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE.
-     *      Routes must be configured using the nativeWrapper address (WETH), not this constant.
-     * @return Address used to denote native ETH in executeSwap calls.
-     */
-    function NATIVE_ETH() external pure returns (address);
 
     /**
      * @notice Address of the native token wrapper contract (e.g., WETH).
