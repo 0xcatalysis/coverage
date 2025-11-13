@@ -195,7 +195,7 @@ contract PremiumReserve is
     /**
      * @inheritdoc IPremiumReserve
      */
-    function releasePremium(
+    function releaseEscrow(
         uint256 policyId,
         address rewardsManager
     )
@@ -218,6 +218,7 @@ contract PremiumReserve is
         }
 
         escrow.released = true;
+        emit EscrowReleased(policyId, block.timestamp);
     }
 
     /**

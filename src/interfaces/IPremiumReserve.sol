@@ -110,6 +110,13 @@ interface IPremiumReserve is IAccessControl {
     event ClaimPaid(uint256 indexed policyId, uint256 settledAmount);
 
     /**
+     * @notice Emitted when an escrow position is fully released and closed.
+     * @param policyId Identifier of the policy escrow.
+     * @param timestamp Block timestamp when the escrow was released.
+     */
+    event EscrowReleased(uint256 indexed policyId, uint256 timestamp);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -230,12 +237,12 @@ interface IPremiumReserve is IAccessControl {
     function payClaim(uint256 policyId, address payoutRecipient, uint256 settledAmount) external;
 
     /**
-     * @notice Releases restaker premiums when policy funds are ready to exit escrow.
+     * @notice Releases escrow and distributes restaker premiums at policy maturity.
      * @dev Requires POLICY_MANAGER_ROLE.
      * @param policyId Identifier of the policy escrow.
      * @param rewardsManager Address receiving restaker premiums for distribution.
      */
-    function releasePremium(uint256 policyId, address rewardsManager) external;
+    function releaseEscrow(uint256 policyId, address rewardsManager) external;
 
     /**
      * @notice Returns true when the contract is paused.

@@ -37,6 +37,7 @@ contract PremiumReserveTest is Test {
     event PoolPremiumReleased(uint256 indexed policyId, address indexed pool, uint256 amount);
     event PremiumReleased(uint256 indexed policyId, address indexed to, uint256 restakerShare);
     event ClaimPaid(uint256 indexed policyId, uint256 settledAmount);
+    event EscrowReleased(uint256 indexed policyId, uint256 timestamp);
 
     function setUp() public {
         vm.warp(1_000_000);
@@ -318,7 +319,7 @@ contract PremiumReserveTest is Test {
         vm.warp(maturityTime);
 
         vm.prank(policyManager);
-        reserve.releasePremium(POLICY_ID, rewardsManager);
+        reserve.releaseEscrow(POLICY_ID, rewardsManager);
 
         assertEq(premiumToken.balanceOf(rewardsManager), 600 ether, "rewards manager gets remainder");
         assertEq(premiumToken.balanceOf(payoutRecipient), 400 ether, "payout recipient keeps claim amount");
@@ -328,7 +329,7 @@ contract PremiumReserveTest is Test {
                                  RELEASE
     //////////////////////////////////////////////////////////////*/
 
-    function test_releasePremium_WhenLocked_Reverts() public {
+    function test_releaseEscrow_WhenLocked_Reverts() public {
         _openEscrow();
         _fundReserve();
 
@@ -337,20 +338,20 @@ contract PremiumReserveTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(IPremiumReserve.EscrowLocked.selector, POLICY_ID));
         vm.prank(policyManager);
-        reserve.releasePremium(POLICY_ID, rewardsManager);
+        reserve.releaseEscrow(POLICY_ID, rewardsManager);
     }
 
-    function test_releasePremium_WhenNotMatured_Reverts() public {
+    function test_releaseEscrow_WhenNotMatured_Reverts() public {
         _openEscrow();
         _fundReserve();
 
         uint64 maturityTime = reserve.escrowPosition(POLICY_ID).maturityTime;
         vm.expectRevert(abi.encodeWithSelector(IPremiumReserve.MaturityNotReached.selector, POLICY_ID, maturityTime));
         vm.prank(policyManager);
-        reserve.releasePremium(POLICY_ID, rewardsManager);
+        reserve.releaseEscrow(POLICY_ID, rewardsManager);
     }
 
-    function test_releasePremium_TransfersPremiums() public {
+    function test_releaseEscrow_TransfersPremiums() public {
         _openEscrow();
         _fundReserve();
 
@@ -367,8 +368,10 @@ contract PremiumReserveTest is Test {
         emit PoolPremiumReleased(POLICY_ID, pool1, 400 ether);
         vm.expectEmit();
         emit PremiumReleased(POLICY_ID, rewardsManager, RESTAKER_PREMIUM);
+        vm.expectEmit();
+        emit EscrowReleased(POLICY_ID, maturityTime);
         vm.prank(policyManager);
-        reserve.releasePremium(POLICY_ID, rewardsManager);
+        reserve.releaseEscrow(POLICY_ID, rewardsManager);
 
         assertEq(premiumToken.balanceOf(rewardsManager), RESTAKER_PREMIUM, "restaker transfer");
         assertEq(premiumToken.balanceOf(buyer), 0, "buyer should not receive funds");
@@ -378,7 +381,20 @@ contract PremiumReserveTest is Test {
         assertEq(stored.restakerPremiumTotal, 0, "restaker not cleared");
     }
 
-    function test_releasePremium_AfterClaimTransfersRemainingPremiums() public {
+    function test_releaseEscrow_EmitsEscrowReleasedEvent() public {
+        _openEscrow();
+        _fundReserve();
+
+        uint64 maturityTime = reserve.escrowPosition(POLICY_ID).maturityTime;
+        vm.warp(maturityTime);
+
+        vm.expectEmit();
+        emit EscrowReleased(POLICY_ID, maturityTime);
+        vm.prank(policyManager);
+        reserve.releaseEscrow(POLICY_ID, rewardsManager);
+    }
+
+    function test_releaseEscrow_AfterClaimTransfersRemainingPremiums() public {
         _openEscrow();
         _fundReserve();
 
@@ -392,7 +408,7 @@ contract PremiumReserveTest is Test {
         vm.warp(maturityTime);
 
         vm.prank(policyManager);
-        reserve.releasePremium(POLICY_ID, rewardsManager);
+        reserve.releaseEscrow(POLICY_ID, rewardsManager);
 
         assertEq(
             premiumToken.balanceOf(rewardsManager), RESTAKER_PREMIUM - 300 ether, "restaker payout matches remainder"
