@@ -266,6 +266,37 @@ contract PremiumReserve is
     /**
      * @inheritdoc IPremiumReserve
      */
+    function isEscrowReleased(uint256 policyId) external view override returns (bool) {
+        EscrowAccount storage escrow = _escrows[policyId];
+        return escrow.released;
+    }
+
+    /**
+     * @inheritdoc IPremiumReserve
+     */
+    function isEscrowLocked(uint256 policyId) external view override returns (bool) {
+        EscrowAccount storage escrow = _escrows[policyId];
+        return escrow.claimLocked;
+    }
+
+    /**
+     * @inheritdoc IPremiumReserve
+     */
+    function getRemainingPremium(uint256 policyId) external view override returns (uint256) {
+        EscrowAccount storage escrow = _escrows[policyId];
+        return escrow.restakerPremiumTotal;
+    }
+
+    /**
+     * @inheritdoc IPremiumReserve
+     */
+    function getPoolCount(uint256 policyId) external view override returns (uint256) {
+        return _poolPremiums[policyId].length;
+    }
+
+    /**
+     * @inheritdoc IPremiumReserve
+     */
     // slither-disable-next-line unimplemented-functions
     function paused() public view override (IPremiumReserve, PausableUpgradeable) returns (bool) {
         return super.paused();

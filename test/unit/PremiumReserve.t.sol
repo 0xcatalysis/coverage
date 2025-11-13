@@ -417,6 +417,109 @@ contract PremiumReserveTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                            QUERY FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_isEscrowReleased_WhenNotReleased_ReturnsFalse() public {
+        _openEscrow();
+        assertFalse(reserve.isEscrowReleased(POLICY_ID), "should not be released initially");
+    }
+
+    function test_isEscrowReleased_WhenReleased_ReturnsTrue() public {
+        _openEscrow();
+        _fundReserve();
+
+        uint64 maturityTime = reserve.escrowPosition(POLICY_ID).maturityTime;
+        vm.warp(maturityTime);
+
+        vm.prank(policyManager);
+        reserve.releaseEscrow(POLICY_ID, rewardsManager);
+
+        assertTrue(reserve.isEscrowReleased(POLICY_ID), "should be released after release");
+    }
+
+    function test_isEscrowLocked_WhenNotLocked_ReturnsFalse() public {
+        _openEscrow();
+        assertFalse(reserve.isEscrowLocked(POLICY_ID), "should not be locked initially");
+    }
+
+    function test_isEscrowLocked_WhenLocked_ReturnsTrue() public {
+        _openEscrow();
+
+        vm.prank(claimManager);
+        reserve.setClaimLockStatus(POLICY_ID, true);
+
+        assertTrue(reserve.isEscrowLocked(POLICY_ID), "should be locked after setting lock");
+    }
+
+    function test_isEscrowLocked_AfterUnlock_ReturnsFalse() public {
+        _openEscrow();
+
+        vm.startPrank(claimManager);
+        reserve.setClaimLockStatus(POLICY_ID, true);
+        reserve.setClaimLockStatus(POLICY_ID, false);
+        vm.stopPrank();
+
+        assertFalse(reserve.isEscrowLocked(POLICY_ID), "should not be locked after unlock");
+    }
+
+    function test_getRemainingPremium_InitiallyReturnsTotal() public {
+        _openEscrow();
+        assertEq(reserve.getRemainingPremium(POLICY_ID), RESTAKER_PREMIUM, "should return full premium initially");
+    }
+
+    function test_getRemainingPremium_AfterPartialClaim_ReturnsRemainder() public {
+        _openEscrow();
+        _fundReserve();
+
+        vm.startPrank(claimManager);
+        reserve.setClaimLockStatus(POLICY_ID, true);
+        reserve.payClaim(POLICY_ID, payoutRecipient, 300 ether);
+        vm.stopPrank();
+
+        assertEq(reserve.getRemainingPremium(POLICY_ID), 700 ether, "should return remainder after claim");
+    }
+
+    function test_getRemainingPremium_AfterFullClaim_ReturnsZero() public {
+        _openEscrow();
+        _fundReserve();
+
+        vm.startPrank(claimManager);
+        reserve.setClaimLockStatus(POLICY_ID, true);
+        reserve.payClaim(POLICY_ID, payoutRecipient, RESTAKER_PREMIUM);
+        vm.stopPrank();
+
+        assertEq(reserve.getRemainingPremium(POLICY_ID), 0, "should return zero after full claim");
+    }
+
+    function test_getPoolCount_ReturnsCorrectCount() public {
+        _openEscrow();
+        assertEq(reserve.getPoolCount(POLICY_ID), 2, "should return 2 pools");
+    }
+
+    function test_getPoolCount_WithDifferentPoolCounts() public {
+        IPremiumReserve.EscrowPosition memory position = _defaultPosition();
+        position.policyId = 999;
+        position.poolPremiums = new IPremiumReserve.PoolPremium[](3);
+        position.poolPremiums[0] =
+            IPremiumReserve.PoolPremium({pool: pool0, operator: operator0, restakerPremium: 400 ether});
+        position.poolPremiums[1] =
+            IPremiumReserve.PoolPremium({pool: pool1, operator: operator1, restakerPremium: 300 ether});
+        position.poolPremiums[2] = IPremiumReserve.PoolPremium({
+            pool: makeAddr("pool2"), operator: makeAddr("operator2"), restakerPremium: 300 ether
+        });
+
+        vm.prank(premiumManager);
+        reserve.openEscrow(position);
+
+        assertEq(reserve.getPoolCount(999), 3, "should return 3 pools");
+    }
+
+    function test_getPoolCount_ForNonexistentEscrow_ReturnsZero() public {
+        assertEq(reserve.getPoolCount(999), 0, "should return 0 for nonexistent escrow");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                                  HELPERS
     //////////////////////////////////////////////////////////////*/
 
@@ -430,7 +533,7 @@ contract PremiumReserveTest is Test {
         premiumToken.mint(address(reserve), RESTAKER_PREMIUM);
     }
 
-    function _defaultPosition() internal returns (IPremiumReserve.EscrowPosition memory position) {
+    function _defaultPosition() internal view returns (IPremiumReserve.EscrowPosition memory position) {
         position.policyId = POLICY_ID;
         position.policyCommit = policyCommit;
         position.restakerPremiumTotal = RESTAKER_PREMIUM;

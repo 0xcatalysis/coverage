@@ -270,4 +270,32 @@ interface IPremiumReserve is IAccessControl {
      * @return EscrowPosition snapshot describing the escrow state.
      */
     function escrowPosition(uint256 policyId) external view returns (EscrowPosition memory);
+
+    /**
+     * @notice Checks if an escrow has been released.
+     * @param policyId Identifier to query.
+     * @return True if the escrow has been released.
+     */
+    function isEscrowReleased(uint256 policyId) external view returns (bool);
+
+    /**
+     * @notice Checks if an escrow is currently locked for claim processing.
+     * @param policyId Identifier to query.
+     * @return True if the escrow is locked.
+     */
+    function isEscrowLocked(uint256 policyId) external view returns (bool);
+
+    /**
+     * @notice Returns the remaining restaker premium in the escrow.
+     * @param policyId Identifier to query.
+     * @return The current restaker premium total after any claims.
+     */
+    function getRemainingPremium(uint256 policyId) external view returns (uint256);
+
+    /**
+     * @notice Returns the number of pools contributing to the escrow.
+     * @param policyId Identifier to query.
+     * @return The count of pools in the escrow position.
+     */
+    function getPoolCount(uint256 policyId) external view returns (uint256);
 }
