@@ -220,9 +220,11 @@ contract PremiumManager is
      * @param allocation Premium allocation details to validate.
      */
     function _validateAllocation(PremiumAllocation calldata allocation) private pure {
-        require(allocation.buyer != address(0), ZeroAddress());
-        require(allocation.premiumToken != address(0), ZeroAddress());
-        require(allocation.platformFeeRecipient != address(0), ZeroAddress());
+        require(
+            allocation.buyer != address(0) && allocation.premiumToken != address(0)
+                && allocation.platformFeeRecipient != address(0),
+            ZeroAddress()
+        );
         require(allocation.basePremiumTotal != 0, ZeroAmount());
         require(allocation.policyCommit != bytes32(0), InvalidPolicyCommit());
         require(
