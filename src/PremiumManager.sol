@@ -159,7 +159,6 @@ contract PremiumManager is
     /**
      * @inheritdoc IPremiumManager
      */
-    // slither-disable-next-line unimplemented-functions
     function paused() public view override (IPremiumManager, PausableUpgradeable) returns (bool) {
         return super.paused();
     }
@@ -168,22 +167,6 @@ contract PremiumManager is
      * @notice Restricts UUPS upgrade authorization to DEFAULT_ADMIN_ROLE holders.
      */
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
-
-    /**
-     * @notice Validates allocation data before premium collection.
-     * @param allocation Premium allocation details to validate.
-     */
-    function _validateAllocation(PremiumAllocation calldata allocation) private pure {
-        require(allocation.buyer != address(0), ZeroAddress());
-        require(allocation.premiumToken != address(0), ZeroAddress());
-        require(allocation.platformFeeRecipient != address(0), ZeroAddress());
-        require(allocation.basePremiumTotal != 0, ZeroAmount());
-        require(allocation.policyCommit != bytes32(0), InvalidPolicyCommit());
-        require(
-            allocation.startTime < allocation.maturityTime,
-            InvalidCoverageWindow(allocation.startTime, allocation.maturityTime)
-        );
-    }
 
     /**
      * @notice Processes pool shares, distributes fees, and prepares escrow data.
@@ -206,30 +189,45 @@ contract PremiumManager is
         IERC20 token = IERC20(allocation.premiumToken);
 
         for (uint256 i = 0; i < poolSharesLength; ++i) {
-            PoolShare calldata share = allocation.poolShares[i];
+            PoolShare calldata poolShare = allocation.poolShares[i];
 
-            require(share.coverPool != address(0), ZeroAddress());
-            require(share.poolFeeRecipient != address(0), ZeroAddress());
-            require(share.operator != address(0), ZeroAddress());
-            require(share.grossPremium != 0, ZeroAmount());
+            require(poolShare.coverPool != address(0), ZeroAddress());
+            require(poolShare.poolFeeRecipient != address(0), ZeroAddress());
+            require(poolShare.operator != address(0), ZeroAddress());
+            require(poolShare.grossPremium != 0, ZeroAmount());
             require(allocation.platformFeeBps <= _MAX_FEE_BPS, InvalidFeeBps(allocation.platformFeeBps));
-            require(share.poolFeeBps <= _MAX_FEE_BPS, InvalidFeeBps(share.poolFeeBps));
+            require(poolShare.poolFeeBps <= _MAX_FEE_BPS, InvalidFeeBps(poolShare.poolFeeBps));
 
             (uint256 platformCut, uint256 poolCut, uint256 restakerPremium) =
-                quoteFees(share.grossPremium, allocation.platformFeeBps, share.poolFeeBps);
+                quoteFees(poolShare.grossPremium, allocation.platformFeeBps, poolShare.poolFeeBps);
 
             totalPlatformFees += platformCut;
             totalRestakerPremiums += restakerPremium;
 
             if (poolCut != 0) {
                 // slither-disable-next-line arbitrary-send-erc20
-                token.safeTransferFrom(allocation.buyer, share.poolFeeRecipient, poolCut);
+                token.safeTransferFrom(allocation.buyer, poolShare.poolFeeRecipient, poolCut);
             }
 
             poolPremiums[i] = IPremiumReserve.PoolPremium({
-                pool: share.coverPool, operator: share.operator, restakerPremium: restakerPremium
+                pool: poolShare.coverPool, operator: poolShare.operator, restakerPremium: restakerPremium
             });
         }
     }
-}
 
+    /**
+     * @notice Validates allocation data before premium collection.
+     * @param allocation Premium allocation details to validate.
+     */
+    function _validateAllocation(PremiumAllocation calldata allocation) private pure {
+        require(allocation.buyer != address(0), ZeroAddress());
+        require(allocation.premiumToken != address(0), ZeroAddress());
+        require(allocation.platformFeeRecipient != address(0), ZeroAddress());
+        require(allocation.basePremiumTotal != 0, ZeroAmount());
+        require(allocation.policyCommit != bytes32(0), InvalidPolicyCommit());
+        require(
+            allocation.startTime < allocation.maturityTime,
+            InvalidCoverageWindow(allocation.startTime, allocation.maturityTime)
+        );
+    }
+}
