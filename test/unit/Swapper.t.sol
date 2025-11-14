@@ -69,6 +69,17 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                           RECEIVE FUNCTION
+    //////////////////////////////////////////////////////////////*/
+
+    function test_receive_AcceptsNativeToken() public {
+        uint256 amount = 1 ether;
+        (bool success,) = address(swapper).call{value: amount}("");
+        assertTrue(success, "Should accept native token");
+        assertEq(address(swapper).balance, amount, "Balance mismatch");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                             INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
@@ -434,7 +445,7 @@ contract SwapperTest is Test {
         swapper.executeSwap(params);
     }
 
-    function test_executeSwap_WhenRouteNotConfigured_Reverts() public {
+    function test_executeSwap_WhenRouteNotEnabled_Reverts() public {
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
             tokenIn: address(tokenIn),
             tokenOut: address(tokenOut),
@@ -446,7 +457,7 @@ contract SwapperTest is Test {
 
         vm.prank(swapExecutor);
         vm.expectRevert(
-            abi.encodeWithSelector(ISwapper.SwapRouteNotConfigured.selector, address(tokenIn), address(tokenOut))
+            abi.encodeWithSelector(ISwapper.SwapRouteNotEnabled.selector, address(tokenIn), address(tokenOut))
         );
         swapper.executeSwap(params);
     }
@@ -469,7 +480,7 @@ contract SwapperTest is Test {
 
         vm.prank(swapExecutor);
         vm.expectRevert(
-            abi.encodeWithSelector(ISwapper.SwapRouteNotConfigured.selector, address(tokenIn), address(tokenOut))
+            abi.encodeWithSelector(ISwapper.SwapRouteNotEnabled.selector, address(tokenIn), address(tokenOut))
         );
         swapper.executeSwap(params);
     }
@@ -636,14 +647,162 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           RECEIVE FUNCTION
+                            EXECUTE SWAP - NATIVE ETH
     //////////////////////////////////////////////////////////////*/
 
-    function test_receive_AcceptsNativeToken() public {
-        uint256 amount = 1 ether;
-        (bool success,) = address(swapper).call{value: amount}("");
-        assertTrue(success, "Should accept native token");
-        assertEq(address(swapper).balance, amount, "Balance mismatch");
+    function test_executeSwap_WhenNativeETHInput_WrapsAndSwaps() public {
+        MockWETH mockWeth = new MockWETH();
+
+        vm.prank(admin);
+        swapper.setNativeWrapper(address(mockWeth));
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true);
+
+        uint256 amountIn = 1 ether;
+        uint256 amountOut = 0.95 ether;
+        tokenOut.mint(dexTarget, amountOut);
+
+        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(mockWeth), address(tokenOut));
+        ISwapper.SwapParams memory params = ISwapper.SwapParams({
+            tokenIn: swapper.NATIVE_ETH(),
+            tokenOut: address(tokenOut),
+            amountIn: amountIn,
+            amountOutMin: 0.9 ether,
+            recipient: recipient,
+            swapCalldata: swapCalldata
+        });
+
+        vm.deal(swapExecutor, amountIn);
+        vm.prank(swapExecutor);
+        uint256 actualAmountOut = swapper.executeSwap{value: amountIn}(params);
+
+        assertEq(actualAmountOut, amountOut, "Amount out mismatch");
+        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient should receive output tokens");
+        assertEq(swapExecutor.balance, 0, "Executor should have sent all ETH");
+    }
+
+    function test_executeSwap_WhenNativeETHOutput_SwapsAndUnwraps() public {
+        MockWETH mockWeth = new MockWETH();
+
+        vm.prank(admin);
+        swapper.setNativeWrapper(address(mockWeth));
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true);
+
+        uint256 amountIn = 100 ether;
+        uint256 amountOut = 1 ether;
+
+        tokenIn.mint(swapExecutor, amountIn);
+        vm.deal(dexTarget, amountOut);
+
+        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(mockWeth));
+        ISwapper.SwapParams memory params = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: swapper.NATIVE_ETH(),
+            amountIn: amountIn,
+            amountOutMin: 0.9 ether,
+            recipient: recipient,
+            swapCalldata: swapCalldata
+        });
+
+        uint256 recipientBalanceBefore = recipient.balance;
+
+        vm.startPrank(swapExecutor);
+        tokenIn.approve(address(swapper), amountIn);
+        uint256 actualAmountOut = swapper.executeSwap(params);
+        vm.stopPrank();
+
+        assertEq(actualAmountOut, amountOut, "Amount out mismatch");
+        assertEq(recipient.balance, recipientBalanceBefore + amountOut, "Recipient should receive ETH");
+    }
+
+    function test_executeSwap_WhenNativeETHInput_WrongMsgValue_Reverts() public {
+        MockWETH mockWeth = new MockWETH();
+
+        vm.prank(admin);
+        swapper.setNativeWrapper(address(mockWeth));
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true);
+
+        uint256 amountIn = 1 ether;
+        uint256 wrongValue = 0.5 ether;
+
+        ISwapper.SwapParams memory params = ISwapper.SwapParams({
+            tokenIn: swapper.NATIVE_ETH(),
+            tokenOut: address(tokenOut),
+            amountIn: amountIn,
+            amountOutMin: 0.9 ether,
+            recipient: recipient,
+            swapCalldata: ""
+        });
+
+        vm.deal(swapExecutor, amountIn);
+        vm.prank(swapExecutor);
+        vm.expectRevert(abi.encodeWithSelector(ISwapper.InsufficientNativeAmount.selector, wrongValue, amountIn));
+        swapper.executeSwap{value: wrongValue}(params);
+    }
+
+    function test_executeSwap_WhenERC20Swap_UnexpectedNativePayment_Reverts() public {
+        _setupRoute();
+
+        ISwapper.SwapParams memory params = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: address(tokenOut),
+            amountIn: 100 ether,
+            amountOutMin: 90 ether,
+            recipient: recipient,
+            swapCalldata: ""
+        });
+
+        vm.deal(swapExecutor, 1 ether);
+        vm.prank(swapExecutor);
+        vm.expectRevert(ISwapper.UnexpectedNativePayment.selector);
+        swapper.executeSwap{value: 1 ether}(params);
+    }
+
+    function test_executeSwap_WhenNativeETHOutput_TransferFails_Reverts() public {
+        MockWETH mockWeth = new MockWETH();
+
+        vm.prank(admin);
+        swapper.setNativeWrapper(address(mockWeth));
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true);
+
+        uint256 amountIn = 100 ether;
+        uint256 amountOut = 1 ether;
+
+        tokenIn.mint(swapExecutor, amountIn);
+        vm.deal(dexTarget, amountOut);
+
+        RejectEther rejecter = new RejectEther();
+
+        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(mockWeth));
+        ISwapper.SwapParams memory params = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: swapper.NATIVE_ETH(),
+            amountIn: amountIn,
+            amountOutMin: 0.9 ether,
+            recipient: address(rejecter),
+            swapCalldata: swapCalldata
+        });
+
+        vm.startPrank(swapExecutor);
+        tokenIn.approve(address(swapper), amountIn);
+        vm.expectRevert(ISwapper.NativeTransferFailed.selector);
+        swapper.executeSwap(params);
+        vm.stopPrank();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -711,10 +870,22 @@ contract MockDEX {
     {
         require(!shouldRevert, "Mock swap failed");
 
-        MockToken outToken = MockToken(tokenOut);
-        uint256 amountOut = outToken.balanceOf(address(this));
+        // Handle both ERC20 and WETH
+        if (tokenOut.code.length > 0) {
+            try MockToken(tokenOut).balanceOf(address(this)) returns (uint256 balance) {
+                if (balance > 0) {
+                    require(MockToken(tokenOut).transfer(msg.sender, balance), "Transfer failed");
+                    return;
+                }
+            } catch {}
+        }
 
-        require(outToken.transfer(msg.sender, amountOut), "Transfer failed");
+        // If tokenOut is WETH or has ETH balance, wrap and send
+        if (address(this).balance > 0) {
+            MockWETH(payable(tokenOut)).deposit{value: address(this).balance}();
+            uint256 wethBalance = MockWETH(payable(tokenOut)).balanceOf(address(this));
+            require(MockWETH(payable(tokenOut)).transfer(msg.sender, wethBalance), "WETH transfer failed");
+        }
     }
 
     function swapWithReentrancy(address tokenIn, address tokenOut) external {
@@ -723,6 +894,33 @@ contract MockDEX {
         });
 
         ISwapper(reentrancyTarget).executeSwap(params);
+    }
+
+    receive() external payable {}
+}
+
+contract MockWETH is ERC20 {
+    constructor() ERC20("Wrapped Ether", "WETH") {}
+
+    function deposit() external payable {
+        _mint(msg.sender, msg.value);
+    }
+
+    function withdraw(uint256 amount) external {
+        _burn(msg.sender, amount);
+        (bool success,) = msg.sender.call{value: amount}("");
+        require(success, "ETH transfer failed");
+    }
+
+    receive() external payable {
+        _mint(msg.sender, msg.value);
+    }
+}
+
+contract RejectEther {
+    // Contract that rejects all ETH transfers
+    receive() external payable {
+        revert("ETH not accepted");
     }
 }
 
