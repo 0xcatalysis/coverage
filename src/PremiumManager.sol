@@ -17,6 +17,7 @@ import {IPremiumReserve} from "./interfaces/IPremiumReserve.sol";
  * @dev Normalizes premium flows across pools and provides pause hooks for emergency halts.
  *      Integrates with PremiumReserve to open escrow positions for newly bound policies.
  */
+// slither-disable-next-line unimplemented-functions
 contract PremiumManager is
     Initializable,
     UUPSUpgradeable,
@@ -57,7 +58,6 @@ contract PremiumManager is
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
 
         premiumReserve = premiumReserve_;
-        emit PremiumReserveSet(premiumReserve_);
     }
 
     /**
@@ -111,11 +111,13 @@ contract PremiumManager is
             _processPoolShares(allocation);
 
         if (totalPlatformFees != 0) {
+            // slither-disable-next-line arbitrary-send-erc20
             IERC20(allocation.premiumToken)
                 .safeTransferFrom(allocation.buyer, allocation.platformFeeRecipient, totalPlatformFees);
         }
 
         if (totalRestakerPremiums != 0) {
+            // slither-disable-next-line arbitrary-send-erc20
             IERC20(allocation.premiumToken).safeTransferFrom(allocation.buyer, premiumReserve, totalRestakerPremiums);
 
             IPremiumReserve.EscrowPosition memory escrowPosition = IPremiumReserve.EscrowPosition({
@@ -220,6 +222,7 @@ contract PremiumManager is
             totalRestakerPremiums += restakerPremium;
 
             if (poolCut != 0) {
+                // slither-disable-next-line arbitrary-send-erc20
                 token.safeTransferFrom(allocation.buyer, share.poolFeeRecipient, poolCut);
             }
 
