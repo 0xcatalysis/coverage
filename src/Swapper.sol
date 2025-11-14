@@ -10,6 +10,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
+import {IWETH} from "./interfaces/IWETH.sol";
 
 /**
  * @title Swapper
@@ -18,11 +19,18 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  *      this contract to convert them to the policy's designated payout token (USDC, DAI, etc.) before
  *      transferring to beneficiaries or reimbursing the PremiumReserve.
  *
+ *      Native ETH Support:
+ *      - Automatically wraps incoming native ETH to WETH before swapping
+ *      - Automatically unwraps WETH to native ETH when specified as output token
+ *      - Use NATIVE_ETH constant (0xEeee...eeEE) to denote native ETH in swap parameters
+ *      - Routes are configured using the nativeWrapper (WETH) address, not NATIVE_ETH
+ *
  *      Integration Pattern:
- *      1. ClaimManager receives slashed collateral from SlashingManager
- *      2. ClaimManager approves Swapper for the collateral amount
+ *      1. ClaimManager receives slashed collateral from SlashingManager (ETH, WETH, wBTC, etc.)
+ *      2. For ERC20: ClaimManager approves Swapper for the collateral amount
  *      3. ClaimManager calls executeSwap() with recipient as the final destination
- *      4. Swapper pulls tokens, executes swap via pre-approved DEX routes, and transfers output to recipient
+ *      4. For native ETH input: Swapper wraps to WETH, executes swap, transfers output to recipient
+ *      5. For native ETH output: Swapper executes swap, unwraps WETH to ETH, sends to recipient
  *
  *      Supported DEX Protocols:
  *      Integrates with any DEX or aggregator (Uniswap, Curve, 1inch, ParaSwap) via generic calldata approach.
@@ -40,6 +48,7 @@ contract Swapper is
 
     bytes32 public constant override SWAP_MANAGER_ROLE = keccak256("SWAP_MANAGER_ROLE");
     bytes32 public constant override SWAP_EXECUTOR_ROLE = keccak256("SWAP_EXECUTOR_ROLE");
+    address public constant override NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     address public override nativeWrapper;
     mapping(address target => bool whitelisted) public override whitelistedTargets;
@@ -50,6 +59,12 @@ contract Swapper is
     constructor() {
         _disableInitializers();
     }
+
+    /**
+     * @notice Allows contract to receive native currency (e.g., ETH).
+     * @dev Required for wrapping/unwrapping native tokens during swaps.
+     */
+    receive() external payable {}
 
     /**
      * @notice Initializes the Swapper contract with role assignments.
@@ -163,6 +178,7 @@ contract Swapper is
      */
     function executeSwap(SwapParams calldata params)
         external
+        payable
         override
         nonReentrant
         whenNotPaused
@@ -175,30 +191,46 @@ contract Swapper is
         );
         require(params.amountIn != 0 && params.amountOutMin != 0, ZeroAmount());
 
-        bytes32 routeKey = _getRouteKey(params.tokenIn, params.tokenOut);
+        address actualTokenIn = params.tokenIn == NATIVE_ETH ? nativeWrapper : params.tokenIn;
+        address actualTokenOut = params.tokenOut == NATIVE_ETH ? nativeWrapper : params.tokenOut;
+
+        bytes32 routeKey = _getRouteKey(actualTokenIn, actualTokenOut);
         SwapRoute storage route = _swapRoutes[routeKey];
 
-        require(route.enabled, SwapRouteNotConfigured(params.tokenIn, params.tokenOut));
+        require(route.enabled, SwapRouteNotEnabled(params.tokenIn, params.tokenOut));
         require(whitelistedTargets[route.swapTarget], SwapTargetNotWhitelisted(route.swapTarget));
 
-        IERC20(params.tokenIn).safeTransferFrom(msg.sender, address(this), params.amountIn);
+        if (params.tokenIn == NATIVE_ETH) {
+            require(msg.value == params.amountIn, InsufficientNativeAmount(msg.value, params.amountIn));
+            IWETH(nativeWrapper).deposit{value: params.amountIn}();
+        } else {
+            require(msg.value == 0, UnexpectedNativePayment());
+            IERC20(params.tokenIn).safeTransferFrom(msg.sender, address(this), params.amountIn);
+        }
 
-        uint256 balanceBefore = IERC20(params.tokenOut).balanceOf(address(this));
+        uint256 balanceBefore = IERC20(actualTokenOut).balanceOf(address(this));
 
-        IERC20(params.tokenIn).forceApprove(route.swapTarget, params.amountIn);
+        IERC20(actualTokenIn).forceApprove(route.swapTarget, params.amountIn);
 
         // slither-disable-next-line arbitrary-send-eth
         (bool success, bytes memory returnData) = route.swapTarget.call(params.swapCalldata);
         require(success, SwapFailed(returnData));
 
-        IERC20(params.tokenIn).forceApprove(route.swapTarget, 0);
+        IERC20(actualTokenIn).forceApprove(route.swapTarget, 0);
 
-        uint256 balanceAfter = IERC20(params.tokenOut).balanceOf(address(this));
+        uint256 balanceAfter = IERC20(actualTokenOut).balanceOf(address(this));
         amountOut = balanceAfter - balanceBefore;
 
         require(amountOut >= params.amountOutMin, InsufficientOutputAmount(amountOut, params.amountOutMin));
 
-        IERC20(params.tokenOut).safeTransfer(params.recipient, amountOut);
+        if (params.tokenOut == NATIVE_ETH) {
+            IWETH(nativeWrapper).withdraw(amountOut);
+            // slither-disable-next-line arbitrary-send-eth
+            (bool sent,) = params.recipient.call{value: amountOut}("");
+            require(sent, NativeTransferFailed());
+        } else {
+            IERC20(params.tokenOut).safeTransfer(params.recipient, amountOut);
+        }
 
         emit SwapExecuted(params.tokenIn, params.tokenOut, params.amountIn, amountOut, params.recipient);
     }
@@ -234,10 +266,4 @@ contract Swapper is
     function _getRouteKey(address tokenIn, address tokenOut) private pure returns (bytes32) {
         return keccak256(abi.encodePacked(tokenIn, tokenOut));
     }
-
-    /**
-     * @notice Allows contract to receive native currency (e.g., ETH).
-     * @dev Required for wrapping/unwrapping native tokens during swaps.
-     */
-    receive() external payable {}
 }
