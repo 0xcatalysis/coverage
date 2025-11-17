@@ -805,6 +805,194 @@ contract SwapperTest is Test {
         vm.stopPrank();
     }
 
+    function test_executeSwap_SequentialSwaps_BothSucceed() public {
+        _setupRoute();
+
+        uint256 amountIn1 = 100 ether;
+        uint256 amountOut1 = 95 ether;
+        tokenIn.mint(swapExecutor, amountIn1);
+        tokenOut.mint(dexTarget, amountOut1);
+
+        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
+        ISwapper.SwapParams memory params1 = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: address(tokenOut),
+            amountIn: amountIn1,
+            amountOutMin: 90 ether,
+            recipient: recipient,
+            swapCalldata: swapCalldata
+        });
+
+        vm.startPrank(swapExecutor);
+        tokenIn.approve(address(swapper), amountIn1);
+        uint256 actualOut1 = swapper.executeSwap(params1);
+        assertEq(actualOut1, amountOut1, "First swap amount mismatch");
+
+        uint256 amountIn2 = 50 ether;
+        uint256 amountOut2 = 48 ether;
+        tokenIn.mint(swapExecutor, amountIn2);
+        tokenOut.mint(dexTarget, amountOut2);
+
+        ISwapper.SwapParams memory params2 = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: address(tokenOut),
+            amountIn: amountIn2,
+            amountOutMin: 45 ether,
+            recipient: recipient,
+            swapCalldata: swapCalldata
+        });
+
+        tokenIn.approve(address(swapper), amountIn2);
+        uint256 actualOut2 = swapper.executeSwap(params2);
+        vm.stopPrank();
+
+        assertEq(actualOut2, amountOut2, "Second swap amount mismatch");
+        assertEq(tokenOut.balanceOf(recipient), amountOut1 + amountOut2, "Total recipient balance mismatch");
+        assertEq(tokenIn.balanceOf(swapExecutor), 0, "Executor should have no tokenIn left");
+        assertEq(tokenOut.balanceOf(address(swapper)), 0, "Swapper should have no tokenOut left");
+        assertEq(tokenIn.balanceOf(address(swapper)), 0, "Swapper should have no tokenIn left");
+    }
+
+    function test_executeSwap_SequentialSwaps_DifferentRecipients_BothSucceed() public {
+        _setupRoute();
+
+        address recipient2 = makeAddr("recipient2");
+
+        uint256 amountIn = 100 ether;
+        uint256 amountOut = 95 ether;
+
+        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
+
+        vm.startPrank(swapExecutor);
+
+        tokenIn.mint(swapExecutor, amountIn);
+        tokenOut.mint(dexTarget, amountOut);
+        tokenIn.approve(address(swapper), amountIn);
+        ISwapper.SwapParams memory params1 = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: address(tokenOut),
+            amountIn: amountIn,
+            amountOutMin: 90 ether,
+            recipient: recipient,
+            swapCalldata: swapCalldata
+        });
+        swapper.executeSwap(params1);
+
+        tokenIn.mint(swapExecutor, amountIn);
+        tokenOut.mint(dexTarget, amountOut);
+        tokenIn.approve(address(swapper), amountIn);
+        ISwapper.SwapParams memory params2 = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: address(tokenOut),
+            amountIn: amountIn,
+            amountOutMin: 90 ether,
+            recipient: recipient2,
+            swapCalldata: swapCalldata
+        });
+        swapper.executeSwap(params2);
+
+        vm.stopPrank();
+
+        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient1 balance mismatch");
+        assertEq(tokenOut.balanceOf(recipient2), amountOut, "Recipient2 balance mismatch");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                         SET SWAP ROUTE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setSwapRoute_UpdateExistingRoute_UpdatesTarget() public {
+        address dexTarget2 = makeAddr("dexTarget2");
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true);
+
+        ISwapper.SwapRoute memory route1 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertEq(route1.swapTarget, dexTarget, "Initial target mismatch");
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget2, true);
+
+        vm.startPrank(swapManager);
+        vm.expectEmit(true, true, false, true);
+        emit SwapRouteSet(address(tokenIn), address(tokenOut), dexTarget2, true);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true);
+        vm.stopPrank();
+
+        ISwapper.SwapRoute memory route2 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertEq(route2.swapTarget, dexTarget2, "Updated target mismatch");
+        assertEq(route2.tokenIn, address(tokenIn), "TokenIn should remain same");
+        assertEq(route2.tokenOut, address(tokenOut), "TokenOut should remain same");
+        assertTrue(route2.enabled, "Route should remain enabled");
+    }
+
+    function test_setSwapRoute_UpdateRouteTarget_OldTargetSwapsFail() public {
+        address dexTarget2 = makeAddr("dexTarget2");
+        MockDEX mockDex2 = new MockDEX();
+        dexTarget2 = address(mockDex2);
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true);
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget2, true);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true);
+
+        uint256 amountIn = 100 ether;
+        uint256 amountOut = 95 ether;
+
+        tokenIn.mint(swapExecutor, amountIn);
+        tokenOut.mint(dexTarget2, amountOut);
+
+        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
+        ISwapper.SwapParams memory params = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: address(tokenOut),
+            amountIn: amountIn,
+            amountOutMin: 90 ether,
+            recipient: recipient,
+            swapCalldata: swapCalldata
+        });
+
+        vm.startPrank(swapExecutor);
+        tokenIn.approve(address(swapper), amountIn);
+        uint256 actualOut = swapper.executeSwap(params);
+        vm.stopPrank();
+
+        assertEq(actualOut, amountOut, "Swap should use new target");
+        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient should receive tokens");
+    }
+
+    function test_setSwapRoute_UpdateRouteEnabled_TogglesCorrectly() public {
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        vm.startPrank(swapManager);
+
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true);
+        ISwapper.SwapRoute memory route1 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertTrue(route1.enabled, "Route should be enabled");
+
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, false);
+        ISwapper.SwapRoute memory route2 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertFalse(route2.enabled, "Route should be disabled");
+        assertEq(route2.swapTarget, dexTarget, "Target should remain same");
+
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true);
+        ISwapper.SwapRoute memory route3 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertTrue(route3.enabled, "Route should be re-enabled");
+
+        vm.stopPrank();
+    }
+
     /*//////////////////////////////////////////////////////////////
                               HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -861,14 +1049,19 @@ contract MockDEX {
         reentrancyTarget = _target;
     }
 
-    function swap(
-        address,
-        /* tokenIn */
-        address tokenOut
-    )
-        external
-    {
+    function swap(address tokenIn, address tokenOut) external {
         require(!shouldRevert, "Mock swap failed");
+
+        // Pull input tokens from caller (mimics real DEX behavior)
+        if (tokenIn != address(0)) {
+            try MockToken(tokenIn)
+                .transferFrom(
+                    msg.sender, address(this), MockToken(tokenIn).allowance(msg.sender, address(this))
+                ) returns (
+                bool
+            ) {}
+                catch {}
+        }
 
         // Handle both ERC20 and WETH
         if (tokenOut.code.length > 0) {
