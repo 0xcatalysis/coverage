@@ -234,9 +234,9 @@ contract PremiumManagerTest is Test {
         premiumManager.collectPremium(allocation);
     }
 
-    function test_collectPremium_WhenBasePremiumTotalZero_Reverts() public {
+    function test_collectPremium_WhenBasePremiumZero_Reverts() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.basePremiumTotal = 0;
+        allocation.basePremium = 0;
 
         vm.expectRevert(IPremiumManager.ZeroAmount.selector);
         vm.prank(policyManager);
