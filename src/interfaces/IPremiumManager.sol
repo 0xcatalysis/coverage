@@ -26,7 +26,7 @@ interface IPremiumManager is IAccessControl {
     }
 
     /**
-     * @notice Aggregate premium collection payload spanning all contributing pools.
+     * @notice Premium collection payload for a policy binding.
      */
     struct PremiumAllocation {
         /// @notice Identifier of the policy associated with the payment.
@@ -39,24 +39,24 @@ interface IPremiumManager is IAccessControl {
         address premiumToken;
         /// @notice Address receiving the platform fee portion.
         address platformFeeRecipient;
-        /// @notice Total base premium amount due across all pools.
-        uint256 basePremiumTotal;
-        /// @notice Platform fee in basis points applied to each pool share.
+        /// @notice Base premium amount for the single pool.
+        uint256 basePremium;
+        /// @notice Platform fee in basis points applied to the pool share.
         uint16 platformFeeBps;
         /// @notice Policy coverage start timestamp.
         uint64 startTime;
         /// @notice Policy coverage maturity timestamp.
         uint64 maturityTime;
-        /// @notice Breakdown of pool-specific premium shares.
-        PoolShare[] poolShares;
+        /// @notice Single pool share for this policy (Phase 1: single pool only).
+        PoolShare poolShare;
     }
 
     /**
      * @notice Emitted when premiums are successfully collected.
      * @param policyId Identifier of the policy receiving coverage.
-     * @param basePremiumTotal Total base premium collected.
+     * @param basePremium Base premium collected for the single pool.
      */
-    event PremiumCollected(uint256 indexed policyId, uint256 basePremiumTotal);
+    event PremiumCollected(uint256 indexed policyId, uint256 basePremium);
 
     /**
      * @notice Emitted when the PremiumReserve dependency is set or updated.
@@ -73,11 +73,6 @@ interface IPremiumManager is IAccessControl {
      * @notice Reverts when a required amount is zero.
      */
     error ZeroAmount();
-
-    /**
-     * @notice Reverts when the provided pool shares array is empty.
-     */
-    error NoPoolShares();
 
     /**
      * @notice Reverts when supplied coverage timestamps are invalid.

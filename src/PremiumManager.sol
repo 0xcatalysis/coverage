@@ -95,47 +95,55 @@ contract PremiumManager is
     {
         _validateAllocation(allocation);
 
-        uint256 poolSharesLength = allocation.poolShares.length;
-        require(poolSharesLength != 0, NoPoolShares());
+        PoolShare calldata poolShare = allocation.poolShare;
 
-        uint256 observedTotal = 0;
-        for (uint256 i = 0; i < poolSharesLength; ++i) {
-            observedTotal += allocation.poolShares[i].grossPremium;
-        }
+        require(poolShare.coverPool != address(0), ZeroAddress());
+        require(poolShare.poolFeeRecipient != address(0), ZeroAddress());
+        require(poolShare.operator != address(0), ZeroAddress());
+        require(poolShare.grossPremium != 0, ZeroAmount());
         require(
-            observedTotal == allocation.basePremiumTotal,
-            PremiumTotalsMismatch(allocation.basePremiumTotal, observedTotal)
+            poolShare.grossPremium == allocation.basePremium,
+            PremiumTotalsMismatch(allocation.basePremium, poolShare.grossPremium)
         );
+        require(allocation.platformFeeBps <= _MAX_FEE_BPS, InvalidFeeBps(allocation.platformFeeBps));
+        require(poolShare.poolFeeBps <= _MAX_FEE_BPS, InvalidFeeBps(poolShare.poolFeeBps));
 
-        (uint256 totalPlatformFees, uint256 totalRestakerPremiums, IPremiumReserve.PoolPremium[] memory poolPremiums) =
-            _processPoolShares(allocation);
+        (uint256 platformCut, uint256 poolCut, uint256 restakerPremium) =
+            quoteFees(poolShare.grossPremium, allocation.platformFeeBps, poolShare.poolFeeBps);
 
-        if (totalPlatformFees != 0) {
+        IERC20 token = IERC20(allocation.premiumToken);
+
+        if (platformCut != 0) {
             // slither-disable-next-line arbitrary-send-erc20
-            IERC20(allocation.premiumToken)
-                .safeTransferFrom(allocation.buyer, allocation.platformFeeRecipient, totalPlatformFees);
+            token.safeTransferFrom(allocation.buyer, allocation.platformFeeRecipient, platformCut);
         }
 
-        if (totalRestakerPremiums != 0) {
+        if (poolCut != 0) {
             // slither-disable-next-line arbitrary-send-erc20
-            IERC20(allocation.premiumToken).safeTransferFrom(allocation.buyer, premiumReserve, totalRestakerPremiums);
+            token.safeTransferFrom(allocation.buyer, poolShare.poolFeeRecipient, poolCut);
+        }
+
+        if (restakerPremium != 0) {
+            // slither-disable-next-line arbitrary-send-erc20
+            token.safeTransferFrom(allocation.buyer, premiumReserve, restakerPremium);
 
             IPremiumReserve.EscrowPosition memory escrowPosition = IPremiumReserve.EscrowPosition({
                 policyId: allocation.policyId,
                 policyCommit: allocation.policyCommit,
-                restakerPremiumTotal: totalRestakerPremiums,
+                restakerPremiumTotal: restakerPremium,
                 premiumToken: allocation.premiumToken,
                 buyer: allocation.buyer,
+                pool: poolShare.coverPool,
+                operator: poolShare.operator,
                 startTime: allocation.startTime,
                 maturityTime: allocation.maturityTime,
-                claimLocked: false,
-                poolPremiums: poolPremiums
+                claimLocked: false
             });
 
             IPremiumReserve(premiumReserve).openEscrow(escrowPosition);
         }
 
-        emit PremiumCollected(allocation.policyId, allocation.basePremiumTotal);
+        emit PremiumCollected(allocation.policyId, allocation.basePremium);
     }
 
     /**
@@ -169,53 +177,6 @@ contract PremiumManager is
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     /**
-     * @notice Processes pool shares, distributes fees, and prepares escrow data.
-     * @param allocation Premium allocation containing pool share details.
-     * @return totalPlatformFees Aggregate platform fees collected.
-     * @return totalRestakerPremiums Aggregate restaker premiums for escrow.
-     * @return poolPremiums Array of pool premium data for escrow position.
-     */
-    function _processPoolShares(PremiumAllocation calldata allocation)
-        private
-        returns (
-            uint256 totalPlatformFees,
-            uint256 totalRestakerPremiums,
-            IPremiumReserve.PoolPremium[] memory poolPremiums
-        )
-    {
-        uint256 poolSharesLength = allocation.poolShares.length;
-        poolPremiums = new IPremiumReserve.PoolPremium[](poolSharesLength);
-
-        IERC20 token = IERC20(allocation.premiumToken);
-
-        for (uint256 i = 0; i < poolSharesLength; ++i) {
-            PoolShare calldata poolShare = allocation.poolShares[i];
-
-            require(poolShare.coverPool != address(0), ZeroAddress());
-            require(poolShare.poolFeeRecipient != address(0), ZeroAddress());
-            require(poolShare.operator != address(0), ZeroAddress());
-            require(poolShare.grossPremium != 0, ZeroAmount());
-            require(allocation.platformFeeBps <= _MAX_FEE_BPS, InvalidFeeBps(allocation.platformFeeBps));
-            require(poolShare.poolFeeBps <= _MAX_FEE_BPS, InvalidFeeBps(poolShare.poolFeeBps));
-
-            (uint256 platformCut, uint256 poolCut, uint256 restakerPremium) =
-                quoteFees(poolShare.grossPremium, allocation.platformFeeBps, poolShare.poolFeeBps);
-
-            totalPlatformFees += platformCut;
-            totalRestakerPremiums += restakerPremium;
-
-            if (poolCut != 0) {
-                // slither-disable-next-line arbitrary-send-erc20
-                token.safeTransferFrom(allocation.buyer, poolShare.poolFeeRecipient, poolCut);
-            }
-
-            poolPremiums[i] = IPremiumReserve.PoolPremium({
-                pool: poolShare.coverPool, operator: poolShare.operator, restakerPremium: restakerPremium
-            });
-        }
-    }
-
-    /**
      * @notice Validates allocation data before premium collection.
      * @param allocation Premium allocation details to validate.
      */
@@ -225,7 +186,7 @@ contract PremiumManager is
                 && allocation.platformFeeRecipient != address(0),
             ZeroAddress()
         );
-        require(allocation.basePremiumTotal != 0, ZeroAmount());
+        require(allocation.basePremium != 0, ZeroAmount());
         require(allocation.policyCommit != bytes32(0), InvalidPolicyCommit());
         require(
             allocation.startTime < allocation.maturityTime,

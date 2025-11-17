@@ -31,7 +31,7 @@ contract PremiumManagerTest is Test {
     MockToken internal premiumToken;
     bytes32 internal policyCommit;
 
-    event PremiumCollected(uint256 indexed policyId, uint256 basePremiumTotal);
+    event PremiumCollected(uint256 indexed policyId, uint256 basePremium);
     event PremiumReserveSet(address indexed reserve);
 
     function setUp() public {
@@ -266,18 +266,9 @@ contract PremiumManagerTest is Test {
         premiumManager.collectPremium(allocation);
     }
 
-    function test_collectPremium_WhenNoPoolShares_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShares = new IPremiumManager.PoolShare[](0);
-
-        vm.expectRevert(IPremiumManager.NoPoolShares.selector);
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-    }
-
     function test_collectPremium_WhenPremiumTotalsMismatch_Reverts() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.basePremiumTotal = GROSS_PREMIUM + 1 ether;
+        allocation.basePremium = GROSS_PREMIUM + 1 ether;
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -290,7 +281,7 @@ contract PremiumManagerTest is Test {
 
     function test_collectPremium_WhenCoverPoolZero_Reverts() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShares[0].coverPool = address(0);
+        allocation.poolShare.coverPool = address(0);
 
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(policyManager);
@@ -299,7 +290,7 @@ contract PremiumManagerTest is Test {
 
     function test_collectPremium_WhenPoolFeeRecipientZero_Reverts() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShares[0].poolFeeRecipient = address(0);
+        allocation.poolShare.poolFeeRecipient = address(0);
 
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(policyManager);
@@ -308,7 +299,7 @@ contract PremiumManagerTest is Test {
 
     function test_collectPremium_WhenOperatorZero_Reverts() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShares[0].operator = address(0);
+        allocation.poolShare.operator = address(0);
 
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(policyManager);
@@ -317,8 +308,8 @@ contract PremiumManagerTest is Test {
 
     function test_collectPremium_WhenGrossPremiumZero_Reverts() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShares[0].grossPremium = 0;
-        allocation.basePremiumTotal = 0;
+        allocation.poolShare.grossPremium = 0;
+        allocation.basePremium = 0;
 
         vm.expectRevert(IPremiumManager.ZeroAmount.selector);
         vm.prank(policyManager);
@@ -336,7 +327,7 @@ contract PremiumManagerTest is Test {
 
     function test_collectPremium_WhenPoolFeeTooHigh_Reverts() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShares[0].poolFeeBps = MAX_FEE_BPS + 1;
+        allocation.poolShare.poolFeeBps = MAX_FEE_BPS + 1;
 
         vm.expectRevert(abi.encodeWithSelector(IPremiumManager.InvalidFeeBps.selector, MAX_FEE_BPS + 1));
         vm.prank(policyManager);
@@ -385,7 +376,7 @@ contract PremiumManagerTest is Test {
 
     function test_collectPremium_WhenZeroPoolFee_OnlyTransfersPlatformFeeAndEscrow() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShares[0].poolFeeBps = 0;
+        allocation.poolShare.poolFeeBps = 0;
 
         (uint256 platformCut,/* poolCut */, uint256 escrowedAmount) =
             premiumManager.quoteFees(GROSS_PREMIUM, PLATFORM_FEE_BPS, 0);
@@ -405,12 +396,12 @@ contract PremiumManagerTest is Test {
     function test_collectPremium_WhenZeroRestaker_OnlyTransfersFees() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
         allocation.platformFeeBps = 5000;
-        allocation.poolShares[0].poolFeeBps = 5000;
+        allocation.poolShare.poolFeeBps = 5000;
 
         (
             uint256 platformCut,
             uint256 poolCut, /* escrowedAmount */
-        ) = premiumManager.quoteFees(GROSS_PREMIUM, allocation.platformFeeBps, allocation.poolShares[0].poolFeeBps);
+        ) = premiumManager.quoteFees(GROSS_PREMIUM, allocation.platformFeeBps, allocation.poolShare.poolFeeBps);
 
         premiumToken.mint(buyer, GROSS_PREMIUM);
         vm.prank(buyer);
@@ -447,10 +438,8 @@ contract PremiumManagerTest is Test {
         assertEq(escrow.startTime, allocation.startTime, "Start time mismatch");
         assertEq(escrow.maturityTime, allocation.maturityTime, "Maturity time mismatch");
         assertFalse(escrow.claimLocked, "Claim should not be locked");
-        assertEq(escrow.poolPremiums.length, 1, "Pool premiums length mismatch");
-        assertEq(escrow.poolPremiums[0].pool, coverPool, "Pool address mismatch");
-        assertEq(escrow.poolPremiums[0].operator, operator, "Operator address mismatch");
-        assertEq(escrow.poolPremiums[0].restakerPremium, escrowedAmount, "Pool restaker premium mismatch");
+        assertEq(escrow.pool, coverPool, "Pool address mismatch");
+        assertEq(escrow.operator, operator, "Operator address mismatch");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -507,60 +496,6 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          MULTI-POOL SCENARIOS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_collectPremium_WithMultiplePools_AggregatesCorrectly() public {
-        address coverPool2 = makeAddr("coverPool2");
-        address poolFeeRecipient2 = makeAddr("poolFeeRecipient2");
-        address operator2 = makeAddr("operator2");
-
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-
-        IPremiumManager.PoolShare[] memory multiPoolShares = new IPremiumManager.PoolShare[](2);
-        multiPoolShares[0] = allocation.poolShares[0];
-        multiPoolShares[0].grossPremium = 600 ether;
-        multiPoolShares[1] = IPremiumManager.PoolShare({
-            coverPool: coverPool2,
-            poolFeeRecipient: poolFeeRecipient2,
-            operator: operator2,
-            grossPremium: 400 ether,
-            poolFeeBps: POOL_FEE_BPS
-        });
-
-        allocation.poolShares = multiPoolShares;
-        allocation.basePremiumTotal = 1000 ether;
-
-        (uint256 platformCut1, uint256 poolCut1, uint256 escrowedAmount1) =
-            premiumManager.quoteFees(600 ether, PLATFORM_FEE_BPS, POOL_FEE_BPS);
-        (uint256 platformCut2, uint256 poolCut2, uint256 escrowedAmount2) =
-            premiumManager.quoteFees(400 ether, PLATFORM_FEE_BPS, POOL_FEE_BPS);
-
-        premiumToken.mint(buyer, 1000 ether);
-        vm.prank(buyer);
-        premiumToken.approve(address(premiumManager), 1000 ether);
-
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-
-        assertEq(
-            premiumToken.balanceOf(platformFeeRecipient), platformCut1 + platformCut2, "Total platform fee mismatch"
-        );
-        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut1, "Pool 1 fee mismatch");
-        assertEq(premiumToken.balanceOf(poolFeeRecipient2), poolCut2, "Pool 2 fee mismatch");
-        assertEq(
-            premiumToken.balanceOf(address(premiumReserve)), escrowedAmount1 + escrowedAmount2, "Total escrow mismatch"
-        );
-
-        IPremiumReserve.EscrowPosition memory escrow = premiumReserve.lastEscrow();
-        assertEq(escrow.poolPremiums.length, 2, "Pool premiums length mismatch");
-        assertEq(escrow.poolPremiums[0].pool, coverPool, "Pool 1 address mismatch");
-        assertEq(escrow.poolPremiums[1].pool, coverPool2, "Pool 2 address mismatch");
-        assertEq(escrow.poolPremiums[0].restakerPremium, escrowedAmount1, "Pool 1 restaker premium mismatch");
-        assertEq(escrow.poolPremiums[1].restakerPremium, escrowedAmount2, "Pool 2 restaker premium mismatch");
-    }
-
-    /*//////////////////////////////////////////////////////////////
                           REENTRANCY GUARD
     //////////////////////////////////////////////////////////////*/
 
@@ -590,8 +525,7 @@ contract PremiumManagerTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function _defaultAllocation() internal view returns (IPremiumManager.PremiumAllocation memory) {
-        IPremiumManager.PoolShare[] memory poolShares = new IPremiumManager.PoolShare[](1);
-        poolShares[0] = IPremiumManager.PoolShare({
+        IPremiumManager.PoolShare memory poolShare = IPremiumManager.PoolShare({
             coverPool: coverPool,
             poolFeeRecipient: poolFeeRecipient,
             operator: operator,
@@ -605,11 +539,11 @@ contract PremiumManagerTest is Test {
             buyer: buyer,
             premiumToken: address(premiumToken),
             platformFeeRecipient: platformFeeRecipient,
-            basePremiumTotal: GROSS_PREMIUM,
+            basePremium: GROSS_PREMIUM,
             platformFeeBps: PLATFORM_FEE_BPS,
             startTime: uint64(block.timestamp),
             maturityTime: uint64(block.timestamp + COVERAGE_DURATION),
-            poolShares: poolShares
+            poolShare: poolShare
         });
     }
 }
