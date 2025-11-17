@@ -35,6 +35,7 @@ import {IWETH} from "./interfaces/IWETH.sol";
  *      Supported DEX Protocols:
  *      Integrates with any DEX or aggregator (Uniswap, Curve, 1inch, ParaSwap) via generic calldata approach.
  */
+// slither-disable-next-line unimplemented-functions
 contract Swapper is
     Initializable,
     UUPSUpgradeable,
@@ -216,7 +217,6 @@ contract Swapper is
     /**
      * @inheritdoc ISwapper
      */
-    // slither-disable-next-line unimplemented-functions
     function paused() public view override (ISwapper, PausableUpgradeable) returns (bool) {
         return super.paused();
     }
@@ -235,6 +235,7 @@ contract Swapper is
     function _handleTokenInput(address tokenIn, address actualTokenIn, uint256 amountIn) private {
         if (tokenIn == NATIVE_ETH) {
             require(msg.value == amountIn, InsufficientNativeAmount(msg.value, amountIn));
+            // slither-disable-next-line arbitrary-send-eth
             IWETH(nativeWrapper).deposit{value: amountIn}();
         } else {
             require(msg.value == 0, UnexpectedNativePayment());
@@ -265,7 +266,7 @@ contract Swapper is
 
         IERC20(actualTokenIn).forceApprove(swapTarget, amountIn);
 
-        // slither-disable-next-line arbitrary-send-eth
+        // slither-disable-next-line low-level-calls
         (bool success, bytes memory returnData) = swapTarget.call(swapCalldata);
         require(success, SwapFailed(returnData));
 
@@ -284,7 +285,7 @@ contract Swapper is
     function _handleTokenOutput(address tokenOut, uint256 amountOut, address recipient) private {
         if (tokenOut == NATIVE_ETH) {
             IWETH(nativeWrapper).withdraw(amountOut);
-            // slither-disable-next-line arbitrary-send-eth
+            // slither-disable-next-line arbitrary-send-eth,low-level-calls
             (bool sent,) = recipient.call{value: amountOut}("");
             require(sent, NativeTransferFailed());
         } else {
