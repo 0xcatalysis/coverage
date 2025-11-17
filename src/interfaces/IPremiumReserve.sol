@@ -9,18 +9,6 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
  */
 interface IPremiumReserve is IAccessControl {
     /**
-     * @notice Restaker premium ledger entry per pool.
-     */
-    struct PoolPremium {
-        /// @notice Address of the pool whose restakers supplied coverage.
-        address pool;
-        /// @notice Operator whose delegation backs this premium slice.
-        address operator;
-        /// @notice Premium amount earmarked for the pool's restakers.
-        uint256 restakerPremium;
-    }
-
-    /**
      * @notice Escrow state maintained for each bound policy.
      */
     struct EscrowPosition {
@@ -34,31 +22,33 @@ interface IPremiumReserve is IAccessControl {
         address premiumToken;
         /// @notice Policy buyer address.
         address buyer;
+        /// @notice Address of the pool whose restakers supplied coverage.
+        address pool;
+        /// @notice Operator whose delegation backs this premium.
+        address operator;
         /// @notice Policy coverage start timestamp.
         uint64 startTime;
         /// @notice Policy coverage maturity timestamp.
         uint64 maturityTime;
         /// @notice Indicates whether escrow is locked pending claim resolution.
         bool claimLocked;
-        /// @notice Per-pool premium breakdown.
-        PoolPremium[] poolPremiums;
     }
 
     /**
      * @notice Storage-friendly snapshot tracking escrow lifecycle and balances.
      * @dev Persists aggregate totals and flags that gate claim payouts and maturity releases.
-     *      Note: PoolPremium arrays are stored separately in _poolPremiums mapping
-     *      for gas efficiency. Use escrowPosition() to reconstruct the full EscrowPosition.
      */
     struct EscrowAccount {
         /// @notice Remaining restaker premiums held in escrow.
         uint256 restakerPremiumTotal;
-        /// @notice Initial restaker premium total stored for allocation math.
-        uint256 restakerPremiumInitial;
         /// @notice ERC20 premium token locked in escrow.
         address premiumToken;
         /// @notice Buyer responsible for the policy premiums.
         address buyer;
+        /// @notice Address of the pool whose restakers supplied coverage.
+        address pool;
+        /// @notice Operator whose delegation backs this premium.
+        address operator;
         /// @notice Deterministic hash representing the policy schedule.
         bytes32 policyCommit;
         /// @notice Coverage start timestamp encoded at bind.
@@ -93,14 +83,6 @@ interface IPremiumReserve is IAccessControl {
      * @param restakerShare Amount released.
      */
     event PremiumReleased(uint256 indexed policyId, address indexed to, uint256 restakerShare);
-
-    /**
-     * @notice Emitted when a specific pool's restaker premium is distributed.
-     * @param policyId Identifier of the policy escrow.
-     * @param pool Address of the pool being paid out.
-     * @param amount Amount released to the pool's restakers.
-     */
-    event PoolPremiumReleased(uint256 indexed policyId, address indexed pool, uint256 amount);
 
     /**
      * @notice Emitted when escrowed funds are paid out against a claim.
@@ -146,28 +128,9 @@ interface IPremiumReserve is IAccessControl {
     error InvalidPolicyCommit();
 
     /**
-     * @notice Reverts when provided pool premium data is malformed.
+     * @notice Reverts when provided pool or operator address is invalid.
      */
-    error InvalidPoolPremiums();
-
-    /**
-     * @notice Reverts when no pools are provided for an escrow.
-     */
-    error TooFewPools();
-
-    /**
-     * @notice Reverts when the number of pools exceeds the maximum allowed.
-     * @param poolCount Number of pools provided.
-     * @param maxPools Maximum allowed pool count.
-     */
-    error TooManyPools(uint256 poolCount, uint256 maxPools);
-
-    /**
-     * @notice Reverts when the pool premium breakdown does not match the aggregate total.
-     * @param expected Expected aggregate value.
-     * @param observed Observed sum across pool entries.
-     */
-    error PremiumTotalsMismatch(uint256 expected, uint256 observed);
+    error InvalidPoolData();
 
     /**
      * @notice Reverts when attempting to pay a claim with a zero settled amount.
@@ -305,9 +268,9 @@ interface IPremiumReserve is IAccessControl {
     function getRemainingPremium(uint256 policyId) external view returns (uint256);
 
     /**
-     * @notice Returns the number of pools contributing to the escrow.
+     * @notice Returns the pool address for the escrow.
      * @param policyId Identifier to query.
-     * @return The count of pools in the escrow position.
+     * @return The pool address backing the policy.
      */
-    function getPoolCount(uint256 policyId) external view returns (uint256);
+    function getPool(uint256 policyId) external view returns (address);
 }

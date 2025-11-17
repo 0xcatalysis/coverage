@@ -29,11 +29,8 @@ contract PremiumReserve is
     bytes32 public constant override CLAIM_MANAGER_ROLE = keccak256("CLAIM_MANAGER_ROLE");
     bytes32 public constant override POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
     bytes private constant _COVERAGE_POLICY_TASK = "COVERAGE_POLICY";
-    uint256 private constant _MAX_POOL_COUNT = 1;
 
     mapping(uint256 => EscrowAccount) private _escrows;
-    // slither-disable-next-line uninitialized-state
-    mapping(uint256 => PoolPremium[]) private _poolPremiums;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -97,6 +94,7 @@ contract PremiumReserve is
         onlyRole(PREMIUM_MANAGER_ROLE)
     {
         require(position.premiumToken != address(0) && position.buyer != address(0), ZeroAddress());
+        require(position.pool != address(0) && position.operator != address(0), InvalidPoolData());
         require(position.policyCommit != bytes32(0), InvalidPolicyCommit());
         require(position.restakerPremiumTotal != 0, ZeroRestakerPremium());
         require(
@@ -106,34 +104,11 @@ contract PremiumReserve is
         EscrowAccount storage escrow = _escrows[position.policyId];
         require(escrow.premiumToken == address(0), EscrowAlreadyExists(position.policyId));
 
-        PoolPremium[] storage poolPremiums = _poolPremiums[position.policyId];
-        uint256 poolsLength = position.poolPremiums.length;
-        require(poolsLength != 0, TooFewPools());
-        require(poolsLength <= _MAX_POOL_COUNT, TooManyPools(poolsLength, _MAX_POOL_COUNT));
-
-        uint256 observedTotal = 0;
-        for (uint256 i = 0; i < poolsLength; ++i) {
-            PoolPremium calldata poolPremium = position.poolPremiums[i];
-            require(
-                poolPremium.pool != address(0) && poolPremium.operator != address(0)
-                    && poolPremium.restakerPremium != 0,
-                InvalidPoolPremiums()
-            );
-            poolPremiums.push(poolPremium);
-            observedTotal += poolPremium.restakerPremium;
-        }
-
-        if (position.restakerPremiumTotal != 0) {
-            require(
-                observedTotal == position.restakerPremiumTotal,
-                PremiumTotalsMismatch(position.restakerPremiumTotal, observedTotal)
-            );
-        }
-
         escrow.restakerPremiumTotal = position.restakerPremiumTotal;
-        escrow.restakerPremiumInitial = position.restakerPremiumTotal;
         escrow.premiumToken = position.premiumToken;
         escrow.buyer = position.buyer;
+        escrow.pool = position.pool;
+        escrow.operator = position.operator;
         escrow.policyCommit = position.policyCommit;
         escrow.startTime = position.startTime;
         escrow.maturityTime = position.maturityTime;
@@ -214,9 +189,15 @@ contract PremiumReserve is
 
         uint256 totalRestakerPayout = escrow.restakerPremiumTotal;
         if (totalRestakerPayout != 0) {
-            _releaseToRewards(policyId, escrow, rewardsManager, IERC20(escrow.premiumToken), totalRestakerPayout);
+            IERC20(escrow.premiumToken).safeTransfer(rewardsManager, totalRestakerPayout);
+            // slither-disable-next-line calls-loop
+            IRewardsManager(rewardsManager)
+                .distributeRewards(_COVERAGE_POLICY_TASK, escrow.operator, escrow.policyCommit, totalRestakerPayout);
+
+            emit PremiumReleased(policyId, rewardsManager, totalRestakerPayout);
         }
 
+        escrow.restakerPremiumTotal = 0;
         escrow.released = true;
         emit EscrowReleased(policyId, block.timestamp);
     }
@@ -232,35 +213,11 @@ contract PremiumReserve is
         position.restakerPremiumTotal = escrow.restakerPremiumTotal;
         position.premiumToken = escrow.premiumToken;
         position.buyer = escrow.buyer;
+        position.pool = escrow.pool;
+        position.operator = escrow.operator;
         position.startTime = escrow.startTime;
         position.maturityTime = escrow.maturityTime;
         position.claimLocked = escrow.claimLocked;
-
-        PoolPremium[] storage poolPremiums = _poolPremiums[policyId];
-        uint256 poolsLength = poolPremiums.length;
-        position.poolPremiums = new PoolPremium[](poolsLength);
-
-        if (poolsLength == 0 || escrow.restakerPremiumInitial == 0 || escrow.restakerPremiumTotal == 0) {
-            for (uint256 i = 0; i < poolsLength; ++i) {
-                position.poolPremiums[i] =
-                    PoolPremium({pool: poolPremiums[i].pool, operator: poolPremiums[i].operator, restakerPremium: 0});
-            }
-            return position;
-        }
-
-        uint256 distributed = 0;
-        for (uint256 i = 0; i < poolsLength; ++i) {
-            PoolPremium storage base = poolPremiums[i];
-            uint256 amount = (base.restakerPremium * escrow.restakerPremiumTotal) / escrow.restakerPremiumInitial;
-
-            if (i == poolsLength - 1) {
-                amount = escrow.restakerPremiumTotal - distributed;
-            } else {
-                distributed += amount;
-            }
-
-            position.poolPremiums[i] = PoolPremium({pool: base.pool, operator: base.operator, restakerPremium: amount});
-        }
     }
 
     /**
@@ -290,8 +247,9 @@ contract PremiumReserve is
     /**
      * @inheritdoc IPremiumReserve
      */
-    function getPoolCount(uint256 policyId) external view override returns (uint256) {
-        return _poolPremiums[policyId].length;
+    function getPool(uint256 policyId) external view override returns (address) {
+        EscrowAccount storage escrow = _escrows[policyId];
+        return escrow.pool;
     }
 
     /**
@@ -306,56 +264,6 @@ contract PremiumReserve is
      * @notice Restricts UUPS upgrade authorization to DEFAULT_ADMIN_ROLE holders.
      */
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
-
-    /**
-     * @notice Streams the remaining restaker premium to the RewardsManager on a per-pool basis.
-     * @dev Preserves proportional weights by using the initial restaker premium totals so that any
-     *      prior claim drawdowns are reflected across all pools uniformly and notifies RewardsManager
-     *      so Core can attribute distributions to the correct operator/policy combination.
-     * @param policyId Identifier of the policy whose escrow is being released.
-     * @param escrow Storage pointer to the policy escrow being processed.
-     * @param rewardsManager Core RewardsManager address receiving the payouts.
-     * @param premiumToken Premium token (ERC20) used for transfers.
-     * @param totalRestakerPayout Aggregate amount that should be distributed to restaker pools.
-     */
-    function _releaseToRewards(
-        uint256 policyId,
-        EscrowAccount storage escrow,
-        address rewardsManager,
-        IERC20 premiumToken,
-        uint256 totalRestakerPayout
-    )
-        private
-    {
-        PoolPremium[] storage poolPremiums = _poolPremiums[policyId];
-        uint256 poolsLength = poolPremiums.length;
-        require(poolsLength != 0, TooFewPools());
-
-        uint256 totalInitial = escrow.restakerPremiumInitial;
-        uint256 distributed = 0;
-        for (uint256 i = 0; i < poolsLength; ++i) {
-            PoolPremium storage base = poolPremiums[i];
-            uint256 amount = (totalInitial == 0) ? 0 : (base.restakerPremium * totalRestakerPayout) / totalInitial;
-
-            if (i == poolsLength - 1) {
-                amount = totalRestakerPayout - distributed;
-            } else {
-                distributed += amount;
-            }
-
-            if (amount != 0) {
-                premiumToken.safeTransfer(rewardsManager, amount);
-                // slither-disable-next-line calls-loop
-                IRewardsManager(rewardsManager)
-                    .distributeRewards(_COVERAGE_POLICY_TASK, base.operator, escrow.policyCommit, amount);
-            }
-
-            emit PoolPremiumReleased(policyId, base.pool, amount);
-        }
-
-        escrow.restakerPremiumTotal = 0;
-        emit PremiumReleased(policyId, rewardsManager, totalRestakerPayout);
-    }
 
     /**
      * @notice Loads an escrow account from storage, reverting when the policy has no escrow.
