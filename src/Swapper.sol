@@ -194,43 +194,15 @@ contract Swapper is
         address actualTokenIn = params.tokenIn == NATIVE_ETH ? nativeWrapper : params.tokenIn;
         address actualTokenOut = params.tokenOut == NATIVE_ETH ? nativeWrapper : params.tokenOut;
 
-        bytes32 routeKey = _getRouteKey(actualTokenIn, actualTokenOut);
-        SwapRoute storage route = _swapRoutes[routeKey];
+        address swapTarget = _validateAndGetSwapTarget(actualTokenIn, actualTokenOut, params.tokenIn, params.tokenOut);
 
-        require(route.enabled, SwapRouteNotEnabled(params.tokenIn, params.tokenOut));
-        require(whitelistedTargets[route.swapTarget], SwapTargetNotWhitelisted(route.swapTarget));
+        _handleTokenInput(params.tokenIn, actualTokenIn, params.amountIn);
 
-        if (params.tokenIn == NATIVE_ETH) {
-            require(msg.value == params.amountIn, InsufficientNativeAmount(msg.value, params.amountIn));
-            IWETH(nativeWrapper).deposit{value: params.amountIn}();
-        } else {
-            require(msg.value == 0, UnexpectedNativePayment());
-            IERC20(params.tokenIn).safeTransferFrom(msg.sender, address(this), params.amountIn);
-        }
-
-        uint256 balanceBefore = IERC20(actualTokenOut).balanceOf(address(this));
-
-        IERC20(actualTokenIn).forceApprove(route.swapTarget, params.amountIn);
-
-        // slither-disable-next-line arbitrary-send-eth
-        (bool success, bytes memory returnData) = route.swapTarget.call(params.swapCalldata);
-        require(success, SwapFailed(returnData));
-
-        IERC20(actualTokenIn).forceApprove(route.swapTarget, 0);
-
-        uint256 balanceAfter = IERC20(actualTokenOut).balanceOf(address(this));
-        amountOut = balanceAfter - balanceBefore;
+        amountOut = _performSwap(actualTokenIn, actualTokenOut, swapTarget, params.amountIn, params.swapCalldata);
 
         require(amountOut >= params.amountOutMin, InsufficientOutputAmount(amountOut, params.amountOutMin));
 
-        if (params.tokenOut == NATIVE_ETH) {
-            IWETH(nativeWrapper).withdraw(amountOut);
-            // slither-disable-next-line arbitrary-send-eth
-            (bool sent,) = params.recipient.call{value: amountOut}("");
-            require(sent, NativeTransferFailed());
-        } else {
-            IERC20(params.tokenOut).safeTransfer(params.recipient, amountOut);
-        }
+        _handleTokenOutput(params.tokenOut, amountOut, params.recipient);
 
         emit SwapExecuted(params.tokenIn, params.tokenOut, params.amountIn, amountOut, params.recipient);
     }
@@ -255,6 +227,99 @@ contract Swapper is
      * @notice Restricts UUPS upgrade authorization to DEFAULT_ADMIN_ROLE holders.
      */
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
+
+    /**
+     * @notice Handles token input - wraps native ETH or pulls ERC20 tokens.
+     * @param tokenIn Input token address (may be NATIVE_ETH constant).
+     * @param actualTokenIn Resolved token address (WETH if native ETH).
+     * @param amountIn Amount of input tokens.
+     */
+    function _handleTokenInput(address tokenIn, address actualTokenIn, uint256 amountIn) private {
+        if (tokenIn == NATIVE_ETH) {
+            require(msg.value == amountIn, InsufficientNativeAmount(msg.value, amountIn));
+            IWETH(nativeWrapper).deposit{value: amountIn}();
+        } else {
+            require(msg.value == 0, UnexpectedNativePayment());
+            IERC20(actualTokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        }
+    }
+
+    /**
+     * @notice Executes the swap via external DEX call with balance verification.
+     * @param actualTokenIn Resolved input token address.
+     * @param actualTokenOut Resolved output token address.
+     * @param swapTarget DEX address to execute swap on.
+     * @param amountIn Amount of input tokens.
+     * @param swapCalldata Calldata for the DEX swap function.
+     * @return amountOut Amount of output tokens received.
+     */
+    function _performSwap(
+        address actualTokenIn,
+        address actualTokenOut,
+        address swapTarget,
+        uint256 amountIn,
+        bytes calldata swapCalldata
+    )
+        private
+        returns (uint256 amountOut)
+    {
+        uint256 balanceBefore = IERC20(actualTokenOut).balanceOf(address(this));
+
+        IERC20(actualTokenIn).forceApprove(swapTarget, amountIn);
+
+        // slither-disable-next-line arbitrary-send-eth
+        (bool success, bytes memory returnData) = swapTarget.call(swapCalldata);
+        require(success, SwapFailed(returnData));
+
+        IERC20(actualTokenIn).forceApprove(swapTarget, 0);
+
+        uint256 balanceAfter = IERC20(actualTokenOut).balanceOf(address(this));
+        amountOut = balanceAfter - balanceBefore;
+    }
+
+    /**
+     * @notice Handles token output - unwraps to native ETH or transfers ERC20 tokens.
+     * @param tokenOut Output token address (may be NATIVE_ETH constant).
+     * @param amountOut Amount of output tokens to send.
+     * @param recipient Address to receive the output tokens.
+     */
+    function _handleTokenOutput(address tokenOut, uint256 amountOut, address recipient) private {
+        if (tokenOut == NATIVE_ETH) {
+            IWETH(nativeWrapper).withdraw(amountOut);
+            // slither-disable-next-line arbitrary-send-eth
+            (bool sent,) = recipient.call{value: amountOut}("");
+            require(sent, NativeTransferFailed());
+        } else {
+            IERC20(tokenOut).safeTransfer(recipient, amountOut);
+        }
+    }
+
+    /**
+     * @notice Validates route and returns the swap target address.
+     * @param actualTokenIn Resolved input token address (WETH if native ETH).
+     * @param actualTokenOut Resolved output token address (WETH if native ETH).
+     * @param paramTokenIn Original tokenIn from params (may be NATIVE_ETH constant).
+     * @param paramTokenOut Original tokenOut from params (may be NATIVE_ETH constant).
+     * @return swapTarget Address of the whitelisted DEX to execute the swap.
+     */
+    function _validateAndGetSwapTarget(
+        address actualTokenIn,
+        address actualTokenOut,
+        address paramTokenIn,
+        address paramTokenOut
+    )
+        private
+        view
+        returns (address swapTarget)
+    {
+        bytes32 routeKey = _getRouteKey(actualTokenIn, actualTokenOut);
+        SwapRoute storage route = _swapRoutes[routeKey];
+
+        require(route.enabled, SwapRouteNotEnabled(paramTokenIn, paramTokenOut));
+
+        swapTarget = route.swapTarget;
+        require(whitelistedTargets[swapTarget], SwapTargetNotWhitelisted(swapTarget));
+    }
 
     /**
      * @notice Generates a unique key for a swap route based on token pair.
