@@ -37,8 +37,6 @@ interface IPremiumManager is IAccessControl {
         address buyer;
         /// @notice ERC20 token used for the payment.
         address premiumToken;
-        /// @notice Address receiving the platform fee portion.
-        address platformFeeRecipient;
         /// @notice Base premium amount for the single pool.
         uint256 basePremium;
         /// @notice Platform fee in basis points applied to the pool share.
@@ -63,6 +61,12 @@ interface IPremiumManager is IAccessControl {
      * @param reserve Address of the premium reserve contract.
      */
     event PremiumReserveSet(address indexed reserve);
+
+    /**
+     * @notice Emitted when the platform fee recipient is set or updated.
+     * @param recipient Address of the platform fee recipient (treasury).
+     */
+    event PlatformFeeRecipientSet(address indexed recipient);
 
     /**
      * @notice Reverts when a required address argument is zero.
@@ -119,6 +123,13 @@ interface IPremiumManager is IAccessControl {
     function setPremiumReserve(address reserve) external;
 
     /**
+     * @notice Sets the platform fee recipient (treasury) address.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param recipient Address of the platform fee recipient.
+     */
+    function setPlatformFeeRecipient(address recipient) external;
+
+    /**
      * @notice Collects premium funds, routes fees, and deposits restaker shares into PremiumReserve.
      * @dev Requires POLICY_MANAGER_ROLE.
      * @param allocation Struct describing the policy payment parameters.
@@ -139,6 +150,11 @@ interface IPremiumManager is IAccessControl {
      * @notice Returns the configured PremiumReserve address.
      */
     function premiumReserve() external view returns (address);
+
+    /**
+     * @notice Returns the configured platform fee recipient address.
+     */
+    function platformFeeRecipient() external view returns (address);
 
     /**
      * @notice Returns platform and pool fee amounts for a given gross premium.

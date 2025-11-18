@@ -34,6 +34,7 @@ contract PremiumManager is
     uint16 private constant _MAX_FEE_BPS = 10_000;
 
     address public override premiumReserve;
+    address public override platformFeeRecipient;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -45,9 +46,22 @@ contract PremiumManager is
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
      * @param policyManager_ Address granted POLICY_MANAGER_ROLE for triggering premium collection.
      * @param premiumReserve_ Address of the PremiumReserve contract for escrow operations.
+     * @param platformFeeRecipient_ Address of the platform fee recipient (treasury).
      */
-    function initialize(address admin_, address policyManager_, address premiumReserve_) external initializer {
-        require(admin_ != address(0) && policyManager_ != address(0) && premiumReserve_ != address(0), ZeroAddress());
+    function initialize(
+        address admin_,
+        address policyManager_,
+        address premiumReserve_,
+        address platformFeeRecipient_
+    )
+        external
+        initializer
+    {
+        require(
+            admin_ != address(0) && policyManager_ != address(0) && premiumReserve_ != address(0)
+                && platformFeeRecipient_ != address(0),
+            ZeroAddress()
+        );
 
         __UUPSUpgradeable_init();
         __AccessControl_init();
@@ -58,6 +72,7 @@ contract PremiumManager is
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
 
         premiumReserve = premiumReserve_;
+        platformFeeRecipient = platformFeeRecipient_;
     }
 
     /**
@@ -81,6 +96,15 @@ contract PremiumManager is
         require(reserve != address(0), ZeroAddress());
         premiumReserve = reserve;
         emit PremiumReserveSet(reserve);
+    }
+
+    /**
+     * @inheritdoc IPremiumManager
+     */
+    function setPlatformFeeRecipient(address recipient) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(recipient != address(0), ZeroAddress());
+        platformFeeRecipient = recipient;
+        emit PlatformFeeRecipientSet(recipient);
     }
 
     /**
@@ -115,7 +139,7 @@ contract PremiumManager is
 
         if (platformCut != 0) {
             // slither-disable-next-line arbitrary-send-erc20
-            token.safeTransferFrom(allocation.buyer, allocation.platformFeeRecipient, platformCut);
+            token.safeTransferFrom(allocation.buyer, platformFeeRecipient, platformCut);
         }
 
         if (poolCut != 0) {
@@ -181,11 +205,7 @@ contract PremiumManager is
      * @param allocation Premium allocation details to validate.
      */
     function _validateAllocation(PremiumAllocation calldata allocation) private pure {
-        require(
-            allocation.buyer != address(0) && allocation.premiumToken != address(0)
-                && allocation.platformFeeRecipient != address(0),
-            ZeroAddress()
-        );
+        require(allocation.buyer != address(0) && allocation.premiumToken != address(0), ZeroAddress());
         require(allocation.basePremium != 0, ZeroAmount());
         require(allocation.policyCommit != bytes32(0), InvalidPolicyCommit());
         require(

@@ -33,6 +33,7 @@ contract PremiumManagerTest is Test {
 
     event PremiumCollected(uint256 indexed policyId, uint256 basePremium);
     event PremiumReserveSet(address indexed reserve);
+    event PlatformFeeRecipientSet(address indexed recipient);
 
     function setUp() public {
         vm.warp(1_000_000);
@@ -61,7 +62,9 @@ contract PremiumManagerTest is Test {
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
             "PremiumManager.sol",
-            abi.encodeCall(PremiumManager.initialize, (admin, policyManager, address(premiumReserve))),
+            abi.encodeCall(
+                PremiumManager.initialize, (admin, policyManager, address(premiumReserve), platformFeeRecipient)
+            ),
             deployOpts
         );
         premiumManager = PremiumManager(proxy);
@@ -79,21 +82,28 @@ contract PremiumManagerTest is Test {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(address(0), policyManager, address(premiumReserve));
+        freshManager.initialize(address(0), policyManager, address(premiumReserve), platformFeeRecipient);
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(0), address(premiumReserve));
+        freshManager.initialize(admin, address(0), address(premiumReserve), platformFeeRecipient);
     }
 
     function test_initialize_WhenPremiumReserveZero_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, policyManager, address(0));
+        freshManager.initialize(admin, policyManager, address(0), platformFeeRecipient);
+    }
+
+    function test_initialize_WhenPlatformFeeRecipientZero_Reverts() public {
+        PremiumManager implementation = new PremiumManager();
+        PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
+        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
+        freshManager.initialize(admin, policyManager, address(premiumReserve), address(0));
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -102,6 +112,7 @@ contract PremiumManagerTest is Test {
             premiumManager.hasRole(premiumManager.POLICY_MANAGER_ROLE(), policyManager), "Policy manager role missing"
         );
         assertEq(premiumManager.premiumReserve(), address(premiumReserve), "Premium reserve mismatch");
+        assertEq(premiumManager.platformFeeRecipient(), platformFeeRecipient, "Platform fee recipient mismatch");
         assertFalse(premiumManager.paused(), "Manager unexpectedly paused");
     }
 
@@ -182,6 +193,39 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                    SET PLATFORM FEE RECIPIENT
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setPlatformFeeRecipient_WhenCallerNotAdmin_Reverts() public {
+        address newRecipient = makeAddr("newRecipient");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, premiumManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(buyer);
+        premiumManager.setPlatformFeeRecipient(newRecipient);
+    }
+
+    function test_setPlatformFeeRecipient_WhenAddressZero_Reverts() public {
+        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
+        vm.prank(admin);
+        premiumManager.setPlatformFeeRecipient(address(0));
+    }
+
+    function test_setPlatformFeeRecipient_WhenValid_UpdatesStateAndEmits() public {
+        address newRecipient = makeAddr("newRecipient");
+
+        vm.expectEmit(true, true, true, true, address(premiumManager));
+        emit PlatformFeeRecipientSet(newRecipient);
+
+        vm.prank(admin);
+        premiumManager.setPlatformFeeRecipient(newRecipient);
+
+        assertEq(premiumManager.platformFeeRecipient(), newRecipient, "Platform fee recipient not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                           COLLECT PREMIUM
     //////////////////////////////////////////////////////////////*/
 
@@ -219,15 +263,6 @@ contract PremiumManagerTest is Test {
     function test_collectPremium_WhenPremiumTokenZero_Reverts() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
         allocation.premiumToken = address(0);
-
-        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-    }
-
-    function test_collectPremium_WhenPlatformFeeRecipientZero_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.platformFeeRecipient = address(0);
 
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(policyManager);
@@ -538,7 +573,6 @@ contract PremiumManagerTest is Test {
             policyCommit: policyCommit,
             buyer: buyer,
             premiumToken: address(premiumToken),
-            platformFeeRecipient: platformFeeRecipient,
             basePremium: GROSS_PREMIUM,
             platformFeeBps: PLATFORM_FEE_BPS,
             startTime: uint64(block.timestamp),
