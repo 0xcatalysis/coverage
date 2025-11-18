@@ -21,7 +21,7 @@ contract PremiumManagerTest is Test {
     address internal admin;
     address internal policyManager;
     address internal buyer;
-    address internal platformFeeRecipient;
+    address internal platformTreasury;
     address internal poolFeeRecipient;
     address internal coverPool;
     address internal operator;
@@ -33,7 +33,7 @@ contract PremiumManagerTest is Test {
 
     event PremiumCollected(uint256 indexed policyId, uint256 basePremium);
     event PremiumReserveSet(address indexed reserve);
-    event PlatformFeeRecipientSet(address indexed recipient);
+    event PlatformTreasurySet(address indexed treasury);
 
     function setUp() public {
         vm.warp(1_000_000);
@@ -41,7 +41,7 @@ contract PremiumManagerTest is Test {
         admin = makeAddr("admin");
         policyManager = makeAddr("policyManager");
         buyer = makeAddr("buyer");
-        platformFeeRecipient = makeAddr("platformFeeRecipient");
+        platformTreasury = makeAddr("platformTreasury");
         poolFeeRecipient = makeAddr("poolFeeRecipient");
         coverPool = makeAddr("coverPool");
         operator = makeAddr("operator");
@@ -49,7 +49,7 @@ contract PremiumManagerTest is Test {
         vm.label(admin, "Admin");
         vm.label(policyManager, "PolicyManager");
         vm.label(buyer, "Buyer");
-        vm.label(platformFeeRecipient, "PlatformFeeRecipient");
+        vm.label(platformTreasury, "PlatformTreasury");
         vm.label(poolFeeRecipient, "PoolFeeRecipient");
         vm.label(coverPool, "CoverPool");
         vm.label(operator, "Operator");
@@ -63,7 +63,7 @@ contract PremiumManagerTest is Test {
         address proxy = Upgrades.deployUUPSProxy(
             "PremiumManager.sol",
             abi.encodeCall(
-                PremiumManager.initialize, (admin, policyManager, address(premiumReserve), platformFeeRecipient)
+                PremiumManager.initialize, (admin, policyManager, address(premiumReserve), platformTreasury)
             ),
             deployOpts
         );
@@ -82,24 +82,24 @@ contract PremiumManagerTest is Test {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(address(0), policyManager, address(premiumReserve), platformFeeRecipient);
+        freshManager.initialize(address(0), policyManager, address(premiumReserve), platformTreasury);
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(0), address(premiumReserve), platformFeeRecipient);
+        freshManager.initialize(admin, address(0), address(premiumReserve), platformTreasury);
     }
 
     function test_initialize_WhenPremiumReserveZero_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, policyManager, address(0), platformFeeRecipient);
+        freshManager.initialize(admin, policyManager, address(0), platformTreasury);
     }
 
-    function test_initialize_WhenPlatformFeeRecipientZero_Reverts() public {
+    function test_initialize_WhenPlatformTreasuryZero_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
@@ -112,7 +112,7 @@ contract PremiumManagerTest is Test {
             premiumManager.hasRole(premiumManager.POLICY_MANAGER_ROLE(), policyManager), "Policy manager role missing"
         );
         assertEq(premiumManager.premiumReserve(), address(premiumReserve), "Premium reserve mismatch");
-        assertEq(premiumManager.platformFeeRecipient(), platformFeeRecipient, "Platform fee recipient mismatch");
+        assertEq(premiumManager.platformTreasury(), platformTreasury, "Platform treasury mismatch");
         assertFalse(premiumManager.paused(), "Manager unexpectedly paused");
     }
 
@@ -193,36 +193,36 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    SET PLATFORM FEE RECIPIENT
+                    SET PLATFORM TREASURY
     //////////////////////////////////////////////////////////////*/
 
-    function test_setPlatformFeeRecipient_WhenCallerNotAdmin_Reverts() public {
-        address newRecipient = makeAddr("newRecipient");
+    function test_setPlatformTreasury_WhenCallerNotAdmin_Reverts() public {
+        address newTreasury = makeAddr("newTreasury");
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, premiumManager.DEFAULT_ADMIN_ROLE()
             )
         );
         vm.prank(buyer);
-        premiumManager.setPlatformFeeRecipient(newRecipient);
+        premiumManager.setPlatformTreasury(newTreasury);
     }
 
-    function test_setPlatformFeeRecipient_WhenAddressZero_Reverts() public {
+    function test_setPlatformTreasury_WhenAddressZero_Reverts() public {
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(admin);
-        premiumManager.setPlatformFeeRecipient(address(0));
+        premiumManager.setPlatformTreasury(address(0));
     }
 
-    function test_setPlatformFeeRecipient_WhenValid_UpdatesStateAndEmits() public {
-        address newRecipient = makeAddr("newRecipient");
+    function test_setPlatformTreasury_WhenValid_UpdatesStateAndEmits() public {
+        address newTreasury = makeAddr("newTreasury");
 
         vm.expectEmit(true, true, true, true, address(premiumManager));
-        emit PlatformFeeRecipientSet(newRecipient);
+        emit PlatformTreasurySet(newTreasury);
 
         vm.prank(admin);
-        premiumManager.setPlatformFeeRecipient(newRecipient);
+        premiumManager.setPlatformTreasury(newTreasury);
 
-        assertEq(premiumManager.platformFeeRecipient(), newRecipient, "Platform fee recipient not updated");
+        assertEq(premiumManager.platformTreasury(), newTreasury, "Platform treasury not updated");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -385,7 +385,7 @@ contract PremiumManagerTest is Test {
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
 
-        assertEq(premiumToken.balanceOf(platformFeeRecipient), platformCut, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
         assertEq(premiumToken.balanceOf(address(premiumReserve)), escrowedAmount, "Escrow amount mismatch");
         assertEq(premiumReserve.openEscrowCallCount(), 1, "OpenEscrow not called");
@@ -404,7 +404,7 @@ contract PremiumManagerTest is Test {
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
 
-        assertEq(premiumToken.balanceOf(platformFeeRecipient), 0, "Platform fee should be zero");
+        assertEq(premiumToken.balanceOf(platformTreasury), 0, "Platform fee should be zero");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
         assertEq(premiumToken.balanceOf(address(premiumReserve)), escrowedAmount, "Escrow amount mismatch");
     }
@@ -423,7 +423,7 @@ contract PremiumManagerTest is Test {
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
 
-        assertEq(premiumToken.balanceOf(platformFeeRecipient), platformCut, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), 0, "Pool fee should be zero");
         assertEq(premiumToken.balanceOf(address(premiumReserve)), escrowedAmount, "Escrow amount mismatch");
     }
@@ -445,7 +445,7 @@ contract PremiumManagerTest is Test {
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
 
-        assertEq(premiumToken.balanceOf(platformFeeRecipient), platformCut, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
         assertEq(premiumToken.balanceOf(address(premiumReserve)), 0, "Escrow should be zero");
         assertEq(premiumReserve.openEscrowCallCount(), 0, "OpenEscrow should not be called");

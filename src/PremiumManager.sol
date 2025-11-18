@@ -34,7 +34,7 @@ contract PremiumManager is
     uint16 private constant _MAX_FEE_BPS = 10_000;
 
     address public override premiumReserve;
-    address public override platformFeeRecipient;
+    address public override platformTreasury;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -46,20 +46,20 @@ contract PremiumManager is
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
      * @param policyManager_ Address granted POLICY_MANAGER_ROLE for triggering premium collection.
      * @param premiumReserve_ Address of the PremiumReserve contract for escrow operations.
-     * @param platformFeeRecipient_ Address of the platform fee recipient (treasury).
+     * @param platformTreasury_ Address of the platform treasury.
      */
     function initialize(
         address admin_,
         address policyManager_,
         address premiumReserve_,
-        address platformFeeRecipient_
+        address platformTreasury_
     )
         external
         initializer
     {
         require(
             admin_ != address(0) && policyManager_ != address(0) && premiumReserve_ != address(0)
-                && platformFeeRecipient_ != address(0),
+                && platformTreasury_ != address(0),
             ZeroAddress()
         );
 
@@ -72,7 +72,7 @@ contract PremiumManager is
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
 
         premiumReserve = premiumReserve_;
-        platformFeeRecipient = platformFeeRecipient_;
+        platformTreasury = platformTreasury_;
     }
 
     /**
@@ -92,19 +92,19 @@ contract PremiumManager is
     /**
      * @inheritdoc IPremiumManager
      */
-    function setPremiumReserve(address reserve) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(reserve != address(0), ZeroAddress());
-        premiumReserve = reserve;
-        emit PremiumReserveSet(reserve);
+    function setPremiumReserve(address premiumReserve_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(premiumReserve_ != address(0), ZeroAddress());
+        premiumReserve = premiumReserve_;
+        emit PremiumReserveSet(premiumReserve_);
     }
 
     /**
      * @inheritdoc IPremiumManager
      */
-    function setPlatformFeeRecipient(address recipient) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(recipient != address(0), ZeroAddress());
-        platformFeeRecipient = recipient;
-        emit PlatformFeeRecipientSet(recipient);
+    function setPlatformTreasury(address platformTreasury_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(platformTreasury_ != address(0), ZeroAddress());
+        platformTreasury = platformTreasury_;
+        emit PlatformTreasurySet(platformTreasury_);
     }
 
     /**
@@ -139,7 +139,7 @@ contract PremiumManager is
 
         if (platformCut != 0) {
             // slither-disable-next-line arbitrary-send-erc20
-            token.safeTransferFrom(allocation.buyer, platformFeeRecipient, platformCut);
+            token.safeTransferFrom(allocation.buyer, platformTreasury, platformCut);
         }
 
         if (poolCut != 0) {

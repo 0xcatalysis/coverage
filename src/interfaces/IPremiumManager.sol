@@ -58,23 +58,23 @@ interface IPremiumManager is IAccessControl {
 
     /**
      * @notice Emitted when the PremiumReserve dependency is set or updated.
-     * @param reserve Address of the premium reserve contract.
+     * @param premiumReserve_ Address of the premium reserve contract.
      */
-    event PremiumReserveSet(address indexed reserve);
+    event PremiumReserveSet(address indexed premiumReserve_);
 
     /**
-     * @notice Emitted when the platform fee recipient is set or updated.
-     * @param recipient Address of the platform fee recipient (treasury).
+     * @notice Emitted when the platform treasury is set or updated.
+     * @param platformTreasury_ Address of the platform treasury.
      */
-    event PlatformFeeRecipientSet(address indexed recipient);
+    event PlatformTreasurySet(address indexed platformTreasury_);
 
     /**
-     * @notice Reverts when a required address argument is zero.
+     * @notice Reverts when a zero address is provided where not allowed.
      */
     error ZeroAddress();
 
     /**
-     * @notice Reverts when a required amount is zero.
+     * @notice Reverts when a zero amount is provided where not allowed.
      */
     error ZeroAmount();
 
@@ -123,11 +123,11 @@ interface IPremiumManager is IAccessControl {
     function setPremiumReserve(address reserve) external;
 
     /**
-     * @notice Sets the platform fee recipient (treasury) address.
+     * @notice Sets the platform treasury address.
      * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param recipient Address of the platform fee recipient.
+     * @param treasury Address of the platform treasury.
      */
-    function setPlatformFeeRecipient(address recipient) external;
+    function setPlatformTreasury(address treasury) external;
 
     /**
      * @notice Collects premium funds, routes fees, and deposits restaker shares into PremiumReserve.
@@ -152,9 +152,9 @@ interface IPremiumManager is IAccessControl {
     function premiumReserve() external view returns (address);
 
     /**
-     * @notice Returns the configured platform fee recipient address.
+     * @notice Returns the configured platform treasury address.
      */
-    function platformFeeRecipient() external view returns (address);
+    function platformTreasury() external view returns (address);
 
     /**
      * @notice Returns platform and pool fee amounts for a given gross premium.
