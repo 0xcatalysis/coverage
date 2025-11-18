@@ -190,6 +190,8 @@ interface IPremiumReserve is IAccessControl {
     /**
      * @notice Opens an escrow position for a newly bound policy.
      * @dev Requires PREMIUM_MANAGER_ROLE.
+     *      Transfers `position.restakerPremiumTotal` tokens from `position.buyer` to this contract.
+     *      The buyer must have approved this contract to spend at least that amount beforehand.
      * @param position Struct containing initial escrow parameters.
      */
     function openEscrow(EscrowPosition calldata position) external;

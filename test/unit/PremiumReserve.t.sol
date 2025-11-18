@@ -126,6 +126,10 @@ contract PremiumReserveTest is Test {
     function test_openEscrow_Succeeds() public {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
 
+        premiumToken.mint(buyer, RESTAKER_PREMIUM);
+        vm.prank(buyer);
+        premiumToken.approve(address(reserve), RESTAKER_PREMIUM);
+
         vm.prank(premiumManager);
         reserve.openEscrow(position);
 
@@ -136,6 +140,10 @@ contract PremiumReserveTest is Test {
 
     function test_openEscrow_StoresStateAndEmits() public {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
+
+        premiumToken.mint(buyer, RESTAKER_PREMIUM);
+        vm.prank(buyer);
+        premiumToken.approve(address(reserve), RESTAKER_PREMIUM);
 
         vm.expectEmit();
         emit EscrowOpened(POLICY_ID, address(premiumToken), RESTAKER_PREMIUM);
@@ -175,7 +183,6 @@ contract PremiumReserveTest is Test {
 
     function test_payClaim_WhenNotLocked_Reverts() public {
         _openEscrow();
-        _fundReserve();
 
         vm.expectRevert(abi.encodeWithSelector(IPremiumReserve.EscrowNotLocked.selector, POLICY_ID));
         vm.prank(claimManager);
@@ -184,7 +191,6 @@ contract PremiumReserveTest is Test {
 
     function test_payClaim_WhenExceedsFunds_Reverts() public {
         _openEscrow();
-        _fundReserve();
 
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
@@ -198,7 +204,6 @@ contract PremiumReserveTest is Test {
 
     function test_payClaim_ReducesRestakerPremiums() public {
         _openEscrow();
-        _fundReserve();
 
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
@@ -212,7 +217,6 @@ contract PremiumReserveTest is Test {
 
     function test_payClaim_MultipleSequentialClaims() public {
         _openEscrow();
-        _fundReserve();
 
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
@@ -239,7 +243,6 @@ contract PremiumReserveTest is Test {
 
     function test_payClaim_ExactEscrowAmount_DepletesCompletely() public {
         _openEscrow();
-        _fundReserve();
 
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
@@ -257,7 +260,6 @@ contract PremiumReserveTest is Test {
 
     function test_payClaim_AfterPartialClaim_RemainingCanBeReleased() public {
         _openEscrow();
-        _fundReserve();
 
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
@@ -281,7 +283,6 @@ contract PremiumReserveTest is Test {
 
     function test_releaseEscrow_WhenLocked_Reverts() public {
         _openEscrow();
-        _fundReserve();
 
         vm.prank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
@@ -293,7 +294,6 @@ contract PremiumReserveTest is Test {
 
     function test_releaseEscrow_WhenNotMatured_Reverts() public {
         _openEscrow();
-        _fundReserve();
 
         uint64 maturityTime = reserve.escrowPosition(POLICY_ID).maturityTime;
         vm.expectRevert(abi.encodeWithSelector(IPremiumReserve.MaturityNotReached.selector, POLICY_ID, maturityTime));
@@ -303,7 +303,6 @@ contract PremiumReserveTest is Test {
 
     function test_releaseEscrow_TransfersPremiums() public {
         _openEscrow();
-        _fundReserve();
 
         uint64 maturityTime = reserve.escrowPosition(POLICY_ID).maturityTime;
         vm.warp(maturityTime);
@@ -327,7 +326,6 @@ contract PremiumReserveTest is Test {
 
     function test_releaseEscrow_EmitsEscrowReleasedEvent() public {
         _openEscrow();
-        _fundReserve();
 
         uint64 maturityTime = reserve.escrowPosition(POLICY_ID).maturityTime;
         vm.warp(maturityTime);
@@ -340,7 +338,6 @@ contract PremiumReserveTest is Test {
 
     function test_releaseEscrow_AfterClaimTransfersRemainingPremiums() public {
         _openEscrow();
-        _fundReserve();
 
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
@@ -371,7 +368,6 @@ contract PremiumReserveTest is Test {
 
     function test_isEscrowReleased_WhenReleased_ReturnsTrue() public {
         _openEscrow();
-        _fundReserve();
 
         uint64 maturityTime = reserve.escrowPosition(POLICY_ID).maturityTime;
         vm.warp(maturityTime);
@@ -414,7 +410,6 @@ contract PremiumReserveTest is Test {
 
     function test_getRemainingPremium_AfterPartialClaim_ReturnsRemainder() public {
         _openEscrow();
-        _fundReserve();
 
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
@@ -426,7 +421,6 @@ contract PremiumReserveTest is Test {
 
     function test_getRemainingPremium_AfterFullClaim_ReturnsZero() public {
         _openEscrow();
-        _fundReserve();
 
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
@@ -445,6 +439,10 @@ contract PremiumReserveTest is Test {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
         position.policyId = 999;
 
+        premiumToken.mint(buyer, RESTAKER_PREMIUM);
+        vm.prank(buyer);
+        premiumToken.approve(address(reserve), RESTAKER_PREMIUM);
+
         vm.prank(premiumManager);
         reserve.openEscrow(position);
 
@@ -452,7 +450,7 @@ contract PremiumReserveTest is Test {
         assertEq(reserve.getPool(POLICY_ID), address(0), "should return zero for non-opened policy");
     }
 
-    function test_getPool_ForNonexistentEscrow_ReturnsZero() public {
+    function test_getPool_ForNonexistentEscrow_ReturnsZero() public view {
         assertEq(reserve.getPool(999), address(0), "should return zero for nonexistent escrow");
     }
 
@@ -462,12 +460,17 @@ contract PremiumReserveTest is Test {
 
     function _openEscrow() internal {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
+        premiumToken.mint(buyer, RESTAKER_PREMIUM);
+        vm.prank(buyer);
+        premiumToken.approve(address(reserve), RESTAKER_PREMIUM);
         vm.prank(premiumManager);
         reserve.openEscrow(position);
     }
 
     function _fundReserve() internal {
-        premiumToken.mint(address(reserve), RESTAKER_PREMIUM);
+        premiumToken.mint(buyer, RESTAKER_PREMIUM);
+        vm.prank(buyer);
+        premiumToken.approve(address(reserve), RESTAKER_PREMIUM);
     }
 
     function _defaultPosition() internal view returns (IPremiumReserve.EscrowPosition memory position) {
