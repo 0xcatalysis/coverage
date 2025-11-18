@@ -15,6 +15,7 @@ import {IRewardsManager} from "./interfaces/IRewardsManager.sol";
  * @title PremiumReserve
  * @notice Holds restaker premiums until maturity or claim execution.
  */
+// slither-disable-next-line unimplemented-functions
 contract PremiumReserve is
     Initializable,
     UUPSUpgradeable,
@@ -104,6 +105,7 @@ contract PremiumReserve is
         EscrowAccount storage escrow = _escrows[position.policyId];
         require(escrow.premiumToken == address(0), EscrowAlreadyExists(position.policyId));
 
+        // slither-disable-next-line arbitrary-send-erc20
         IERC20(position.premiumToken).safeTransferFrom(position.buyer, address(this), position.restakerPremiumTotal);
 
         escrow.restakerPremiumTotal = position.restakerPremiumTotal;
@@ -257,7 +259,6 @@ contract PremiumReserve is
     /**
      * @inheritdoc IPremiumReserve
      */
-    // slither-disable-next-line unimplemented-functions
     function paused() public view override (IPremiumReserve, PausableUpgradeable) returns (bool) {
         return super.paused();
     }
