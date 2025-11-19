@@ -385,9 +385,7 @@ contract PremiumManagerTest is Test {
         allocation.poolShare.poolFeeBps = 5000;
 
         uint16 totalFeeBps = 11_000;
-        vm.expectRevert(
-            abi.encodeWithSelector(IPremiumManager.ExcessiveCombinedFees.selector, 6000, 5000, totalFeeBps)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.ExcessiveCombinedFees.selector, 6000, 5000, totalFeeBps));
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
     }
@@ -405,7 +403,7 @@ contract PremiumManagerTest is Test {
         premiumManager.collectPremium(allocation);
 
         (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
-            premiumManager.quoteFees(GROSS_PREMIUM, 7000, 3000);
+            premiumManager.getFeeSplits(GROSS_PREMIUM, 7000, 3000);
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
@@ -453,7 +451,7 @@ contract PremiumManagerTest is Test {
         premiumManager.collectPremium(allocation);
 
         (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
-            premiumManager.quoteFees(GROSS_PREMIUM, 9998, 1);
+            premiumManager.getFeeSplits(GROSS_PREMIUM, 9998, 1);
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
@@ -464,7 +462,7 @@ contract PremiumManagerTest is Test {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
 
         (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
-            premiumManager.quoteFees(GROSS_PREMIUM, PLATFORM_FEE_BPS, POOL_FEE_BPS);
+            premiumManager.getFeeSplits(GROSS_PREMIUM, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
         premiumToken.mint(buyer, GROSS_PREMIUM);
         vm.prank(buyer);
@@ -486,7 +484,7 @@ contract PremiumManagerTest is Test {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
         allocation.platformFeeBps = 0;
 
-        (, uint256 poolCut, uint256 escrowedAmount) = premiumManager.quoteFees(GROSS_PREMIUM, 0, POOL_FEE_BPS);
+        (, uint256 poolCut, uint256 escrowedAmount) = premiumManager.getFeeSplits(GROSS_PREMIUM, 0, POOL_FEE_BPS);
 
         premiumToken.mint(buyer, GROSS_PREMIUM);
         vm.prank(buyer);
@@ -505,7 +503,7 @@ contract PremiumManagerTest is Test {
         allocation.poolShare.poolFeeBps = 0;
 
         (uint256 platformCut,/* poolCut */, uint256 escrowedAmount) =
-            premiumManager.quoteFees(GROSS_PREMIUM, PLATFORM_FEE_BPS, 0);
+            premiumManager.getFeeSplits(GROSS_PREMIUM, PLATFORM_FEE_BPS, 0);
 
         premiumToken.mint(buyer, GROSS_PREMIUM);
         vm.prank(buyer);
@@ -527,7 +525,7 @@ contract PremiumManagerTest is Test {
         (
             uint256 platformCut,
             uint256 poolCut, /* escrowedAmount */
-        ) = premiumManager.quoteFees(GROSS_PREMIUM, allocation.platformFeeBps, allocation.poolShare.poolFeeBps);
+        ) = premiumManager.getFeeSplits(GROSS_PREMIUM, allocation.platformFeeBps, allocation.poolShare.poolFeeBps);
 
         premiumToken.mint(buyer, GROSS_PREMIUM);
         vm.prank(buyer);
@@ -546,7 +544,7 @@ contract PremiumManagerTest is Test {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
 
         (,/* poolCut */, uint256 escrowedAmount) =
-            premiumManager.quoteFees(GROSS_PREMIUM, PLATFORM_FEE_BPS, POOL_FEE_BPS);
+            premiumManager.getFeeSplits(GROSS_PREMIUM, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
         premiumToken.mint(buyer, GROSS_PREMIUM);
         vm.prank(buyer);
@@ -569,16 +567,16 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            QUOTE FEES
+                            GET FEE SPLITS
     //////////////////////////////////////////////////////////////*/
 
-    function test_quoteFees_CalculatesCorrectly() public view {
+    function test_getFeeSplits_CalculatesCorrectly() public view {
         uint256 grossPremium = 1000 ether;
         uint16 platformFeeBps = 100;
         uint16 poolFeeBps = 200;
 
         (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
-            premiumManager.quoteFees(grossPremium, platformFeeBps, poolFeeBps);
+            premiumManager.getFeeSplits(grossPremium, platformFeeBps, poolFeeBps);
 
         assertEq(platformCut, 10 ether, "Platform cut mismatch");
         assertEq(poolCut, 20 ether, "Pool cut mismatch");
@@ -586,34 +584,34 @@ contract PremiumManagerTest is Test {
         assertEq(platformCut + poolCut + escrowedAmount, grossPremium, "Total mismatch");
     }
 
-    function test_quoteFees_WithZeroFees_ReturnsFullEscrow() public view {
+    function test_getFeeSplits_WithZeroFees_ReturnsFullEscrow() public view {
         uint256 grossPremium = 1000 ether;
 
-        (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) = premiumManager.quoteFees(grossPremium, 0, 0);
+        (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) = premiumManager.getFeeSplits(grossPremium, 0, 0);
 
         assertEq(platformCut, 0, "Platform cut should be zero");
         assertEq(poolCut, 0, "Pool cut should be zero");
         assertEq(escrowedAmount, grossPremium, "Escrowed amount should equal gross");
     }
 
-    function test_quoteFees_WithMaxFees_ReturnsZeroEscrow() public view {
+    function test_getFeeSplits_WithMaxFees_ReturnsZeroEscrow() public view {
         uint256 grossPremium = 1000 ether;
 
         (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
-            premiumManager.quoteFees(grossPremium, 5000, 5000);
+            premiumManager.getFeeSplits(grossPremium, 5000, 5000);
 
         assertEq(platformCut, 500 ether, "Platform cut mismatch");
         assertEq(poolCut, 500 ether, "Pool cut mismatch");
         assertEq(escrowedAmount, 0, "Escrowed amount should be zero");
     }
 
-    function test_quoteFees_RoundingBehavior() public view {
+    function test_getFeeSplits_RoundingBehavior() public view {
         uint256 grossPremium = 100_000;
         uint16 platformFeeBps = 33;
         uint16 poolFeeBps = 67;
 
         (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
-            premiumManager.quoteFees(grossPremium, platformFeeBps, poolFeeBps);
+            premiumManager.getFeeSplits(grossPremium, platformFeeBps, poolFeeBps);
 
         assertEq(platformCut, 330, "Platform cut rounding");
         assertEq(poolCut, 670, "Pool cut rounding");

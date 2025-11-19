@@ -159,7 +159,7 @@ interface IPremiumManager is IAccessControl {
     function platformTreasury() external view returns (address);
 
     /**
-     * @notice Returns platform and pool fee amounts for a given gross premium.
+     * @notice Calculates the platform, pool, and restaker premium splits for a given gross premium.
      * @param grossPremium Premium value to evaluate.
      * @param platformFeeBps Platform fee rate in basis points.
      * @param poolFeeBps Pool fee rate in basis points.
@@ -167,7 +167,7 @@ interface IPremiumManager is IAccessControl {
      * @return poolCut Amount allocated to the pool curator.
      * @return escrowedAmount Amount remaining for restaker escrow after fees.
      */
-    function quoteFees(
+    function getFeeSplits(
         uint256 grossPremium,
         uint16 platformFeeBps,
         uint16 poolFeeBps

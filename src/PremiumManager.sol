@@ -137,7 +137,7 @@ contract PremiumManager is
         );
 
         (uint256 platformCut, uint256 poolCut, uint256 restakerPremium) =
-            quoteFees(poolShare.grossPremium, allocation.platformFeeBps, poolShare.poolFeeBps);
+            getFeeSplits(poolShare.grossPremium, allocation.platformFeeBps, poolShare.poolFeeBps);
 
         IERC20 token = IERC20(allocation.premiumToken);
 
@@ -177,7 +177,7 @@ contract PremiumManager is
     /**
      * @inheritdoc IPremiumManager
      */
-    function quoteFees(
+    function getFeeSplits(
         uint256 grossPremium,
         uint16 platformFeeBps,
         uint16 poolFeeBps
