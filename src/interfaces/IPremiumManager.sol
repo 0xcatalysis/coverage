@@ -98,10 +98,12 @@ interface IPremiumManager is IAccessControl {
     error PremiumTotalsMismatch(uint256 expected, uint256 observed);
 
     /**
-     * @notice Reverts when fee basis points exceed the maximum allowed.
-     * @param feeBps Provided fee basis points.
+     * @notice Reverts when combined platform and pool fees exceed 100%.
+     * @param platformFeeBps Platform fee in basis points.
+     * @param poolFeeBps Pool fee in basis points.
+     * @param totalFeeBps Sum of both fees.
      */
-    error InvalidFeeBps(uint16 feeBps);
+    error ExcessiveCombinedFees(uint16 platformFeeBps, uint16 poolFeeBps, uint16 totalFeeBps);
 
     /**
      * @notice Pauses premium processing operations.

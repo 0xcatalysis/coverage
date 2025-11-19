@@ -129,8 +129,12 @@ contract PremiumManager is
             poolShare.grossPremium == allocation.basePremium,
             PremiumTotalsMismatch(allocation.basePremium, poolShare.grossPremium)
         );
-        require(allocation.platformFeeBps <= _MAX_FEE_BPS, InvalidFeeBps(allocation.platformFeeBps));
-        require(poolShare.poolFeeBps <= _MAX_FEE_BPS, InvalidFeeBps(poolShare.poolFeeBps));
+
+        uint16 totalFeeBps = allocation.platformFeeBps + poolShare.poolFeeBps;
+        require(
+            totalFeeBps <= _MAX_FEE_BPS,
+            ExcessiveCombinedFees(allocation.platformFeeBps, poolShare.poolFeeBps, totalFeeBps)
+        );
 
         (uint256 platformCut, uint256 poolCut, uint256 restakerPremium) =
             quoteFees(poolShare.grossPremium, allocation.platformFeeBps, poolShare.poolFeeBps);

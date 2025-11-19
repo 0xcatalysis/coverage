@@ -355,7 +355,12 @@ contract PremiumManagerTest is Test {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
         allocation.platformFeeBps = MAX_FEE_BPS + 1;
 
-        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.InvalidFeeBps.selector, MAX_FEE_BPS + 1));
+        uint16 totalFeeBps = (MAX_FEE_BPS + 1) + POOL_FEE_BPS;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPremiumManager.ExcessiveCombinedFees.selector, MAX_FEE_BPS + 1, POOL_FEE_BPS, totalFeeBps
+            )
+        );
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
     }
@@ -364,9 +369,95 @@ contract PremiumManagerTest is Test {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
         allocation.poolShare.poolFeeBps = MAX_FEE_BPS + 1;
 
-        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.InvalidFeeBps.selector, MAX_FEE_BPS + 1));
+        uint16 totalFeeBps = PLATFORM_FEE_BPS + (MAX_FEE_BPS + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPremiumManager.ExcessiveCombinedFees.selector, PLATFORM_FEE_BPS, MAX_FEE_BPS + 1, totalFeeBps
+            )
+        );
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
+    }
+
+    function test_collectPremium_WhenCombinedFeesExceed100Percent_Reverts() public {
+        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
+        allocation.platformFeeBps = 6000;
+        allocation.poolShare.poolFeeBps = 5000;
+
+        uint16 totalFeeBps = 11_000;
+        vm.expectRevert(
+            abi.encodeWithSelector(IPremiumManager.ExcessiveCombinedFees.selector, 6000, 5000, totalFeeBps)
+        );
+        vm.prank(policyManager);
+        premiumManager.collectPremium(allocation);
+    }
+
+    function test_collectPremium_WhenCombinedFeesEqual100Percent_Succeeds() public {
+        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
+        allocation.platformFeeBps = 7000;
+        allocation.poolShare.poolFeeBps = 3000;
+
+        premiumToken.mint(buyer, GROSS_PREMIUM);
+        vm.prank(buyer);
+        premiumToken.approve(address(premiumManager), GROSS_PREMIUM);
+
+        vm.prank(policyManager);
+        premiumManager.collectPremium(allocation);
+
+        (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
+            premiumManager.quoteFees(GROSS_PREMIUM, 7000, 3000);
+
+        assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
+        assertEq(escrowedAmount, 0, "Escrowed amount should be zero");
+    }
+
+    function test_collectPremium_WhenBothFeesMaxIndividually_Reverts() public {
+        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
+        allocation.platformFeeBps = MAX_FEE_BPS;
+        allocation.poolShare.poolFeeBps = MAX_FEE_BPS;
+
+        uint16 totalFeeBps = MAX_FEE_BPS + MAX_FEE_BPS;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPremiumManager.ExcessiveCombinedFees.selector, MAX_FEE_BPS, MAX_FEE_BPS, totalFeeBps
+            )
+        );
+        vm.prank(policyManager);
+        premiumManager.collectPremium(allocation);
+    }
+
+    function test_collectPremium_WhenOneFeeZeroOtherExceedsMax_Reverts() public {
+        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
+        allocation.platformFeeBps = 0;
+        allocation.poolShare.poolFeeBps = MAX_FEE_BPS + 1;
+
+        uint16 totalFeeBps = MAX_FEE_BPS + 1;
+        vm.expectRevert(
+            abi.encodeWithSelector(IPremiumManager.ExcessiveCombinedFees.selector, 0, MAX_FEE_BPS + 1, totalFeeBps)
+        );
+        vm.prank(policyManager);
+        premiumManager.collectPremium(allocation);
+    }
+
+    function test_collectPremium_WhenFeesJustBelowMax_Succeeds() public {
+        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
+        allocation.platformFeeBps = 9998;
+        allocation.poolShare.poolFeeBps = 1;
+
+        premiumToken.mint(buyer, GROSS_PREMIUM);
+        vm.prank(buyer);
+        premiumToken.approve(address(premiumManager), GROSS_PREMIUM);
+
+        vm.prank(policyManager);
+        premiumManager.collectPremium(allocation);
+
+        (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
+            premiumManager.quoteFees(GROSS_PREMIUM, 9998, 1);
+
+        assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
+        assertGt(escrowedAmount, 0, "Should have some escrowed amount");
     }
 
     function test_collectPremium_WhenValidSinglePool_TransfersFundsAndOpensEscrow() public {
