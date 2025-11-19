@@ -137,20 +137,17 @@ contract PremiumManager is
 
         IERC20 token = IERC20(allocation.premiumToken);
 
-        if (platformCut != 0) {
+        if (platformCut > 0) {
             // slither-disable-next-line arbitrary-send-erc20
             token.safeTransferFrom(allocation.buyer, platformTreasury, platformCut);
         }
 
-        if (poolCut != 0) {
+        if (poolCut > 0) {
             // slither-disable-next-line arbitrary-send-erc20
             token.safeTransferFrom(allocation.buyer, poolShare.poolFeeRecipient, poolCut);
         }
 
-        if (restakerPremium != 0) {
-            // slither-disable-next-line arbitrary-send-erc20
-            token.safeTransferFrom(allocation.buyer, premiumReserve, restakerPremium);
-
+        if (restakerPremium > 0) {
             IPremiumReserve.EscrowPosition memory escrowPosition = IPremiumReserve.EscrowPosition({
                 policyId: allocation.policyId,
                 policyCommit: allocation.policyCommit,
@@ -165,6 +162,9 @@ contract PremiumManager is
             });
 
             IPremiumReserve(premiumReserve).openEscrow(escrowPosition);
+
+            // slither-disable-next-line arbitrary-send-erc20
+            token.safeTransferFrom(allocation.buyer, premiumReserve, restakerPremium);
         }
 
         emit PremiumCollected(allocation.policyId, allocation.basePremium);
