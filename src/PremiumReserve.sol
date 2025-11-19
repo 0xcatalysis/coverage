@@ -105,9 +105,6 @@ contract PremiumReserve is
         EscrowAccount storage escrow = _escrows[position.policyId];
         require(escrow.premiumToken == address(0), EscrowAlreadyExists(position.policyId));
 
-        // slither-disable-next-line arbitrary-send-erc20
-        IERC20(position.premiumToken).safeTransferFrom(position.buyer, address(this), position.restakerPremiumTotal);
-
         escrow.restakerPremiumTotal = position.restakerPremiumTotal;
         escrow.premiumToken = position.premiumToken;
         escrow.buyer = position.buyer;
