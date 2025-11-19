@@ -286,7 +286,7 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function paused() public view override (IClaimManager, PausableUpgradeable) returns (bool) {
+    function paused() public view override(IClaimManager, PausableUpgradeable) returns (bool) {
         return super.paused();
     }
 

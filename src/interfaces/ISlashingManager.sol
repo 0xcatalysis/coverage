@@ -24,4 +24,3 @@ interface ISlashingManager {
         external
         returns (address[] memory assets, uint256[] memory amounts);
 }
-
