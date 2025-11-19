@@ -136,19 +136,19 @@ contract PremiumManager is
             ExcessiveCombinedFees(allocation.platformFeeBps, poolShare.poolFeeBps, totalFeeBps)
         );
 
-        (uint256 platformCut, uint256 poolCut, uint256 restakerPremium) =
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerPremium) =
             getFeeSplits(poolShare.grossPremium, allocation.platformFeeBps, poolShare.poolFeeBps);
 
         IERC20 token = IERC20(allocation.premiumToken);
 
-        if (platformCut > 0) {
+        if (platformSplit > 0) {
             // slither-disable-next-line arbitrary-send-erc20
-            token.safeTransferFrom(allocation.buyer, platformTreasury, platformCut);
+            token.safeTransferFrom(allocation.buyer, platformTreasury, platformSplit);
         }
 
-        if (poolCut > 0) {
+        if (poolSplit > 0) {
             // slither-disable-next-line arbitrary-send-erc20
-            token.safeTransferFrom(allocation.buyer, poolShare.poolFeeRecipient, poolCut);
+            token.safeTransferFrom(allocation.buyer, poolShare.poolFeeRecipient, poolSplit);
         }
 
         if (restakerPremium > 0) {
@@ -185,11 +185,11 @@ contract PremiumManager is
         public
         pure
         override
-        returns (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount)
+        returns (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit)
     {
-        platformCut = (grossPremium * platformFeeBps) / _BPS_DENOMINATOR;
-        poolCut = (grossPremium * poolFeeBps) / _BPS_DENOMINATOR;
-        escrowedAmount = grossPremium - platformCut - poolCut;
+        platformSplit = (grossPremium * platformFeeBps) / _BPS_DENOMINATOR;
+        poolSplit = (grossPremium * poolFeeBps) / _BPS_DENOMINATOR;
+        restakerSplit = grossPremium - platformSplit - poolSplit;
     }
 
     /**

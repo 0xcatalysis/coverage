@@ -163,9 +163,9 @@ interface IPremiumManager is IAccessControl {
      * @param grossPremium Premium value to evaluate.
      * @param platformFeeBps Platform fee rate in basis points.
      * @param poolFeeBps Pool fee rate in basis points.
-     * @return platformCut Amount allocated to the platform.
-     * @return poolCut Amount allocated to the pool curator.
-     * @return escrowedAmount Amount remaining for restaker escrow after fees.
+     * @return platformSplit Amount allocated to the platform.
+     * @return poolSplit Amount allocated to the pool curator.
+     * @return restakerSplit Amount remaining for restaker escrow after fees.
      */
     function getFeeSplits(
         uint256 grossPremium,
@@ -174,6 +174,6 @@ interface IPremiumManager is IAccessControl {
     )
         external
         pure
-        returns (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount);
+        returns (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit);
 }
 

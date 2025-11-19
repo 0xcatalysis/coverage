@@ -402,12 +402,12 @@ contract PremiumManagerTest is Test {
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
 
-        (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(GROSS_PREMIUM, 7000, 3000);
 
-        assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
-        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
-        assertEq(escrowedAmount, 0, "Escrowed amount should be zero");
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
+        assertEq(restakerSplit, 0, "Escrowed amount should be zero");
     }
 
     function test_collectPremium_WhenBothFeesMaxIndividually_Reverts() public {
@@ -450,18 +450,18 @@ contract PremiumManagerTest is Test {
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
 
-        (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(GROSS_PREMIUM, 9998, 1);
 
-        assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
-        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
-        assertGt(escrowedAmount, 0, "Should have some escrowed amount");
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
+        assertGt(restakerSplit, 0, "Should have some escrowed amount");
     }
 
     function test_collectPremium_WhenValidSinglePool_TransfersFundsAndOpensEscrow() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
 
-        (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(GROSS_PREMIUM, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
         premiumToken.mint(buyer, GROSS_PREMIUM);
@@ -474,9 +474,9 @@ contract PremiumManagerTest is Test {
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
 
-        assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
-        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
-        assertEq(premiumToken.balanceOf(address(premiumReserve)), escrowedAmount, "Escrow amount mismatch");
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
+        assertEq(premiumToken.balanceOf(address(premiumReserve)), restakerSplit, "Escrow amount mismatch");
         assertEq(premiumReserve.openEscrowCallCount(), 1, "OpenEscrow not called");
     }
 
@@ -484,7 +484,7 @@ contract PremiumManagerTest is Test {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
         allocation.platformFeeBps = 0;
 
-        (, uint256 poolCut, uint256 escrowedAmount) = premiumManager.getFeeSplits(GROSS_PREMIUM, 0, POOL_FEE_BPS);
+        (, uint256 poolSplit, uint256 restakerSplit) = premiumManager.getFeeSplits(GROSS_PREMIUM, 0, POOL_FEE_BPS);
 
         premiumToken.mint(buyer, GROSS_PREMIUM);
         vm.prank(buyer);
@@ -494,15 +494,15 @@ contract PremiumManagerTest is Test {
         premiumManager.collectPremium(allocation);
 
         assertEq(premiumToken.balanceOf(platformTreasury), 0, "Platform fee should be zero");
-        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
-        assertEq(premiumToken.balanceOf(address(premiumReserve)), escrowedAmount, "Escrow amount mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
+        assertEq(premiumToken.balanceOf(address(premiumReserve)), restakerSplit, "Escrow amount mismatch");
     }
 
     function test_collectPremium_WhenZeroPoolFee_OnlyTransfersPlatformFeeAndEscrow() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
         allocation.poolShare.poolFeeBps = 0;
 
-        (uint256 platformCut,/* poolCut */, uint256 escrowedAmount) =
+        (uint256 platformSplit,/* poolSplit */, uint256 restakerSplit) =
             premiumManager.getFeeSplits(GROSS_PREMIUM, PLATFORM_FEE_BPS, 0);
 
         premiumToken.mint(buyer, GROSS_PREMIUM);
@@ -512,9 +512,9 @@ contract PremiumManagerTest is Test {
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
 
-        assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), 0, "Pool fee should be zero");
-        assertEq(premiumToken.balanceOf(address(premiumReserve)), escrowedAmount, "Escrow amount mismatch");
+        assertEq(premiumToken.balanceOf(address(premiumReserve)), restakerSplit, "Escrow amount mismatch");
     }
 
     function test_collectPremium_WhenZeroRestaker_OnlyTransfersFees() public {
@@ -523,8 +523,8 @@ contract PremiumManagerTest is Test {
         allocation.poolShare.poolFeeBps = 5000;
 
         (
-            uint256 platformCut,
-            uint256 poolCut, /* escrowedAmount */
+            uint256 platformSplit,
+            uint256 poolSplit, /* restakerSplit */
         ) = premiumManager.getFeeSplits(GROSS_PREMIUM, allocation.platformFeeBps, allocation.poolShare.poolFeeBps);
 
         premiumToken.mint(buyer, GROSS_PREMIUM);
@@ -534,8 +534,8 @@ contract PremiumManagerTest is Test {
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
 
-        assertEq(premiumToken.balanceOf(platformTreasury), platformCut, "Platform fee mismatch");
-        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolCut, "Pool fee mismatch");
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
         assertEq(premiumToken.balanceOf(address(premiumReserve)), 0, "Escrow should be zero");
         assertEq(premiumReserve.openEscrowCallCount(), 0, "OpenEscrow should not be called");
     }
@@ -543,7 +543,7 @@ contract PremiumManagerTest is Test {
     function test_collectPremium_OpensEscrowWithCorrectParameters() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
 
-        (,/* poolCut */, uint256 escrowedAmount) =
+        (,/* poolSplit */, uint256 restakerSplit) =
             premiumManager.getFeeSplits(GROSS_PREMIUM, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
         premiumToken.mint(buyer, GROSS_PREMIUM);
@@ -556,7 +556,7 @@ contract PremiumManagerTest is Test {
         IPremiumReserve.EscrowPosition memory escrow = premiumReserve.lastEscrow();
         assertEq(escrow.policyId, POLICY_ID, "Policy ID mismatch");
         assertEq(escrow.policyCommit, policyCommit, "Policy commit mismatch");
-        assertEq(escrow.restakerPremiumTotal, escrowedAmount, "Restaker premium total mismatch");
+        assertEq(escrow.restakerPremiumTotal, restakerSplit, "Restaker premium total mismatch");
         assertEq(escrow.premiumToken, address(premiumToken), "Premium token mismatch");
         assertEq(escrow.buyer, buyer, "Buyer mismatch");
         assertEq(escrow.startTime, allocation.startTime, "Start time mismatch");
@@ -575,34 +575,35 @@ contract PremiumManagerTest is Test {
         uint16 platformFeeBps = 100;
         uint16 poolFeeBps = 200;
 
-        (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(grossPremium, platformFeeBps, poolFeeBps);
 
-        assertEq(platformCut, 10 ether, "Platform cut mismatch");
-        assertEq(poolCut, 20 ether, "Pool cut mismatch");
-        assertEq(escrowedAmount, 970 ether, "Escrowed amount mismatch");
-        assertEq(platformCut + poolCut + escrowedAmount, grossPremium, "Total mismatch");
+        assertEq(platformSplit, 10 ether, "Platform split mismatch");
+        assertEq(poolSplit, 20 ether, "Pool split mismatch");
+        assertEq(restakerSplit, 970 ether, "Restaker split mismatch");
+        assertEq(platformSplit + poolSplit + restakerSplit, grossPremium, "Total mismatch");
     }
 
     function test_getFeeSplits_WithZeroFees_ReturnsFullEscrow() public view {
         uint256 grossPremium = 1000 ether;
 
-        (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) = premiumManager.getFeeSplits(grossPremium, 0, 0);
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
+            premiumManager.getFeeSplits(grossPremium, 0, 0);
 
-        assertEq(platformCut, 0, "Platform cut should be zero");
-        assertEq(poolCut, 0, "Pool cut should be zero");
-        assertEq(escrowedAmount, grossPremium, "Escrowed amount should equal gross");
+        assertEq(platformSplit, 0, "Platform split should be zero");
+        assertEq(poolSplit, 0, "Pool split should be zero");
+        assertEq(restakerSplit, grossPremium, "Restaker split should equal gross");
     }
 
     function test_getFeeSplits_WithMaxFees_ReturnsZeroEscrow() public view {
         uint256 grossPremium = 1000 ether;
 
-        (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(grossPremium, 5000, 5000);
 
-        assertEq(platformCut, 500 ether, "Platform cut mismatch");
-        assertEq(poolCut, 500 ether, "Pool cut mismatch");
-        assertEq(escrowedAmount, 0, "Escrowed amount should be zero");
+        assertEq(platformSplit, 500 ether, "Platform split mismatch");
+        assertEq(poolSplit, 500 ether, "Pool split mismatch");
+        assertEq(restakerSplit, 0, "Restaker split should be zero");
     }
 
     function test_getFeeSplits_RoundingBehavior() public view {
@@ -610,13 +611,13 @@ contract PremiumManagerTest is Test {
         uint16 platformFeeBps = 33;
         uint16 poolFeeBps = 67;
 
-        (uint256 platformCut, uint256 poolCut, uint256 escrowedAmount) =
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(grossPremium, platformFeeBps, poolFeeBps);
 
-        assertEq(platformCut, 330, "Platform cut rounding");
-        assertEq(poolCut, 670, "Pool cut rounding");
-        assertEq(escrowedAmount, 99_000, "Escrowed amount rounding");
-        assertEq(platformCut + poolCut + escrowedAmount, grossPremium, "Total should match");
+        assertEq(platformSplit, 330, "Platform split rounding");
+        assertEq(poolSplit, 670, "Pool split rounding");
+        assertEq(restakerSplit, 99_000, "Restaker split rounding");
+        assertEq(platformSplit + poolSplit + restakerSplit, grossPremium, "Total should match");
     }
 
     /*//////////////////////////////////////////////////////////////
