@@ -150,6 +150,9 @@ contract PremiumManager is
         }
 
         if (restakerPremium > 0) {
+            // slither-disable-next-line arbitrary-send-erc20
+            token.safeTransferFrom(allocation.buyer, premiumReserve, restakerPremium);
+
             IPremiumReserve.EscrowPosition memory escrowPosition = IPremiumReserve.EscrowPosition({
                 policyId: allocation.policyId,
                 policyCommit: allocation.policyCommit,
@@ -164,9 +167,6 @@ contract PremiumManager is
             });
 
             IPremiumReserve(premiumReserve).openEscrow(escrowPosition);
-
-            // slither-disable-next-line arbitrary-send-erc20
-            token.safeTransferFrom(allocation.buyer, premiumReserve, restakerPremium);
         }
 
         emit PremiumCollected(allocation.policyId, allocation.basePremium);
