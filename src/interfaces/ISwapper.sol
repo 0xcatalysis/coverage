@@ -182,9 +182,10 @@ interface ISwapper is IAccessControlDefaultAdminRules {
     function setNativeWrapper(address wrapper) external;
 
     /**
-     * @notice Recovers tokens that are stuck in the contract.
+     * @notice Recovers tokens or native Ether that are stuck in the contract.
      * @dev Requires DEFAULT_ADMIN_ROLE. Used to recover accidentally sent tokens or residual amounts.
-     * @param token Address of the token to recover.
+     *      Use NATIVE_ETH constant (0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) to recover native ETH.
+     * @param token Address of the token to recover, or NATIVE_ETH for native currency.
      * @param to Recipient address.
      * @param amount Amount to recover.
      */
