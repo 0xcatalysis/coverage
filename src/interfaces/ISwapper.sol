@@ -145,6 +145,12 @@ interface ISwapper is IAccessControl {
     error NativeTransferFailed();
 
     /**
+     * @notice Reverts when attempting to configure a route using NATIVE_ETH instead of nativeWrapper.
+     * @param token The NATIVE_ETH constant that was incorrectly used.
+     */
+    error InvalidRouteToken(address token);
+
+    /**
      * @notice Pauses swap operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
