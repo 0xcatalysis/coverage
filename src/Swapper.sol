@@ -44,8 +44,8 @@ contract Swapper is
     ReentrancyGuardUpgradeable,
     ISwapper
 {
+    using Address for address payable;
     using SafeERC20 for IERC20;
-    using Address for address;
 
     bytes32 public constant override SWAP_MANAGER_ROLE = keccak256("SWAP_MANAGER_ROLE");
     bytes32 public constant override SWAP_EXECUTOR_ROLE = keccak256("SWAP_EXECUTOR_ROLE");
@@ -140,7 +140,11 @@ contract Swapper is
         require(token != address(0) && to != address(0), ZeroAddress());
         require(amount != 0, ZeroAmount());
 
-        IERC20(token).safeTransfer(to, amount);
+        if (token == NATIVE_ETH) {
+            payable(to).sendValue(amount);
+        } else {
+            IERC20(token).safeTransfer(to, amount);
+        }
     }
 
     /**
