@@ -2,7 +2,6 @@
 pragma solidity 0.8.28;
 
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -17,7 +16,6 @@ import {IRewardsManager} from "./interfaces/IRewardsManager.sol";
  */
 // slither-disable-next-line unimplemented-functions
 contract PremiumReserve is
-    Initializable,
     UUPSUpgradeable,
     AccessControlUpgradeable,
     PausableUpgradeable,
