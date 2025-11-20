@@ -166,7 +166,7 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function fileClaim(uint256 policyId, bytes32 evidenceHash) external override whenNotPaused {
+    function fileClaim(uint256 policyId, bytes32 evidenceHash) external override whenNotPaused nonReentrant {
         require(evidenceHash != bytes32(0), InvalidEvidenceHash());
 
         IPolicy.PolicyMetadata memory metadata = IPolicy(policy).policyMetadata(policyId);
@@ -187,10 +187,10 @@ contract ClaimManager is
         claim.filedAt = block.timestamp;
         claim.evidenceHash = evidenceHash;
 
+        emit ClaimFiled(policyId, msg.sender, evidenceHash, block.timestamp);
+
         // slither-disable-next-line calls-loop
         IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
-
-        emit ClaimFiled(policyId, msg.sender, evidenceHash, block.timestamp);
     }
 
     /**
@@ -217,21 +217,22 @@ contract ClaimManager is
 
         if (!result.isPayable) {
             claim.status = ClaimStatus.Rejected;
+            emit ClaimRejected(policyId, "Spec evaluation failed", block.timestamp);
             // slither-disable-next-line calls-loop
             IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
-            emit ClaimRejected(policyId, "Spec evaluation failed", block.timestamp);
             return;
         }
 
         claim.status = ClaimStatus.Approved;
 
+        // slither-disable-next-line reentrancy-no-eth
         uint256 totalPayout = _executeSlashingAndPayout(policyId, metadata);
         claim.payoutAmount = totalPayout;
 
+        emit ClaimApproved(policyId, metadata.payoutReceiver, totalPayout, block.timestamp);
+
         // slither-disable-next-line calls-loop
         IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
-
-        emit ClaimApproved(policyId, metadata.payoutReceiver, totalPayout, block.timestamp);
     }
 
     /**
@@ -244,6 +245,7 @@ contract ClaimManager is
         external
         override
         whenNotPaused
+        nonReentrant
         onlyRole(CLAIM_OPERATOR_ROLE)
     {
         ClaimRecord storage claim = _claims[policyId];
@@ -252,10 +254,10 @@ contract ClaimManager is
         claim.status = ClaimStatus.Rejected;
         claim.resolvedAt = block.timestamp;
 
+        emit ClaimRejected(policyId, reason, block.timestamp);
+
         // slither-disable-next-line calls-loop
         IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
-
-        emit ClaimRejected(policyId, reason, block.timestamp);
     }
 
     /**
@@ -366,7 +368,7 @@ contract ClaimManager is
             IERC20(collateralToken).safeTransfer(payoutReceiver, collateralAmount);
             amountOut = collateralAmount;
         } else {
-            IERC20(collateralToken).approve(swapper, collateralAmount);
+            IERC20(collateralToken).forceApprove(swapper, collateralAmount);
 
             ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
                 tokenIn: collateralToken,
@@ -380,10 +382,9 @@ contract ClaimManager is
             // slither-disable-next-line calls-loop
             amountOut = ISwapper(swapper).executeSwap(swapParams);
 
-            IERC20(collateralToken).approve(swapper, 0);
+            IERC20(collateralToken).forceApprove(swapper, 0);
         }
 
         emit CollateralSwapped(policyId, collateralToken, collateralAmount, payoutToken, amountOut);
     }
 }
-
