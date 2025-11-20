@@ -280,42 +280,6 @@ contract ClaimManager is
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     /**
-     * @notice Evaluates the Spec for a given policy.
-     * @param policyId Identifier of the policy.
-     * @param metadata Policy metadata from Policy contract.
-     * @param evidenceHash Hash of evidence submitted with the claim.
-     * @param additionalData Additional context data for Spec evaluation.
-     * @return result Evaluation outcome from the Spec.
-     */
-    function _evaluateSpec(
-        uint256 policyId,
-        IPolicy.PolicyMetadata memory metadata,
-        bytes32 evidenceHash,
-        bytes calldata additionalData
-    )
-        private
-        view
-        returns (ISpec.EvaluationResult memory result)
-    {
-        // slither-disable-next-line calls-loop
-        ISpec spec = ISpecRegistry(specRegistry).resolveSpec(metadata.pool, bytes32(uint256(uint160(metadata.pool))));
-
-        ISpec.EvaluationContext memory context = ISpec.EvaluationContext({
-            policyId: policyId,
-            pool: metadata.pool,
-            coverageLimit: metadata.coverageLimit,
-            startTime: metadata.startTime,
-            maturityTime: metadata.maturityTime,
-            evaluationTime: block.timestamp,
-            evidenceHash: evidenceHash,
-            additionalData: additionalData
-        });
-
-        // slither-disable-next-line calls-loop
-        result = spec.evaluate(context);
-    }
-
-    /**
      * @notice Executes slashing via Core's SlashingManager and converts collateral to payout tokens.
      * @param policyId Identifier of the policy.
      * @param metadata Policy metadata containing operator, policyCommit, and payout details.
@@ -336,12 +300,11 @@ contract ClaimManager is
         require(assetsLength > 0 && amounts.length > 0, NoCollateralSlashed(policyId));
 
         for (uint256 i = 0; i < assetsLength; ++i) {
-            if (amounts[i] == 0) {
-                continue;
+            if (amounts[i] > 0) {
+                totalPayout += _processCollateral(
+                    policyId, assets[i], amounts[i], metadata.payoutToken, metadata.payoutReceiver
+                );
             }
-            totalPayout += _processCollateral(
-                policyId, assets[i], amounts[i], metadata.payoutToken, metadata.payoutReceiver
-            );
         }
     }
 
@@ -386,5 +349,39 @@ contract ClaimManager is
         }
 
         emit CollateralSwapped(policyId, collateralToken, collateralAmount, payoutToken, amountOut);
+    }
+
+    /**
+     * @notice Evaluates the Spec for a given policy.
+     * @param policyId Identifier of the policy.
+     * @param metadata Policy metadata from Policy contract.
+     * @param evidenceHash Hash of evidence submitted with the claim.
+     * @param additionalData Additional context data for Spec evaluation.
+     * @return result Evaluation outcome from the Spec.
+     */
+    function _evaluateSpec(
+        uint256 policyId,
+        IPolicy.PolicyMetadata memory metadata,
+        bytes32 evidenceHash,
+        bytes calldata additionalData
+    )
+        private
+        view
+        returns (ISpec.EvaluationResult memory result)
+    {
+        ISpec spec = ISpecRegistry(specRegistry).resolveSpec(metadata.pool, bytes32(uint256(uint160(metadata.pool))));
+
+        ISpec.EvaluationContext memory context = ISpec.EvaluationContext({
+            policyId: policyId,
+            pool: metadata.pool,
+            coverageLimit: metadata.coverageLimit,
+            startTime: metadata.startTime,
+            maturityTime: metadata.maturityTime,
+            evaluationTime: block.timestamp,
+            evidenceHash: evidenceHash,
+            additionalData: additionalData
+        });
+
+        result = spec.evaluate(context);
     }
 }
