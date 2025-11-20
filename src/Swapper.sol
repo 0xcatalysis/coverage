@@ -160,6 +160,8 @@ contract Swapper is
     {
         require(tokenIn != address(0) && tokenOut != address(0) && swapTarget != address(0), ZeroAddress());
         require(tokenIn != tokenOut, IdenticalTokens(tokenIn));
+        require(tokenIn != NATIVE_ETH, InvalidRouteToken(tokenIn));
+        require(tokenOut != NATIVE_ETH, InvalidRouteToken(tokenOut));
         require(whitelistedTargets[swapTarget], SwapTargetNotWhitelisted(swapTarget));
 
         bytes32 routeKey = _getRouteKey(tokenIn, tokenOut);
