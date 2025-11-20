@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {
+    IAccessControlDefaultAdminRules
+} from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
 
 /**
  * @title ISwapper
@@ -9,7 +11,7 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
  * @dev Used by ClaimManager to convert various collateral types (ETH, wBTC) received from slashing
  *      into the policy's designated payout token (USDC, DAI, etc.) via pre-approved DEX routes.
  */
-interface ISwapper is IAccessControl {
+interface ISwapper is IAccessControlDefaultAdminRules {
     /**
      * @notice Configuration for a swap route between two tokens.
      * @dev Stores parameters needed to execute swaps through external protocols.
