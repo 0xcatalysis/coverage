@@ -419,6 +419,34 @@ contract SwapperTest is Test {
         assertEq(tokenIn.balanceOf(address(swapper)), 0, "Swapper balance should be zero");
     }
 
+    function test_recoverTokens_WhenNativeETH_TransfersNativeETH() public {
+        uint256 rescueAmount = 5 ether;
+
+        vm.deal(address(swapper), rescueAmount);
+
+        uint256 balanceBefore = recipient.balance;
+        address nativeEth = swapper.NATIVE_ETH();
+
+        vm.prank(admin);
+        swapper.recoverTokens(nativeEth, recipient, rescueAmount);
+
+        assertEq(recipient.balance, balanceBefore + rescueAmount, "Native ETH should be transferred");
+        assertEq(address(swapper).balance, 0, "Swapper balance should be zero");
+    }
+
+    function test_recoverTokens_WhenNativeETHTransferFails_Reverts() public {
+        uint256 rescueAmount = 5 ether;
+
+        vm.deal(address(swapper), rescueAmount);
+
+        RejectEther rejectEther = new RejectEther();
+        address nativeEth = swapper.NATIVE_ETH();
+
+        vm.prank(admin);
+        vm.expectRevert();
+        swapper.recoverTokens(nativeEth, address(rejectEther), rescueAmount);
+    }
+
     /*//////////////////////////////////////////////////////////////
                             SET SWAP ROUTE
     //////////////////////////////////////////////////////////////*/
