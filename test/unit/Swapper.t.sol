@@ -315,6 +315,30 @@ contract SwapperTest is Test {
         swapper.setSwapRoute(address(tokenIn), address(tokenIn), dexTarget, true, "");
     }
 
+    function test_setSwapRoute_WhenTokenInIsNativeETH_Reverts() public {
+        vm.startPrank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.stopPrank();
+
+        address nativeEth = swapper.NATIVE_ETH();
+
+        vm.prank(swapManager);
+        vm.expectRevert(abi.encodeWithSelector(ISwapper.InvalidRouteToken.selector, nativeEth));
+        swapper.setSwapRoute(nativeEth, address(tokenOut), dexTarget, true);
+    }
+
+    function test_setSwapRoute_WhenTokenOutIsNativeETH_Reverts() public {
+        vm.startPrank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.stopPrank();
+
+        address nativeEth = swapper.NATIVE_ETH();
+
+        vm.prank(swapManager);
+        vm.expectRevert(abi.encodeWithSelector(ISwapper.InvalidRouteToken.selector, nativeEth));
+        swapper.setSwapRoute(address(tokenIn), nativeEth, dexTarget, true);
+    }
+
     function test_setSwapRoute_WhenTargetNotWhitelisted_Reverts() public {
         vm.prank(swapManager);
         vm.expectRevert(abi.encodeWithSelector(ISwapper.SwapTargetNotWhitelisted.selector, dexTarget));
@@ -1116,4 +1140,3 @@ contract RejectEther {
         revert("ETH not accepted");
     }
 }
-
