@@ -241,12 +241,8 @@ contract ClaimManager is
 
         claim.status = ClaimStatus.Approved;
 
-<<<<<<< HEAD
         // slither-disable-next-line reentrancy-no-eth
         uint256 totalPayout = _executeSlashingAndPayout(policyId, metadata, claim.requestedAmount);
-=======
-        uint256 totalPayout = _executeSlashingAndPayout(policyId, metadata);
->>>>>>> 880ded9 (feat: make adjustments for core SlashingManager)
         claim.payoutAmount = totalPayout;
 
         emit ClaimApproved(policyId, metadata.payoutReceiver, totalPayout, block.timestamp);
@@ -422,80 +418,4 @@ contract ClaimManager is
 
         result = spec.evaluate(context);
     }
-<<<<<<< HEAD
-=======
-
-    /**
-     * @notice Executes slashing via Core's SlashingManager and converts collateral to payout tokens.
-     * @param policyId Identifier of the policy.
-     * @param metadata Policy metadata containing operator, policyCommit, and payout details.
-     * @return totalPayout Total amount paid out in payout token terms.
-     */
-    function _executeSlashingAndPayout(
-        uint256 policyId,
-        IPolicy.PolicyMetadata memory metadata
-    )
-        private
-        returns (uint256 totalPayout)
-    {
-        // slither-disable-next-line calls-loop
-        (address[] memory assets, uint256[] memory amounts) = ISlashingManager(slashingManager)
-            .executeSlashing(_COVERAGE_POLICY_TASK, metadata.operator, metadata.policyCommit);
-
-        uint256 assetsLength = assets.length;
-        require(assetsLength > 0 && amounts.length > 0, NoCollateralSlashed(policyId));
-
-        for (uint256 i = 0; i < assetsLength; ++i) {
-            if (amounts[i] == 0) {
-                continue;
-            }
-            totalPayout += _processCollateral(
-                policyId, assets[i], amounts[i], metadata.payoutToken, metadata.payoutReceiver
-            );
-        }
-    }
-
-    /**
-     * @notice Processes a single collateral asset by swapping or transferring directly.
-     * @param policyId Identifier of the policy (for events).
-     * @param collateralToken Address of the slashed collateral token.
-     * @param collateralAmount Amount of collateral to process.
-     * @param payoutToken Desired payout token address.
-     * @param payoutReceiver Address to receive the payout.
-     * @return amountOut Amount of payout token delivered.
-     */
-    function _processCollateral(
-        uint256 policyId,
-        address collateralToken,
-        uint256 collateralAmount,
-        address payoutToken,
-        address payoutReceiver
-    )
-        private
-        returns (uint256 amountOut)
-    {
-        if (collateralToken == payoutToken) {
-            IERC20(collateralToken).safeTransfer(payoutReceiver, collateralAmount);
-            amountOut = collateralAmount;
-        } else {
-            IERC20(collateralToken).approve(swapper, collateralAmount);
-
-            ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
-                tokenIn: collateralToken,
-                tokenOut: payoutToken,
-                amountIn: collateralAmount,
-                amountOutMin: 0,
-                recipient: payoutReceiver,
-                swapCalldata: ""
-            });
-
-            // slither-disable-next-line calls-loop
-            amountOut = ISwapper(swapper).executeSwap(swapParams);
-
-            IERC20(collateralToken).approve(swapper, 0);
-        }
-
-        emit CollateralSwapped(policyId, collateralToken, collateralAmount, payoutToken, amountOut);
-    }
->>>>>>> 880ded9 (feat: make adjustments for core SlashingManager)
 }
