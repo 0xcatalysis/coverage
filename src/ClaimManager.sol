@@ -44,7 +44,8 @@ contract ClaimManager is
     using SafeERC20 for IERC20;
 
     bytes32 public constant override CLAIM_OPERATOR_ROLE = keccak256("CLAIM_OPERATOR_ROLE");
-    bytes private constant _COVERAGE_POLICY_TASK = "COVERAGE_POLICY";
+
+    bytes private constant _COVERAGE_POLICY_TASK = bytes("COVERAGE_POLICY");
 
     address public override specRegistry;
     address public override slashingManager;
@@ -224,7 +225,7 @@ contract ClaimManager is
 
         claim.status = ClaimStatus.Approved;
 
-        uint256 totalPayout = _executeSlashingAndPayout(policyId, metadata, result.amountUsd);
+        uint256 totalPayout = _executeSlashingAndPayout(policyId, metadata);
         claim.payoutAmount = totalPayout;
 
         // slither-disable-next-line calls-loop
@@ -313,30 +314,29 @@ contract ClaimManager is
     }
 
     /**
-     * @notice Executes slashing and converts collateral to payout tokens.
+     * @notice Executes slashing via Core's SlashingManager and converts collateral to payout tokens.
      * @param policyId Identifier of the policy.
-     * @param metadata Policy metadata containing payout details.
-     * @param amountUsd USD amount approved for payout.
+     * @param metadata Policy metadata containing operator, policyCommit, and payout details.
      * @return totalPayout Total amount paid out in payout token terms.
      */
     function _executeSlashingAndPayout(
         uint256 policyId,
-        IPolicy.PolicyMetadata memory metadata,
-        uint256 amountUsd
+        IPolicy.PolicyMetadata memory metadata
     )
         private
         returns (uint256 totalPayout)
     {
-        uint256 slashAmountUsd = amountUsd > metadata.coverageLimit ? metadata.coverageLimit : amountUsd;
-
         // slither-disable-next-line calls-loop
         (address[] memory assets, uint256[] memory amounts) = ISlashingManager(slashingManager)
-            .executeSlashing(_COVERAGE_POLICY_TASK, metadata.operator, metadata.policyCommit, slashAmountUsd);
+            .executeSlashing(_COVERAGE_POLICY_TASK, metadata.operator, metadata.policyCommit);
 
-        require(assets.length > 0 && amounts.length > 0, NoCollateralSlashed(policyId));
+        uint256 assetsLength = assets.length;
+        require(assetsLength > 0 && amounts.length > 0, NoCollateralSlashed(policyId));
 
-        for (uint256 i = 0; i < assets.length; i++) {
-            if (amounts[i] == 0) continue;
+        for (uint256 i = 0; i < assetsLength; ++i) {
+            if (amounts[i] == 0) {
+                continue;
+            }
             totalPayout += _processCollateral(
                 policyId, assets[i], amounts[i], metadata.payoutToken, metadata.payoutReceiver
             );
