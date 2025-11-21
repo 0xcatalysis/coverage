@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPolicy} from "./interfaces/IPolicy.sol";
@@ -14,7 +13,7 @@ import {IPolicy} from "./interfaces/IPolicy.sol";
  * @dev Uses AccessControl for role separation and enforces permanent transfer locks so receipts
  *      remain non-transferable.
  */
-contract Policy is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ERC721Upgradeable, IPolicy {
+contract Policy is UUPSUpgradeable, AccessControlUpgradeable, ERC721Upgradeable, IPolicy {
     bytes32 public constant override POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
     string private constant _NAME = "Catalysis Policy";
     string private constant _SYMBOL = "POLICY";

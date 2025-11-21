@@ -126,9 +126,9 @@ contract PremiumReserveTest is Test {
     function test_openEscrow_Succeeds() public {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
 
-        premiumToken.mint(buyer, RESTAKER_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(reserve), RESTAKER_PREMIUM);
+        premiumToken.mint(premiumManager, RESTAKER_PREMIUM);
+        vm.prank(premiumManager);
+        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
 
         vm.prank(premiumManager);
         reserve.openEscrow(position);
@@ -141,9 +141,9 @@ contract PremiumReserveTest is Test {
     function test_openEscrow_StoresStateAndEmits() public {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
 
-        premiumToken.mint(buyer, RESTAKER_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(reserve), RESTAKER_PREMIUM);
+        premiumToken.mint(premiumManager, RESTAKER_PREMIUM);
+        vm.prank(premiumManager);
+        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
 
         vm.expectEmit();
         emit EscrowOpened(POLICY_ID, address(premiumToken), RESTAKER_PREMIUM);
@@ -439,9 +439,9 @@ contract PremiumReserveTest is Test {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
         position.policyId = 999;
 
-        premiumToken.mint(buyer, RESTAKER_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(reserve), RESTAKER_PREMIUM);
+        premiumToken.mint(premiumManager, RESTAKER_PREMIUM);
+        vm.prank(premiumManager);
+        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
 
         vm.prank(premiumManager);
         reserve.openEscrow(position);
@@ -460,9 +460,9 @@ contract PremiumReserveTest is Test {
 
     function _openEscrow() internal {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
-        premiumToken.mint(buyer, RESTAKER_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(reserve), RESTAKER_PREMIUM);
+        premiumToken.mint(premiumManager, RESTAKER_PREMIUM);
+        vm.prank(premiumManager);
+        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
         vm.prank(premiumManager);
         reserve.openEscrow(position);
     }
