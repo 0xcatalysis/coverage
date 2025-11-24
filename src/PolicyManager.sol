@@ -153,7 +153,7 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
-    function paused() public view override (IPolicyManager, PausableUpgradeable) returns (bool) {
+    function paused() public view override(IPolicyManager, PausableUpgradeable) returns (bool) {
         return super.paused();
     }
 
@@ -181,4 +181,3 @@ contract PolicyManager is
         );
     }
 }
-
