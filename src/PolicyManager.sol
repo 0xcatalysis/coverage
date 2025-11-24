@@ -105,12 +105,12 @@ contract PolicyManager is
             premiumToken: request.premiumToken,
             basePremium: quote.basePremium,
             platformFeeBps: request.platformFeeBps,
-            startTime: boundPolicy.startTime,
-            maturityTime: boundPolicy.maturityTime,
+            startTime: quote.startTime,
+            maturityTime: quote.maturityTime,
             poolShare: IPremiumManager.PoolShare({
                 coverPool: quote.pool,
                 poolFeeRecipient: ICoverPool(quote.pool).owner(),
-                operator: boundPolicy.operator,
+                operator: quote.operator,
                 grossPremium: quote.basePremium,
                 poolFeeBps: ICoverPool(quote.pool).poolFeeBps()
             })
@@ -128,7 +128,6 @@ contract PolicyManager is
             coverageLimit: boundPolicy.coverageLimit,
             payoutReceiver: boundPolicy.payoutReceiver,
             poolPolicyId: boundPolicy.policyId,
-            specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
             policyCommit: policyCommit,
             committeeId: boundPolicy.committeeId,
@@ -166,7 +165,7 @@ contract PolicyManager is
      * @notice Validates bind policy request data before processing.
      * @param request Bind policy request to validate.
      */
-    function _validateRequest(BindPolicyRequest calldata request) private view {
+    function _validateRequest(BindPolicyRequest calldata request) private pure {
         require(
             request.buyer != address(0) && request.beneficiary != address(0) && request.premiumToken != address(0)
                 && request.payoutToken != address(0),
@@ -176,7 +175,7 @@ contract PolicyManager is
         require(request.quote.coverageLimit != 0, InvalidCoverageLimit());
         require(request.quote.basePremium != 0, InvalidBasePremium());
         require(
-            request.quote.startTime < request.quote.maturityTime && request.quote.maturityTime > block.timestamp,
+            request.quote.startTime < request.quote.maturityTime,
             InvalidCoverageWindow(request.quote.startTime, request.quote.maturityTime)
         );
     }
