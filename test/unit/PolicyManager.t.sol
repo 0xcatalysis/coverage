@@ -321,6 +321,20 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request);
     }
 
+    function test_bindPolicy_WhenMaturityInPast_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.quote.startTime = uint64(block.timestamp - 2 days);
+        request.quote.maturityTime = uint64(block.timestamp - 1 days);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPolicyManager.InvalidCoverageWindow.selector, request.quote.startTime, request.quote.maturityTime
+            )
+        );
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+    }
+
     function test_bindPolicy_WhenPolicyCommitEmpty_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
 
