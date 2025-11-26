@@ -7,6 +7,7 @@ import {
 } from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {Swapper} from "../../src/Swapper.sol";
@@ -349,9 +350,11 @@ contract SwapperTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_setNativeWrapper_WhenWrapperZero_Reverts() public {
-        vm.prank(admin);
+        vm.startPrank(admin);
+        swapper.pause();
         vm.expectRevert(ISwapper.ZeroAddress.selector);
         swapper.setNativeWrapper(address(0));
+        vm.stopPrank();
     }
 
     function test_setNativeWrapper_WhenCallerNotAdmin_Reverts() public {
@@ -364,13 +367,59 @@ contract SwapperTest is Test {
         swapper.setNativeWrapper(newWrapper);
     }
 
+    function test_setNativeWrapper_WhenNotPaused_Reverts() public {
+        address newWrapper = makeAddr("newWrapper");
+        vm.prank(admin);
+        vm.expectRevert(PausableUpgradeable.ExpectedPause.selector);
+        swapper.setNativeWrapper(newWrapper);
+    }
+
     function test_setNativeWrapper_WhenValid_UpdatesWrapper() public {
         address newWrapper = makeAddr("newWrapper");
         vm.startPrank(admin);
+        swapper.pause();
         vm.expectEmit(true, false, false, false);
         emit NativeWrapperSet(newWrapper);
         swapper.setNativeWrapper(newWrapper);
         vm.stopPrank();
+
+        assertEq(swapper.nativeWrapper(), newWrapper, "Native wrapper should be updated");
+    }
+
+    function test_setNativeWrapper_PreventsBrokenRoutesWorkflow() public {
+        address originalWrapper = nativeWrapper;
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(originalWrapper, address(tokenOut), dexTarget, true);
+
+        ISwapper.SwapRoute memory route = swapper.getSwapRoute(originalWrapper, address(tokenOut));
+        assertTrue(route.enabled, "Route should be enabled");
+
+        address newWrapper = makeAddr("newWrapper");
+        vm.startPrank(admin);
+
+        vm.expectRevert(PausableUpgradeable.ExpectedPause.selector);
+        swapper.setNativeWrapper(newWrapper);
+
+        swapper.pause();
+        swapper.setNativeWrapper(newWrapper);
+        vm.stopPrank();
+
+        ISwapper.SwapRoute memory oldRoute = swapper.getSwapRoute(originalWrapper, address(tokenOut));
+        assertTrue(oldRoute.enabled, "Old route still exists");
+
+        ISwapper.SwapRoute memory newRoute = swapper.getSwapRoute(newWrapper, address(tokenOut));
+        assertFalse(newRoute.enabled, "New route should not exist yet");
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(newWrapper, address(tokenOut), dexTarget, true);
+
+        newRoute = swapper.getSwapRoute(newWrapper, address(tokenOut));
+        assertTrue(newRoute.enabled, "New route should be enabled");
+
+        vm.prank(admin);
+        swapper.unpause();
 
         assertEq(swapper.nativeWrapper(), newWrapper, "Native wrapper should be updated");
     }
@@ -849,11 +898,12 @@ contract SwapperTest is Test {
     function test_executeSwap_WhenNativeETHInput_WrapsAndSwaps() public {
         MockWETH mockWeth = new MockWETH();
 
-        vm.prank(admin);
+        vm.startPrank(admin);
+        swapper.pause();
         swapper.setNativeWrapper(address(mockWeth));
-
-        vm.prank(admin);
+        swapper.unpause();
         swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.stopPrank();
         vm.prank(swapManager);
         swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true);
 
@@ -883,11 +933,12 @@ contract SwapperTest is Test {
     function test_executeSwap_WhenNativeETHOutput_SwapsAndUnwraps() public {
         MockWETH mockWeth = new MockWETH();
 
-        vm.prank(admin);
+        vm.startPrank(admin);
+        swapper.pause();
         swapper.setNativeWrapper(address(mockWeth));
-
-        vm.prank(admin);
+        swapper.unpause();
         swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.stopPrank();
         vm.prank(swapManager);
         swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true);
 
@@ -921,11 +972,12 @@ contract SwapperTest is Test {
     function test_executeSwap_WhenNativeETHInput_WrongMsgValue_Reverts() public {
         MockWETH mockWeth = new MockWETH();
 
-        vm.prank(admin);
+        vm.startPrank(admin);
+        swapper.pause();
         swapper.setNativeWrapper(address(mockWeth));
-
-        vm.prank(admin);
+        swapper.unpause();
         swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.stopPrank();
         vm.prank(swapManager);
         swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true);
 
@@ -968,11 +1020,12 @@ contract SwapperTest is Test {
     function test_executeSwap_WhenNativeETHOutput_TransferFails_Reverts() public {
         MockWETH mockWeth = new MockWETH();
 
-        vm.prank(admin);
+        vm.startPrank(admin);
+        swapper.pause();
         swapper.setNativeWrapper(address(mockWeth));
-
-        vm.prank(admin);
+        swapper.unpause();
         swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.stopPrank();
         vm.prank(swapManager);
         swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true);
 
