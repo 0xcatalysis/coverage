@@ -604,6 +604,24 @@ contract ClaimManagerTest is Test {
         claimManager.resolveClaim(POLICY_ID, "");
     }
 
+    function test_resolveClaim_WhenAllCollateralAmountsZero_Reverts() public {
+        _fileClaim();
+
+        specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
+
+        address[] memory assets = new address[](2);
+        assets[0] = collateralToken;
+        assets[1] = payoutToken;
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 0;
+        amounts[1] = 0;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.ZeroPayoutAmount.selector, POLICY_ID));
+        vm.prank(claimOperator);
+        claimManager.resolveClaim(POLICY_ID, "");
+    }
+
     function test_resolveClaim_WhenSpecApproves_ExecutesPayoutAndEmits() public {
         _fileClaim();
 
