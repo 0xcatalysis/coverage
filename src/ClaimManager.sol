@@ -372,7 +372,7 @@ contract ClaimManager is
         view
         returns (ISpec.EvaluationResult memory result)
     {
-        ISpec spec = ISpecRegistry(specRegistry).resolveSpec(metadata.pool, bytes32(uint256(uint160(metadata.pool))));
+        ISpec spec = ISpecRegistry(specRegistry).resolveSpec(metadata.pool, metadata.specId);
 
         ISpec.EvaluationContext memory context = ISpec.EvaluationContext({
             policyId: policyId,
