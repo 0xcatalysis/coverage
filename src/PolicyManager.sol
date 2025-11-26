@@ -105,12 +105,12 @@ contract PolicyManager is
             premiumToken: request.premiumToken,
             basePremium: quote.basePremium,
             platformFeeBps: request.platformFeeBps,
-            startTime: quote.startTime,
-            maturityTime: quote.maturityTime,
+            startTime: boundPolicy.startTime,
+            maturityTime: boundPolicy.maturityTime,
             poolShare: IPremiumManager.PoolShare({
                 coverPool: quote.pool,
                 poolFeeRecipient: ICoverPool(quote.pool).owner(),
-                operator: quote.operator,
+                operator: boundPolicy.operator,
                 grossPremium: quote.basePremium,
                 poolFeeBps: ICoverPool(quote.pool).poolFeeBps()
             })
