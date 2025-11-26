@@ -127,7 +127,7 @@ contract Swapper is
     /**
      * @inheritdoc ISwapper
      */
-    function setNativeWrapper(address wrapper) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setNativeWrapper(address wrapper) external override onlyRole(DEFAULT_ADMIN_ROLE) whenPaused {
         require(wrapper != address(0), ZeroAddress());
         nativeWrapper = wrapper;
         emit NativeWrapperSet(wrapper);
