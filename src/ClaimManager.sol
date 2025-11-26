@@ -306,6 +306,8 @@ contract ClaimManager is
                 );
             }
         }
+
+        require(totalPayout > 0, ZeroPayoutAmount(policyId));
     }
 
     /**

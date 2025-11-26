@@ -175,6 +175,12 @@ interface IClaimManager is IAccessControl {
     error NoCollateralSlashed(uint256 policyId);
 
     /**
+     * @notice Reverts when slashing or swaps result in zero payout amount.
+     * @param policyId Identifier of the policy.
+     */
+    error ZeroPayoutAmount(uint256 policyId);
+
+    /**
      * @notice Reverts when a required evidence hash is empty.
      */
     error InvalidEvidenceHash();
