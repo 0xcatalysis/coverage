@@ -176,7 +176,9 @@ interface ISwapper is IAccessControlDefaultAdminRules {
 
     /**
      * @notice Sets the native token wrapper address (e.g., WETH).
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Contract must be paused to prevent breaking existing routes.
+     *      Changing the wrapper invalidates all existing native ETH routes, which must be reconfigured
+     *      with the new wrapper address before unpausing.
      * @param wrapper Address of the native token wrapper contract.
      */
     function setNativeWrapper(address wrapper) external;
