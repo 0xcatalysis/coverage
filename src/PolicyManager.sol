@@ -128,6 +128,7 @@ contract PolicyManager is
             coverageLimit: boundPolicy.coverageLimit,
             payoutReceiver: boundPolicy.payoutReceiver,
             poolPolicyId: boundPolicy.policyId,
+            specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
             policyCommit: policyCommit,
             committeeId: boundPolicy.committeeId,
