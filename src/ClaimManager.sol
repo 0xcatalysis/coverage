@@ -297,7 +297,7 @@ contract ClaimManager is
             .executeSlashing(_COVERAGE_POLICY_TASK, metadata.operator, metadata.policyCommit);
 
         uint256 assetsLength = assets.length;
-        require(assetsLength > 0 && amounts.length > 0, NoCollateralSlashed(policyId));
+        require(assetsLength > 0 && assetsLength == amounts.length, NoCollateralSlashed(policyId));
 
         for (uint256 i = 0; i < assetsLength; ++i) {
             if (amounts[i] > 0) {
@@ -310,6 +310,7 @@ contract ClaimManager is
 
     /**
      * @notice Processes a single collateral asset by swapping or transferring directly.
+     * @dev Uses Swapper's pre-configured routes and calldata for swaps.
      * @param policyId Identifier of the policy (for events).
      * @param collateralToken Address of the slashed collateral token.
      * @param collateralAmount Amount of collateral to process.
@@ -333,11 +334,13 @@ contract ClaimManager is
         } else {
             IERC20(collateralToken).forceApprove(swapper, collateralAmount);
 
+            // Empty swapCalldata triggers use of pre-configured route calldata
+            // amountOutMin of 1 ensures swap produces non-zero output; slippage is controlled by route config
             ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
                 tokenIn: collateralToken,
                 tokenOut: payoutToken,
                 amountIn: collateralAmount,
-                amountOutMin: 0,
+                amountOutMin: 1,
                 recipient: payoutReceiver,
                 swapCalldata: ""
             });

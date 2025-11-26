@@ -240,7 +240,7 @@ interface IClaimManager is IAccessControl {
      * @notice Resolves a filed claim by evaluating the Spec and executing payout if approved.
      * @dev Requires CLAIM_OPERATOR_ROLE.
      *      Evaluates the registered Spec for the policy's product.
-     *      If approved: slashes stake, swaps collateral, pays beneficiary, unlocks escrow.
+     *      If approved: slashes stake, swaps collateral via pre-configured routes, pays beneficiary, unlocks escrow.
      *      If rejected: unlocks escrow without payout.
      * @param policyId Identifier of the policy to resolve.
      * @param additionalData Optional ABI-encoded data for Spec evaluation.
