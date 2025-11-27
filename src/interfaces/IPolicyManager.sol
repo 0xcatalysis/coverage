@@ -155,4 +155,3 @@ interface IPolicyManager is IAccessControl {
      */
     function policy() external view returns (address);
 }
-

@@ -594,4 +594,3 @@ contract MockPolicy {
         return (_lastTo, _lastPolicyId, _lastMetadata);
     }
 }
-

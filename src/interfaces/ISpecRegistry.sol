@@ -18,4 +18,3 @@ interface ISpecRegistry {
      */
     function resolveSpec(address pool, bytes32 specId) external view returns (ISpec spec);
 }
-
