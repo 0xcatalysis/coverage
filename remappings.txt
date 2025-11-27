@@ -2,5 +2,4 @@
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
 @openzeppelin/upgrades/=lib/openzeppelin-foundry-upgrades/src/
 @solady/=lib/solady/src/
-@solarity/=lib/solidity-lib/
 forge-std/=lib/forge-std/src/
