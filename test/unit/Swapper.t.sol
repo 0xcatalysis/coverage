@@ -391,7 +391,7 @@ contract SwapperTest is Test {
         vm.prank(admin);
         swapper.setSwapTargetWhitelist(dexTarget, true);
         vm.prank(swapManager);
-        swapper.setSwapRoute(originalWrapper, address(tokenOut), dexTarget, true);
+        swapper.setSwapRoute(originalWrapper, address(tokenOut), dexTarget, true, "");
 
         ISwapper.SwapRoute memory route = swapper.getSwapRoute(originalWrapper, address(tokenOut));
         assertTrue(route.enabled, "Route should be enabled");
@@ -413,7 +413,7 @@ contract SwapperTest is Test {
         assertFalse(newRoute.enabled, "New route should not exist yet");
 
         vm.prank(swapManager);
-        swapper.setSwapRoute(newWrapper, address(tokenOut), dexTarget, true);
+        swapper.setSwapRoute(newWrapper, address(tokenOut), dexTarget, true, "");
 
         newRoute = swapper.getSwapRoute(newWrapper, address(tokenOut));
         assertTrue(newRoute.enabled, "New route should be enabled");
@@ -545,7 +545,7 @@ contract SwapperTest is Test {
 
         vm.prank(swapManager);
         vm.expectRevert(abi.encodeWithSelector(ISwapper.InvalidRouteToken.selector, nativeEth));
-        swapper.setSwapRoute(nativeEth, address(tokenOut), dexTarget, true);
+        swapper.setSwapRoute(nativeEth, address(tokenOut), dexTarget, true, "");
     }
 
     function test_setSwapRoute_WhenTokenOutIsNativeETH_Reverts() public {
@@ -557,7 +557,7 @@ contract SwapperTest is Test {
 
         vm.prank(swapManager);
         vm.expectRevert(abi.encodeWithSelector(ISwapper.InvalidRouteToken.selector, nativeEth));
-        swapper.setSwapRoute(address(tokenIn), nativeEth, dexTarget, true);
+        swapper.setSwapRoute(address(tokenIn), nativeEth, dexTarget, true, "");
     }
 
     function test_setSwapRoute_WhenTargetNotWhitelisted_Reverts() public {
@@ -905,7 +905,7 @@ contract SwapperTest is Test {
         swapper.setSwapTargetWhitelist(dexTarget, true);
         vm.stopPrank();
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true);
+        swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true, "");
 
         uint256 amountIn = 1 ether;
         uint256 amountOut = 0.95 ether;
@@ -940,7 +940,7 @@ contract SwapperTest is Test {
         swapper.setSwapTargetWhitelist(dexTarget, true);
         vm.stopPrank();
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true);
+        swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true, "");
 
         uint256 amountIn = 100 ether;
         uint256 amountOut = 1 ether;
@@ -979,7 +979,7 @@ contract SwapperTest is Test {
         swapper.setSwapTargetWhitelist(dexTarget, true);
         vm.stopPrank();
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true);
+        swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true, "");
 
         uint256 amountIn = 1 ether;
         uint256 wrongValue = 0.5 ether;
@@ -1027,7 +1027,7 @@ contract SwapperTest is Test {
         swapper.setSwapTargetWhitelist(dexTarget, true);
         vm.stopPrank();
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true);
+        swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true, "");
 
         uint256 amountIn = 100 ether;
         uint256 amountOut = 1 ether;
@@ -1157,7 +1157,7 @@ contract SwapperTest is Test {
         swapper.setSwapTargetWhitelist(dexTarget, true);
 
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
 
         ISwapper.SwapRoute memory route1 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
         assertEq(route1.swapTarget, dexTarget, "Initial target mismatch");
@@ -1168,7 +1168,7 @@ contract SwapperTest is Test {
         vm.startPrank(swapManager);
         vm.expectEmit(true, true, false, true);
         emit SwapRouteSet(address(tokenIn), address(tokenOut), dexTarget2, true);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true, "");
         vm.stopPrank();
 
         ISwapper.SwapRoute memory route2 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
@@ -1187,13 +1187,13 @@ contract SwapperTest is Test {
         swapper.setSwapTargetWhitelist(dexTarget, true);
 
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
 
         vm.prank(admin);
         swapper.setSwapTargetWhitelist(dexTarget2, true);
 
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true, "");
 
         uint256 amountIn = 100 ether;
         uint256 amountOut = 95 ether;
@@ -1226,16 +1226,16 @@ contract SwapperTest is Test {
 
         vm.startPrank(swapManager);
 
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
         ISwapper.SwapRoute memory route1 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
         assertTrue(route1.enabled, "Route should be enabled");
 
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, false);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, false, "");
         ISwapper.SwapRoute memory route2 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
         assertFalse(route2.enabled, "Route should be disabled");
         assertEq(route2.swapTarget, dexTarget, "Target should remain same");
 
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
         ISwapper.SwapRoute memory route3 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
         assertTrue(route3.enabled, "Route should be re-enabled");
 
