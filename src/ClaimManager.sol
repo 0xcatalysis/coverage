@@ -334,7 +334,8 @@ contract ClaimManager is
     /**
      * @notice Processes a single collateral asset by swapping or transferring directly.
      * @dev Uses Swapper's pre-configured routes and calldata for swaps.
-     *      Caps the payout at remainingPayout to avoid over-disbursement.
+     *      Receives swap output to this contract first, then transfers only up to remainingPayout
+     *      to avoid over-disbursement. Any excess from swaps remains in the contract.
      * @param policyId Identifier of the policy (for events).
      * @param collateralToken Address of the slashed collateral token.
      * @param collateralAmount Amount of collateral to process.
@@ -368,16 +369,15 @@ contract ClaimManager is
                 tokenOut: payoutToken,
                 amountIn: collateralAmount,
                 amountOutMin: 1,
-                recipient: payoutReceiver,
+                recipient: address(this),
                 swapCalldata: ""
             });
 
             // slither-disable-next-line calls-loop
-            amountOut = ISwapper(swapper).executeSwap(swapParams);
+            uint256 swapOutput = ISwapper(swapper).executeSwap(swapParams);
 
-            if (amountOut > remainingPayout) {
-                amountOut = remainingPayout;
-            }
+            amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
+            IERC20(payoutToken).safeTransfer(payoutReceiver, amountOut);
 
             IERC20(collateralToken).forceApprove(swapper, 0);
         }

@@ -666,6 +666,7 @@ contract ClaimManagerTest is Test {
 
         uint256 swapOutput = 450 ether;
         swapperMock.setSwapOutput(swapOutput);
+        swapperMock.setPayoutToken(payoutToken);
 
         vm.expectEmit(true, true, true, true, address(claimManager));
         emit CollateralSwapped(POLICY_ID, collateralToken, SLASH_AMOUNT, payoutToken, swapOutput);
@@ -682,6 +683,7 @@ contract ClaimManagerTest is Test {
         assertEq(record.payoutAmount, swapOutput, "Payout amount mismatch");
         assertTrue(record.evaluationResult.isPayable, "Should be payable");
         assertFalse(premiumReserveMock.isClaimLockSet(POLICY_ID), "Claim lock should be cleared");
+        assertEq(payoutTokenMock.balanceOf(payoutReceiver), swapOutput, "Receiver should get payout tokens");
     }
 
     function test_resolveClaim_WhenCollateralMatchesPayoutToken_TransfersDirect() public {
@@ -733,12 +735,14 @@ contract ClaimManagerTest is Test {
         slashingManagerMock.setToken2ToTransfer(address(collateral2));
 
         swapperMock.setSwapOutput(250 ether);
+        swapperMock.setPayoutToken(payoutToken);
 
         vm.prank(claimOperator);
         claimManager.resolveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, 500 ether, "Total payout should be sum of both swaps");
+        assertEq(payoutTokenMock.balanceOf(payoutReceiver), 500 ether, "Receiver should get payout tokens");
     }
 
     function test_resolveClaim_WhenZeroAmountCollateral_SkipsProcessing() public {
@@ -759,12 +763,82 @@ contract ClaimManagerTest is Test {
 
         uint256 swapOutput = 450 ether;
         swapperMock.setSwapOutput(swapOutput);
+        swapperMock.setPayoutToken(payoutToken);
 
         vm.prank(claimOperator);
         claimManager.resolveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, swapOutput, "Should only count non-zero amounts");
+        assertEq(payoutTokenMock.balanceOf(payoutReceiver), swapOutput, "Receiver should get payout tokens");
+    }
+
+    function test_resolveClaim_WhenSwapOutputExceedsRequestedAmount_CapsTransfer() public {
+        uint256 requestedAmount = 300 ether;
+        vm.prank(buyer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash);
+
+        specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+
+        uint256 swapOutput = 500 ether;
+        swapperMock.setSwapOutput(swapOutput);
+        swapperMock.setPayoutToken(payoutToken);
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit CollateralSwapped(POLICY_ID, collateralToken, SLASH_AMOUNT, payoutToken, requestedAmount);
+
+        vm.prank(claimOperator);
+        claimManager.resolveClaim(POLICY_ID, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(record.payoutAmount, requestedAmount, "Payout should be capped at requestedAmount");
+        assertEq(payoutTokenMock.balanceOf(payoutReceiver), requestedAmount, "Receiver should only get requestedAmount");
+        uint256 excess = swapOutput - requestedAmount;
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), excess, "Excess should remain in ClaimManager");
+    }
+
+    function test_resolveClaim_WhenDirectTransferExceedsRequestedAmount_CapsTransfer() public {
+        uint256 requestedAmount = 300 ether;
+        vm.prank(buyer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash);
+
+        IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.payoutToken = collateralToken;
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit CollateralSwapped(POLICY_ID, collateralToken, SLASH_AMOUNT, collateralToken, requestedAmount);
+
+        vm.prank(claimOperator);
+        claimManager.resolveClaim(POLICY_ID, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(record.payoutAmount, requestedAmount, "Payout should be capped at requestedAmount");
+        assertEq(
+            collateralTokenMock.balanceOf(payoutReceiver), requestedAmount, "Receiver should only get requestedAmount"
+        );
+        uint256 excess = SLASH_AMOUNT - requestedAmount;
+        assertEq(collateralTokenMock.balanceOf(address(claimManager)), excess, "Excess should remain in ClaimManager");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -963,15 +1037,23 @@ contract MockSlashingManager {
 
 contract MockSwapper {
     uint256 private _swapOutput;
+    address private _payoutToken;
 
     function setSwapOutput(uint256 output) external {
         _swapOutput = output;
+    }
+
+    function setPayoutToken(address token) external {
+        _payoutToken = token;
     }
 
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
         require(
             MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn), "TransferFrom failed"
         );
+        if (_payoutToken != address(0)) {
+            MockToken(_payoutToken).mint(params.recipient, _swapOutput);
+        }
         return _swapOutput;
     }
 }
