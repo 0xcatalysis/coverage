@@ -166,11 +166,26 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function fileClaim(uint256 policyId, bytes32 evidenceHash) external override whenNotPaused nonReentrant {
+    function fileClaim(
+        uint256 policyId,
+        uint256 requestedAmount,
+        bytes32 evidenceHash
+    )
+        external
+        override
+        whenNotPaused
+        nonReentrant
+    {
         require(evidenceHash != bytes32(0), InvalidEvidenceHash());
+        require(requestedAmount > 0, ZeroAmount());
 
         IPolicy.PolicyMetadata memory metadata = IPolicy(policy).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
+
+        require(
+            requestedAmount <= metadata.coverageLimit,
+            RequestedAmountExceedsCoverage(policyId, requestedAmount, metadata.coverageLimit)
+        );
 
         require(
             block.timestamp >= metadata.startTime && block.timestamp <= metadata.maturityTime,
@@ -186,8 +201,9 @@ contract ClaimManager is
         claim.reporter = msg.sender;
         claim.filedAt = block.timestamp;
         claim.evidenceHash = evidenceHash;
+        claim.requestedAmount = requestedAmount;
 
-        emit ClaimFiled(policyId, msg.sender, evidenceHash, block.timestamp);
+        emit ClaimFiled(policyId, msg.sender, evidenceHash, requestedAmount, block.timestamp);
 
         // slither-disable-next-line calls-loop
         IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
@@ -226,7 +242,7 @@ contract ClaimManager is
         claim.status = ClaimStatus.Approved;
 
         // slither-disable-next-line reentrancy-no-eth
-        uint256 totalPayout = _executeSlashingAndPayout(policyId, metadata);
+        uint256 totalPayout = _executeSlashingAndPayout(policyId, metadata, claim.requestedAmount);
         claim.payoutAmount = totalPayout;
 
         emit ClaimApproved(policyId, metadata.payoutReceiver, totalPayout, block.timestamp);
@@ -283,11 +299,13 @@ contract ClaimManager is
      * @notice Executes slashing via Core's SlashingManager and converts collateral to payout tokens.
      * @param policyId Identifier of the policy.
      * @param metadata Policy metadata containing operator, policyCommit, and payout details.
-     * @return totalPayout Total amount paid out in payout token terms.
+     * @param requestedAmount Maximum amount to disburse (in payout token terms).
+     * @return totalPayout Total amount paid out in payout token terms (capped at requestedAmount).
      */
     function _executeSlashingAndPayout(
         uint256 policyId,
-        IPolicy.PolicyMetadata memory metadata
+        IPolicy.PolicyMetadata memory metadata,
+        uint256 requestedAmount
     )
         private
         returns (uint256 totalPayout)
@@ -299,11 +317,14 @@ contract ClaimManager is
         uint256 assetsLength = assets.length;
         require(assetsLength > 0 && assetsLength == amounts.length, NoCollateralSlashed(policyId));
 
-        for (uint256 i = 0; i < assetsLength; ++i) {
+        uint256 remainingPayout = requestedAmount;
+        for (uint256 i = 0; i < assetsLength && remainingPayout > 0; ++i) {
             if (amounts[i] > 0) {
-                totalPayout += _processCollateral(
-                    policyId, assets[i], amounts[i], metadata.payoutToken, metadata.payoutReceiver
+                uint256 amountOut = _processCollateral(
+                    policyId, assets[i], amounts[i], metadata.payoutToken, metadata.payoutReceiver, remainingPayout
                 );
+                totalPayout += amountOut;
+                remainingPayout = remainingPayout > amountOut ? remainingPayout - amountOut : 0;
             }
         }
 
@@ -313,26 +334,30 @@ contract ClaimManager is
     /**
      * @notice Processes a single collateral asset by swapping or transferring directly.
      * @dev Uses Swapper's pre-configured routes and calldata for swaps.
+     *      Caps the payout at remainingPayout to avoid over-disbursement.
      * @param policyId Identifier of the policy (for events).
      * @param collateralToken Address of the slashed collateral token.
      * @param collateralAmount Amount of collateral to process.
      * @param payoutToken Desired payout token address.
      * @param payoutReceiver Address to receive the payout.
-     * @return amountOut Amount of payout token delivered.
+     * @param remainingPayout Maximum payout amount still needed.
+     * @return amountOut Amount of payout token delivered (capped at remainingPayout).
      */
     function _processCollateral(
         uint256 policyId,
         address collateralToken,
         uint256 collateralAmount,
         address payoutToken,
-        address payoutReceiver
+        address payoutReceiver,
+        uint256 remainingPayout
     )
         private
         returns (uint256 amountOut)
     {
         if (collateralToken == payoutToken) {
-            IERC20(collateralToken).safeTransfer(payoutReceiver, collateralAmount);
-            amountOut = collateralAmount;
+            uint256 transferAmount = collateralAmount > remainingPayout ? remainingPayout : collateralAmount;
+            IERC20(collateralToken).safeTransfer(payoutReceiver, transferAmount);
+            amountOut = transferAmount;
         } else {
             IERC20(collateralToken).forceApprove(swapper, collateralAmount);
 
@@ -349,6 +374,10 @@ contract ClaimManager is
 
             // slither-disable-next-line calls-loop
             amountOut = ISwapper(swapper).executeSwap(swapParams);
+
+            if (amountOut > remainingPayout) {
+                amountOut = remainingPayout;
+            }
 
             IERC20(collateralToken).forceApprove(swapper, 0);
         }
