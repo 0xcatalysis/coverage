@@ -49,7 +49,13 @@ contract ClaimManagerTest is Test {
     bytes32 internal evidenceHash;
     bytes32 internal policyCommit;
 
-    event ClaimFiled(uint256 indexed policyId, address indexed reporter, bytes32 evidenceHash, uint256 timestamp);
+    event ClaimFiled(
+        uint256 indexed policyId,
+        address indexed reporter,
+        bytes32 evidenceHash,
+        uint256 requestedAmount,
+        uint256 timestamp
+    );
     event ClaimApproved(uint256 indexed policyId, address indexed beneficiary, uint256 payoutAmount, uint256 timestamp);
     event ClaimRejected(uint256 indexed policyId, string reason, uint256 timestamp);
     event CollateralSwapped(
@@ -420,13 +426,30 @@ contract ClaimManagerTest is Test {
 
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
         vm.prank(buyer);
-        claimManager.fileClaim(POLICY_ID, evidenceHash);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash);
     }
 
     function test_fileClaim_WhenEvidenceHashZero_Reverts() public {
         vm.expectRevert(IClaimManager.InvalidEvidenceHash.selector);
         vm.prank(buyer);
-        claimManager.fileClaim(POLICY_ID, bytes32(0));
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, bytes32(0));
+    }
+
+    function test_fileClaim_WhenRequestedAmountZero_Reverts() public {
+        vm.expectRevert(IClaimManager.ZeroAmount.selector);
+        vm.prank(buyer);
+        claimManager.fileClaim(POLICY_ID, 0, evidenceHash);
+    }
+
+    function test_fileClaim_WhenRequestedAmountExceedsCoverage_Reverts() public {
+        uint256 excessAmount = COVERAGE_LIMIT + 1;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimManager.RequestedAmountExceedsCoverage.selector, POLICY_ID, excessAmount, COVERAGE_LIMIT
+            )
+        );
+        vm.prank(buyer);
+        claimManager.fileClaim(POLICY_ID, excessAmount, evidenceHash);
     }
 
     function test_fileClaim_WhenPolicyNotFound_Reverts() public {
@@ -455,7 +478,7 @@ contract ClaimManagerTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(IClaimManager.PolicyNotFound.selector, invalidPolicyId));
         vm.prank(buyer);
-        claimManager.fileClaim(invalidPolicyId, evidenceHash);
+        claimManager.fileClaim(invalidPolicyId, COVERAGE_LIMIT, evidenceHash);
     }
 
     function test_fileClaim_WhenBeforeCoverageWindow_Reverts() public {
@@ -473,7 +496,7 @@ contract ClaimManagerTest is Test {
             )
         );
         vm.prank(buyer);
-        claimManager.fileClaim(POLICY_ID, evidenceHash);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash);
     }
 
     function test_fileClaim_WhenAfterCoverageWindow_Reverts() public {
@@ -492,7 +515,7 @@ contract ClaimManagerTest is Test {
             )
         );
         vm.prank(buyer);
-        claimManager.fileClaim(POLICY_ID, evidenceHash);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash);
     }
 
     function test_fileClaim_WhenEscrowAlreadyReleased_Reverts() public {
@@ -500,44 +523,49 @@ contract ClaimManagerTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(IClaimManager.EscrowAlreadyReleased.selector, POLICY_ID));
         vm.prank(buyer);
-        claimManager.fileClaim(POLICY_ID, evidenceHash);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash);
     }
 
     function test_fileClaim_WhenClaimAlreadyFiled_Reverts() public {
         vm.prank(buyer);
-        claimManager.fileClaim(POLICY_ID, evidenceHash);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash);
 
         vm.expectRevert(abi.encodeWithSelector(IClaimManager.ClaimAlreadyFiled.selector, POLICY_ID));
         vm.prank(buyer);
-        claimManager.fileClaim(POLICY_ID, evidenceHash);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash);
     }
 
     function test_fileClaim_WhenValid_StoresClaimAndEmits() public {
+        uint256 requestedAmount = 500 ether;
+
         vm.expectEmit(true, true, false, true, address(claimManager));
-        emit ClaimFiled(POLICY_ID, buyer, evidenceHash, block.timestamp);
+        emit ClaimFiled(POLICY_ID, buyer, evidenceHash, requestedAmount, block.timestamp);
 
         vm.prank(buyer);
-        claimManager.fileClaim(POLICY_ID, evidenceHash);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash);
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Filed), "Status mismatch");
         assertEq(record.reporter, buyer, "Reporter mismatch");
         assertEq(record.filedAt, block.timestamp, "FiledAt mismatch");
         assertEq(record.evidenceHash, evidenceHash, "EvidenceHash mismatch");
+        assertEq(record.requestedAmount, requestedAmount, "RequestedAmount mismatch");
         assertTrue(premiumReserveMock.isClaimLockSet(POLICY_ID), "Claim lock not set");
     }
 
     function test_fileClaim_WhenValidByNonBuyer_Succeeds() public {
         address reporter = makeAddr("reporter");
+        uint256 requestedAmount = 500 ether;
 
         vm.expectEmit(true, true, false, true, address(claimManager));
-        emit ClaimFiled(POLICY_ID, reporter, evidenceHash, block.timestamp);
+        emit ClaimFiled(POLICY_ID, reporter, evidenceHash, requestedAmount, block.timestamp);
 
         vm.prank(reporter);
-        claimManager.fileClaim(POLICY_ID, evidenceHash);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash);
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.reporter, reporter, "Reporter should be msg.sender");
+        assertEq(record.requestedAmount, requestedAmount, "RequestedAmount mismatch");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -856,7 +884,7 @@ contract ClaimManagerTest is Test {
 
     function _fileClaim() private {
         vm.prank(buyer);
-        claimManager.fileClaim(POLICY_ID, evidenceHash);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash);
     }
 }
 

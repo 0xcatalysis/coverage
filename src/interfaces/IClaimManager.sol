@@ -34,6 +34,8 @@ interface IClaimManager is IAccessControl {
         uint256 resolvedAt;
         /// @notice Hash of evidence submitted with the claim.
         bytes32 evidenceHash;
+        /// @notice Requested payout amount in payout token terms (must be <= coverageLimit).
+        uint256 requestedAmount;
         /// @notice Evaluation result from the Spec (if evaluated).
         ISpec.EvaluationResult evaluationResult;
         /// @notice Amount paid to the beneficiary (in payout token terms).
@@ -45,9 +47,16 @@ interface IClaimManager is IAccessControl {
      * @param policyId Identifier of the policy.
      * @param reporter Address that filed the claim.
      * @param evidenceHash Hash of evidence supporting the claim.
+     * @param requestedAmount Requested payout amount in payout token terms.
      * @param timestamp Block timestamp when filed.
      */
-    event ClaimFiled(uint256 indexed policyId, address indexed reporter, bytes32 evidenceHash, uint256 timestamp);
+    event ClaimFiled(
+        uint256 indexed policyId,
+        address indexed reporter,
+        bytes32 evidenceHash,
+        uint256 requestedAmount,
+        uint256 timestamp
+    );
 
     /**
      * @notice Emitted when a claim is approved and payout is executed.
@@ -186,6 +195,14 @@ interface IClaimManager is IAccessControl {
     error InvalidEvidenceHash();
 
     /**
+     * @notice Reverts when the requested amount exceeds the policy's coverage limit.
+     * @param policyId Identifier of the policy.
+     * @param requestedAmount Amount requested by the claimant.
+     * @param coverageLimit Maximum coverage amount from the policy.
+     */
+    error RequestedAmountExceedsCoverage(uint256 policyId, uint256 requestedAmount, uint256 coverageLimit);
+
+    /**
      * @notice Pauses claim operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
@@ -238,9 +255,10 @@ interface IClaimManager is IAccessControl {
      *      Locks the escrow to prevent premium release during evaluation.
      *      Does not automatically evaluate; requires separate resolveClaim call.
      * @param policyId Identifier of the policy to claim against.
+     * @param requestedAmount Requested payout amount in payout token terms (must be <= coverageLimit).
      * @param evidenceHash Hash of evidence supporting the claim (e.g., IPFS CID).
      */
-    function fileClaim(uint256 policyId, bytes32 evidenceHash) external;
+    function fileClaim(uint256 policyId, uint256 requestedAmount, bytes32 evidenceHash) external;
 
     /**
      * @notice Resolves a filed claim by evaluating the Spec and executing payout if approved.
