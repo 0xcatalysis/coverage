@@ -176,8 +176,8 @@ abstract contract Deploy is Script {
 
     /**
      * @notice Orchestrates deployment of all contract proxies and implementations.
-     * @dev Deploys contracts in dependency order. Uses deployer as placeholder for roles
-     *      that will be reassigned in the configuration phase.
+     * @dev Deploys contracts in dependency order. Uses deployer as temporary admin to enable
+     *      role configuration phase. Final admin receives DEFAULT_ADMIN_ROLE in _grantRoles.
      * @param roles Role configuration containing admin, deployer, and other role addresses.
      * @param external_ External configuration containing Catalysis Core contract addresses.
      * @return contracts Populated DeployedContracts struct with all addresses.
@@ -194,7 +194,7 @@ abstract contract Deploy is Script {
         contracts.swapperProxy = Upgrades.deployUUPSProxy(
             "Swapper.sol:Swapper",
             abi.encodeCall(
-                Swapper.initialize, (roles.admin, roles.swapManager, roles.deployer, external_.nativeWrapper)
+                Swapper.initialize, (roles.deployer, roles.swapManager, roles.deployer, external_.nativeWrapper)
             )
         );
         contracts.swapperImpl = Upgrades.getImplementationAddress(contracts.swapperProxy);
@@ -207,13 +207,13 @@ abstract contract Deploy is Script {
     /**
      * @notice Deploys the Policy soulbound ERC-721 contract.
      * @dev Policy stores canonical metadata for coverage policies. Uses deployer as temporary
-     *      POLICY_MANAGER_ROLE holder until PolicyManager is deployed.
+     *      admin and POLICY_MANAGER_ROLE holder until PolicyManager is deployed.
      * @param contracts DeployedContracts struct to populate with Policy addresses.
      * @param roles Role configuration containing admin and deployer addresses.
      */
     function _deployPolicyContracts(DeployedContracts memory contracts, RoleConfig memory roles) private {
         contracts.policyProxy = Upgrades.deployUUPSProxy(
-            "Policy.sol:Policy", abi.encodeCall(Policy.initialize, (roles.admin, roles.deployer))
+            "Policy.sol:Policy", abi.encodeCall(Policy.initialize, (roles.deployer, roles.deployer))
         );
         contracts.policyImpl = Upgrades.getImplementationAddress(contracts.policyProxy);
     }
@@ -221,14 +221,14 @@ abstract contract Deploy is Script {
     /**
      * @notice Deploys PremiumReserve and PremiumManager contracts.
      * @dev PremiumReserve holds restaker premiums in escrow; PremiumManager handles collection
-     *      and fee distribution. Both use deployer as placeholder for manager roles.
+     *      and fee distribution. Both use deployer as temporary admin and placeholder for manager roles.
      * @param contracts DeployedContracts struct to populate with premium contract addresses.
      * @param roles Role configuration containing admin, deployer, and platformTreasury addresses.
      */
     function _deployPremiumContracts(DeployedContracts memory contracts, RoleConfig memory roles) private {
         contracts.premiumReserveProxy = Upgrades.deployUUPSProxy(
             "PremiumReserve.sol:PremiumReserve",
-            abi.encodeCall(PremiumReserve.initialize, (roles.admin, roles.deployer, roles.deployer, roles.deployer))
+            abi.encodeCall(PremiumReserve.initialize, (roles.deployer, roles.deployer, roles.deployer, roles.deployer))
         );
         contracts.premiumReserveImpl = Upgrades.getImplementationAddress(contracts.premiumReserveProxy);
 
@@ -236,7 +236,7 @@ abstract contract Deploy is Script {
             "PremiumManager.sol:PremiumManager",
             abi.encodeCall(
                 PremiumManager.initialize,
-                (roles.admin, roles.deployer, contracts.premiumReserveProxy, roles.platformTreasury)
+                (roles.deployer, roles.deployer, contracts.premiumReserveProxy, roles.platformTreasury)
             )
         );
         contracts.premiumManagerImpl = Upgrades.getImplementationAddress(contracts.premiumManagerProxy);
@@ -248,6 +248,7 @@ abstract contract Deploy is Script {
      *      - ClaimManager requires Swapper, Policy, and PremiumReserve
      *      - PolicyManager requires PremiumManager and Policy
      *      - CoverPoolFactory requires CoverPool implementation and PolicyManager
+     *      All use deployer as temporary admin for role configuration phase.
      * @param contracts DeployedContracts struct to populate with remaining contract addresses.
      * @param roles Role configuration containing admin and role holder addresses.
      * @param external_ External configuration containing Catalysis Core addresses.
@@ -264,7 +265,7 @@ abstract contract Deploy is Script {
             abi.encodeCall(
                 ClaimManager.initialize,
                 (
-                    roles.admin,
+                    roles.deployer,
                     roles.claimOperator,
                     external_.specRegistry,
                     external_.slashingManager,
@@ -279,7 +280,7 @@ abstract contract Deploy is Script {
         contracts.policyManagerProxy = Upgrades.deployUUPSProxy(
             "PolicyManager.sol:PolicyManager",
             abi.encodeCall(
-                PolicyManager.initialize, (roles.admin, contracts.premiumManagerProxy, contracts.policyProxy)
+                PolicyManager.initialize, (roles.deployer, contracts.premiumManagerProxy, contracts.policyProxy)
             )
         );
         contracts.policyManagerImpl = Upgrades.getImplementationAddress(contracts.policyManagerProxy);
@@ -289,7 +290,7 @@ abstract contract Deploy is Script {
             abi.encodeCall(
                 CoverPoolFactory.initialize,
                 (
-                    roles.admin,
+                    roles.deployer,
                     roles.coverPoolFactoryCreator,
                     contracts.coverPoolImplementation,
                     contracts.policyManagerProxy
@@ -301,20 +302,22 @@ abstract contract Deploy is Script {
 
     /**
      * @notice Configures cross-contract roles after all contracts are deployed.
-     * @dev Grants actual roles to deployed contracts and revokes temporary roles from deployer.
-     *      This two-step process is necessary because some contracts require role holders to exist
-     *      at initialization time, creating circular dependencies.
+     * @dev Grants actual roles to deployed contracts (including DEFAULT_ADMIN_ROLE to final admin)
+     *      and revokes temporary roles from deployer. This two-step process is necessary because
+     *      some contracts require role holders to exist at initialization time, creating circular
+     *      dependencies.
      * @param contracts DeployedContracts containing all proxy addresses for role assignment.
      * @param roles RoleConfig containing deployer address for temporary role revocation.
      */
     function _configureRoles(DeployedContracts memory contracts, RoleConfig memory roles) private {
-        _grantRoles(contracts);
+        _grantRoles(contracts, roles);
         _revokeTemporaryRoles(contracts, roles);
     }
 
     /**
      * @notice Grants permanent roles to deployed contracts enabling cross-contract interactions.
      * @dev Role assignments:
+     *      - All contracts: DEFAULT_ADMIN_ROLE → roles.admin (when deployer != admin)
      *      - Swapper: SWAP_EXECUTOR_ROLE → ClaimManager (for collateral conversion)
      *      - Policy: POLICY_MANAGER_ROLE → PolicyManager (for minting policy NFTs)
      *      - PremiumReserve: PREMIUM_MANAGER_ROLE → PremiumManager (for opening escrows)
@@ -322,8 +325,21 @@ abstract contract Deploy is Script {
      *      - PremiumReserve: POLICY_MANAGER_ROLE → PolicyManager (for escrow release)
      *      - PremiumManager: POLICY_MANAGER_ROLE → PolicyManager (for premium collection)
      * @param contracts DeployedContracts containing all proxy addresses.
+     * @param roles RoleConfig containing admin address for DEFAULT_ADMIN_ROLE grant.
      */
-    function _grantRoles(DeployedContracts memory contracts) private {
+    function _grantRoles(DeployedContracts memory contracts, RoleConfig memory roles) private {
+        bytes32 defaultAdminRole = bytes32(0);
+
+        if (roles.deployer != roles.admin) {
+            IAccessControl(contracts.swapperProxy).grantRole(defaultAdminRole, roles.admin);
+            IAccessControl(contracts.policyProxy).grantRole(defaultAdminRole, roles.admin);
+            IAccessControl(contracts.premiumReserveProxy).grantRole(defaultAdminRole, roles.admin);
+            IAccessControl(contracts.premiumManagerProxy).grantRole(defaultAdminRole, roles.admin);
+            IAccessControl(contracts.claimManagerProxy).grantRole(defaultAdminRole, roles.admin);
+            IAccessControl(contracts.policyManagerProxy).grantRole(defaultAdminRole, roles.admin);
+            IAccessControl(contracts.coverPoolFactoryProxy).grantRole(defaultAdminRole, roles.admin);
+        }
+
         IAccessControl(contracts.swapperProxy)
             .grantRole(Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), contracts.claimManagerProxy);
 
@@ -352,6 +368,7 @@ abstract contract Deploy is Script {
      * @dev Skips revocation when deployer == admin to avoid breaking admin's ability to manage roles.
      *      In production deployments where deployer != admin, this ensures the deployer EOA
      *      cannot interact with privileged contract functions after deployment.
+     *      DEFAULT_ADMIN_ROLE is revoked last to ensure all other revocations succeed.
      * @param contracts DeployedContracts containing all proxy addresses.
      * @param roles RoleConfig containing deployer and admin addresses.
      */
@@ -359,6 +376,8 @@ abstract contract Deploy is Script {
         if (roles.deployer == roles.admin) {
             return;
         }
+
+        bytes32 defaultAdminRole = bytes32(0);
 
         IAccessControl(contracts.swapperProxy)
             .revokeRole(Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), roles.deployer);
@@ -375,6 +394,15 @@ abstract contract Deploy is Script {
 
         IAccessControl(contracts.premiumManagerProxy)
             .revokeRole(PremiumManager(contracts.premiumManagerProxy).POLICY_MANAGER_ROLE(), roles.deployer);
+
+        // Note: Once revoked, deployer cannot manage roles on these contracts.
+        IAccessControl(contracts.swapperProxy).revokeRole(defaultAdminRole, roles.deployer);
+        IAccessControl(contracts.policyProxy).revokeRole(defaultAdminRole, roles.deployer);
+        IAccessControl(contracts.premiumReserveProxy).revokeRole(defaultAdminRole, roles.deployer);
+        IAccessControl(contracts.premiumManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
+        IAccessControl(contracts.claimManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
+        IAccessControl(contracts.policyManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
+        IAccessControl(contracts.coverPoolFactoryProxy).revokeRole(defaultAdminRole, roles.deployer);
     }
 
     /**
