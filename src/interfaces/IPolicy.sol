@@ -33,6 +33,8 @@ interface IPolicy is IAccessControl, IERC721Metadata {
         address payoutReceiver;
         /// @notice Pool-provided identifier for the policy.
         bytes32 poolPolicyId;
+        /// @notice Spec identifier for parametric claim evaluation (e.g., MorphoSpec, MapleSpec).
+        bytes32 specId;
         /// @notice Hash of referenced terms governing this policy.
         bytes32 termsHash;
         /// @notice Deterministic hash representing the policy schedule.
@@ -110,6 +112,11 @@ interface IPolicy is IAccessControl, IERC721Metadata {
      * @notice Reverts when required policy metadata fields are invalid.
      */
     error InvalidPolicyMetadata();
+
+    /**
+     * @notice Reverts when a required spec identifier is empty.
+     */
+    error InvalidSpecId();
 
     /**
      * @notice Reverts when attempting to reference a policy that has not been minted.
