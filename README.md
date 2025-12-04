@@ -6,10 +6,29 @@ Coverage is the onchain risk coverage infrastructure for institutional DeFi. It 
 
 ## Overview
 
-- **Institution-first design:** Contracts and deployment flows mirror the PRD’s compliance-ready CoverPool framework so curators can underwrite institutional credit without building bespoke infra.
+- **Institution-first design:** Contracts and deployment flows mirror the PRD's compliance-ready CoverPool framework so curators can underwrite institutional credit without building bespoke infra.
 - **Shared security abstraction:** Catalysis Core standardises delegations across EigenLayer, Symbiotic, SatLayer, and other restaking networks, turning slashable collateral into uniform coverage capacity.
 - **CoverPool marketplace:** Each pool isolates risk, pricing logic, tranching, and claim adjudication, letting specialist curators issue tailored policies while keeping capital backing composable.
 - **Programmable operations:** Premium routing, leverage limits, and slashing hooks are enforced entirely onchain, enabling fast, objective payouts and consistent accounting for restakers and buyers.
+
+## Architecture
+
+The Coverage protocol consists of seven core contracts deployed as UUPS proxies (plus one implementation for pool cloning):
+
+| Contract | Description |
+|----------|-------------|
+| **CoverPool** | Curator-controlled pool handling quote validation and policy binding. Deployed as minimal proxy clones via CoverPoolFactory. |
+| **CoverPoolFactory** | Creates and registers CoverPool clones; assigns default PolicyManager role to each pool. |
+| **PolicyManager** | Entrypoint for policy binding; coordinates premium collection and mints Policy NFTs. |
+| **Policy** | Soulbound ERC-721 representing bound coverage policies with canonical metadata. |
+| **PremiumManager** | Collects premiums from policy buyers and routes fees to pool curators and the platform treasury. |
+| **PremiumReserve** | Escrow vault holding restaker premiums; releases funds on maturity or locks for claim payouts. |
+| **ClaimManager** | Processes parametric and discretionary claims; orchestrates slashing and payout distribution. |
+| **Swapper** | Converts slashed collateral tokens via configured swap routes before payout. |
+
+External dependencies from Catalysis Core:
+- **SpecRegistry** – parametric spec definitions for claim triggers.
+- **SlashingManager** – collateral slashing execution across restaking networks.
 
 ## Quick Start
 
@@ -29,34 +48,69 @@ make test
 ## Development
 
 ```bash
-make setup          # installs pre-commit hook for format, unit tests, and gas snapshots
-make test           # 3-path test harness (unit, fuzz, invariant) via match-path flags
+make setup          # installs pre-commit hook for format checks and unit tests
+make build          # compile with default profile (200 optimizer runs)
+make build-prod     # compile with production profile (1000 optimizer runs, via-ir)
+make test           # 3-path test harness (unit, fuzz, invariant)
 make test-unit      # target only the unit-test suite while iterating
 make test-fuzz      # target only the fuzz suite while iterating
 make test-invariant # target only the invariant suite while iterating
-make gas            # gas snapshot using the production Foundry profile
+make test-ci        # run full suite with CI profile (higher fuzz/invariant runs)
+make gas            # gas report using the production profile
 make cover          # summary coverage report
-make cover-lcov     # LCOV + optional HTML artifacts
+make cover-lcov     # LCOV + optional HTML artifacts (requires genhtml)
 make format         # forge fmt with project style defaults
-make docs           # regenerate NatSpec documentation
-make snapshot       # refresh gas snapshot baseline for regression tracking
-make slither        # optional static analysis coverage with Slither
-make mythril        # optional symbolic analysis with Mythril
+make format-check   # check formatting without modifying files
+make lint           # run forge lint with configured exclusions
+make docs           # regenerate NatSpec documentation into docs/
+make snapshot       # capture gas snapshot baseline for regression tracking
+make snapshot-check # verify current gas usage against baseline
+make slither        # static analysis with Slither
+make mythril        # symbolic analysis with Mythril
+make clean          # remove build artifacts, localhost broadcasts, and coverage files
+make help           # show all available commands
 ```
 
 ## Deployment
 
-```bash
-make deploy-anvil      # local iteration loop against anvil
-make deploy-sepolia    # broadcast to Sepolia (needs PRIVATE_KEY + RPC env vars)
-make deploy-ethereum   # mainnet-ready deployment with prod optimizer profile
-make show-sepolia      # inspect last Sepolia broadcast metadata
-make show-ethereum     # inspect last Ethereum broadcast metadata
+All deployment scripts extend the shared `Deploy.s.sol` base which handles contract deployment, cross-contract role configuration, and logging.
 
-# ensure SEPOLIA_RPC_URL, SEPOLIA_ETHERSCAN_API_KEY, ETHEREUM_RPC_URL, etc. are set in .env
-make verify-coverpool-sepolia   # wraps forge verify-contract with Sepolia compiler settings
-make verify-coverpool-ethereum  # wraps forge verify-contract with Ethereum compiler settings
+```bash
+make deploy-anvil      # local iteration loop against anvil (uses default Anvil key)
+make deploy-sepolia    # broadcast to Sepolia testnet
+make deploy-ethereum   # mainnet deployment with production optimizer profile
+
+make show-sepolia      # inspect last Sepolia deployment metadata
+make show-ethereum     # inspect last Ethereum deployment metadata
+
+make verify-coverpool-sepolia   # verify CoverPool on Sepolia Etherscan
+make verify-coverpool-ethereum  # verify CoverPool on Ethereum Etherscan
 ```
+
+### Environment Variables
+
+Required for testnet/mainnet deployments:
+
+| Variable | Description |
+|----------|-------------|
+| `PRIVATE_KEY` | Deployer private key |
+| `NATIVE_WRAPPER` | WETH or equivalent native wrapper address |
+| `SPEC_REGISTRY` | Catalysis Core SpecRegistry address |
+| `SLASHING_MANAGER` | Catalysis Core SlashingManager address |
+| `SEPOLIA_RPC_URL` | Sepolia RPC endpoint |
+| `ETHEREUM_RPC_URL` | Ethereum mainnet RPC endpoint |
+| `SEPOLIA_ETHERSCAN_API_KEY` | Etherscan API key for Sepolia verification |
+| `ETHERSCAN_API_KEY` | Etherscan API key for mainnet verification |
+
+Optional role configuration (defaults to deployer/admin):
+
+| Variable | Description |
+|----------|-------------|
+| `ADMIN` | DEFAULT_ADMIN_ROLE holder (defaults to deployer) |
+| `PLATFORM_TREASURY` | Platform fee recipient |
+| `COVER_POOL_FACTORY_CREATOR` | CREATOR_ROLE on CoverPoolFactory |
+| `CLAIM_OPERATOR` | CLAIM_OPERATOR_ROLE on ClaimManager |
+| `SWAP_MANAGER` | SWAP_MANAGER_ROLE on Swapper |
 
 ## License
 
