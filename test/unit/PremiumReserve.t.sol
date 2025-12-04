@@ -128,7 +128,9 @@ contract PremiumReserveTest is Test {
 
         premiumToken.mint(premiumManager, RESTAKER_PREMIUM);
         vm.prank(premiumManager);
-        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
+        assertTrue(
+            premiumToken.transfer(address(reserve), RESTAKER_PREMIUM), "premium transfer to reserve should succeed"
+        );
 
         vm.prank(premiumManager);
         reserve.openEscrow(position);
@@ -143,7 +145,9 @@ contract PremiumReserveTest is Test {
 
         premiumToken.mint(premiumManager, RESTAKER_PREMIUM);
         vm.prank(premiumManager);
-        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
+        assertTrue(
+            premiumToken.transfer(address(reserve), RESTAKER_PREMIUM), "premium transfer to reserve should succeed"
+        );
 
         vm.expectEmit();
         emit EscrowOpened(POLICY_ID, address(premiumToken), RESTAKER_PREMIUM);
@@ -441,7 +445,9 @@ contract PremiumReserveTest is Test {
 
         premiumToken.mint(premiumManager, RESTAKER_PREMIUM);
         vm.prank(premiumManager);
-        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
+        assertTrue(
+            premiumToken.transfer(address(reserve), RESTAKER_PREMIUM), "premium transfer to reserve should succeed"
+        );
 
         vm.prank(premiumManager);
         reserve.openEscrow(position);
@@ -462,7 +468,9 @@ contract PremiumReserveTest is Test {
         IPremiumReserve.EscrowPosition memory position = _defaultPosition();
         premiumToken.mint(premiumManager, RESTAKER_PREMIUM);
         vm.prank(premiumManager);
-        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
+        assertTrue(
+            premiumToken.transfer(address(reserve), RESTAKER_PREMIUM), "premium transfer to reserve should succeed"
+        );
         vm.prank(premiumManager);
         reserve.openEscrow(position);
     }

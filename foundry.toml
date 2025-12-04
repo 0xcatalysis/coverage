@@ -31,8 +31,8 @@ verbosity = 4
 
 [profile.coverage]
 optimizer = true
-optimizer_runs = 1
-via_ir = true
+optimizer_runs = 200
+via_ir = false
 fuzz = { runs = 100, seed = "0x3e8" }
 invariant = { runs = 20, depth = 10 }
 extra_output = []
