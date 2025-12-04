@@ -1090,4 +1090,3 @@ contract MockPremiumReserve {
         return _claimLocked[policyId];
     }
 }
-

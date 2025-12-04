@@ -323,4 +323,3 @@ interface IClaimManager is IAccessControl {
      */
     function paused() external view returns (bool);
 }
-

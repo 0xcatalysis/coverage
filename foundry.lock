@@ -28,11 +28,5 @@
       "name": "v0.1.26",
       "rev": "acd959aa4bd04720d640bf4e6a5c71037510cc4b"
     }
-  },
-  "lib/solidity-lib": {
-    "tag": {
-      "name": "v3.2.8",
-      "rev": "d0c6c303a49c52be5f3f77742d7616847a601d62"
-    }
   }
 }

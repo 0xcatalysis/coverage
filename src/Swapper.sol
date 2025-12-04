@@ -205,11 +205,8 @@ contract Swapper is
 
         _handleTokenInput(params.tokenIn, actualTokenIn, params.amountIn);
 
-        // Use params.swapCalldata if provided, otherwise fall back to route's stored calldata
         bytes memory effectiveCalldata = params.swapCalldata.length > 0 ? params.swapCalldata : routeCalldata;
-
         amountOut = _performSwap(actualTokenIn, actualTokenOut, swapTarget, params.amountIn, effectiveCalldata);
-
         require(amountOut >= params.amountOutMin, InsufficientOutputAmount(amountOut, params.amountOutMin));
 
         _handleTokenOutput(params.tokenOut, amountOut, params.recipient);

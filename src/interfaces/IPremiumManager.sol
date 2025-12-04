@@ -176,4 +176,3 @@ interface IPremiumManager is IAccessControl {
         pure
         returns (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit);
 }
-

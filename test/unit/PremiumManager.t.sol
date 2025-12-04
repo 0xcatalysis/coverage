@@ -693,4 +693,3 @@ contract MockPremiumReserve {
         return _lastEscrow;
     }
 }
-
