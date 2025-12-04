@@ -200,11 +200,13 @@ contract Swapper is
         address actualTokenIn = params.tokenIn == NATIVE_ETH ? nativeWrapper : params.tokenIn;
         address actualTokenOut = params.tokenOut == NATIVE_ETH ? nativeWrapper : params.tokenOut;
 
-        address swapTarget = _validateAndGetSwapTarget(actualTokenIn, actualTokenOut, params.tokenIn, params.tokenOut);
+        (address swapTarget, bytes memory routeCalldata) =
+            _validateAndGetSwapTarget(actualTokenIn, actualTokenOut, params.tokenIn, params.tokenOut);
 
         _handleTokenInput(params.tokenIn, actualTokenIn, params.amountIn);
 
-        amountOut = _performSwap(actualTokenIn, actualTokenOut, swapTarget, params.amountIn, params.swapCalldata);
+        bytes memory effectiveCalldata = params.swapCalldata.length > 0 ? params.swapCalldata : routeCalldata;
+        amountOut = _performSwap(actualTokenIn, actualTokenOut, swapTarget, params.amountIn, effectiveCalldata);
 
         require(amountOut >= params.amountOutMin, InsufficientOutputAmount(amountOut, params.amountOutMin));
 
@@ -264,7 +266,7 @@ contract Swapper is
         address actualTokenOut,
         address swapTarget,
         uint256 amountIn,
-        bytes calldata swapCalldata
+        bytes memory swapCalldata
     )
         private
         returns (uint256 amountOut)
@@ -301,12 +303,13 @@ contract Swapper is
     }
 
     /**
-     * @notice Validates route and returns the swap target address.
+     * @notice Validates route and returns the swap target address and stored calldata.
      * @param actualTokenIn Resolved input token address (WETH if native ETH).
      * @param actualTokenOut Resolved output token address (WETH if native ETH).
      * @param paramTokenIn Original tokenIn from params (may be NATIVE_ETH constant).
      * @param paramTokenOut Original tokenOut from params (may be NATIVE_ETH constant).
      * @return swapTarget Address of the whitelisted DEX to execute the swap.
+     * @return routeCalldata Pre-configured calldata stored in the route.
      */
     function _validateAndGetSwapTarget(
         address actualTokenIn,
@@ -316,7 +319,7 @@ contract Swapper is
     )
         private
         view
-        returns (address swapTarget)
+        returns (address swapTarget, bytes memory routeCalldata)
     {
         bytes32 routeKey = _getRouteKey(actualTokenIn, actualTokenOut);
         SwapRoute storage route = _swapRoutes[routeKey];
@@ -324,6 +327,7 @@ contract Swapper is
         require(route.enabled, SwapRouteNotEnabled(paramTokenIn, paramTokenOut));
 
         swapTarget = route.swapTarget;
+        routeCalldata = route.swapCalldata;
         require(whitelistedTargets[swapTarget], SwapTargetNotWhitelisted(swapTarget));
     }
 
