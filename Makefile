@@ -88,11 +88,11 @@ test-invariant:
 
 cover:
 	@echo "Generating coverage summary..."
-	@$(FORGE_COVERAGE) coverage --ir-minimum --report summary
+	@$(FORGE_COVERAGE) coverage --report summary
 
 cover-lcov:
 	@echo "Generating lcov coverage report..."
-	@$(FORGE_COVERAGE) coverage --ir-minimum --report lcov
+	@$(FORGE_COVERAGE) coverage --report lcov
 	@echo "Coverage report generated at ./lcov.info"
 	@if command -v genhtml >/dev/null 2>&1; then \
 		echo "Generating HTML coverage report..."; \
