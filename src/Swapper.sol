@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {
-    AccessControlDefaultAdminRulesUpgradeable
-} from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -39,7 +37,7 @@ import {IWETH} from "./interfaces/IWETH.sol";
 // slither-disable-next-line unimplemented-functions
 contract Swapper is
     UUPSUpgradeable,
-    AccessControlDefaultAdminRulesUpgradeable,
+    AccessControlUpgradeable,
     PausableUpgradeable,
     ReentrancyGuardUpgradeable,
     ISwapper
@@ -90,9 +88,11 @@ contract Swapper is
         );
 
         __UUPSUpgradeable_init();
-        __AccessControlDefaultAdminRules_init(1 days, admin_);
+        __AccessControl_init();
         __Pausable_init();
         __ReentrancyGuard_init();
+
+        _grantRole(DEFAULT_ADMIN_ROLE, admin_);
 
         _grantRole(SWAP_MANAGER_ROLE, swapManager_);
         _grantRole(SWAP_EXECUTOR_ROLE, swapExecutor_);
@@ -207,6 +207,7 @@ contract Swapper is
 
         bytes memory effectiveCalldata = params.swapCalldata.length > 0 ? params.swapCalldata : routeCalldata;
         amountOut = _performSwap(actualTokenIn, actualTokenOut, swapTarget, params.amountIn, effectiveCalldata);
+
         require(amountOut >= params.amountOutMin, InsufficientOutputAmount(amountOut, params.amountOutMin));
 
         _handleTokenOutput(params.tokenOut, amountOut, params.recipient);

@@ -2,9 +2,6 @@
 pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {
-    IAccessControlDefaultAdminRules
-} from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
@@ -125,112 +122,6 @@ contract SwapperTest is Test {
     /*//////////////////////////////////////////////////////////////
                             ACCESS CONTROL
     //////////////////////////////////////////////////////////////*/
-
-    function test_adminTransfer_BeginTransfer_Success() public {
-        address newAdmin = makeAddr("newAdmin");
-
-        vm.prank(admin);
-        vm.expectEmit(true, true, false, true);
-        emit IAccessControlDefaultAdminRules.DefaultAdminTransferScheduled(newAdmin, uint48(block.timestamp + 1 days));
-        swapper.beginDefaultAdminTransfer(newAdmin);
-
-        (address pendingAdmin, uint48 schedule) = swapper.pendingDefaultAdmin();
-        assertEq(pendingAdmin, newAdmin);
-        assertEq(schedule, uint48(block.timestamp + 1 days));
-    }
-
-    function test_adminTransfer_AcceptTransfer_Success() public {
-        address newAdmin = makeAddr("newAdmin");
-
-        vm.prank(admin);
-        swapper.beginDefaultAdminTransfer(newAdmin);
-
-        vm.warp(block.timestamp + 1 days + 1);
-
-        vm.prank(newAdmin);
-        swapper.acceptDefaultAdminTransfer();
-
-        assertTrue(swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), newAdmin));
-        assertFalse(swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), admin));
-    }
-
-    function test_adminTransfer_AcceptBeforeDelay_Reverts() public {
-        address newAdmin = makeAddr("newAdmin");
-
-        vm.prank(admin);
-        swapper.beginDefaultAdminTransfer(newAdmin);
-
-        vm.prank(newAdmin);
-        vm.expectRevert();
-        swapper.acceptDefaultAdminTransfer();
-    }
-
-    function test_adminTransfer_CancelTransfer_Success() public {
-        address newAdmin = makeAddr("newAdmin");
-
-        vm.prank(admin);
-        swapper.beginDefaultAdminTransfer(newAdmin);
-
-        vm.prank(admin);
-        vm.expectEmit(false, false, false, false);
-        emit IAccessControlDefaultAdminRules.DefaultAdminTransferCanceled();
-        swapper.cancelDefaultAdminTransfer();
-
-        (address pendingAdmin,) = swapper.pendingDefaultAdmin();
-        assertEq(pendingAdmin, address(0));
-        assertTrue(swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), admin));
-    }
-
-    function test_adminTransfer_NonAdminCannotBegin_Reverts() public {
-        address newAdmin = makeAddr("newAdmin");
-        address attacker = makeAddr("attacker");
-
-        vm.prank(attacker);
-        vm.expectRevert();
-        swapper.beginDefaultAdminTransfer(newAdmin);
-    }
-
-    function test_adminTransfer_WrongAccountCannotAccept_Reverts() public {
-        address newAdmin = makeAddr("newAdmin");
-        address attacker = makeAddr("attacker");
-
-        vm.prank(admin);
-        swapper.beginDefaultAdminTransfer(newAdmin);
-
-        vm.warp(block.timestamp + 1 days);
-
-        vm.prank(attacker);
-        vm.expectRevert();
-        swapper.acceptDefaultAdminTransfer();
-    }
-
-    function test_adminProtection_CannotGrantDefaultAdminRole_Reverts() public {
-        address attacker = makeAddr("attacker");
-        bytes32 defaultAdminRole = swapper.DEFAULT_ADMIN_ROLE();
-
-        vm.startPrank(admin);
-        vm.expectRevert();
-        swapper.grantRole(defaultAdminRole, attacker);
-        vm.stopPrank();
-    }
-
-    function test_adminProtection_CannotRevokeDefaultAdminRole_Reverts() public {
-        bytes32 defaultAdminRole = swapper.DEFAULT_ADMIN_ROLE();
-
-        vm.startPrank(admin);
-        vm.expectRevert();
-        swapper.revokeRole(defaultAdminRole, admin);
-        vm.stopPrank();
-    }
-
-    function test_adminProtection_CannotRenounceDefaultAdminRole_Reverts() public {
-        bytes32 defaultAdminRole = swapper.DEFAULT_ADMIN_ROLE();
-
-        vm.startPrank(admin);
-        vm.expectRevert();
-        swapper.renounceRole(defaultAdminRole, admin);
-        vm.stopPrank();
-    }
 
     function test_adminProtection_CanGrantOtherRoles_Success() public {
         address newManager = makeAddr("newManager");
