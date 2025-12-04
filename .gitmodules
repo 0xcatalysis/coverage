@@ -10,9 +10,6 @@
 [submodule "lib/openzeppelin-foundry-upgrades"]
 	path = lib/openzeppelin-foundry-upgrades
 	url = https://github.com/OpenZeppelin/openzeppelin-foundry-upgrades
-[submodule "lib/solidity-lib"]
-	path = lib/solidity-lib
-	url = https://github.com/dl-solarity/solidity-lib
 [submodule "lib/solady"]
 	path = lib/solady
 	url = https://github.com/Vectorized/solady

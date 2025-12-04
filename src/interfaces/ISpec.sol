@@ -51,4 +51,3 @@ interface ISpec {
      */
     function evaluate(EvaluationContext calldata context) external view returns (EvaluationResult memory result);
 }
-
