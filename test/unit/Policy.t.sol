@@ -242,6 +242,14 @@ contract PolicyTest is Test {
         policy.mintPolicy(buyer, POLICY_ID, metadata);
     }
 
+    function test_mintPolicy_WhenSpecIdEmpty_Reverts() public {
+        IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.specId = bytes32(0);
+        vm.expectRevert(IPolicy.InvalidSpecId.selector);
+        vm.prank(policyManager);
+        policy.mintPolicy(buyer, POLICY_ID, metadata);
+    }
+
     function test_mintPolicy_WhenValid_MintsSoulboundReceipt() public {
         IPolicy.PolicyMetadata memory metadata = _mintDefaultPolicy();
 
@@ -258,6 +266,7 @@ contract PolicyTest is Test {
         assertEq(stored.coverageLimit, metadata.coverageLimit, "Coverage limit mismatch");
         assertEq(stored.payoutReceiver, metadata.payoutReceiver, "Payout receiver mismatch");
         assertEq(stored.poolPolicyId, metadata.poolPolicyId, "Pool policy id mismatch");
+        assertEq(stored.specId, metadata.specId, "Spec id mismatch");
         assertEq(stored.termsHash, metadata.termsHash, "Terms hash mismatch");
         assertEq(stored.policyCommit, metadata.policyCommit, "Policy commit mismatch");
         assertEq(stored.committeeId, metadata.committeeId, "Committee id mismatch");
@@ -303,6 +312,7 @@ contract PolicyTest is Test {
             coverageLimit: 1000,
             payoutReceiver: payoutReceiver,
             poolPolicyId: keccak256("pool-policy-id"),
+            specId: keccak256("MorphoSpec"),
             termsHash: keccak256("terms-hash"),
             policyCommit: policyCommit,
             committeeId: uint96(123),

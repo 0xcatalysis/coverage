@@ -25,6 +25,8 @@ interface ISwapper is IAccessControlDefaultAdminRules {
         address swapTarget;
         /// @notice Whether this route is currently enabled.
         bool enabled;
+        /// @notice Pre-configured calldata for executing swaps on the swap target.
+        bytes swapCalldata;
     }
 
     /**
@@ -194,12 +196,23 @@ interface ISwapper is IAccessControlDefaultAdminRules {
     /**
      * @notice Sets a swap route between two tokens.
      * @dev Requires SWAP_MANAGER_ROLE.
+     *      The swapCalldata is stored and used as the default when executeSwap is called
+     *      without explicit calldata. This allows ClaimManager to execute swaps without
+     *      needing to know DEX-specific details.
      * @param tokenIn Source token address.
      * @param tokenOut Destination token address.
      * @param swapTarget External protocol address to use for swaps.
      * @param enabled Whether to enable or disable the route.
+     * @param swapCalldata Pre-configured calldata for the swap target.
      */
-    function setSwapRoute(address tokenIn, address tokenOut, address swapTarget, bool enabled) external;
+    function setSwapRoute(
+        address tokenIn,
+        address tokenOut,
+        address swapTarget,
+        bool enabled,
+        bytes calldata swapCalldata
+    )
+        external;
 
     /**
      * @notice Executes a token swap using a configured route.
@@ -277,4 +290,3 @@ interface ISwapper is IAccessControlDefaultAdminRules {
      */
     function paused() external view returns (bool);
 }
-
