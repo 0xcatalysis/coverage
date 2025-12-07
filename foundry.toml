@@ -49,11 +49,11 @@ via_ir = true
 [rpc_endpoints]
 anvil = "${ANVIL_RPC_URL}"
 sepolia = "${SEPOLIA_RPC_URL}"
-ethereum = "${ETHEREUM_RPC_URL}"
+mainnet = "${ETHEREUM_RPC_URL}"
 
 [etherscan]
-sepolia = { key = "${SEPOLIA_ETHERSCAN_API_KEY}", url = "https://api-sepolia.etherscan.io/api" }
-ethereum = { key = "${ETHERSCAN_API_KEY}", url = "https://api.etherscan.io/api" }
+sepolia = { key = "${ETHERSCAN_API_KEY}" }
+mainnet = { key = "${ETHERSCAN_API_KEY}" }
 
 [fmt]
 line_length = 120

@@ -5,12 +5,7 @@ endif
 
 PRIVATE_KEY ?= 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ANVIL_RPC_URL ?= http://127.0.0.1:8545
-SEPOLIA_CHAIN_ID ?= 11155111
-ETHEREUM_CHAIN_ID ?= 1
-
-COMPILER_VERSION = 0.8.28
-EVM_VERSION = shanghai
-OPTIMIZER_RUNS = 1000
+ANVIL_CHAIN_ID ?= 31337
 
 FORGE_DEFAULT = FOUNDRY_PROFILE=default forge
 FORGE_CI = FOUNDRY_PROFILE=ci forge
@@ -19,23 +14,8 @@ FORGE_PROD = FOUNDRY_PROFILE=prod forge
 
 FORGE_SCRIPT_DEFAULT = $(FORGE_DEFAULT) script --ffi
 FORGE_SCRIPT_PROD = $(FORGE_PROD) script --ffi
-FORGE_VERIFY_PROD = $(FORGE_PROD) verify-contract
+FORGE_VERIFY_PROD = $(FORGE_PROD) verify-contract --verifier etherscan --compilation-profile prod
 FORGE_SCRIPT_OPTS = --broadcast --slow
-
-VERIFY_COMPILER_OPTS = --compiler-version "$(COMPILER_VERSION)" \
-	--evm-version "$(EVM_VERSION)" \
-	--num-of-optimizations $(OPTIMIZER_RUNS) \
-	--via-ir
-
-SEPOLIA_VERIFY_OPTS = --etherscan-api-key "$(SEPOLIA_ETHERSCAN_API_KEY)" \
-	--chain-id $(SEPOLIA_CHAIN_ID) \
-	--rpc-url $(SEPOLIA_RPC_URL) \
-	$(VERIFY_COMPILER_OPTS)
-
-ETHEREUM_VERIFY_OPTS = --etherscan-api-key "$(ETHERSCAN_API_KEY)" \
-	--chain-id $(ETHEREUM_CHAIN_ID) \
-	--rpc-url $(ETHEREUM_RPC_URL) \
-	$(VERIFY_COMPILER_OPTS)
 
 .PHONY: all setup build test test-ci test-unit test-fuzz test-invariant cover cover-lcov gas snapshot snapshot-check build-prod deploy-anvil deploy-sepolia deploy-ethereum verify-coverpool-sepolia verify-coverpool-ethereum show-sepolia show-ethereum format format-check lint docs clean slither mythril help
 
@@ -43,7 +23,7 @@ all: clean build test
 
 setup:
 	@echo "Setting up project..."
-	@printf '#!/bin/sh\nset -e\nmake format-check\nmake test-unit\n' > .git/hooks/pre-commit
+	@printf '#!/bin/sh\nset -e\nmake format-check\nmake lint\nmake test-unit\n' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
 	@echo "Setup complete"
 
@@ -72,7 +52,7 @@ test:
 
 test-ci:
 	@echo "Running all tests with ci profile..."
-	$(FORGE_CI) test -vvv --fail-fast
+	@$(FORGE_CI) test -vvv --fail-fast
 
 test-unit:
 	@echo "Running unit tests..."
@@ -120,6 +100,7 @@ deploy-anvil: clean
 	@$(FORGE_SCRIPT_DEFAULT) script/DeployAnvil.s.sol \
 		--rpc-url $(ANVIL_RPC_URL) \
 		--private-key $(PRIVATE_KEY) \
+		--chain $(ANVIL_CHAIN_ID) \
 		$(FORGE_SCRIPT_OPTS)
 
 deploy-sepolia: clean
@@ -127,7 +108,7 @@ deploy-sepolia: clean
 	@$(FORGE_SCRIPT_PROD) script/DeploySepolia.s.sol \
 		--rpc-url $(SEPOLIA_RPC_URL) \
 		--private-key $(PRIVATE_KEY) \
-		--chain-id $(SEPOLIA_CHAIN_ID) \
+		--chain sepolia \
 		$(FORGE_SCRIPT_OPTS)
 
 deploy-ethereum: clean
@@ -135,43 +116,47 @@ deploy-ethereum: clean
 	@$(FORGE_SCRIPT_PROD) script/DeployEthereum.s.sol \
 		--rpc-url $(ETHEREUM_RPC_URL) \
 		--private-key $(PRIVATE_KEY) \
-		--chain-id $(ETHEREUM_CHAIN_ID) \
+		--chain mainnet \
 		$(FORGE_SCRIPT_OPTS)
 
 verify-coverpool-sepolia:
 	@echo "Verifying CoverPool on Sepolia..."
 	@test -n "$(COVER_POOL_ADDRESS)" || (echo "COVER_POOL_ADDRESS environment variable required" && exit 1)
 	@$(FORGE_VERIFY_PROD) $(COVER_POOL_ADDRESS) src/CoverPool.sol:CoverPool \
-		$(SEPOLIA_VERIFY_OPTS) || true
-	@sleep 1
+		--rpc-url $(SEPOLIA_RPC_URL) \
+		--chain sepolia \
+		--etherscan-api-key $(ETHERSCAN_API_KEY) \
+		--watch || true
 
 verify-coverpool-ethereum:
 	@echo "Verifying CoverPool on Ethereum..."
 	@test -n "$(COVER_POOL_ADDRESS)" || (echo "COVER_POOL_ADDRESS environment variable required" && exit 1)
 	@$(FORGE_VERIFY_PROD) $(COVER_POOL_ADDRESS) src/CoverPool.sol:CoverPool \
-		$(ETHEREUM_VERIFY_OPTS) || true
-	@sleep 1
+		--rpc-url $(ETHEREUM_RPC_URL) \
+		--chain mainnet \
+		--etherscan-api-key $(ETHERSCAN_API_KEY) \
+		--watch || true
 
 show-sepolia:
 	@echo "Showing deployments for Sepolia..."
 	@$(FORGE_SCRIPT_DEFAULT) script/ShowSepolia.s.sol \
 		--rpc-url $(SEPOLIA_RPC_URL) \
-		--chain-id $(SEPOLIA_CHAIN_ID)
+		--chain sepolia
 
 show-ethereum:
 	@echo "Showing deployments for Ethereum..."
 	@$(FORGE_SCRIPT_DEFAULT) script/ShowEthereum.s.sol \
 		--rpc-url $(ETHEREUM_RPC_URL) \
-		--chain-id $(ETHEREUM_CHAIN_ID)
+		--chain mainnet
 
 docs:
 	@echo "Generating documentation..."
-	@forge doc
+	@$(FORGE_DEFAULT) doc
 
 clean:
 	@echo "Cleaning build artifacts..."
-	@forge clean
-	@rm -rf broadcast/*/31337 cache coverage out anvil.log lcov.info
+	@$(FORGE_DEFAULT) clean
+	@rm -rf broadcast/*/31337 cache coverage out .gas-snapshot anvil.log lcov.info
 
 slither:
 	@echo "Running slither analysis..."
@@ -179,7 +164,7 @@ slither:
 
 mythril:
 	@echo "Running mythril analysis..."
-	@myth analyze src/CoverPool.sol --solv $(COMPILER_VERSION)
+	@myth analyze src/CoverPool.sol --solv 0.8.28
 
 help:
 	@echo "Coverage Smart Contracts - Available commands:"
