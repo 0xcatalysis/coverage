@@ -8,6 +8,7 @@ import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/ut
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
 import {IPremiumReserve} from "./interfaces/IPremiumReserve.sol";
 import {IPolicy} from "./interfaces/IPolicy.sol";
@@ -50,6 +51,7 @@ contract ClaimManager is
     address public override swapper;
     address public override policy;
     address public override premiumReserve;
+    address public override priceFeed;
 
     mapping(uint256 policyId => ClaimRecord) private _claims;
 
@@ -67,6 +69,7 @@ contract ClaimManager is
      * @param swapper_ Address of the Swapper contract.
      * @param policy_ Address of the Policy contract.
      * @param premiumReserve_ Address of the PremiumReserve contract.
+     * @param priceFeed_ Address of the PriceFeed contract (Catalysis Core).
      */
     function initialize(
         address admin_,
@@ -75,7 +78,8 @@ contract ClaimManager is
         address slashingManager_,
         address swapper_,
         address policy_,
-        address premiumReserve_
+        address premiumReserve_,
+        address priceFeed_
     )
         external
         initializer
@@ -83,7 +87,7 @@ contract ClaimManager is
         require(
             admin_ != address(0) && claimOperator_ != address(0) && specRegistry_ != address(0)
                 && slashingManager_ != address(0) && swapper_ != address(0) && policy_ != address(0)
-                && premiumReserve_ != address(0),
+                && premiumReserve_ != address(0) && priceFeed_ != address(0),
             ZeroAddress()
         );
 
@@ -100,6 +104,7 @@ contract ClaimManager is
         swapper = swapper_;
         policy = policy_;
         premiumReserve = premiumReserve_;
+        priceFeed = priceFeed_;
     }
 
     /**
@@ -159,6 +164,15 @@ contract ClaimManager is
         require(premiumReserve_ != address(0), ZeroAddress());
         premiumReserve = premiumReserve_;
         emit PremiumReserveSet(premiumReserve_);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
+    function setPriceFeed(address priceFeed_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(priceFeed_ != address(0), ZeroAddress());
+        priceFeed = priceFeed_;
+        emit PriceFeedSet(priceFeed_);
     }
 
     /**
@@ -297,7 +311,7 @@ contract ClaimManager is
      * @notice Executes slashing via Core's SlashingManager and converts collateral to payout tokens.
      * @param policyId Identifier of the policy.
      * @param metadata Policy metadata containing committeeId, operator, and payout details.
-     * @param requestedAmount Maximum amount to disburse (in payout token terms, used as slash amount in USD).
+     * @param requestedAmount Maximum amount to disburse (in payout token terms).
      * @return totalPayout Total amount paid out in payout token terms (capped at requestedAmount).
      */
     function _executeSlashingAndPayout(
@@ -309,8 +323,11 @@ contract ClaimManager is
         returns (uint256 totalPayout)
     {
         // slither-disable-next-line calls-loop
+        uint256 slashAmountUSD = IChainlinkPriceFeed(priceFeed).getUSDValue(metadata.payoutToken, requestedAmount);
+
+        // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
-            ISlashingManager(slashingManager).executeSlashing(metadata.committeeId, metadata.operator, requestedAmount);
+            ISlashingManager(slashingManager).executeSlashing(metadata.committeeId, metadata.operator, slashAmountUSD);
 
         uint256 assetsLength = collateralTokens.length;
         // slither-disable-next-line incorrect-equality
