@@ -7,20 +7,19 @@ pragma solidity 0.8.28;
  */
 interface ISlashingManager {
     /**
-     * @notice Slashes stake backing a specific policy committee and returns seized collateral.
+     * @notice Slashes stake backing a specific committee and returns seized collateral.
      * @dev Called by ClaimManager after claim approval to seize collateral from restakers.
-     *      Slash amount is pre-configured in Core via setSlashConfig().
-     * @param taskType Task type identifier (e.g., bytes("COVERAGE_POLICY")).
-     * @param taskPerformer Operator address whose stake is being slashed.
-     * @param taskDefinitionId Policy commitment hash identifying the coverage schedule.
-     * @return assets Array of seized collateral token addresses.
-     * @return amounts Array of seized collateral amounts corresponding to assets.
+     * @param committeeId The restaking committee identifier to slash against.
+     * @param operator Operator address whose stake is being slashed.
+     * @param slashAmount Slash amount in USD (with 8 decimals).
+     * @return collateralTokens Array of seized collateral token addresses.
+     * @return collateralAmounts Array of seized collateral amounts corresponding to tokens.
      */
     function executeSlashing(
-        bytes calldata taskType,
-        address taskPerformer,
-        bytes32 taskDefinitionId
+        uint96 committeeId,
+        address operator,
+        uint256 slashAmount
     )
         external
-        returns (address[] memory assets, uint256[] memory amounts);
+        returns (address[] memory collateralTokens, uint256[] memory collateralAmounts);
 }

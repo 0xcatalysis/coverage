@@ -45,8 +45,6 @@ contract ClaimManager is
 
     bytes32 public constant override CLAIM_OPERATOR_ROLE = keccak256("CLAIM_OPERATOR_ROLE");
 
-    bytes private constant _COVERAGE_POLICY_TASK = bytes("COVERAGE_POLICY");
-
     address public override specRegistry;
     address public override slashingManager;
     address public override swapper;
@@ -298,8 +296,8 @@ contract ClaimManager is
     /**
      * @notice Executes slashing via Core's SlashingManager and converts collateral to payout tokens.
      * @param policyId Identifier of the policy.
-     * @param metadata Policy metadata containing operator, policyCommit, and payout details.
-     * @param requestedAmount Maximum amount to disburse (in payout token terms).
+     * @param metadata Policy metadata containing committeeId, operator, and payout details.
+     * @param requestedAmount Maximum amount to disburse (in payout token terms, used as slash amount in USD).
      * @return totalPayout Total amount paid out in payout token terms (capped at requestedAmount).
      */
     function _executeSlashingAndPayout(
@@ -311,17 +309,22 @@ contract ClaimManager is
         returns (uint256 totalPayout)
     {
         // slither-disable-next-line calls-loop
-        (address[] memory assets, uint256[] memory amounts) = ISlashingManager(slashingManager)
-            .executeSlashing(_COVERAGE_POLICY_TASK, metadata.operator, metadata.policyCommit);
+        (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
+            ISlashingManager(slashingManager).executeSlashing(metadata.committeeId, metadata.operator, requestedAmount);
 
-        uint256 assetsLength = assets.length;
-        require(assetsLength > 0 && assetsLength == amounts.length, NoCollateralSlashed(policyId));
+        uint256 assetsLength = collateralTokens.length;
+        require(assetsLength > 0 && assetsLength == collateralAmounts.length, NoCollateralSlashed(policyId));
 
         uint256 remainingPayout = requestedAmount;
         for (uint256 i = 0; i < assetsLength && remainingPayout > 0; ++i) {
-            if (amounts[i] > 0) {
+            if (collateralAmounts[i] > 0) {
                 uint256 amountOut = _processCollateral(
-                    policyId, assets[i], amounts[i], metadata.payoutToken, metadata.payoutReceiver, remainingPayout
+                    policyId,
+                    collateralTokens[i],
+                    collateralAmounts[i],
+                    metadata.payoutToken,
+                    metadata.payoutReceiver,
+                    remainingPayout
                 );
                 totalPayout += amountOut;
                 remainingPayout = remainingPayout > amountOut ? remainingPayout - amountOut : 0;

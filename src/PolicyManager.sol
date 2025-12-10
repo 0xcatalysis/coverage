@@ -107,6 +107,7 @@ contract PolicyManager is
             platformFeeBps: request.platformFeeBps,
             startTime: boundPolicy.startTime,
             maturityTime: boundPolicy.maturityTime,
+            committeeId: boundPolicy.committeeId,
             poolShare: IPremiumManager.PoolShare({
                 coverPool: quote.pool,
                 poolFeeRecipient: ICoverPool(quote.pool).owner(),

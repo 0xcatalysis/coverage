@@ -26,6 +26,8 @@ interface IPremiumReserve is IAccessControl {
         address pool;
         /// @notice Operator whose delegation backs this premium.
         address operator;
+        /// @notice Restaking committee identifier backing this policy.
+        uint96 committeeId;
         /// @notice Policy coverage start timestamp.
         uint64 startTime;
         /// @notice Policy coverage maturity timestamp.
@@ -51,6 +53,8 @@ interface IPremiumReserve is IAccessControl {
         address operator;
         /// @notice Deterministic hash representing the policy schedule.
         bytes32 policyCommit;
+        /// @notice Restaking committee identifier backing this policy.
+        uint96 committeeId;
         /// @notice Coverage start timestamp encoded at bind.
         uint64 startTime;
         /// @notice Coverage maturity timestamp encoded at bind.
@@ -131,6 +135,11 @@ interface IPremiumReserve is IAccessControl {
      * @notice Reverts when provided pool or operator address is invalid.
      */
     error InvalidPoolData();
+
+    /**
+     * @notice Reverts when provided committee identifier is invalid.
+     */
+    error InvalidCommitteeId();
 
     /**
      * @notice Reverts when attempting to pay a claim with a zero settled amount.

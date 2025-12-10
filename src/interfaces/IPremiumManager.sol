@@ -45,6 +45,8 @@ interface IPremiumManager is IAccessControl {
         uint64 startTime;
         /// @notice Policy coverage maturity timestamp.
         uint64 maturityTime;
+        /// @notice Restaking committee identifier backing this policy.
+        uint96 committeeId;
         /// @notice Single pool share for this policy (Phase 1: single pool only).
         PoolShare poolShare;
     }
@@ -89,6 +91,11 @@ interface IPremiumManager is IAccessControl {
      * @notice Reverts when a required policy commit hash is empty.
      */
     error InvalidPolicyCommit();
+
+    /**
+     * @notice Reverts when provided committee identifier is invalid.
+     */
+    error InvalidCommitteeId();
 
     /**
      * @notice Reverts when the sum of pool premiums does not match the expected total.

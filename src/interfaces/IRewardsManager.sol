@@ -3,21 +3,15 @@ pragma solidity 0.8.28;
 
 /**
  * @title IRewardsManager
- * @notice Minimal interface for the Catalysis Core rewards distributor.
+ * @notice Interface for Catalysis Core's RewardsManager that distributes rewards to restakers.
  */
 interface IRewardsManager {
     /**
-     * @notice Notifies the RewardsManager of premium value ready for distribution.
-     * @param taskType Identifier describing the coverage product (e.g. "COVERAGE_POLICY").
-     * @param taskPerformer Restaking operator associated with the payout.
-     * @param taskDefinitionId Deterministic hash representing the policy schedule.
-     * @param rewardAmount Amount of reward token allocated to the operator.
+     * @notice Distributes rewards for a policy's restaker premium to the appropriate committee/operator.
+     * @dev Called by PremiumReserve after policy maturity to distribute escrowed premiums.
+     * @param committeeId The restaking committee identifier backing the policy.
+     * @param operator The operator address whose stake backed the coverage.
+     * @param rewardAmount Amount of reward token to distribute.
      */
-    function distributeRewards(
-        bytes calldata taskType,
-        address taskPerformer,
-        bytes32 taskDefinitionId,
-        uint256 rewardAmount
-    )
-        external;
+    function distributeRewards(uint96 committeeId, address operator, uint256 rewardAmount) external;
 }
