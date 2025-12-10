@@ -159,13 +159,13 @@ contract PremiumManager is
                 policyCommit: allocation.policyCommit,
                 restakerPremiumTotal: restakerPremium,
                 premiumToken: allocation.premiumToken,
-                buyer: allocation.buyer,
-                pool: poolShare.coverPool,
-                operator: poolShare.operator,
                 committeeId: allocation.committeeId,
+                buyer: allocation.buyer,
                 startTime: allocation.startTime,
+                pool: poolShare.coverPool,
                 maturityTime: allocation.maturityTime,
-                claimLocked: false
+                claimLocked: false,
+                operator: poolShare.operator
             });
 
             IPremiumReserve(premiumReserve).openEscrow(escrowPosition);

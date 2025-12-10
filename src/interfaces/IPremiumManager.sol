@@ -15,14 +15,14 @@ interface IPremiumManager is IAccessControl {
     struct PoolShare {
         /// @notice Address of the CoverPool contract receiving the fee transfer.
         address coverPool;
+        /// @notice Pool fee in basis points applied to the gross premium.
+        uint16 poolFeeBps;
         /// @notice Recipient address for the pool's fee cut.
         address poolFeeRecipient;
         /// @notice Address of the operator backing this pool's coverage.
         address operator;
         /// @notice Gross premium amount attributable to this pool before fee splits.
         uint256 grossPremium;
-        /// @notice Pool fee in basis points applied to the gross premium.
-        uint16 poolFeeBps;
     }
 
     /**
@@ -33,20 +33,20 @@ interface IPremiumManager is IAccessControl {
         uint256 policyId;
         /// @notice Deterministic hash representing the policy schedule.
         bytes32 policyCommit;
-        /// @notice Policy buyer responsible for paying premiums.
-        address buyer;
-        /// @notice ERC20 token used for the payment.
-        address premiumToken;
         /// @notice Base premium amount for the single pool.
         uint256 basePremium;
+        /// @notice Policy buyer responsible for paying premiums.
+        address buyer;
+        /// @notice Restaking committee identifier backing this policy.
+        uint96 committeeId;
+        /// @notice ERC20 token used for the payment.
+        address premiumToken;
         /// @notice Platform fee in basis points applied to the pool share.
         uint16 platformFeeBps;
         /// @notice Policy coverage start timestamp.
         uint64 startTime;
         /// @notice Policy coverage maturity timestamp.
         uint64 maturityTime;
-        /// @notice Restaking committee identifier backing this policy.
-        uint96 committeeId;
         /// @notice Single pool share for this policy (Phase 1: single pool only).
         PoolShare poolShare;
     }

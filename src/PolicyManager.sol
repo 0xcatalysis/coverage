@@ -101,19 +101,19 @@ contract PolicyManager is
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
             policyId: request.policyId,
             policyCommit: policyCommit,
-            buyer: request.buyer,
-            premiumToken: request.premiumToken,
             basePremium: quote.basePremium,
+            buyer: request.buyer,
+            committeeId: boundPolicy.committeeId,
+            premiumToken: request.premiumToken,
             platformFeeBps: request.platformFeeBps,
             startTime: boundPolicy.startTime,
             maturityTime: boundPolicy.maturityTime,
-            committeeId: boundPolicy.committeeId,
             poolShare: IPremiumManager.PoolShare({
                 coverPool: quote.pool,
+                poolFeeBps: ICoverPool(quote.pool).poolFeeBps(),
                 poolFeeRecipient: ICoverPool(quote.pool).owner(),
                 operator: boundPolicy.operator,
-                grossPremium: quote.basePremium,
-                poolFeeBps: ICoverPool(quote.pool).poolFeeBps()
+                grossPremium: quote.basePremium
             })
         });
 
@@ -121,21 +121,21 @@ contract PolicyManager is
 
         IPolicy.PolicyMetadata memory metadata = IPolicy.PolicyMetadata({
             buyer: request.buyer,
+            committeeId: boundPolicy.committeeId,
             beneficiary: request.beneficiary,
+            startTime: boundPolicy.startTime,
             premiumToken: request.premiumToken,
+            maturityTime: boundPolicy.maturityTime,
             basePremium: quote.basePremium,
             payoutToken: request.payoutToken,
             pool: quote.pool,
             coverageLimit: boundPolicy.coverageLimit,
             payoutReceiver: boundPolicy.payoutReceiver,
+            operator: boundPolicy.operator,
             poolPolicyId: boundPolicy.policyId,
             specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
-            policyCommit: policyCommit,
-            committeeId: boundPolicy.committeeId,
-            startTime: boundPolicy.startTime,
-            maturityTime: boundPolicy.maturityTime,
-            operator: boundPolicy.operator
+            policyCommit: policyCommit
         });
 
         IPolicy(policy).mintPolicy(request.buyer, request.policyId, metadata);

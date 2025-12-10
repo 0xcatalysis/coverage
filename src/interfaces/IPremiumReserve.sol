@@ -20,20 +20,20 @@ interface IPremiumReserve is IAccessControl {
         uint256 restakerPremiumTotal;
         /// @notice ERC20 token held in escrow.
         address premiumToken;
-        /// @notice Policy buyer address.
-        address buyer;
-        /// @notice Address of the pool whose restakers supplied coverage.
-        address pool;
-        /// @notice Operator whose delegation backs this premium.
-        address operator;
         /// @notice Restaking committee identifier backing this policy.
         uint96 committeeId;
+        /// @notice Policy buyer address.
+        address buyer;
         /// @notice Policy coverage start timestamp.
         uint64 startTime;
+        /// @notice Address of the pool whose restakers supplied coverage.
+        address pool;
         /// @notice Policy coverage maturity timestamp.
         uint64 maturityTime;
         /// @notice Indicates whether escrow is locked pending claim resolution.
         bool claimLocked;
+        /// @notice Operator whose delegation backs this premium.
+        address operator;
     }
 
     /**
@@ -43,26 +43,26 @@ interface IPremiumReserve is IAccessControl {
     struct EscrowAccount {
         /// @notice Remaining restaker premiums held in escrow.
         uint256 restakerPremiumTotal;
-        /// @notice ERC20 premium token locked in escrow.
-        address premiumToken;
-        /// @notice Buyer responsible for the policy premiums.
-        address buyer;
-        /// @notice Address of the pool whose restakers supplied coverage.
-        address pool;
-        /// @notice Operator whose delegation backs this premium.
-        address operator;
         /// @notice Deterministic hash representing the policy schedule.
         bytes32 policyCommit;
+        /// @notice ERC20 premium token locked in escrow.
+        address premiumToken;
         /// @notice Restaking committee identifier backing this policy.
         uint96 committeeId;
+        /// @notice Buyer responsible for the policy premiums.
+        address buyer;
         /// @notice Coverage start timestamp encoded at bind.
         uint64 startTime;
+        /// @notice Address of the pool whose restakers supplied coverage.
+        address pool;
         /// @notice Coverage maturity timestamp encoded at bind.
         uint64 maturityTime;
         /// @notice True when a claim lock is active for the policy.
         bool claimLocked;
         /// @notice True once the escrow has been fully released.
         bool released;
+        /// @notice Operator whose delegation backs this premium.
+        address operator;
     }
 
     /**
