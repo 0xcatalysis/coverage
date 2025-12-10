@@ -1017,7 +1017,7 @@ contract MockSlashingManager {
         _token2ToTransfer = token;
     }
 
-    function executeSlashing(bytes calldata, address, bytes32) external returns (address[] memory, uint256[] memory) {
+    function executeSlashing(uint96, address, uint256) external returns (address[] memory, uint256[] memory) {
         if (_tokenToTransfer != address(0)) {
             require(
                 MockToken(_tokenToTransfer).transfer(msg.sender, MockToken(_tokenToTransfer).balanceOf(address(this))),
