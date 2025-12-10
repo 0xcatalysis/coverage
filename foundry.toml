@@ -71,7 +71,7 @@ override_spacing = true
 wrap_comments = true
 
 [lint]
-exclude_lints = ["asm-keccak256", "mixed-case-function", "unwrapped-modifier-logic"]
+exclude_lints = ["asm-keccak256", "mixed-case-function", "mixed-case-variable", "unwrapped-modifier-logic"]
 
 [doc]
 out = "docs"
