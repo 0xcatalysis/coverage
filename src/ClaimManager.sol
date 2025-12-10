@@ -313,6 +313,7 @@ contract ClaimManager is
             ISlashingManager(slashingManager).executeSlashing(metadata.committeeId, metadata.operator, requestedAmount);
 
         uint256 assetsLength = collateralTokens.length;
+        // slither-disable-next-line incorrect-equality
         require(assetsLength > 0 && assetsLength == collateralAmounts.length, NoCollateralSlashed(policyId));
 
         uint256 remainingPayout = requestedAmount;
