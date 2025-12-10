@@ -66,11 +66,13 @@ abstract contract Deploy is Script {
      * @param nativeWrapper WETH or equivalent native token wrapper address.
      * @param specRegistry SpecRegistry contract address from Catalysis Core.
      * @param slashingManager SlashingManager contract address from Catalysis Core.
+     * @param priceFeed ChainlinkPriceFeed contract address from Catalysis Core.
      */
     struct ExternalConfig {
         address nativeWrapper;
         address specRegistry;
         address slashingManager;
+        address priceFeed;
     }
 
     /**
@@ -170,7 +172,8 @@ abstract contract Deploy is Script {
         return ExternalConfig({
             nativeWrapper: vm.envOr("NATIVE_WRAPPER", address(0)),
             specRegistry: vm.envOr("SPEC_REGISTRY", address(0)),
-            slashingManager: vm.envOr("SLASHING_MANAGER", address(0))
+            slashingManager: vm.envOr("SLASHING_MANAGER", address(0)),
+            priceFeed: vm.envOr("PRICE_FEED", address(0))
         });
     }
 
@@ -271,7 +274,8 @@ abstract contract Deploy is Script {
                     external_.slashingManager,
                     contracts.swapperProxy,
                     contracts.policyProxy,
-                    contracts.premiumReserveProxy
+                    contracts.premiumReserveProxy,
+                    external_.priceFeed
                 )
             )
         );
@@ -491,5 +495,6 @@ abstract contract Deploy is Script {
         require(external_.nativeWrapper != address(0), "NATIVE_WRAPPER required");
         require(external_.specRegistry != address(0), "SPEC_REGISTRY required");
         require(external_.slashingManager != address(0), "SLASHING_MANAGER required");
+        require(external_.priceFeed != address(0), "PRICE_FEED required");
     }
 }

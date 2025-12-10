@@ -34,7 +34,8 @@ contract DeployAnvil is Deploy {
         return ExternalConfig({
             nativeWrapper: vm.envAddress("NATIVE_WRAPPER"),
             specRegistry: vm.envAddress("SPEC_REGISTRY"),
-            slashingManager: vm.envAddress("SLASHING_MANAGER")
+            slashingManager: vm.envAddress("SLASHING_MANAGER"),
+            priceFeed: vm.envAddress("PRICE_FEED")
         });
     }
 }
