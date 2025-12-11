@@ -123,6 +123,7 @@ contract PremiumManager is
         require(poolShare.poolFeeRecipient != address(0), ZeroAddress());
         require(poolShare.operator != address(0), ZeroAddress());
         require(poolShare.grossPremium != 0, ZeroAmount());
+        require(allocation.committeeId != 0, InvalidCommitteeId());
         require(
             poolShare.grossPremium == allocation.basePremium,
             PremiumTotalsMismatch(allocation.basePremium, poolShare.grossPremium)
@@ -158,12 +159,13 @@ contract PremiumManager is
                 policyCommit: allocation.policyCommit,
                 restakerPremiumTotal: restakerPremium,
                 premiumToken: allocation.premiumToken,
+                committeeId: allocation.committeeId,
                 buyer: allocation.buyer,
-                pool: poolShare.coverPool,
-                operator: poolShare.operator,
                 startTime: allocation.startTime,
+                pool: poolShare.coverPool,
                 maturityTime: allocation.maturityTime,
-                claimLocked: false
+                claimLocked: false,
+                operator: poolShare.operator
             });
 
             IPremiumReserve(premiumReserve).openEscrow(escrowPosition);

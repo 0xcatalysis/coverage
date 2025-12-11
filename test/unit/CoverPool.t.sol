@@ -12,7 +12,7 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 
 contract CoverPoolTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "QuoteData(address pool,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
+        "QuoteData(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint64 startTime,address operator,uint64 maturityTime,uint64 quoteExpiry)"
     );
     string internal constant NAME = "Catalysis Cover Pool";
     string internal constant VERSION = "1";
@@ -534,14 +534,14 @@ contract CoverPoolTest is Test {
     function _defaultQuote() private view returns (ICoverPool.QuoteData memory quote) {
         quote = ICoverPool.QuoteData({
             pool: address(coverPool),
+            committeeId: uint96(123),
             coverageLimit: 1000 ether,
             basePremium: 100 ether,
             specId: specId,
             termsHash: termsHash,
             payoutReceiver: payoutRecipient,
-            committeeId: uint96(123),
-            operator: operator,
             startTime: uint64(block.timestamp + 1 hours),
+            operator: operator,
             maturityTime: uint64(block.timestamp + 25 hours),
             quoteExpiry: uint64(block.timestamp + 2 days)
         });
@@ -562,14 +562,14 @@ contract CoverPoolTest is Test {
         return EfficientHashLib.hash(
             uint256(QUOTE_TYPEHASH),
             uint256(uint160(quote.pool)),
+            uint256(quote.committeeId),
             quote.coverageLimit,
             quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.payoutReceiver)),
-            uint256(quote.committeeId),
-            uint256(uint160(quote.operator)),
             uint256(quote.startTime),
+            uint256(uint160(quote.operator)),
             uint256(quote.maturityTime),
             uint256(quote.quoteExpiry)
         );

@@ -27,7 +27,6 @@ contract PremiumReserve is
     bytes32 public constant override PREMIUM_MANAGER_ROLE = keccak256("PREMIUM_MANAGER_ROLE");
     bytes32 public constant override CLAIM_MANAGER_ROLE = keccak256("CLAIM_MANAGER_ROLE");
     bytes32 public constant override POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
-    bytes private constant _COVERAGE_POLICY_TASK = "COVERAGE_POLICY";
 
     mapping(uint256 => EscrowAccount) private _escrows;
 
@@ -96,6 +95,7 @@ contract PremiumReserve is
         require(position.pool != address(0) && position.operator != address(0), InvalidPoolData());
         require(position.policyCommit != bytes32(0), InvalidPolicyCommit());
         require(position.restakerPremiumTotal != 0, ZeroRestakerPremium());
+        require(position.committeeId != 0, InvalidCommitteeId());
         require(
             position.startTime < position.maturityTime, InvalidCoverageWindow(position.startTime, position.maturityTime)
         );
@@ -109,6 +109,7 @@ contract PremiumReserve is
         escrow.pool = position.pool;
         escrow.operator = position.operator;
         escrow.policyCommit = position.policyCommit;
+        escrow.committeeId = position.committeeId;
         escrow.startTime = position.startTime;
         escrow.maturityTime = position.maturityTime;
         escrow.claimLocked = false;
@@ -190,8 +191,7 @@ contract PremiumReserve is
         if (totalRestakerPayout != 0) {
             IERC20(escrow.premiumToken).safeTransfer(rewardsManager, totalRestakerPayout);
             // slither-disable-next-line calls-loop
-            IRewardsManager(rewardsManager)
-                .distributeRewards(_COVERAGE_POLICY_TASK, escrow.operator, escrow.policyCommit, totalRestakerPayout);
+            IRewardsManager(rewardsManager).distributeRewards(escrow.committeeId, escrow.operator, totalRestakerPayout);
 
             emit PremiumReleased(policyId, rewardsManager, totalRestakerPayout);
         }
@@ -214,6 +214,7 @@ contract PremiumReserve is
         position.buyer = escrow.buyer;
         position.pool = escrow.pool;
         position.operator = escrow.operator;
+        position.committeeId = escrow.committeeId;
         position.startTime = escrow.startTime;
         position.maturityTime = escrow.maturityTime;
         position.claimLocked = escrow.claimLocked;

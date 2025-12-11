@@ -29,6 +29,7 @@ The Coverage protocol consists of seven core contracts deployed as UUPS proxies 
 External dependencies from Catalysis Core:
 - **SpecRegistry** – parametric spec definitions for claim triggers.
 - **SlashingManager** – collateral slashing execution across restaking networks.
+- **ChainlinkPriceFeed** – converts token amounts to USD values (8 decimals) for slashing calculations.
 
 ## Quick Start
 
@@ -97,6 +98,7 @@ Required for testnet/mainnet deployments:
 | `NATIVE_WRAPPER` | WETH or equivalent native wrapper address |
 | `SPEC_REGISTRY` | Catalysis Core SpecRegistry address |
 | `SLASHING_MANAGER` | Catalysis Core SlashingManager address |
+| `PRICE_FEED` | Catalysis Core ChainlinkPriceFeed address |
 | `SEPOLIA_RPC_URL` | Sepolia RPC endpoint |
 | `ETHEREUM_RPC_URL` | Ethereum mainnet RPC endpoint |
 | `SEPOLIA_ETHERSCAN_API_KEY` | Etherscan API key for Sepolia verification |

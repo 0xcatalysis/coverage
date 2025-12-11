@@ -17,10 +17,16 @@ interface IPolicy is IAccessControl, IERC721Metadata {
     struct PolicyMetadata {
         /// @notice Buyer wallet responsible for paying premiums.
         address buyer;
+        /// @notice Restaking committee identifier that backs this policy.
+        uint96 committeeId;
         /// @notice Beneficiary receiving payouts upon approved claims.
         address beneficiary;
+        /// @notice Policy coverage start timestamp.
+        uint64 startTime;
         /// @notice ERC20 token used for premium payments.
         address premiumToken;
+        /// @notice Policy coverage end timestamp.
+        uint64 maturityTime;
         /// @notice Base premium paid by the buyer for coverage (excluding refundable deposits).
         uint256 basePremium;
         /// @notice ERC20 token used for claim payouts.
@@ -31,6 +37,8 @@ interface IPolicy is IAccessControl, IERC721Metadata {
         uint256 coverageLimit;
         /// @notice Destination address for claim payouts.
         address payoutReceiver;
+        /// @notice Operator address delegated for this policy.
+        address operator;
         /// @notice Pool-provided identifier for the policy.
         bytes32 poolPolicyId;
         /// @notice Spec identifier for parametric claim evaluation (e.g., MorphoSpec, MapleSpec).
@@ -39,14 +47,6 @@ interface IPolicy is IAccessControl, IERC721Metadata {
         bytes32 termsHash;
         /// @notice Deterministic hash representing the policy schedule.
         bytes32 policyCommit;
-        /// @notice Restaking committee identifier that backs this policy.
-        uint96 committeeId;
-        /// @notice Policy coverage start timestamp.
-        uint64 startTime;
-        /// @notice Policy coverage end timestamp.
-        uint64 maturityTime;
-        /// @notice Operator address delegated for this policy.
-        address operator;
     }
 
     /**
