@@ -33,7 +33,7 @@ contract CoverPool is
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "QuoteData(address pool,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint96 committeeId,address operator,uint64 startTime,uint64 maturityTime,uint64 quoteExpiry)"
+        "QuoteData(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint64 startTime,address operator,uint64 maturityTime,uint64 quoteExpiry)"
     );
 
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
@@ -329,14 +329,14 @@ contract CoverPool is
         return EfficientHashLib.hash(
             uint256(_QUOTE_TYPEHASH),
             uint256(uint160(quote.pool)),
+            uint256(quote.committeeId),
             quote.coverageLimit,
             quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.payoutReceiver)),
-            uint256(quote.committeeId),
-            uint256(uint160(quote.operator)),
             uint256(quote.startTime),
+            uint256(uint160(quote.operator)),
             uint256(quote.maturityTime),
             uint256(quote.quoteExpiry)
         );

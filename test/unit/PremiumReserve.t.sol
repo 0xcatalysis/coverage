@@ -10,10 +10,10 @@ import {PremiumReserve} from "../../src/PremiumReserve.sol";
 import {IPremiumReserve} from "../../src/interfaces/IPremiumReserve.sol";
 
 contract PremiumReserveTest is Test {
-    bytes internal constant COVERAGE_POLICY_TASK = "COVERAGE_POLICY";
     uint256 internal constant POLICY_ID = 1;
     uint256 internal constant RESTAKER_PREMIUM = 1000 ether;
     uint64 internal constant MATURITY_OFFSET = 30 days;
+    uint96 internal constant COMMITTEE_ID = 123;
 
     address internal admin;
     address internal premiumManager;
@@ -312,7 +312,7 @@ contract PremiumReserveTest is Test {
         vm.warp(maturityTime);
 
         vm.expectEmit(true, true, true, true, address(rewardsManagerMock));
-        emit RewardsManagerMock.RewardsDistributed(COVERAGE_POLICY_TASK, operator0, policyCommit, RESTAKER_PREMIUM);
+        emit RewardsManagerMock.RewardsDistributed(COMMITTEE_ID, operator0, RESTAKER_PREMIUM);
         vm.expectEmit();
         emit PremiumReleased(POLICY_ID, rewardsManager, RESTAKER_PREMIUM);
         vm.expectEmit();
@@ -489,6 +489,7 @@ contract PremiumReserveTest is Test {
         position.buyer = buyer;
         position.pool = pool0;
         position.operator = operator0;
+        position.committeeId = COMMITTEE_ID;
         position.startTime = uint64(block.timestamp);
         position.maturityTime = uint64(block.timestamp + MATURITY_OFFSET);
         position.claimLocked = false;
@@ -504,16 +505,9 @@ contract MockToken is ERC20 {
 }
 
 contract RewardsManagerMock {
-    event RewardsDistributed(bytes taskType, address taskPerformer, bytes32 taskDefinitionId, uint256 rewardAmount);
+    event RewardsDistributed(uint96 committeeId, address operator, uint256 rewardAmount);
 
-    function distributeRewards(
-        bytes calldata taskType,
-        address taskPerformer,
-        bytes32 taskDefinitionId,
-        uint256 rewardAmount
-    )
-        external
-    {
-        emit RewardsDistributed(taskType, taskPerformer, taskDefinitionId, rewardAmount);
+    function distributeRewards(uint96 committeeId, address operator, uint256 rewardAmount) external {
+        emit RewardsDistributed(committeeId, operator, rewardAmount);
     }
 }

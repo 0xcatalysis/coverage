@@ -17,6 +17,8 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
     struct QuoteData {
         /// @notice Address of the CoverPool issuing the quote.
         address pool;
+        /// @notice Restaking committee identifier associated with the policy.
+        uint96 committeeId;
         /// @notice Maximum notional coverage in payout token units supplied by this pool.
         uint256 coverageLimit;
         /// @notice Base premium amount owed to the pool for this coverage.
@@ -27,12 +29,10 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
         bytes32 termsHash;
         /// @notice Address that will receive claim payouts for this policy.
         address payoutReceiver;
-        /// @notice Restaking committee identifier associated with the policy.
-        uint96 committeeId;
-        /// @notice Restaking operator whose delegation is being covered.
-        address operator;
         /// @notice Policy coverage start timestamp proposed in the quote.
         uint64 startTime;
+        /// @notice Restaking operator whose delegation is being covered.
+        address operator;
         /// @notice Policy coverage maturity timestamp proposed in the quote.
         uint64 maturityTime;
         /// @notice Expiration timestamp for the signed quote.

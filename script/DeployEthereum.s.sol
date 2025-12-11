@@ -37,7 +37,8 @@ contract DeployEthereum is Deploy {
         return ExternalConfig({
             nativeWrapper: WETH_MAINNET,
             specRegistry: vm.envAddress("SPEC_REGISTRY"),
-            slashingManager: vm.envAddress("SLASHING_MANAGER")
+            slashingManager: vm.envAddress("SLASHING_MANAGER"),
+            priceFeed: vm.envAddress("PRICE_FEED")
         });
     }
 }

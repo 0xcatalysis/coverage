@@ -17,6 +17,7 @@ contract PremiumManagerTest is Test {
     uint256 internal constant GROSS_PREMIUM = 1000 ether;
     uint256 internal constant POLICY_ID = 1;
     uint64 internal constant COVERAGE_DURATION = 30 days;
+    uint96 internal constant COMMITTEE_ID = 123;
 
     address internal admin;
     address internal policyManager;
@@ -667,6 +668,7 @@ contract PremiumManagerTest is Test {
             platformFeeBps: PLATFORM_FEE_BPS,
             startTime: uint64(block.timestamp),
             maturityTime: uint64(block.timestamp + COVERAGE_DURATION),
+            committeeId: COMMITTEE_ID,
             poolShare: poolShare
         });
     }
