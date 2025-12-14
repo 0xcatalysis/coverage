@@ -47,6 +47,27 @@ interface ICoverPoolFactory is IAccessControl {
     event PolicyManagerSet(address indexed previousPolicyManager, address indexed newPolicyManager);
 
     /**
+     * @notice Emitted when the StakeManager reference is updated.
+     */
+    event StakeManagerSet(address indexed previousStakeManager, address indexed newStakeManager);
+
+    /**
+     * @notice Emitted when a pool's committee is registered with the StakeManager.
+     * @param pool Address of the CoverPool.
+     * @param committeeId The committee identifier.
+     * @param operator The operator address registered for the committee.
+     */
+    event PoolCommitteeRegistered(address indexed pool, uint96 indexed committeeId, address indexed operator);
+
+    /**
+     * @notice Emitted when a pool's committee is unregistered from the StakeManager.
+     * @param pool Address of the CoverPool.
+     * @param committeeId The committee identifier.
+     * @param operator The operator address unregistered from the committee.
+     */
+    event PoolCommitteeUnregistered(address indexed pool, uint96 indexed committeeId, address indexed operator);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -62,6 +83,11 @@ interface ICoverPoolFactory is IAccessControl {
     error InvalidLimit();
 
     /**
+     * @notice Reverts when attempting to register/unregister a committee for a pool that doesn't exist.
+     */
+    error PoolNotRegistered();
+
+    /**
      * @notice Pauses cover pool creation.
      */
     function pause() external;
@@ -73,54 +99,101 @@ interface ICoverPoolFactory is IAccessControl {
 
     /**
      * @notice Deploys a CoverPool clone and configures initial settings.
+     * @dev Requires CREATOR_ROLE. Emits CoverPoolCreated event.
      * @param params Struct containing cover pool parameters.
      */
     function createCoverPool(CreateCoverPoolParams calldata params) external;
 
     /**
      * @notice Updates the CoverPool implementation used for future clones.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param newImplementation Address of the new CoverPool implementation contract.
      */
     function setCoverPoolImplementation(address newImplementation) external;
 
     /**
      * @notice Updates the PolicyManager configured on new pools.
+     * @dev Requires CREATOR_ROLE.
+     * @param newPolicyManager Address of the new PolicyManager contract.
      */
     function setPolicyManager(address newPolicyManager) external;
 
     /**
+     * @notice Updates the StakeManager configured on new pools.
+     * @dev Requires CREATOR_ROLE.
+     * @param newStakeManager Address of the new StakeManager contract.
+     */
+    function setStakeManager(address newStakeManager) external;
+
+    /**
+     * @notice Registers a pool's policy committee with the StakeManager.
+     * @dev Requires CREATOR_ROLE. The factory must have STAKE_MANAGER_CONFIG_ROLE on the StakeManager.
+     *      This allows pools to register their policy committees which will be fanned out
+     *      to Symbiotic/Eigenlayer adapters by the StakeManager.
+     * @param pool Address of the CoverPool.
+     * @param committeeId The committee identifier for the policy.
+     * @param operator The operator address to register for the committee.
+     */
+    function registerPoolCommittee(address pool, uint96 committeeId, address operator) external;
+
+    /**
+     * @notice Unregisters a pool's policy committee from the StakeManager.
+     * @dev Requires CREATOR_ROLE.
+     * @param pool Address of the CoverPool.
+     * @param committeeId The committee identifier for the policy.
+     * @param operator The operator address to unregister from the committee.
+     */
+    function unregisterPoolCommittee(address pool, uint96 committeeId, address operator) external;
+
+    /**
      * @notice Returns the CoverPool implementation address.
+     * @return The address of the CoverPool implementation contract.
      */
     function coverPoolImplementation() external view returns (address);
 
     /**
      * @notice Returns the PolicyManager address.
+     * @return The address of the PolicyManager contract.
      */
     function policyManager() external view returns (address);
 
     /**
      * @notice Role identifier allowed to create cover pools.
+     * @return The role identifier hash.
      */
     function CREATOR_ROLE() external view returns (bytes32);
 
     /**
+     * @notice Address of the StakeManager contract from Catalysis Core.
+     * @dev Automatically set on newly created pools during initialization.
+     * @return The address of the StakeManager contract.
+     */
+    function stakeManager() external view returns (address);
+
+    /**
      * @notice Returns the deterministic address that would be used for a cover pool deployment.
      * @param params Struct containing cover pool parameters.
+     * @return The deterministic address for the cover pool.
      */
     function computeCoverPoolAddress(CreateCoverPoolParams calldata params) external view returns (address);
 
     /**
      * @notice Returns true when the pool has been registered.
+     * @param pool Address of the CoverPool to check.
+     * @return True if the pool exists, false otherwise.
      */
     function coverPoolExists(address pool) external view returns (bool);
 
     /**
      * @notice Returns the pool address stored at the given index.
      * @param index Position in the pool array.
+     * @return The address of the CoverPool at the specified index.
      */
     function coverPoolAt(uint256 index) external view returns (address);
 
     /**
      * @notice Returns the number of pools deployed by the factory.
+     * @return The total number of CoverPools created by this factory.
      */
     function coverTotalPools() external view returns (uint256);
 
@@ -128,6 +201,7 @@ interface ICoverPoolFactory is IAccessControl {
      * @notice Returns a slice of pool addresses.
      * @param offset Zero-based index to start the page from.
      * @param limit Maximum number of entries to return. Must be greater than zero.
+     * @return pools Array of CoverPool addresses.
      */
     function getCoverPools(uint256 offset, uint256 limit) external view returns (address[] memory pools);
 }

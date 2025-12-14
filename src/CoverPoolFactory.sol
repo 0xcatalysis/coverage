@@ -10,6 +10,7 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
+import {IStakeManager} from "./interfaces/IStakeManager.sol";
 
 /**
  * @title CoverPoolFactory
@@ -32,6 +33,8 @@ contract CoverPoolFactory is
 
     EnumerableSet.AddressSet private _pools;
 
+    address public override stakeManager;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -44,14 +47,15 @@ contract CoverPoolFactory is
         address admin_,
         address creator_,
         address coverPoolImplementation_,
-        address policyManager_
+        address policyManager_,
+        address stakeManager_
     )
         external
         initializer
     {
         require(
             admin_ != address(0) && creator_ != address(0) && coverPoolImplementation_ != address(0)
-                && policyManager_ != address(0),
+                && policyManager_ != address(0) && stakeManager_ != address(0),
             ZeroAddress()
         );
         require(coverPoolImplementation_.code.length != 0, InvalidImplementation());
@@ -66,6 +70,7 @@ contract CoverPoolFactory is
 
         coverPoolImplementation = coverPoolImplementation_;
         policyManager = policyManager_;
+        stakeManager = stakeManager_;
     }
 
     /**
@@ -126,6 +131,60 @@ contract CoverPoolFactory is
         policyManager = newPolicyManager;
 
         emit PolicyManagerSet(previousPolicyManager, newPolicyManager);
+    }
+
+    /**
+     * @inheritdoc ICoverPoolFactory
+     */
+    function setStakeManager(address newStakeManager) external override onlyRole(CREATOR_ROLE) {
+        require(newStakeManager != address(0), ZeroAddress());
+
+        address previousStakeManager = stakeManager;
+        stakeManager = newStakeManager;
+
+        emit StakeManagerSet(previousStakeManager, newStakeManager);
+    }
+
+    /**
+     * @inheritdoc ICoverPoolFactory
+     */
+    function registerPoolCommittee(
+        address pool,
+        uint96 committeeId,
+        address operator
+    )
+        external
+        override
+        onlyRole(CREATOR_ROLE)
+    {
+        require(_pools.contains(pool), PoolNotRegistered());
+        require(stakeManager != address(0), ZeroAddress());
+        require(operator != address(0), ZeroAddress());
+
+        IStakeManager(stakeManager).addOperatorToCommittee(operator, committeeId);
+
+        emit PoolCommitteeRegistered(pool, committeeId, operator);
+    }
+
+    /**
+     * @inheritdoc ICoverPoolFactory
+     */
+    function unregisterPoolCommittee(
+        address pool,
+        uint96 committeeId,
+        address operator
+    )
+        external
+        override
+        onlyRole(CREATOR_ROLE)
+    {
+        require(_pools.contains(pool), PoolNotRegistered());
+        require(stakeManager != address(0), ZeroAddress());
+        require(operator != address(0), ZeroAddress());
+
+        IStakeManager(stakeManager).removeOperatorFromCommittee(operator, committeeId);
+
+        emit PoolCommitteeUnregistered(pool, committeeId, operator);
     }
 
     /**
