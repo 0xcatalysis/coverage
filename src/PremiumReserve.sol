@@ -150,6 +150,7 @@ contract PremiumReserve is
         nonReentrant
         whenNotPaused
         onlyRole(CLAIM_MANAGER_ROLE)
+        returns (uint256 paidAmount, address premiumToken)
     {
         require(payoutRecipient != address(0), ZeroAddress());
         require(settledAmount != 0, ZeroSettledAmount());
@@ -159,12 +160,14 @@ contract PremiumReserve is
         require(escrow.claimLocked, EscrowNotLocked(policyId));
 
         uint256 available = escrow.restakerPremiumTotal;
-        require(available >= settledAmount, InsufficientEscrow(policyId, settledAmount, available));
+        paidAmount = available >= settledAmount ? settledAmount : available;
+        premiumToken = escrow.premiumToken;
 
-        escrow.restakerPremiumTotal -= settledAmount;
-        IERC20(escrow.premiumToken).safeTransfer(payoutRecipient, settledAmount);
-
-        emit ClaimPaid(policyId, settledAmount);
+        if (paidAmount > 0) {
+            escrow.restakerPremiumTotal -= paidAmount;
+            IERC20(escrow.premiumToken).safeTransfer(payoutRecipient, paidAmount);
+            emit ClaimPaid(policyId, paidAmount);
+        }
     }
 
     /**

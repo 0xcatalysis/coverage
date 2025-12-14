@@ -30,8 +30,16 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  *
  *      Claim Flow:
  *      1. fileClaim: Any reporter files claim, escrow locked
- *      2. resolveClaim: Operator evaluates Spec, if approved → slash → swap → payout
+ *      2. resolveClaim: Operator evaluates Spec, if approved → premium reserve waterfall → slash shortfall → swap
+ * → payout
  *      3. rejectClaim: Operator manually rejects, escrow unlocked
+ *
+ *      Premium Reserve Waterfall:
+ *      - First attempts to pay claim from premium reserve collected for the policy
+ *      - If premium reserve sufficient, no slashing occurs
+ *      - If premium reserve insufficient, only slashes the shortfall amount
+ *      Example: 100k in reserve, 2M policy, 70k claim → pay from reserve only
+ *      Example: 100k in reserve, 2M policy, 250k claim → 100k from reserve + 150k from slashing
  */
 // slither-disable-next-line unimplemented-functions
 contract ClaimManager is
@@ -308,7 +316,11 @@ contract ClaimManager is
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     /**
-     * @notice Executes slashing via Core's SlashingManager and converts collateral to payout tokens.
+     * @notice Executes premium reserve waterfall followed by slashing and converts collateral to payout tokens.
+     * @dev Implements waterfall logic:
+     *      1. First attempts to pay from premium reserve
+     *      2. If premium reserve insufficient, slashes only the shortfall
+     *      3. Converts slashed collateral to payout token via Swapper
      * @param policyId Identifier of the policy.
      * @param metadata Policy metadata containing committeeId, operator, and payout details.
      * @param requestedAmount Maximum amount to disburse (in payout token terms).
@@ -323,7 +335,34 @@ contract ClaimManager is
         returns (uint256 totalPayout)
     {
         // slither-disable-next-line calls-loop
-        uint256 slashAmountUSD = IChainlinkPriceFeed(priceFeed).getUSDValue(metadata.payoutToken, requestedAmount);
+        (totalPayout,) = IPremiumReserve(premiumReserve).payClaim(policyId, metadata.payoutReceiver, requestedAmount);
+
+        uint256 remainingPayout = requestedAmount - totalPayout;
+        if (remainingPayout == 0) {
+            return totalPayout;
+        }
+
+        totalPayout += _slashAndSwap(policyId, metadata, remainingPayout);
+        require(totalPayout > 0, ZeroPayoutAmount(policyId));
+    }
+
+    /**
+     * @notice Slashes collateral and swaps to payout token.
+     * @param policyId Identifier of the policy.
+     * @param metadata Policy metadata containing committeeId, operator, and payout details.
+     * @param shortfallAmount Amount needed after premium reserve depletion.
+     * @return payoutFromSlashing Total payout obtained from slashing and swapping.
+     */
+    function _slashAndSwap(
+        uint256 policyId,
+        IPolicy.PolicyMetadata memory metadata,
+        uint256 shortfallAmount
+    )
+        private
+        returns (uint256 payoutFromSlashing)
+    {
+        // slither-disable-next-line calls-loop
+        uint256 slashAmountUSD = IChainlinkPriceFeed(priceFeed).getUSDValue(metadata.payoutToken, shortfallAmount);
 
         // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
@@ -333,7 +372,7 @@ contract ClaimManager is
         // slither-disable-next-line incorrect-equality
         require(assetsLength > 0 && assetsLength == collateralAmounts.length, NoCollateralSlashed(policyId));
 
-        uint256 remainingPayout = requestedAmount;
+        uint256 remainingPayout = shortfallAmount;
         for (uint256 i = 0; i < assetsLength && remainingPayout > 0; ++i) {
             if (collateralAmounts[i] > 0) {
                 uint256 amountOut = _processCollateral(
@@ -344,12 +383,10 @@ contract ClaimManager is
                     metadata.payoutReceiver,
                     remainingPayout
                 );
-                totalPayout += amountOut;
+                payoutFromSlashing += amountOut;
                 remainingPayout = remainingPayout > amountOut ? remainingPayout - amountOut : 0;
             }
         }
-
-        require(totalPayout > 0, ZeroPayoutAmount(policyId));
     }
 
     /**
