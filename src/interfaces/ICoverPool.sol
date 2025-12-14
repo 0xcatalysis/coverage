@@ -200,11 +200,14 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
 
     /**
      * @notice Returns whether a policy commit has already been bound.
+     * @param policyCommit Deterministic hash representing the policy.
+     * @return True if the policy commit has been bound, false otherwise.
      */
     function boundPolicyCommits(bytes32 policyCommit) external view returns (bool);
 
     /**
      * @notice EIP-712 domain separator used when verifying quote signatures.
+     * @return The EIP-712 domain separator hash.
      */
     function quoteDomainSeparator() external view returns (bytes32);
 
@@ -231,16 +234,19 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
 
     /**
      * @notice AccessControl identifier for the PolicyManager binding role.
+     * @return The role identifier hash.
      */
     function POLICY_MANAGER_ROLE() external pure returns (bytes32);
 
     /**
      * @notice AccessControl identifier for approved quote signers.
+     * @return The role identifier hash.
      */
     function QUOTE_SIGNER_ROLE() external pure returns (bytes32);
 
     /**
      * @notice Pool fee expressed in basis points that is applied to premiums.
+     * @return The pool fee in basis points.
      */
     function poolFeeBps() external view returns (uint16);
 }
