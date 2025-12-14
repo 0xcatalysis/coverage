@@ -13,6 +13,7 @@ import {CoverPool} from "../../src/CoverPool.sol";
 import {CoverPoolFactory} from "../../src/CoverPoolFactory.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
+import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 
 contract CoverPoolFactoryTest is Test {
     bytes32 internal constant ADMIN_ROLE = 0x00;
@@ -21,6 +22,7 @@ contract CoverPoolFactoryTest is Test {
     address internal admin;
     address internal creator;
     address internal policyManager;
+    address internal stakeManager;
     address internal curator;
     address internal quoteSigner;
 
@@ -36,12 +38,14 @@ contract CoverPoolFactoryTest is Test {
         admin = makeAddr("admin");
         creator = makeAddr("creator");
         policyManager = makeAddr("policyManager");
+        stakeManager = makeAddr("stakeManager");
         curator = makeAddr("curator");
         quoteSigner = makeAddr("quoteSigner");
 
         vm.label(admin, "Admin");
         vm.label(creator, "Creator");
         vm.label(policyManager, "PolicyManager");
+        vm.label(stakeManager, "StakeManager");
         vm.label(curator, "Curator");
         vm.label(quoteSigner, "QuoteSigner");
 
@@ -51,7 +55,9 @@ contract CoverPoolFactoryTest is Test {
 
         address proxy = Upgrades.deployUUPSProxy(
             "CoverPoolFactory.sol:CoverPoolFactory",
-            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(implementation), policyManager)),
+            abi.encodeCall(
+                CoverPoolFactory.initialize, (admin, creator, address(implementation), policyManager, stakeManager)
+            ),
             opts
         );
         factory = CoverPoolFactory(proxy);
@@ -67,7 +73,7 @@ contract CoverPoolFactoryTest is Test {
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(0), policyManager))
+            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(0), policyManager, stakeManager))
         );
     }
 
@@ -76,7 +82,20 @@ contract CoverPoolFactoryTest is Test {
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(implementation), address(0)))
+            abi.encodeCall(
+                CoverPoolFactory.initialize, (admin, creator, address(implementation), address(0), stakeManager)
+            )
+        );
+    }
+
+    function test_initialize_WhenStakeManagerZero_Reverts() public {
+        CoverPoolFactory factoryImpl = new CoverPoolFactory();
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        new ERC1967Proxy(
+            address(factoryImpl),
+            abi.encodeCall(
+                CoverPoolFactory.initialize, (admin, creator, address(implementation), policyManager, address(0))
+            )
         );
     }
 
@@ -446,5 +465,130 @@ contract CoverPoolFactoryTest is Test {
         factory.createCoverPool(params);
 
         pool = factory.coverPoolAt(factory.coverTotalPools() - 1);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        STAKE MANAGER CONFIGURATION
+    //////////////////////////////////////////////////////////////*/
+    function test_setStakeManager_WhenCallerNotCreator_Reverts() public {
+        address caller = makeAddr("notCreator");
+        address newStakeManager = makeAddr("newStakeManager");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
+        );
+        vm.prank(caller);
+        factory.setStakeManager(newStakeManager);
+    }
+
+    function test_setStakeManager_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(creator);
+        factory.setStakeManager(address(0));
+    }
+
+    function test_setStakeManager_Success() public {
+        address newStakeManager = makeAddr("newStakeManager");
+
+        vm.expectEmit(true, true, false, false);
+        emit ICoverPoolFactory.StakeManagerSet(stakeManager, newStakeManager);
+        vm.prank(creator);
+        factory.setStakeManager(newStakeManager);
+
+        assertEq(factory.stakeManager(), newStakeManager, "StakeManager not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        COMMITTEE REGISTRATION
+    //////////////////////////////////////////////////////////////*/
+    function test_registerPoolCommittee_WhenCallerNotCreator_Reverts() public {
+        address pool = _createPool("test");
+        uint96 committeeId = 1;
+        address testOperator = makeAddr("testOperator");
+        address caller = makeAddr("notCreator");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
+        );
+        vm.prank(caller);
+        factory.registerPoolCommittee(pool, committeeId, testOperator);
+    }
+
+    function test_registerPoolCommittee_WhenPoolNotRegistered_Reverts() public {
+        address fakePool = makeAddr("fakePool");
+        uint96 committeeId = 1;
+        address testOperator = makeAddr("testOperator");
+
+        vm.expectRevert(ICoverPoolFactory.PoolNotRegistered.selector);
+        vm.prank(creator);
+        factory.registerPoolCommittee(fakePool, committeeId, testOperator);
+    }
+
+    function test_registerPoolCommittee_WhenOperatorZero_Reverts() public {
+        address pool = _createPool("test");
+        uint96 committeeId = 1;
+
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(creator);
+        factory.registerPoolCommittee(pool, committeeId, address(0));
+    }
+
+    function test_registerPoolCommittee_Success() public {
+        address pool = _createPool("test");
+        uint96 committeeId = 1;
+        address testOperator = makeAddr("testOperator");
+
+        // Mock the StakeManager call
+        vm.mockCall(
+            stakeManager,
+            abi.encodeWithSelector(IStakeManager.addOperatorToCommittee.selector, testOperator, committeeId),
+            ""
+        );
+
+        vm.expectEmit(true, true, true, false);
+        emit ICoverPoolFactory.PoolCommitteeRegistered(pool, committeeId, testOperator);
+        vm.prank(creator);
+        factory.registerPoolCommittee(pool, committeeId, testOperator);
+    }
+
+    function test_unregisterPoolCommittee_WhenCallerNotCreator_Reverts() public {
+        address pool = _createPool("test");
+        uint96 committeeId = 1;
+        address testOperator = makeAddr("testOperator");
+        address caller = makeAddr("notCreator");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
+        );
+        vm.prank(caller);
+        factory.unregisterPoolCommittee(pool, committeeId, testOperator);
+    }
+
+    function test_unregisterPoolCommittee_WhenPoolNotRegistered_Reverts() public {
+        address fakePool = makeAddr("fakePool");
+        uint96 committeeId = 1;
+        address testOperator = makeAddr("testOperator");
+
+        vm.expectRevert(ICoverPoolFactory.PoolNotRegistered.selector);
+        vm.prank(creator);
+        factory.unregisterPoolCommittee(fakePool, committeeId, testOperator);
+    }
+
+    function test_unregisterPoolCommittee_Success() public {
+        address pool = _createPool("test");
+        uint96 committeeId = 1;
+        address testOperator = makeAddr("testOperator");
+
+        // Mock the StakeManager call
+        vm.mockCall(
+            stakeManager,
+            abi.encodeWithSelector(IStakeManager.removeOperatorFromCommittee.selector, testOperator, committeeId),
+            ""
+        );
+
+        vm.expectEmit(true, true, true, false);
+        emit ICoverPoolFactory.PoolCommitteeUnregistered(pool, committeeId, testOperator);
+        vm.prank(creator);
+        factory.unregisterPoolCommittee(pool, committeeId, testOperator);
     }
 }
