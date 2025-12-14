@@ -161,9 +161,9 @@ contract CoverPoolFactory is
         require(stakeManager != address(0), ZeroAddress());
         require(operator != address(0), ZeroAddress());
 
-        IStakeManager(stakeManager).addOperatorToCommittee(operator, committeeId);
-
         emit PoolCommitteeRegistered(pool, committeeId, operator);
+
+        IStakeManager(stakeManager).addOperatorToCommittee(operator, committeeId);
     }
 
     /**
@@ -182,9 +182,9 @@ contract CoverPoolFactory is
         require(stakeManager != address(0), ZeroAddress());
         require(operator != address(0), ZeroAddress());
 
-        IStakeManager(stakeManager).removeOperatorFromCommittee(operator, committeeId);
-
         emit PoolCommitteeUnregistered(pool, committeeId, operator);
+
+        IStakeManager(stakeManager).removeOperatorFromCommittee(operator, committeeId);
     }
 
     /**
