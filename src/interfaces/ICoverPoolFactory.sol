@@ -107,23 +107,23 @@ interface ICoverPoolFactory is IAccessControl {
     /**
      * @notice Updates the CoverPool implementation used for future clones.
      * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param newImplementation Address of the new CoverPool implementation contract.
+     * @param implementation_ Address of the new CoverPool implementation contract.
      */
-    function setCoverPoolImplementation(address newImplementation) external;
+    function setCoverPoolImplementation(address implementation_) external;
 
     /**
      * @notice Updates the PolicyManager configured on new pools.
      * @dev Requires CREATOR_ROLE.
-     * @param newPolicyManager Address of the new PolicyManager contract.
+     * @param policyManager_ Address of the new PolicyManager contract.
      */
-    function setPolicyManager(address newPolicyManager) external;
+    function setPolicyManager(address policyManager_) external;
 
     /**
      * @notice Updates the StakeManager configured on new pools.
      * @dev Requires CREATOR_ROLE.
-     * @param newStakeManager Address of the new StakeManager contract.
+     * @param stakeManager_ Address of the new StakeManager contract.
      */
-    function setStakeManager(address newStakeManager) external;
+    function setStakeManager(address stakeManager_) external;
 
     /**
      * @notice Registers a pool's policy committee with the StakeManager.

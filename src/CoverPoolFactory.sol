@@ -111,38 +111,38 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function setCoverPoolImplementation(address newImplementation) external override onlyRole(CREATOR_ROLE) {
-        require(newImplementation != address(0), ZeroAddress());
-        require(newImplementation.code.length != 0, InvalidImplementation());
+    function setCoverPoolImplementation(address implementation_) external override onlyRole(CREATOR_ROLE) {
+        require(implementation_ != address(0), ZeroAddress());
+        require(implementation_.code.length != 0, InvalidImplementation());
 
         address previousImplementation = coverPoolImplementation;
-        coverPoolImplementation = newImplementation;
+        coverPoolImplementation = implementation_;
 
-        emit CoverPoolImplementationSet(previousImplementation, newImplementation);
+        emit CoverPoolImplementationSet(previousImplementation, implementation_);
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function setPolicyManager(address newPolicyManager) external override onlyRole(CREATOR_ROLE) {
-        require(newPolicyManager != address(0), ZeroAddress());
+    function setPolicyManager(address policyManager_) external override onlyRole(CREATOR_ROLE) {
+        require(policyManager_ != address(0), ZeroAddress());
 
         address previousPolicyManager = policyManager;
-        policyManager = newPolicyManager;
+        policyManager = policyManager_;
 
-        emit PolicyManagerSet(previousPolicyManager, newPolicyManager);
+        emit PolicyManagerSet(previousPolicyManager, policyManager_);
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function setStakeManager(address newStakeManager) external override onlyRole(CREATOR_ROLE) {
-        require(newStakeManager != address(0), ZeroAddress());
+    function setStakeManager(address stakeManager_) external override onlyRole(CREATOR_ROLE) {
+        require(stakeManager_ != address(0), ZeroAddress());
 
         address previousStakeManager = stakeManager;
-        stakeManager = newStakeManager;
+        stakeManager = stakeManager_;
 
-        emit StakeManagerSet(previousStakeManager, newStakeManager);
+        emit StakeManagerSet(previousStakeManager, stakeManager_);
     }
 
     /**
