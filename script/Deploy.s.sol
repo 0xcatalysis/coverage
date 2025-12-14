@@ -41,6 +41,7 @@ import {Swapper} from "../src/Swapper.sol";
  *        - NATIVE_WRAPPER: WETH address (required)
  *        - SPEC_REGISTRY: Catalysis Core SpecRegistry address (required)
  *        - SLASHING_MANAGER: Catalysis Core SlashingManager address (required)
+ *        - STAKE_MANAGER: Catalysis Core StakeManager address (required)
  *        - PLATFORM_TREASURY: Platform fee recipient (defaults to admin)
  *        - COVER_POOL_FACTORY_CREATOR: Factory creator role (defaults to admin)
  *        - CLAIM_OPERATOR: Claim resolution operator (defaults to admin)
@@ -67,12 +68,14 @@ abstract contract Deploy is Script {
      * @param specRegistry SpecRegistry contract address from Catalysis Core.
      * @param slashingManager SlashingManager contract address from Catalysis Core.
      * @param priceFeed ChainlinkPriceFeed contract address from Catalysis Core.
+     * @param stakeManager StakeManager contract address from Catalysis Core.
      */
     struct ExternalConfig {
         address nativeWrapper;
         address specRegistry;
         address slashingManager;
         address priceFeed;
+        address stakeManager;
     }
 
     /**
@@ -173,7 +176,8 @@ abstract contract Deploy is Script {
             nativeWrapper: vm.envOr("NATIVE_WRAPPER", address(0)),
             specRegistry: vm.envOr("SPEC_REGISTRY", address(0)),
             slashingManager: vm.envOr("SLASHING_MANAGER", address(0)),
-            priceFeed: vm.envOr("PRICE_FEED", address(0))
+            priceFeed: vm.envOr("PRICE_FEED", address(0)),
+            stakeManager: vm.envOr("STAKE_MANAGER", address(0))
         });
     }
 
@@ -297,7 +301,8 @@ abstract contract Deploy is Script {
                     roles.deployer,
                     roles.coverPoolFactoryCreator,
                     contracts.coverPoolImplementation,
-                    contracts.policyManagerProxy
+                    contracts.policyManagerProxy,
+                    external_.stakeManager
                 )
             )
         );
@@ -442,6 +447,7 @@ abstract contract Deploy is Script {
         console2.log("Native Wrapper (WETH):", external_.nativeWrapper);
         console2.log("SpecRegistry:", external_.specRegistry);
         console2.log("SlashingManager:", external_.slashingManager);
+        console2.log("StakeManager:", external_.stakeManager);
         console2.log("");
 
         console2.log("--- Deployed Contracts ---");
@@ -496,5 +502,6 @@ abstract contract Deploy is Script {
         require(external_.specRegistry != address(0), "SPEC_REGISTRY required");
         require(external_.slashingManager != address(0), "SLASHING_MANAGER required");
         require(external_.priceFeed != address(0), "PRICE_FEED required");
+        require(external_.stakeManager != address(0), "STAKE_MANAGER required");
     }
 }
