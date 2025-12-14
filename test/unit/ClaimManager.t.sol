@@ -899,6 +899,183 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                    PREMIUM RESERVE WATERFALL
+    //////////////////////////////////////////////////////////////*/
+
+    function test_resolveClaim_WhenPremiumReserveSufficient_NeverSlashes() public {
+        uint256 requestedAmount = 500 ether;
+        uint256 premiumAvailable = 600 ether;
+
+        vm.prank(buyer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash);
+
+        specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
+
+        // Setup premium reserve with sufficient funds
+        premiumReserveMock.setPremiumAvailable(POLICY_ID, premiumAvailable);
+        premiumReserveMock.setPremiumToken(address(payoutTokenMock));
+
+        vm.prank(claimOperator);
+        claimManager.resolveClaim(POLICY_ID, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(record.payoutAmount, requestedAmount, "Should pay full requested amount from premium reserve");
+        assertEq(payoutTokenMock.balanceOf(payoutReceiver), requestedAmount, "Receiver should get full payout");
+    }
+
+    function test_resolveClaim_WhenPremiumReservePartial_SlashesShortfall() public {
+        uint256 requestedAmount = 1000 ether;
+        uint256 premiumAvailable = 400 ether;
+        uint256 shortfall = requestedAmount - premiumAvailable;
+
+        vm.prank(buyer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash);
+
+        specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
+
+        // Setup premium reserve with partial funds
+        premiumReserveMock.setPremiumAvailable(POLICY_ID, premiumAvailable);
+        premiumReserveMock.setPremiumToken(address(payoutTokenMock));
+
+        // Setup slashing for the shortfall
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = shortfall;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), shortfall);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+
+        swapperMock.setSwapOutput(shortfall);
+        swapperMock.setPayoutToken(payoutToken);
+
+        vm.expectEmit(true, true, true, false, address(claimManager));
+        emit CollateralSwapped(POLICY_ID, collateralToken, shortfall, payoutToken, shortfall);
+
+        vm.prank(claimOperator);
+        claimManager.resolveClaim(POLICY_ID, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(record.payoutAmount, requestedAmount, "Should pay full requested amount from premium + slashing");
+        assertEq(
+            payoutTokenMock.balanceOf(payoutReceiver),
+            premiumAvailable + shortfall,
+            "Receiver should get premium + slashed amount"
+        );
+    }
+
+    function test_resolveClaim_WhenPremiumReserveEmpty_SlashesFull() public {
+        uint256 requestedAmount = 800 ether;
+
+        vm.prank(buyer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash);
+
+        specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
+
+        // Setup premium reserve with zero funds
+        premiumReserveMock.setPremiumAvailable(POLICY_ID, 0);
+        premiumReserveMock.setPremiumToken(address(payoutTokenMock));
+
+        // Setup slashing for full amount
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), requestedAmount);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+
+        swapperMock.setSwapOutput(requestedAmount);
+        swapperMock.setPayoutToken(payoutToken);
+
+        vm.expectEmit(true, true, true, false, address(claimManager));
+        emit CollateralSwapped(POLICY_ID, collateralToken, requestedAmount, payoutToken, requestedAmount);
+
+        vm.prank(claimOperator);
+        claimManager.resolveClaim(POLICY_ID, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(record.payoutAmount, requestedAmount, "Should pay full requested amount from slashing");
+        assertEq(payoutTokenMock.balanceOf(payoutReceiver), requestedAmount, "Receiver should get full slashed amount");
+    }
+
+    function test_resolveClaim_WhenPremiumReserve100k_Claim70k_NoSlashing() public {
+        // Example from issue: 100k in reserve, 70k claim -> pay from reserve only
+        uint256 premiumAvailable = 100_000 ether;
+        uint256 requestedAmount = 70_000 ether;
+        uint256 highCoverageLimit = 2_000_000 ether; // 2M coverage limit for this test
+
+        // Update policy metadata with higher coverage limit BEFORE filing claim
+        IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.coverageLimit = highCoverageLimit;
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        vm.prank(buyer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash);
+
+        specMock.setEvaluationResult(true, highCoverageLimit, keccak256("approved"));
+
+        premiumReserveMock.setPremiumAvailable(POLICY_ID, premiumAvailable);
+        premiumReserveMock.setPremiumToken(address(payoutTokenMock));
+
+        vm.prank(claimOperator);
+        claimManager.resolveClaim(POLICY_ID, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(record.payoutAmount, requestedAmount, "Should pay 70k from premium reserve");
+        assertEq(payoutTokenMock.balanceOf(payoutReceiver), requestedAmount, "Receiver should get 70k");
+    }
+
+    function test_resolveClaim_WhenPremiumReserve100k_Claim250k_Slash150k() public {
+        // Example from issue: 100k in reserve, 250k claim -> 100k from reserve + 150k from slashing
+        uint256 premiumAvailable = 100_000 ether;
+        uint256 requestedAmount = 250_000 ether;
+        uint256 shortfall = 150_000 ether;
+        uint256 highCoverageLimit = 2_000_000 ether; // 2M coverage limit for this test
+
+        // Update policy metadata with higher coverage limit BEFORE filing claim
+        IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.coverageLimit = highCoverageLimit;
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        vm.prank(buyer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash);
+
+        specMock.setEvaluationResult(true, highCoverageLimit, keccak256("approved"));
+
+        premiumReserveMock.setPremiumAvailable(POLICY_ID, premiumAvailable);
+        premiumReserveMock.setPremiumToken(address(payoutTokenMock));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = shortfall;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), shortfall);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+
+        swapperMock.setSwapOutput(shortfall);
+        swapperMock.setPayoutToken(payoutToken);
+
+        vm.expectEmit(true, true, true, false, address(claimManager));
+        emit CollateralSwapped(POLICY_ID, collateralToken, shortfall, payoutToken, shortfall);
+
+        vm.prank(claimOperator);
+        claimManager.resolveClaim(POLICY_ID, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(record.payoutAmount, requestedAmount, "Should pay 250k total");
+        assertEq(
+            payoutTokenMock.balanceOf(payoutReceiver),
+            premiumAvailable + shortfall,
+            "Receiver should get 100k from reserve + 150k from slashing"
+        );
+    }
+
+    /*//////////////////////////////////////////////////////////////
                            REJECT CLAIM
     //////////////////////////////////////////////////////////////*/
 
@@ -1130,6 +1307,8 @@ contract MockPolicy {
 contract MockPremiumReserve {
     mapping(uint256 => bool) private _escrowReleased;
     mapping(uint256 => bool) private _claimLocked;
+    mapping(uint256 => uint256) private _premiumAvailable;
+    address private _premiumToken;
 
     function setEscrowReleased(uint256 policyId, bool released) external {
         _escrowReleased[policyId] = released;
@@ -1145,6 +1324,35 @@ contract MockPremiumReserve {
 
     function isClaimLockSet(uint256 policyId) external view returns (bool) {
         return _claimLocked[policyId];
+    }
+
+    function setPremiumAvailable(uint256 policyId, uint256 amount) external {
+        _premiumAvailable[policyId] = amount;
+    }
+
+    function setPremiumToken(address token) external {
+        _premiumToken = token;
+    }
+
+    function payClaim(
+        uint256 policyId,
+        address payoutRecipient,
+        uint256 settledAmount
+    )
+        external
+        returns (uint256 paidAmount, address premiumToken)
+    {
+        uint256 available = _premiumAvailable[policyId];
+        paidAmount = available >= settledAmount ? settledAmount : available;
+        premiumToken = _premiumToken;
+
+        if (paidAmount > 0) {
+            _premiumAvailable[policyId] -= paidAmount;
+            // Transfer premium tokens to recipient
+            if (_premiumToken != address(0)) {
+                MockToken(_premiumToken).mint(payoutRecipient, paidAmount);
+            }
+        }
     }
 }
 
