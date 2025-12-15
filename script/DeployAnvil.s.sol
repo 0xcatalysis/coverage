@@ -11,10 +11,12 @@ import {Deploy} from "./Deploy.s.sol";
  *      - SPEC_REGISTRY: Address of SpecRegistry from Catalysis Core
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
  *      - STAKE_MANAGER: Address of StakeManager from Catalysis Core
+ *      - SSP_ROUTER: Address of SSPRouter from Catalysis Core
  *      - PRICE_FEED: Address of ChainlinkPriceFeed from Catalysis Core
  *
  *      Usage:
- *        NATIVE_WRAPPER=0x... SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... STAKE_MANAGER=0x... PRICE_FEED=0x... \
+ *        NATIVE_WRAPPER=0x... SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... STAKE_MANAGER=0x... SSP_ROUTER=0x...
+ * PRICE_FEED=0x... \
  *          forge script script/DeployAnvil.s.sol --broadcast --rpc-url http://localhost:8545
  */
 contract DeployAnvil is Deploy {
@@ -30,7 +32,8 @@ contract DeployAnvil is Deploy {
      * @inheritdoc Deploy
      * @dev Loads all external addresses from environment variables. No hardcoded addresses
      *      for local testing to allow flexible mock contract deployment.
-     * @return ExternalConfig loaded from NATIVE_WRAPPER, SPEC_REGISTRY, SLASHING_MANAGER, STAKE_MANAGER, PRICE_FEED env
+     * @return ExternalConfig loaded from NATIVE_WRAPPER, SPEC_REGISTRY, SLASHING_MANAGER, STAKE_MANAGER, SSP_ROUTER,
+     * PRICE_FEED env
      * vars.
      */
     function getExternalConfig() internal view override returns (ExternalConfig memory) {
@@ -39,6 +42,7 @@ contract DeployAnvil is Deploy {
             specRegistry: vm.envAddress("SPEC_REGISTRY"),
             slashingManager: vm.envAddress("SLASHING_MANAGER"),
             stakeManager: vm.envAddress("STAKE_MANAGER"),
+            sspRouter: vm.envAddress("SSP_ROUTER"),
             priceFeed: vm.envAddress("PRICE_FEED")
         });
     }

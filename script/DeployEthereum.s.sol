@@ -11,9 +11,10 @@ import {Deploy} from "./Deploy.s.sol";
  *      - SPEC_REGISTRY: Address of SpecRegistry from Catalysis Core
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
  *      - STAKE_MANAGER: Address of StakeManager from Catalysis Core
+ *      - SSP_ROUTER: Address of SSPRouter from Catalysis Core
  *
  *      Usage:
- *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... STAKE_MANAGER=0x... PRIVATE_KEY=0x... \
+ *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... STAKE_MANAGER=0x... SSP_ROUTER=0x... PRIVATE_KEY=0x... \
  *          forge script script/DeployEthereum.s.sol --broadcast --rpc-url mainnet --verify
  */
 contract DeployEthereum is Deploy {
@@ -30,7 +31,7 @@ contract DeployEthereum is Deploy {
 
     /**
      * @inheritdoc Deploy
-     * @dev Uses hardcoded WETH address for mainnet. SpecRegistry, SlashingManager, and StakeManager
+     * @dev Uses hardcoded WETH address for mainnet. SpecRegistry, SlashingManager, StakeManager, and SSPRouter
      *      addresses must be provided via environment variables.
      * @return ExternalConfig with mainnet WETH and env-loaded Catalysis Core addresses.
      */
@@ -40,6 +41,7 @@ contract DeployEthereum is Deploy {
             specRegistry: vm.envAddress("SPEC_REGISTRY"),
             slashingManager: vm.envAddress("SLASHING_MANAGER"),
             stakeManager: vm.envAddress("STAKE_MANAGER"),
+            sspRouter: vm.envAddress("SSP_ROUTER"),
             priceFeed: vm.envAddress("PRICE_FEED")
         });
     }
