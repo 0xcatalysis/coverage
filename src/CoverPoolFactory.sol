@@ -11,6 +11,7 @@ import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 import {IStakeManager} from "./interfaces/IStakeManager.sol";
+import {ISSPRouter} from "./interfaces/ISSPRouter.sol";
 
 /**
  * @title CoverPoolFactory
@@ -34,6 +35,7 @@ contract CoverPoolFactory is
     EnumerableSet.AddressSet private _pools;
 
     address public override stakeManager;
+    address public override sspRouter;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -48,14 +50,15 @@ contract CoverPoolFactory is
         address creator_,
         address coverPoolImplementation_,
         address policyManager_,
-        address stakeManager_
+        address stakeManager_,
+        address sspRouter_
     )
         external
         initializer
     {
         require(
             admin_ != address(0) && creator_ != address(0) && coverPoolImplementation_ != address(0)
-                && policyManager_ != address(0) && stakeManager_ != address(0),
+                && policyManager_ != address(0) && stakeManager_ != address(0) && sspRouter_ != address(0),
             ZeroAddress()
         );
         require(coverPoolImplementation_.code.length != 0, InvalidImplementation());
@@ -71,6 +74,7 @@ contract CoverPoolFactory is
         coverPoolImplementation = coverPoolImplementation_;
         policyManager = policyManager_;
         stakeManager = stakeManager_;
+        sspRouter = sspRouter_;
     }
 
     /**
@@ -148,31 +152,24 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function registerPoolCommittee(
-        address pool,
-        uint96 committeeId,
-        address operator
-    )
-        external
-        override
-        onlyRole(CREATOR_ROLE)
-    {
-        require(_pools.contains(pool), PoolNotRegistered());
-        require(stakeManager != address(0), ZeroAddress());
-        require(operator != address(0), ZeroAddress());
+    function setSSPRouter(address sspRouter_) external override onlyRole(CREATOR_ROLE) {
+        require(sspRouter_ != address(0), ZeroAddress());
 
-        emit PoolCommitteeRegistered(pool, committeeId, operator);
+        address previousSSPRouter = sspRouter;
+        sspRouter = sspRouter_;
 
-        IStakeManager(stakeManager).addOperatorToCommittee(operator, committeeId);
+        emit SSPRouterSet(previousSSPRouter, sspRouter_);
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function unregisterPoolCommittee(
+    function registerPoolCommittee(
         address pool,
         uint96 committeeId,
-        address operator
+        address operator,
+        uint48 deadline,
+        bytes calldata signature
     )
         external
         override
@@ -180,11 +177,13 @@ contract CoverPoolFactory is
     {
         require(_pools.contains(pool), PoolNotRegistered());
         require(stakeManager != address(0), ZeroAddress());
+        require(sspRouter != address(0), ZeroAddress());
         require(operator != address(0), ZeroAddress());
 
-        emit PoolCommitteeUnregistered(pool, committeeId, operator);
+        emit PoolCommitteeRegistered(pool, committeeId, operator);
 
-        IStakeManager(stakeManager).removeOperatorFromCommittee(operator, committeeId);
+        IStakeManager(stakeManager).addOperatorToCommittee(operator, committeeId);
+        ISSPRouter(sspRouter).registerOperatorToNetwork(operator, deadline, signature);
     }
 
     /**

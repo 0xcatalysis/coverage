@@ -52,20 +52,17 @@ interface ICoverPoolFactory is IAccessControl {
     event StakeManagerSet(address indexed previousStakeManager, address indexed newStakeManager);
 
     /**
+     * @notice Emitted when the SSPRouter reference is updated.
+     */
+    event SSPRouterSet(address indexed previousSSPRouter, address indexed newSSPRouter);
+
+    /**
      * @notice Emitted when a pool's committee is registered with the StakeManager.
      * @param pool Address of the CoverPool.
      * @param committeeId The committee identifier.
      * @param operator The operator address registered for the committee.
      */
     event PoolCommitteeRegistered(address indexed pool, uint96 indexed committeeId, address indexed operator);
-
-    /**
-     * @notice Emitted when a pool's committee is unregistered from the StakeManager.
-     * @param pool Address of the CoverPool.
-     * @param committeeId The committee identifier.
-     * @param operator The operator address unregistered from the committee.
-     */
-    event PoolCommitteeUnregistered(address indexed pool, uint96 indexed committeeId, address indexed operator);
 
     /**
      * @notice Reverts when a required address argument is zero.
@@ -126,24 +123,31 @@ interface ICoverPoolFactory is IAccessControl {
     function setStakeManager(address stakeManager_) external;
 
     /**
-     * @notice Registers a pool's policy committee with the StakeManager.
+     * @notice Updates the SSPRouter configured on new pools.
+     * @dev Requires CREATOR_ROLE.
+     * @param sspRouter_ Address of the new SSPRouter contract.
+     */
+    function setSSPRouter(address sspRouter_) external;
+
+    /**
+     * @notice Registers a pool's policy committee with the StakeManager and SSPRouter.
      * @dev Requires CREATOR_ROLE. The factory must have STAKE_MANAGER_CONFIG_ROLE on the StakeManager.
      *      This allows pools to register their policy committees which will be fanned out
      *      to Symbiotic/Eigenlayer adapters by the StakeManager.
      * @param pool Address of the CoverPool.
      * @param committeeId The committee identifier for the policy.
      * @param operator The operator address to register for the committee.
+     * @param deadline The deadline for the operator registration signature.
+     * @param signature The operator's signature for network registration.
      */
-    function registerPoolCommittee(address pool, uint96 committeeId, address operator) external;
-
-    /**
-     * @notice Unregisters a pool's policy committee from the StakeManager.
-     * @dev Requires CREATOR_ROLE.
-     * @param pool Address of the CoverPool.
-     * @param committeeId The committee identifier for the policy.
-     * @param operator The operator address to unregister from the committee.
-     */
-    function unregisterPoolCommittee(address pool, uint96 committeeId, address operator) external;
+    function registerPoolCommittee(
+        address pool,
+        uint96 committeeId,
+        address operator,
+        uint48 deadline,
+        bytes calldata signature
+    )
+        external;
 
     /**
      * @notice Returns the CoverPool implementation address.
@@ -169,6 +173,13 @@ interface ICoverPoolFactory is IAccessControl {
      * @return The address of the StakeManager contract.
      */
     function stakeManager() external view returns (address);
+
+    /**
+     * @notice Address of the SSPRouter contract from Catalysis Core.
+     * @dev Used to register operators to restaking networks.
+     * @return The address of the SSPRouter contract.
+     */
+    function sspRouter() external view returns (address);
 
     /**
      * @notice Returns the deterministic address that would be used for a cover pool deployment.
