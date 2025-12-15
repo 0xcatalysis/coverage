@@ -334,10 +334,11 @@ contract ClaimManager is
         private
         returns (uint256 totalPayout)
     {
-        // slither-disable-next-line calls-loop
+        // slither-disable-next-line calls-loop,unused-return
         (totalPayout,) = IPremiumReserve(premiumReserve).payClaim(policyId, metadata.payoutReceiver, requestedAmount);
 
         uint256 remainingPayout = requestedAmount - totalPayout;
+        // slither-disable-next-line incorrect-equality
         if (remainingPayout == 0) {
             return totalPayout;
         }
