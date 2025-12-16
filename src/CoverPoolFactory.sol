@@ -10,7 +10,6 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
-import {IStakeManager} from "./interfaces/IStakeManager.sol";
 import {ISSPRouter} from "./interfaces/ISSPRouter.sol";
 
 /**
@@ -110,6 +109,8 @@ contract CoverPoolFactory is
         _pools.add(coverPool);
 
         emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager, params.poolFeeBps);
+
+        ISSPRouter(sspRouter).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
     }
 
     /**
@@ -159,31 +160,6 @@ contract CoverPoolFactory is
         sspRouter = sspRouter_;
 
         emit SSPRouterSet(previousSSPRouter, sspRouter_);
-    }
-
-    /**
-     * @inheritdoc ICoverPoolFactory
-     */
-    function registerPoolCommittee(
-        address pool,
-        uint96 committeeId,
-        address operator,
-        uint48 deadline,
-        bytes calldata signature
-    )
-        external
-        override
-        onlyRole(CREATOR_ROLE)
-    {
-        require(_pools.contains(pool), PoolNotRegistered());
-        require(stakeManager != address(0), ZeroAddress());
-        require(sspRouter != address(0), ZeroAddress());
-        require(operator != address(0), ZeroAddress());
-
-        emit PoolCommitteeRegistered(pool, committeeId, operator);
-
-        IStakeManager(stakeManager).addOperatorToCommittee(operator, committeeId);
-        ISSPRouter(sspRouter).registerOperatorToNetwork(operator, deadline, signature);
     }
 
     /**

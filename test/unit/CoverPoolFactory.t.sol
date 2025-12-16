@@ -13,7 +13,6 @@ import {CoverPool} from "../../src/CoverPool.sol";
 import {CoverPoolFactory} from "../../src/CoverPoolFactory.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
-import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 import {ISSPRouter} from "../../src/interfaces/ISSPRouter.sol";
 
 contract CoverPoolFactoryTest is Test {
@@ -264,6 +263,14 @@ contract CoverPoolFactoryTest is Test {
         address expected = _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
         assertEq(factory.computeCoverPoolAddress(params), expected, "Prediction mismatch");
 
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(
+                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+            ),
+            ""
+        );
+
         vm.expectEmit(false, true, true, true, address(factory));
         emit ICoverPoolFactory.CoverPoolCreated(
             address(0), params.curator, params.quoteSigner, policyManager, params.poolFeeBps
@@ -288,6 +295,15 @@ contract CoverPoolFactoryTest is Test {
 
     function test_createCoverPool_WhenParamsReused_Reverts() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(
+                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+            ),
+            ""
+        );
+
         vm.prank(creator);
         factory.createCoverPool(params);
 
@@ -300,6 +316,14 @@ contract CoverPoolFactoryTest is Test {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
         address expected = _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
         assertEq(factory.computeCoverPoolAddress(params), expected, "Prediction mismatch");
+
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(
+                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+            ),
+            ""
+        );
 
         vm.prank(creator);
         factory.createCoverPool(params);
@@ -322,6 +346,14 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.computeCoverPoolAddress(params), updatedPrediction, "Prediction mismatch");
         assertNotEq(updatedPrediction, initialPrediction, "Expected salt to incorporate policy manager");
 
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(
+                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+            ),
+            ""
+        );
+
         vm.prank(creator);
         factory.createCoverPool(params);
 
@@ -336,6 +368,15 @@ contract CoverPoolFactoryTest is Test {
         address firstPrediction =
             _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
         assertEq(factory.computeCoverPoolAddress(params), firstPrediction, "Prediction mismatch");
+
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(
+                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+            ),
+            ""
+        );
+
         vm.prank(creator);
         factory.createCoverPool(params);
         assertEq(factory.coverPoolAt(0), firstPrediction, "First deployment mismatch");
@@ -348,6 +389,14 @@ contract CoverPoolFactoryTest is Test {
             _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
         assertEq(factory.computeCoverPoolAddress(params), secondPrediction, "Prediction mismatch");
         assertNotEq(secondPrediction, firstPrediction, "Implementation change should affect prediction");
+
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(
+                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+            ),
+            ""
+        );
 
         vm.prank(creator);
         factory.createCoverPool(params);
@@ -364,6 +413,14 @@ contract CoverPoolFactoryTest is Test {
             ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
             params.curator = makeAddr(string.concat("curator", vm.toString(i)));
             params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
+
+            vm.mockCall(
+                sspRouter,
+                abi.encodeWithSelector(
+                    ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                ),
+                ""
+            );
 
             vm.prank(creator);
             factory.createCoverPool(params);
@@ -391,6 +448,14 @@ contract CoverPoolFactoryTest is Test {
             ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
             params.curator = makeAddr(string.concat("curator", vm.toString(i)));
             params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
+
+            vm.mockCall(
+                sspRouter,
+                abi.encodeWithSelector(
+                    ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                ),
+                ""
+            );
 
             vm.prank(creator);
             factory.createCoverPool(params);
@@ -476,7 +541,11 @@ contract CoverPoolFactoryTest is Test {
 
     function _defaultCreateParams() internal view returns (ICoverPoolFactory.CreateCoverPoolParams memory params) {
         params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator, quoteSigner: quoteSigner, poolFeeBps: DEFAULT_POOL_FEE
+            curator: curator,
+            quoteSigner: quoteSigner,
+            poolFeeBps: DEFAULT_POOL_FEE,
+            deadline: uint48(block.timestamp + 1 days),
+            signature: hex"1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef00"
         });
     }
 
@@ -484,6 +553,14 @@ contract CoverPoolFactoryTest is Test {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
         params.curator = makeAddr(string.concat("curator_", label));
         params.quoteSigner = makeAddr(string.concat("signer_", label));
+
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(
+                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+            ),
+            ""
+        );
 
         vm.prank(creator);
         factory.createCoverPool(params);
@@ -551,71 +628,5 @@ contract CoverPoolFactoryTest is Test {
         factory.setSSPRouter(newSSPRouter);
 
         assertEq(factory.sspRouter(), newSSPRouter, "SSPRouter not updated");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                        COMMITTEE REGISTRATION
-    //////////////////////////////////////////////////////////////*/
-    function test_registerPoolCommittee_WhenCallerNotCreator_Reverts() public {
-        address pool = _createPool("test");
-        uint96 committeeId = 1;
-        address testOperator = makeAddr("testOperator");
-        address caller = makeAddr("notCreator");
-        uint48 deadline = uint48(block.timestamp + 1 days);
-        bytes memory signature = hex"1234";
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
-        );
-        vm.prank(caller);
-        factory.registerPoolCommittee(pool, committeeId, testOperator, deadline, signature);
-    }
-
-    function test_registerPoolCommittee_WhenPoolNotRegistered_Reverts() public {
-        address fakePool = makeAddr("fakePool");
-        uint96 committeeId = 1;
-        address testOperator = makeAddr("testOperator");
-        uint48 deadline = uint48(block.timestamp + 1 days);
-        bytes memory signature = hex"1234";
-
-        vm.expectRevert(ICoverPoolFactory.PoolNotRegistered.selector);
-        vm.prank(creator);
-        factory.registerPoolCommittee(fakePool, committeeId, testOperator, deadline, signature);
-    }
-
-    function test_registerPoolCommittee_WhenOperatorZero_Reverts() public {
-        address pool = _createPool("test");
-        uint96 committeeId = 1;
-        uint48 deadline = uint48(block.timestamp + 1 days);
-        bytes memory signature = hex"1234";
-
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        vm.prank(creator);
-        factory.registerPoolCommittee(pool, committeeId, address(0), deadline, signature);
-    }
-
-    function test_registerPoolCommittee_Success() public {
-        address pool = _createPool("test");
-        uint96 committeeId = 1;
-        address testOperator = makeAddr("testOperator");
-        uint48 deadline = uint48(block.timestamp + 1 days);
-        bytes memory signature = hex"1234";
-
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(IStakeManager.addOperatorToCommittee.selector, testOperator, committeeId),
-            ""
-        );
-
-        vm.mockCall(
-            sspRouter,
-            abi.encodeWithSelector(ISSPRouter.registerOperatorToNetwork.selector, testOperator, deadline, signature),
-            ""
-        );
-
-        vm.expectEmit(true, true, true, false);
-        emit ICoverPoolFactory.PoolCommitteeRegistered(pool, committeeId, testOperator);
-        vm.prank(creator);
-        factory.registerPoolCommittee(pool, committeeId, testOperator, deadline, signature);
     }
 }
