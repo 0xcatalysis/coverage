@@ -319,8 +319,9 @@ contract ClaimManager is
      * @notice Executes premium reserve waterfall followed by slashing and converts collateral to payout tokens.
      * @dev Implements waterfall logic:
      *      1. First attempts to pay from premium reserve
-     *      2. If premium reserve insufficient, slashes only the shortfall
-     *      3. Converts slashed collateral to payout token via Swapper
+     *      2. If premiumToken != payoutToken, converts premium to payout token
+     *      3. If premium reserve insufficient, slashes only the shortfall
+     *      4. Converts slashed collateral to payout token via Swapper
      * @param policyId Identifier of the policy.
      * @param metadata Policy metadata containing committeeId, operator, and payout details.
      * @param requestedAmount Maximum amount to disburse (in payout token terms).
@@ -334,8 +335,24 @@ contract ClaimManager is
         private
         returns (uint256 totalPayout)
     {
-        // slither-disable-next-line calls-loop,unused-return
-        (totalPayout,) = IPremiumReserve(premiumReserve).payClaim(policyId, metadata.payoutReceiver, requestedAmount);
+        // slither-disable-next-line calls-loop
+        (uint256 premiumPaid, address premiumToken) =
+            IPremiumReserve(premiumReserve).payClaim(policyId, address(this), requestedAmount);
+
+        if (premiumPaid > 0) {
+            if (premiumToken == metadata.payoutToken) {
+                IERC20(premiumToken).safeTransfer(metadata.payoutReceiver, premiumPaid);
+                totalPayout = premiumPaid;
+            } else {
+                totalPayout = _swapPremiumToPayout(
+                    policyId, premiumToken, metadata.payoutToken, premiumPaid, metadata.payoutReceiver
+                );
+            }
+        }
+
+        if (totalPayout >= requestedAmount) {
+            return requestedAmount;
+        }
 
         uint256 remainingPayout = requestedAmount - totalPayout;
         // slither-disable-next-line incorrect-equality
@@ -345,6 +362,44 @@ contract ClaimManager is
 
         totalPayout += _slashAndSwap(policyId, metadata, remainingPayout);
         require(totalPayout > 0, ZeroPayoutAmount(policyId));
+    }
+
+    /**
+     * @notice Converts premium tokens to payout tokens via Swapper.
+     * @param policyId Identifier of the policy (for events).
+     * @param premiumToken Address of the premium token to convert.
+     * @param payoutToken Address of the desired payout token.
+     * @param premiumAmount Amount of premium tokens to convert.
+     * @param payoutReceiver Address to receive the payout tokens.
+     * @return payoutAmount Amount of payout tokens delivered.
+     */
+    function _swapPremiumToPayout(
+        uint256 policyId,
+        address premiumToken,
+        address payoutToken,
+        uint256 premiumAmount,
+        address payoutReceiver
+    )
+        private
+        returns (uint256 payoutAmount)
+    {
+        IERC20(premiumToken).forceApprove(swapper, premiumAmount);
+
+        ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
+            tokenIn: premiumToken,
+            tokenOut: payoutToken,
+            amountIn: premiumAmount,
+            amountOutMin: 1,
+            recipient: payoutReceiver,
+            swapCalldata: ""
+        });
+
+        // slither-disable-next-line calls-loop
+        payoutAmount = ISwapper(swapper).executeSwap(swapParams);
+
+        IERC20(premiumToken).forceApprove(swapper, 0);
+
+        emit CollateralSwapped(policyId, premiumToken, premiumAmount, payoutToken, payoutAmount);
     }
 
     /**
