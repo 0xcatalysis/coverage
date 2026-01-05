@@ -265,6 +265,11 @@ contract CoverPoolFactoryTest is Test {
 
         vm.mockCall(
             sspRouter,
+            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            abi.encode(false)
+        );
+        vm.mockCall(
+            sspRouter,
             abi.encodeWithSelector(
                 ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
             ),
@@ -298,6 +303,11 @@ contract CoverPoolFactoryTest is Test {
 
         vm.mockCall(
             sspRouter,
+            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            abi.encode(false)
+        );
+        vm.mockCall(
+            sspRouter,
             abi.encodeWithSelector(
                 ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
             ),
@@ -312,11 +322,59 @@ contract CoverPoolFactoryTest is Test {
         factory.createCoverPool(params);
     }
 
+    function test_createCoverPool_WhenSameCuratorCreateMultiplePools_Succeeds() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params1 = _defaultCreateParams();
+        params1.poolFeeBps = 100;
+
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params1.curator),
+            abi.encode(false)
+        );
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(
+                ISSPRouter.registerOperatorToNetwork.selector, params1.curator, params1.deadline, params1.signature
+            ),
+            ""
+        );
+
+        vm.prank(creator);
+        factory.createCoverPool(params1);
+        assertEq(factory.coverTotalPools(), 1, "First pool not created");
+
+        ICoverPoolFactory.CreateCoverPoolParams memory params2 = _defaultCreateParams();
+        params2.poolFeeBps = 200;
+
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params2.curator),
+            abi.encode(true)
+        );
+
+        vm.prank(creator);
+        factory.createCoverPool(params2);
+        assertEq(factory.coverTotalPools(), 2, "Second pool not created");
+
+        CoverPool pool1 = CoverPool(factory.coverPoolAt(0));
+        assertEq(pool1.poolFeeBps(), 100, "First pool fee mismatch");
+        assertEq(pool1.owner(), params1.curator, "First pool curator mismatch");
+
+        CoverPool pool2 = CoverPool(factory.coverPoolAt(1));
+        assertEq(pool2.poolFeeBps(), 200, "Second pool fee mismatch");
+        assertEq(pool2.owner(), params2.curator, "Second pool curator mismatch");
+    }
+
     function test_computeCoverPoolAddress_PredictsDeployment() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
         address expected = _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
         assertEq(factory.computeCoverPoolAddress(params), expected, "Prediction mismatch");
 
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            abi.encode(false)
+        );
         vm.mockCall(
             sspRouter,
             abi.encodeWithSelector(
@@ -348,6 +406,11 @@ contract CoverPoolFactoryTest is Test {
 
         vm.mockCall(
             sspRouter,
+            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            abi.encode(false)
+        );
+        vm.mockCall(
+            sspRouter,
             abi.encodeWithSelector(
                 ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
             ),
@@ -371,6 +434,11 @@ contract CoverPoolFactoryTest is Test {
 
         vm.mockCall(
             sspRouter,
+            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            abi.encode(false)
+        );
+        vm.mockCall(
+            sspRouter,
             abi.encodeWithSelector(
                 ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
             ),
@@ -392,10 +460,8 @@ contract CoverPoolFactoryTest is Test {
 
         vm.mockCall(
             sspRouter,
-            abi.encodeWithSelector(
-                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            ),
-            ""
+            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            abi.encode(true)
         );
 
         vm.prank(creator);
@@ -414,6 +480,11 @@ contract CoverPoolFactoryTest is Test {
             params.curator = makeAddr(string.concat("curator", vm.toString(i)));
             params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
 
+            vm.mockCall(
+                sspRouter,
+                abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+                abi.encode(false)
+            );
             vm.mockCall(
                 sspRouter,
                 abi.encodeWithSelector(
@@ -449,6 +520,11 @@ contract CoverPoolFactoryTest is Test {
             params.curator = makeAddr(string.concat("curator", vm.toString(i)));
             params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
 
+            vm.mockCall(
+                sspRouter,
+                abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+                abi.encode(false)
+            );
             vm.mockCall(
                 sspRouter,
                 abi.encodeWithSelector(
@@ -554,6 +630,11 @@ contract CoverPoolFactoryTest is Test {
         params.curator = makeAddr(string.concat("curator_", label));
         params.quoteSigner = makeAddr(string.concat("signer_", label));
 
+        vm.mockCall(
+            sspRouter,
+            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            abi.encode(false)
+        );
         vm.mockCall(
             sspRouter,
             abi.encodeWithSelector(

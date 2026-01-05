@@ -15,4 +15,11 @@ interface ISSPRouter {
      * @param signature The signature of the operator
      */
     function registerOperatorToNetwork(address operator, uint48 deadline, bytes calldata signature) external;
+
+    /**
+     * @notice Checks if an operator is registered to the network
+     * @param operator The address of the operator
+     * @return True if operator is registered to the network
+     */
+    function isOperatorRegisteredToNetwork(address operator) external view returns (bool);
 }

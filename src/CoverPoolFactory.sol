@@ -110,7 +110,9 @@ contract CoverPoolFactory is
 
         emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager, params.poolFeeBps);
 
-        ISSPRouter(sspRouter).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
+        if (!ISSPRouter(sspRouter).isOperatorRegisteredToNetwork(params.curator)) {
+            ISSPRouter(sspRouter).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
+        }
     }
 
     /**
