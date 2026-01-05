@@ -51,11 +51,6 @@ interface ICoverPoolFactory is IAccessControl {
     event PolicyManagerSet(address indexed previousPolicyManager, address indexed newPolicyManager);
 
     /**
-     * @notice Emitted when the StakeManager reference is updated.
-     */
-    event StakeManagerSet(address indexed previousStakeManager, address indexed newStakeManager);
-
-    /**
      * @notice Emitted when the SSPRouter reference is updated.
      */
     event SSPRouterSet(address indexed previousSSPRouter, address indexed newSSPRouter);
@@ -112,13 +107,6 @@ interface ICoverPoolFactory is IAccessControl {
     function setPolicyManager(address policyManager_) external;
 
     /**
-     * @notice Updates the StakeManager configured on new pools.
-     * @dev Requires CREATOR_ROLE.
-     * @param stakeManager_ Address of the new StakeManager contract.
-     */
-    function setStakeManager(address stakeManager_) external;
-
-    /**
      * @notice Updates the SSPRouter configured on new pools.
      * @dev Requires CREATOR_ROLE.
      * @param sspRouter_ Address of the new SSPRouter contract.
@@ -142,13 +130,6 @@ interface ICoverPoolFactory is IAccessControl {
      * @return The role identifier hash.
      */
     function CREATOR_ROLE() external view returns (bytes32);
-
-    /**
-     * @notice Address of the StakeManager contract from Catalysis Core.
-     * @dev Automatically set on newly created pools during initialization.
-     * @return The address of the StakeManager contract.
-     */
-    function stakeManager() external view returns (address);
 
     /**
      * @notice Address of the SSPRouter contract from Catalysis Core.

@@ -22,7 +22,6 @@ contract CoverPoolFactoryTest is Test {
     address internal admin;
     address internal creator;
     address internal policyManager;
-    address internal stakeManager;
     address internal sspRouter;
     address internal curator;
     address internal quoteSigner;
@@ -52,18 +51,15 @@ contract CoverPoolFactoryTest is Test {
 
         // Deploy mock contracts with code for external dependencies
         policyManager = address(new CoverPool());
-        stakeManager = address(new CoverPool());
         sspRouter = address(new CoverPool());
 
         vm.label(policyManager, "PolicyManager");
-        vm.label(stakeManager, "StakeManager");
         vm.label(sspRouter, "SSPRouter");
 
         address proxy = Upgrades.deployUUPSProxy(
             "CoverPoolFactory.sol:CoverPoolFactory",
             abi.encodeCall(
-                CoverPoolFactory.initialize,
-                (admin, creator, address(implementation), policyManager, stakeManager, sspRouter)
+                CoverPoolFactory.initialize, (admin, creator, address(implementation), policyManager, sspRouter)
             ),
             opts
         );
@@ -80,9 +76,7 @@ contract CoverPoolFactoryTest is Test {
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(
-                CoverPoolFactory.initialize, (admin, creator, address(0), policyManager, stakeManager, sspRouter)
-            )
+            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(0), policyManager, sspRouter))
         );
     }
 
@@ -92,20 +86,7 @@ contract CoverPoolFactoryTest is Test {
         new ERC1967Proxy(
             address(factoryImpl),
             abi.encodeCall(
-                CoverPoolFactory.initialize,
-                (admin, creator, address(implementation), address(0), stakeManager, sspRouter)
-            )
-        );
-    }
-
-    function test_initialize_WhenStakeManagerZero_Reverts() public {
-        CoverPoolFactory factoryImpl = new CoverPoolFactory();
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        new ERC1967Proxy(
-            address(factoryImpl),
-            abi.encodeCall(
-                CoverPoolFactory.initialize,
-                (admin, creator, address(implementation), policyManager, address(0), sspRouter)
+                CoverPoolFactory.initialize, (admin, creator, address(implementation), address(0), sspRouter)
             )
         );
     }
@@ -116,8 +97,7 @@ contract CoverPoolFactoryTest is Test {
         new ERC1967Proxy(
             address(factoryImpl),
             abi.encodeCall(
-                CoverPoolFactory.initialize,
-                (admin, creator, address(implementation), policyManager, stakeManager, address(0))
+                CoverPoolFactory.initialize, (admin, creator, address(implementation), policyManager, address(0))
             )
         );
     }
@@ -647,37 +627,6 @@ contract CoverPoolFactoryTest is Test {
         factory.createCoverPool(params);
 
         pool = factory.coverPoolAt(factory.coverTotalPools() - 1);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                        STAKE MANAGER CONFIGURATION
-    //////////////////////////////////////////////////////////////*/
-    function test_setStakeManager_WhenCallerNotCreator_Reverts() public {
-        address caller = makeAddr("notCreator");
-        address newStakeManager = makeAddr("newStakeManager");
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
-        );
-        vm.prank(caller);
-        factory.setStakeManager(newStakeManager);
-    }
-
-    function test_setStakeManager_WhenZeroAddress_Reverts() public {
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        vm.prank(creator);
-        factory.setStakeManager(address(0));
-    }
-
-    function test_setStakeManager_Success() public {
-        address newStakeManager = address(new CoverPool());
-
-        vm.expectEmit(true, true, false, false);
-        emit ICoverPoolFactory.StakeManagerSet(stakeManager, newStakeManager);
-        vm.prank(creator);
-        factory.setStakeManager(newStakeManager);
-
-        assertEq(factory.stakeManager(), newStakeManager, "StakeManager not updated");
     }
 
     /*//////////////////////////////////////////////////////////////

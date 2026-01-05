@@ -10,11 +10,10 @@ import {Deploy} from "./Deploy.s.sol";
  *      via environment variables:
  *      - SPEC_REGISTRY: Address of SpecRegistry from Catalysis Core
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
- *      - STAKE_MANAGER: Address of StakeManager from Catalysis Core
  *      - SSP_ROUTER: Address of SSPRouter from Catalysis Core
  *
  *      Usage:
- *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... STAKE_MANAGER=0x... SSP_ROUTER=0x... PRIVATE_KEY=0x... \
+ *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... SSP_ROUTER=0x... PRIVATE_KEY=0x... \
  *          forge script script/DeploySepolia.s.sol --broadcast --rpc-url sepolia --verify
  */
 contract DeploySepolia is Deploy {
@@ -31,7 +30,7 @@ contract DeploySepolia is Deploy {
 
     /**
      * @inheritdoc Deploy
-     * @dev Uses hardcoded WETH address for Sepolia. SpecRegistry, SlashingManager, StakeManager, and SSPRouter
+     * @dev Uses hardcoded WETH address for Sepolia. SpecRegistry, SlashingManager, and SSPRouter
      *      addresses must be provided via environment variables.
      * @return ExternalConfig with Sepolia WETH and env-loaded Catalysis Core addresses.
      */
@@ -40,7 +39,6 @@ contract DeploySepolia is Deploy {
             nativeWrapper: WETH_SEPOLIA,
             specRegistry: vm.envAddress("SPEC_REGISTRY"),
             slashingManager: vm.envAddress("SLASHING_MANAGER"),
-            stakeManager: vm.envAddress("STAKE_MANAGER"),
             sspRouter: vm.envAddress("SSP_ROUTER"),
             priceFeed: vm.envAddress("PRICE_FEED")
         });

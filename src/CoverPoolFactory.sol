@@ -33,7 +33,6 @@ contract CoverPoolFactory is
 
     EnumerableSet.AddressSet private _pools;
 
-    address public override stakeManager;
     address public override sspRouter;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -49,7 +48,6 @@ contract CoverPoolFactory is
         address creator_,
         address coverPoolImplementation_,
         address policyManager_,
-        address stakeManager_,
         address sspRouter_
     )
         external
@@ -57,7 +55,7 @@ contract CoverPoolFactory is
     {
         require(
             admin_ != address(0) && creator_ != address(0) && coverPoolImplementation_ != address(0)
-                && policyManager_ != address(0) && stakeManager_ != address(0) && sspRouter_ != address(0),
+                && policyManager_ != address(0) && sspRouter_ != address(0),
             ZeroAddress()
         );
         require(coverPoolImplementation_.code.length != 0, InvalidImplementation());
@@ -72,7 +70,6 @@ contract CoverPoolFactory is
 
         coverPoolImplementation = coverPoolImplementation_;
         policyManager = policyManager_;
-        stakeManager = stakeManager_;
         sspRouter = sspRouter_;
     }
 
@@ -138,18 +135,6 @@ contract CoverPoolFactory is
         policyManager = policyManager_;
 
         emit PolicyManagerSet(previousPolicyManager, policyManager_);
-    }
-
-    /**
-     * @inheritdoc ICoverPoolFactory
-     */
-    function setStakeManager(address stakeManager_) external override onlyRole(CREATOR_ROLE) {
-        require(stakeManager_ != address(0), ZeroAddress());
-
-        address previousStakeManager = stakeManager;
-        stakeManager = stakeManager_;
-
-        emit StakeManagerSet(previousStakeManager, stakeManager_);
     }
 
     /**
