@@ -1089,7 +1089,7 @@ contract ClaimManagerTest is Test {
         swapperMock.setPayoutToken(payoutToken);
 
         vm.expectEmit(true, true, true, false, address(claimManager));
-        emit CollateralSwapped(POLICY_ID, address(differentPremiumToken), requestedAmount, payoutToken, swappedAmount);
+        emit CollateralSwapped(POLICY_ID, address(differentPremiumToken), requestedAmount, payoutToken, requestedAmount);
 
         vm.prank(claimOperator);
         claimManager.resolveClaim(POLICY_ID, "");
@@ -1098,8 +1098,8 @@ contract ClaimManagerTest is Test {
         assertEq(record.payoutAmount, requestedAmount, "Should be capped at requested amount");
         assertEq(
             payoutTokenMock.balanceOf(payoutReceiver),
-            swappedAmount,
-            "Receiver should get full swapped amount (swapper mints directly to receiver)"
+            requestedAmount,
+            "Receiver should get requested amount (capped to prevent over-payment)"
         );
     }
 

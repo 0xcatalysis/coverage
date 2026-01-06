@@ -345,7 +345,7 @@ contract ClaimManager is
                 totalPayout = premiumPaid;
             } else {
                 totalPayout = _swapPremiumToPayout(
-                    policyId, premiumToken, metadata.payoutToken, premiumPaid, metadata.payoutReceiver
+                    policyId, premiumToken, metadata.payoutToken, premiumPaid, metadata.payoutReceiver, requestedAmount
                 );
             }
         }
@@ -366,19 +366,23 @@ contract ClaimManager is
 
     /**
      * @notice Converts premium tokens to payout tokens via Swapper.
+     * @dev Receives swap output to this contract first, then transfers only up to maxPayout
+     *      to avoid over-disbursement. Any excess from swaps remains in the contract.
      * @param policyId Identifier of the policy (for events).
      * @param premiumToken Address of the premium token to convert.
      * @param payoutToken Address of the desired payout token.
      * @param premiumAmount Amount of premium tokens to convert.
      * @param payoutReceiver Address to receive the payout tokens.
-     * @return payoutAmount Amount of payout tokens delivered.
+     * @param maxPayout Maximum payout amount to transfer (caps swap output).
+     * @return payoutAmount Amount of payout tokens delivered (capped at maxPayout).
      */
     function _swapPremiumToPayout(
         uint256 policyId,
         address premiumToken,
         address payoutToken,
         uint256 premiumAmount,
-        address payoutReceiver
+        address payoutReceiver,
+        uint256 maxPayout
     )
         private
         returns (uint256 payoutAmount)
@@ -390,12 +394,15 @@ contract ClaimManager is
             tokenOut: payoutToken,
             amountIn: premiumAmount,
             amountOutMin: 1,
-            recipient: payoutReceiver,
+            recipient: address(this),
             swapCalldata: ""
         });
 
         // slither-disable-next-line calls-loop
-        payoutAmount = ISwapper(swapper).executeSwap(swapParams);
+        uint256 swapOutput = ISwapper(swapper).executeSwap(swapParams);
+
+        payoutAmount = swapOutput > maxPayout ? maxPayout : swapOutput;
+        IERC20(payoutToken).safeTransfer(payoutReceiver, payoutAmount);
 
         IERC20(premiumToken).forceApprove(swapper, 0);
 
@@ -406,19 +413,19 @@ contract ClaimManager is
      * @notice Slashes collateral and swaps to payout token.
      * @param policyId Identifier of the policy.
      * @param metadata Policy metadata containing committeeId, operator, and payout details.
-     * @param shortfallAmount Amount needed after premium reserve depletion.
+     * @param amount Amount needed after premium reserve depletion.
      * @return payoutFromSlashing Total payout obtained from slashing and swapping.
      */
     function _slashAndSwap(
         uint256 policyId,
         IPolicy.PolicyMetadata memory metadata,
-        uint256 shortfallAmount
+        uint256 amount
     )
         private
         returns (uint256 payoutFromSlashing)
     {
         // slither-disable-next-line calls-loop
-        uint256 slashAmountUSD = IChainlinkPriceFeed(priceFeed).getUSDValue(metadata.payoutToken, shortfallAmount);
+        uint256 slashAmountUSD = IChainlinkPriceFeed(priceFeed).getUSDValue(metadata.payoutToken, amount);
 
         // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
@@ -428,7 +435,7 @@ contract ClaimManager is
         // slither-disable-next-line incorrect-equality
         require(assetsLength > 0 && assetsLength == collateralAmounts.length, NoCollateralSlashed(policyId));
 
-        uint256 remainingPayout = shortfallAmount;
+        uint256 remainingPayout = amount;
         for (uint256 i = 0; i < assetsLength && remainingPayout > 0; ++i) {
             if (collateralAmounts[i] > 0) {
                 uint256 amountOut = _processCollateral(
