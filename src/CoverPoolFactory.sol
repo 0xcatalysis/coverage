@@ -10,6 +10,7 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
+import {ISSPRouter} from "./interfaces/ISSPRouter.sol";
 
 /**
  * @title CoverPoolFactory
@@ -32,6 +33,8 @@ contract CoverPoolFactory is
 
     EnumerableSet.AddressSet private _pools;
 
+    address public override sspRouter;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -44,14 +47,15 @@ contract CoverPoolFactory is
         address admin_,
         address creator_,
         address coverPoolImplementation_,
-        address policyManager_
+        address policyManager_,
+        address sspRouter_
     )
         external
         initializer
     {
         require(
             admin_ != address(0) && creator_ != address(0) && coverPoolImplementation_ != address(0)
-                && policyManager_ != address(0),
+                && policyManager_ != address(0) && sspRouter_ != address(0),
             ZeroAddress()
         );
         require(coverPoolImplementation_.code.length != 0, InvalidImplementation());
@@ -66,6 +70,7 @@ contract CoverPoolFactory is
 
         coverPoolImplementation = coverPoolImplementation_;
         policyManager = policyManager_;
+        sspRouter = sspRouter_;
     }
 
     /**
@@ -101,31 +106,47 @@ contract CoverPoolFactory is
         _pools.add(coverPool);
 
         emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager, params.poolFeeBps);
+
+        if (!ISSPRouter(sspRouter).isOperatorRegisteredToNetwork(params.curator)) {
+            ISSPRouter(sspRouter).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
+        }
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function setCoverPoolImplementation(address newImplementation) external override onlyRole(CREATOR_ROLE) {
-        require(newImplementation != address(0), ZeroAddress());
-        require(newImplementation.code.length != 0, InvalidImplementation());
+    function setCoverPoolImplementation(address implementation_) external override onlyRole(CREATOR_ROLE) {
+        require(implementation_ != address(0), ZeroAddress());
+        require(implementation_.code.length != 0, InvalidImplementation());
 
         address previousImplementation = coverPoolImplementation;
-        coverPoolImplementation = newImplementation;
+        coverPoolImplementation = implementation_;
 
-        emit CoverPoolImplementationSet(previousImplementation, newImplementation);
+        emit CoverPoolImplementationSet(previousImplementation, implementation_);
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function setPolicyManager(address newPolicyManager) external override onlyRole(CREATOR_ROLE) {
-        require(newPolicyManager != address(0), ZeroAddress());
+    function setPolicyManager(address policyManager_) external override onlyRole(CREATOR_ROLE) {
+        require(policyManager_ != address(0), ZeroAddress());
 
         address previousPolicyManager = policyManager;
-        policyManager = newPolicyManager;
+        policyManager = policyManager_;
 
-        emit PolicyManagerSet(previousPolicyManager, newPolicyManager);
+        emit PolicyManagerSet(previousPolicyManager, policyManager_);
+    }
+
+    /**
+     * @inheritdoc ICoverPoolFactory
+     */
+    function setSSPRouter(address sspRouter_) external override onlyRole(CREATOR_ROLE) {
+        require(sspRouter_ != address(0), ZeroAddress());
+
+        address previousSSPRouter = sspRouter;
+        sspRouter = sspRouter_;
+
+        emit SSPRouterSet(previousSSPRouter, sspRouter_);
     }
 
     /**
