@@ -18,6 +18,10 @@ interface ICoverPoolFactory is IAccessControl {
         address quoteSigner;
         /// @notice Basis points routed to the curator on premium settlement.
         uint16 poolFeeBps;
+        /// @notice Deadline for the operator registration signature.
+        uint48 deadline;
+        /// @notice Operator's signature for network registration.
+        bytes signature;
     }
 
     /**
@@ -47,6 +51,11 @@ interface ICoverPoolFactory is IAccessControl {
     event PolicyManagerSet(address indexed previousPolicyManager, address indexed newPolicyManager);
 
     /**
+     * @notice Emitted when the SSPRouter reference is updated.
+     */
+    event SSPRouterSet(address indexed previousSSPRouter, address indexed newSSPRouter);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -73,54 +82,81 @@ interface ICoverPoolFactory is IAccessControl {
 
     /**
      * @notice Deploys a CoverPool clone and configures initial settings.
+     * @dev Requires CREATOR_ROLE. Emits CoverPoolCreated event.
      * @param params Struct containing cover pool parameters.
      */
     function createCoverPool(CreateCoverPoolParams calldata params) external;
 
     /**
      * @notice Updates the CoverPool implementation used for future clones.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param implementation_ Address of the new CoverPool implementation contract.
      */
-    function setCoverPoolImplementation(address newImplementation) external;
+    function setCoverPoolImplementation(address implementation_) external;
 
     /**
      * @notice Updates the PolicyManager configured on new pools.
+     * @dev Requires CREATOR_ROLE.
+     * @param policyManager_ Address of the new PolicyManager contract.
      */
-    function setPolicyManager(address newPolicyManager) external;
+    function setPolicyManager(address policyManager_) external;
+
+    /**
+     * @notice Updates the SSPRouter configured on new pools.
+     * @dev Requires CREATOR_ROLE.
+     * @param sspRouter_ Address of the new SSPRouter contract.
+     */
+    function setSSPRouter(address sspRouter_) external;
 
     /**
      * @notice Returns the CoverPool implementation address.
+     * @return The address of the CoverPool implementation contract.
      */
     function coverPoolImplementation() external view returns (address);
 
     /**
      * @notice Returns the PolicyManager address.
+     * @return The address of the PolicyManager contract.
      */
     function policyManager() external view returns (address);
 
     /**
      * @notice Role identifier allowed to create cover pools.
+     * @return The role identifier hash.
      */
     function CREATOR_ROLE() external view returns (bytes32);
 
     /**
+     * @notice Address of the SSPRouter contract from Catalysis Core.
+     * @dev Used to register operators to restaking networks.
+     * @return The address of the SSPRouter contract.
+     */
+    function sspRouter() external view returns (address);
+
+    /**
      * @notice Returns the deterministic address that would be used for a cover pool deployment.
      * @param params Struct containing cover pool parameters.
+     * @return The deterministic address for the cover pool.
      */
     function computeCoverPoolAddress(CreateCoverPoolParams calldata params) external view returns (address);
 
     /**
      * @notice Returns true when the pool has been registered.
+     * @param pool Address of the CoverPool to check.
+     * @return True if the pool exists, false otherwise.
      */
     function coverPoolExists(address pool) external view returns (bool);
 
     /**
      * @notice Returns the pool address stored at the given index.
      * @param index Position in the pool array.
+     * @return The address of the CoverPool at the specified index.
      */
     function coverPoolAt(uint256 index) external view returns (address);
 
     /**
      * @notice Returns the number of pools deployed by the factory.
+     * @return The total number of CoverPools created by this factory.
      */
     function coverTotalPools() external view returns (uint256);
 
@@ -128,6 +164,7 @@ interface ICoverPoolFactory is IAccessControl {
      * @notice Returns a slice of pool addresses.
      * @param offset Zero-based index to start the page from.
      * @param limit Maximum number of entries to return. Must be greater than zero.
+     * @return pools Array of CoverPool addresses.
      */
     function getCoverPools(uint256 offset, uint256 limit) external view returns (address[] memory pools);
 }
