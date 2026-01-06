@@ -177,14 +177,6 @@ interface IPremiumReserve is IAccessControl {
     error MaturityNotReached(uint256 policyId, uint64 maturityTime);
 
     /**
-     * @notice Reverts when the escrow balance cannot satisfy a claim drawdown.
-     * @param policyId Identifier of the escrow.
-     * @param requested Amount requested for the claim.
-     * @param available Maximum available balance across premiums and buffer.
-     */
-    error InsufficientEscrow(uint256 policyId, uint256 requested, uint256 available);
-
-    /**
      * @notice Pauses premium reserve operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
@@ -219,8 +211,16 @@ interface IPremiumReserve is IAccessControl {
      * @param policyId Identifier of the policy escrow.
      * @param payoutRecipient Address receiving the payout.
      * @param settledAmount Amount to transfer.
+     * @return paidAmount Amount actually paid from the reserve (min of settledAmount and available premium).
+     * @return premiumToken Address of the premium token used for payment.
      */
-    function payClaim(uint256 policyId, address payoutRecipient, uint256 settledAmount) external;
+    function payClaim(
+        uint256 policyId,
+        address payoutRecipient,
+        uint256 settledAmount
+    )
+        external
+        returns (uint256 paidAmount, address premiumToken);
 
     /**
      * @notice Releases escrow and distributes restaker premiums at policy maturity.

@@ -193,17 +193,18 @@ contract PremiumReserveTest is Test {
         reserve.payClaim(POLICY_ID, payoutRecipient, 100 ether);
     }
 
-    function test_payClaim_WhenExceedsFunds_Reverts() public {
+    function test_payClaim_WhenExceedsFunds_PaysAvailable() public {
         _openEscrow();
 
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(IPremiumReserve.InsufficientEscrow.selector, POLICY_ID, 1100 ether, RESTAKER_PREMIUM)
-        );
-        reserve.payClaim(POLICY_ID, payoutRecipient, 1100 ether);
+        (uint256 paidAmount, address token) = reserve.payClaim(POLICY_ID, payoutRecipient, 1100 ether);
         vm.stopPrank();
+
+        assertEq(paidAmount, RESTAKER_PREMIUM, "should pay only available amount");
+        assertEq(token, address(premiumToken), "should return premium token address");
+        assertEq(premiumToken.balanceOf(payoutRecipient), RESTAKER_PREMIUM, "recipient gets available amount");
     }
 
     function test_payClaim_ReducesRestakerPremiums() public {
@@ -211,8 +212,11 @@ contract PremiumReserveTest is Test {
 
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
-        reserve.payClaim(POLICY_ID, payoutRecipient, 600 ether);
+        (uint256 paidAmount, address token) = reserve.payClaim(POLICY_ID, payoutRecipient, 600 ether);
         vm.stopPrank();
+
+        assertEq(paidAmount, 600 ether, "should pay requested amount");
+        assertEq(token, address(premiumToken), "should return premium token address");
 
         IPremiumReserve.EscrowPosition memory stored = reserve.escrowPosition(POLICY_ID);
         assertEq(stored.policyCommit, policyCommit, "policy commit should persist after claim");
@@ -225,19 +229,22 @@ contract PremiumReserveTest is Test {
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
 
-        reserve.payClaim(POLICY_ID, payoutRecipient, 300 ether);
+        (uint256 paid1,) = reserve.payClaim(POLICY_ID, payoutRecipient, 300 ether);
+        assertEq(paid1, 300 ether, "first claim paid amount");
 
         IPremiumReserve.EscrowPosition memory stored1 = reserve.escrowPosition(POLICY_ID);
         assertEq(stored1.restakerPremiumTotal, 700 ether, "after first claim total");
         assertEq(premiumToken.balanceOf(payoutRecipient), 300 ether, "first payout");
 
-        reserve.payClaim(POLICY_ID, payoutRecipient, 200 ether);
+        (uint256 paid2,) = reserve.payClaim(POLICY_ID, payoutRecipient, 200 ether);
+        assertEq(paid2, 200 ether, "second claim paid amount");
 
         IPremiumReserve.EscrowPosition memory stored2 = reserve.escrowPosition(POLICY_ID);
         assertEq(stored2.restakerPremiumTotal, 500 ether, "after second claim total");
         assertEq(premiumToken.balanceOf(payoutRecipient), 500 ether, "cumulative payout");
 
-        reserve.payClaim(POLICY_ID, payoutRecipient, 500 ether);
+        (uint256 paid3,) = reserve.payClaim(POLICY_ID, payoutRecipient, 500 ether);
+        assertEq(paid3, 500 ether, "third claim paid amount");
         vm.stopPrank();
 
         IPremiumReserve.EscrowPosition memory stored3 = reserve.escrowPosition(POLICY_ID);
@@ -253,8 +260,11 @@ contract PremiumReserveTest is Test {
 
         vm.expectEmit();
         emit ClaimPaid(POLICY_ID, RESTAKER_PREMIUM);
-        reserve.payClaim(POLICY_ID, payoutRecipient, RESTAKER_PREMIUM);
+        (uint256 paidAmount, address token) = reserve.payClaim(POLICY_ID, payoutRecipient, RESTAKER_PREMIUM);
         vm.stopPrank();
+
+        assertEq(paidAmount, RESTAKER_PREMIUM, "should pay full amount");
+        assertEq(token, address(premiumToken), "should return premium token address");
 
         IPremiumReserve.EscrowPosition memory stored = reserve.escrowPosition(POLICY_ID);
         assertEq(stored.restakerPremiumTotal, 0, "total should be zero");
@@ -267,7 +277,8 @@ contract PremiumReserveTest is Test {
 
         vm.startPrank(claimManager);
         reserve.setClaimLockStatus(POLICY_ID, true);
-        reserve.payClaim(POLICY_ID, payoutRecipient, 400 ether);
+        (uint256 paidAmount,) = reserve.payClaim(POLICY_ID, payoutRecipient, 400 ether);
+        assertEq(paidAmount, 400 ether, "should pay requested amount");
         reserve.setClaimLockStatus(POLICY_ID, false);
         vm.stopPrank();
 
