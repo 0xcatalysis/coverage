@@ -71,11 +71,6 @@ interface ICoverPoolFactory is IAccessControl {
     error InvalidLimit();
 
     /**
-     * @notice Reverts when attempting to register/unregister a committee for a pool that doesn't exist.
-     */
-    error PoolNotRegistered();
-
-    /**
      * @notice Pauses cover pool creation.
      */
     function pause() external;
