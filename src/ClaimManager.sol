@@ -197,6 +197,8 @@ contract ClaimManager is
         nonReentrant
     {
         _fileClaim(policyId, requestedAmount, evidenceHash);
+        // slither-disable-next-line calls-loop
+        IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
     }
 
     /**
@@ -226,11 +228,16 @@ contract ClaimManager is
             claim.status = ClaimStatus.Rejected;
             emit ClaimRejected(policyId, "Spec evaluation failed", block.timestamp);
             // slither-disable-next-line calls-loop
+            IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
+            // slither-disable-next-line calls-loop
             IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
             return;
         }
 
         claim.status = ClaimStatus.Approved;
+
+        // slither-disable-next-line calls-loop
+        IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
 
         // slither-disable-next-line reentrancy-no-eth
         uint256 totalPayout = _executeSlashingAndPayout(policyId, metadata, requestedAmount);
@@ -330,7 +337,7 @@ contract ClaimManager is
 
     /**
      * @notice Internal helper for filing a claim with all validations.
-     * @dev Validates preconditions, locks escrow, and records the claim.
+     * @dev Validates preconditions and records the claim. Caller must lock escrow.
      *      Returns policy metadata for use in atomic resolution.
      * @param policyId Identifier of the policy to claim against.
      * @param requestedAmount Requested payout amount in payout token terms.
@@ -365,9 +372,6 @@ contract ClaimManager is
 
         ClaimRecord storage claim = _claims[policyId];
         require(claim.status == ClaimStatus.None, ClaimAlreadyFiled(policyId));
-
-        // slither-disable-next-line calls-loop
-        IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
 
         claim.status = ClaimStatus.Filed;
         claim.reporter = msg.sender;
