@@ -274,6 +274,27 @@ interface IClaimManager is IAccessControl {
     function fileClaim(uint256 policyId, uint256 requestedAmount, bytes32 evidenceHash) external;
 
     /**
+     * @notice Atomically files and resolves a claim in a single transaction.
+     * @dev Requires CLAIM_OPERATOR_ROLE. Combines filing and resolution into one atomic operation:
+     *      1. Validates claim preconditions and locks escrow
+     *      2. Evaluates the registered Spec for the policy's product
+     *      3. If approved: executes premium waterfall → slashes shortfall → swaps → pays beneficiary
+     *      4. Unlocks escrow regardless of outcome
+     *
+     * @param policyId Identifier of the policy to claim against.
+     * @param requestedAmount Requested payout amount in payout token terms (must be <= coverageLimit).
+     * @param evidenceHash Hash of evidence supporting the claim (e.g., IPFS CID).
+     * @param additionalData Optional ABI-encoded data for Spec evaluation.
+     */
+    function fileAndResolveClaim(
+        uint256 policyId,
+        uint256 requestedAmount,
+        bytes32 evidenceHash,
+        bytes calldata additionalData
+    )
+        external;
+
+    /**
      * @notice Resolves a filed claim by evaluating the Spec and executing payout if approved.
      * @dev Requires CLAIM_OPERATOR_ROLE.
      *      Evaluates the registered Spec for the policy's product.
