@@ -218,6 +218,9 @@ contract ClaimManager is
     {
         IPolicy.PolicyMetadata memory metadata = _fileClaim(policyId, requestedAmount, evidenceHash);
 
+        // slither-disable-next-line calls-loop
+        IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
+
         ClaimRecord storage claim = _claims[policyId];
 
         ISpec.EvaluationResult memory result = _evaluateSpec(policyId, metadata, evidenceHash, additionalData);
@@ -227,13 +230,12 @@ contract ClaimManager is
         if (!result.isPayable) {
             claim.status = ClaimStatus.Rejected;
             emit ClaimRejected(policyId, "Spec evaluation failed", block.timestamp);
+            // slither-disable-next-line calls-loop
+            IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
             return;
         }
 
         claim.status = ClaimStatus.Approved;
-
-        // slither-disable-next-line calls-loop
-        IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
 
         // slither-disable-next-line reentrancy-no-eth
         uint256 totalPayout = _executeSlashingAndPayout(policyId, metadata, requestedAmount);
