@@ -30,7 +30,7 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  *
  *      Claim Flow:
  *      1. fileClaim: Any reporter files claim, escrow locked
- *      2. resolveClaim: Operator evaluates Spec, if approved → premium reserve waterfall → slash shortfall → swap
+ *      2. approveClaim: Operator evaluates Spec, if approved → premium reserve waterfall → slash shortfall → swap
  * → payout
  *      3. rejectClaim: Operator manually rejects, escrow unlocked
  *
@@ -245,7 +245,7 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function resolveClaim(
+    function approveClaim(
         uint256 policyId,
         bytes calldata additionalData
     )
