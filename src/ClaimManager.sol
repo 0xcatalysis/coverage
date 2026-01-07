@@ -237,12 +237,17 @@ contract ClaimManager is
             claim.status = ClaimStatus.Rejected;
             emit ClaimRejected(policyId, "Spec evaluation failed", block.timestamp);
             // slither-disable-next-line calls-loop
+            IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
+            // slither-disable-next-line calls-loop
             IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
             return;
         }
 
         claim.status = ClaimStatus.Approved;
         _pendingClaimCounts[policyId]--;
+
+        // slither-disable-next-line calls-loop
+        IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
 
         // slither-disable-next-line reentrancy-no-eth
         claim.payoutAmount = totalPayout;
