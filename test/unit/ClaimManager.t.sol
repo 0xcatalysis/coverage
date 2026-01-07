@@ -1591,6 +1591,7 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.priceFeed(), priceFeed, "PriceFeed should be preserved");
     }
 
+
     /*//////////////////////////////////////////////////////////////
                                HELPERS
     //////////////////////////////////////////////////////////////*/
