@@ -926,6 +926,10 @@ contract ClaimManagerTest is Test {
         assertEq(collateralTokenMock.balanceOf(address(claimManager)), excess, "Excess should remain in ClaimManager");
     }
 
+    /*//////////////////////////////////////////////////////////////
+                    PREMIUM RESERVE WATERFALL
+    //////////////////////////////////////////////////////////////*/
+
     function test_approveClaim_WhenPremiumReserveSufficient_NeverSlashes() public {
         uint256 requestedAmount = 500 ether;
         uint256 premiumAvailable = 600 ether;
@@ -1089,6 +1093,10 @@ contract ClaimManagerTest is Test {
             "Receiver should get 100k from reserve + 150k from slashing"
         );
     }
+
+    /*//////////////////////////////////////////////////////////////
+                    PREMIUM/PAYOUT TOKEN CONVERSION
+    //////////////////////////////////////////////////////////////*/
 
     function test_approveClaim_WhenPremiumTokenDifferentFromPayoutToken_ConvertsAndPays() public {
         uint256 requestedAmount = 500 ether;
