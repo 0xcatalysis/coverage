@@ -595,7 +595,6 @@ contract ClaimManagerTest is Test {
         vm.prank(buyer);
         uint256 claimId1 = claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash);
 
-        // Approve first claim to exhaust coverage
         specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
         address[] memory assets = new address[](1);
         assets[0] = collateralToken;
@@ -610,7 +609,6 @@ contract ClaimManagerTest is Test {
         vm.prank(claimOperator);
         claimManager.approveClaim(POLICY_ID, claimId1, "");
 
-        // Try to file another claim when coverage is exhausted
         bytes32 evidenceHash2 = keccak256("evidence-hash-2");
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -1505,11 +1503,13 @@ contract ClaimManagerTest is Test {
         vm.prank(claimOperator);
         claimManager.approveClaim(POLICY_ID, claimId1, "");
 
-        assertEq(claimManager.remainingCoverage(POLICY_ID), 0, "No coverage should remain after first claim");
-
-        vm.expectRevert(abi.encodeWithSelector(IClaimManager.ZeroPayoutAmount.selector, POLICY_ID));
         vm.prank(claimOperator);
         claimManager.approveClaim(POLICY_ID, claimId2, "");
+
+        IClaimManager.ClaimRecord memory record2 = claimManager.claimRecord(POLICY_ID, claimId2);
+        assertEq(uint8(record2.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should still be approved");
+        assertEq(record2.payoutAmount, 0, "Payout should be zero when coverage exhausted");
+        assertEq(claimManager.remainingCoverage(POLICY_ID), 0, "No coverage should remain");
     }
 
     function test_approveClaim_WhenSlashingReturnsZeroButArraysNonEmpty_Reverts() public {
@@ -1566,7 +1566,6 @@ contract ClaimManagerTest is Test {
     }
 
     function test_fileAndResolveClaim_WhenMultiplePartialClaims_AllowsMultipleClaims() public {
-        // File and approve first claim for half the coverage
         uint256 halfCoverage = COVERAGE_LIMIT / 2;
         bytes32 evidenceHash1 = keccak256("evidence-1");
 
@@ -1584,14 +1583,12 @@ contract ClaimManagerTest is Test {
         vm.prank(claimOperator);
         uint256 claimId1 = claimManager.fileAndResolveClaim(POLICY_ID, halfCoverage, evidenceHash1, "");
 
-        // File and approve second claim for remaining coverage
         bytes32 evidenceHash2 = keccak256("evidence-2");
         collateralTokenMock.mint(address(slashingManager), halfCoverage);
 
         vm.prank(claimOperator);
         uint256 claimId2 = claimManager.fileAndResolveClaim(POLICY_ID, halfCoverage, evidenceHash2, "");
 
-        // Verify both claims exist and are approved
         assertEq(claimId1, 0, "First claim should have ID 0");
         assertEq(claimId2, 1, "Second claim should have ID 1");
 
@@ -1601,12 +1598,10 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(record1.status), uint8(IClaimManager.ClaimStatus.Approved), "First claim should be approved");
         assertEq(uint8(record2.status), uint8(IClaimManager.ClaimStatus.Approved), "Second claim should be approved");
 
-        // Verify total payout
         IClaimManager.PolicyClaim memory state = claimManager.policyClaim(POLICY_ID);
         assertEq(state.totalPaidOut, COVERAGE_LIMIT, "Total payout should equal coverage limit");
         assertEq(state.claimCount, 2, "Should have 2 claims");
 
-        // Verify remaining coverage is zero
         assertEq(claimManager.remainingCoverage(POLICY_ID), 0, "No coverage should remain");
     }
 
@@ -1615,23 +1610,18 @@ contract ClaimManagerTest is Test {
         bytes32 evidenceHash1 = keccak256("evidence-1");
         bytes32 evidenceHash2 = keccak256("evidence-2");
 
-        // File first claim
         vm.prank(buyer);
         uint256 claimId1 = claimManager.fileClaim(POLICY_ID, halfCoverage, evidenceHash1);
 
-        // Verify escrow is locked and pending count is 1
         assertTrue(premiumReserveMock.isClaimLockSet(POLICY_ID), "Escrow should be locked after first claim");
         assertEq(claimManager.pendingClaimCount(POLICY_ID), 1, "Pending count should be 1");
 
-        // File second claim
         vm.prank(buyer);
         uint256 claimId2 = claimManager.fileClaim(POLICY_ID, halfCoverage, evidenceHash2);
 
-        // Verify escrow is still locked and pending count is 2
         assertTrue(premiumReserveMock.isClaimLockSet(POLICY_ID), "Escrow should remain locked");
         assertEq(claimManager.pendingClaimCount(POLICY_ID), 2, "Pending count should be 2");
 
-        // Setup for claim approval
         specMock.setEvaluationResult(true, halfCoverage, keccak256("approved"));
         address[] memory assets = new address[](1);
         assets[0] = collateralToken;
@@ -1643,40 +1633,31 @@ contract ClaimManagerTest is Test {
         swapperMock.setSwapOutput(halfCoverage);
         swapperMock.setPayoutToken(payoutToken);
 
-        // Approve first claim
         vm.prank(claimOperator);
         claimManager.approveClaim(POLICY_ID, claimId1, "");
 
-        // Verify escrow is still locked (one claim still pending)
         assertTrue(premiumReserveMock.isClaimLockSet(POLICY_ID), "Escrow should remain locked with pending claim");
         assertEq(claimManager.pendingClaimCount(POLICY_ID), 1, "Pending count should be 1 after first approval");
 
-        // Approve second claim
         vm.prank(claimOperator);
         claimManager.approveClaim(POLICY_ID, claimId2, "");
 
-        // Verify escrow is now unlocked (no pending claims)
         assertFalse(premiumReserveMock.isClaimLockSet(POLICY_ID), "Escrow should be unlocked when all claims resolved");
         assertEq(claimManager.pendingClaimCount(POLICY_ID), 0, "Pending count should be 0");
     }
 
     function test_approveClaim_WhenConcurrentClaimsExceedCoverage_CapsPayoutToRemaining() public {
-        // Policy with 1000 coverage
-        // File two claims for 600 each (sum = 1200 > 1000)
-        // First approved should get 600, second should get 400 (capped to remaining)
         uint256 claimAmount = 600 ether;
-        uint256 expectedSecondPayout = COVERAGE_LIMIT - claimAmount; // 400
+        uint256 expectedSecondPayout = COVERAGE_LIMIT - claimAmount;
         bytes32 evidenceHash1 = keccak256("evidence-1");
         bytes32 evidenceHash2 = keccak256("evidence-2");
 
-        // File both claims while totalPaidOut = 0
         vm.prank(buyer);
         uint256 claimId1 = claimManager.fileClaim(POLICY_ID, claimAmount, evidenceHash1);
 
         vm.prank(buyer);
         uint256 claimId2 = claimManager.fileClaim(POLICY_ID, claimAmount, evidenceHash2);
 
-        // Setup for first claim approval
         specMock.setEvaluationResult(true, claimAmount, keccak256("approved"));
         address[] memory assets = new address[](1);
         assets[0] = collateralToken;
@@ -1688,7 +1669,6 @@ contract ClaimManagerTest is Test {
         swapperMock.setSwapOutput(claimAmount);
         swapperMock.setPayoutToken(payoutToken);
 
-        // Approve first claim - should get full 600
         vm.prank(claimOperator);
         claimManager.approveClaim(POLICY_ID, claimId1, "");
 
@@ -1696,20 +1676,17 @@ contract ClaimManagerTest is Test {
         assertEq(record1.payoutAmount, claimAmount, "First claim should get full amount");
         assertEq(claimManager.remainingCoverage(POLICY_ID), expectedSecondPayout, "Remaining should be 400");
 
-        // Setup for second claim - update mock to return capped amount
         amounts[0] = expectedSecondPayout;
         slashingManagerMock.setSlashResult(assets, amounts);
         collateralTokenMock.mint(address(slashingManager), expectedSecondPayout);
         swapperMock.setSwapOutput(expectedSecondPayout);
 
-        // Approve second claim - should be capped to 400 (remaining coverage)
         vm.prank(claimOperator);
         claimManager.approveClaim(POLICY_ID, claimId2, "");
 
         IClaimManager.ClaimRecord memory record2 = claimManager.claimRecord(POLICY_ID, claimId2);
         assertEq(record2.payoutAmount, expectedSecondPayout, "Second claim should be capped to remaining coverage");
 
-        // Verify total paid equals coverage limit
         IClaimManager.PolicyClaim memory state = claimManager.policyClaim(POLICY_ID);
         assertEq(state.totalPaidOut, COVERAGE_LIMIT, "Total paid should equal coverage limit");
         assertEq(claimManager.remainingCoverage(POLICY_ID), 0, "No coverage should remain");
