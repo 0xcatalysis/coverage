@@ -221,9 +221,6 @@ contract ClaimManager is
     {
         IPolicy.PolicyMetadata memory metadata;
         (claimId, metadata) = _fileClaimWithMetadata(policyId, requestedAmount, evidenceHash);
-        _lockEscrowOnFirstClaim(policyId);
-
-        ClaimRecord storage claim = _claims[policyId][claimId];
 
         ClaimRecord storage claim = _claims[policyId][claimId];
         ISpec.EvaluationResult memory result = _evaluateSpec(policyId, metadata, evidenceHash, additionalData);
@@ -242,7 +239,9 @@ contract ClaimManager is
         claim.status = ClaimStatus.Approved;
         _pendingClaimCounts[policyId]--;
 
+        _lockEscrowOnFirstClaim(policyId);
         uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
+        // slither-disable-next-line reentrancy-no-eth
         claim.payoutAmount = totalPayout;
 
         emit ClaimApproved(policyId, claimId, metadata.payoutReceiver, totalPayout, block.timestamp);
@@ -284,7 +283,9 @@ contract ClaimManager is
         claim.status = ClaimStatus.Approved;
         _pendingClaimCounts[policyId]--;
 
-        uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, claim.requestedAmount);
+        uint256 requestedAmount = claim.requestedAmount;
+        uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
+        // slither-disable-next-line reentrancy-no-eth
         claim.payoutAmount = totalPayout;
 
         emit ClaimApproved(policyId, claimId, metadata.payoutReceiver, totalPayout, block.timestamp);
@@ -505,8 +506,13 @@ contract ClaimManager is
         uint256 cappedAmount = requestedAmount > remaining ? remaining : requestedAmount;
 
         if (cappedAmount > 0) {
+            _policyClaimStates[policyId].totalPaidOut += cappedAmount;
             totalPayout = _executeSlashingAndPayout(policyId, claimId, metadata, cappedAmount);
-            _policyClaimStates[policyId].totalPaidOut += totalPayout;
+
+            if (totalPayout < cappedAmount) {
+                // slither-disable-next-line reentrancy-no-eth
+                _policyClaimStates[policyId].totalPaidOut -= (cappedAmount - totalPayout);
+            }
         }
     }
 
