@@ -45,7 +45,7 @@ interface IClaimManager is IAccessControl {
     /**
      * @notice Policy claim state tracking total payouts and claim count.
      */
-    struct PolicyClaim {
+    struct PolicyClaimState {
         /// @notice Total amount paid out across all claims for this policy.
         uint256 totalPaidOut;
         /// @notice Number of claims filed for this policy.
@@ -399,16 +399,16 @@ interface IClaimManager is IAccessControl {
     /**
      * @notice Returns the policy claim state tracking total payouts.
      * @param policyId Identifier of the policy.
-     * @return PolicyClaim snapshot with total paid out and claim count.
+     * @return PolicyClaimState snapshot with total paid out and claim count.
      */
-    function policyClaim(uint256 policyId) external view returns (PolicyClaim memory);
+    function policyClaimState(uint256 policyId) external view returns (PolicyClaimState memory);
 
     /**
      * @notice Returns the remaining coverage available for a policy.
      * @param policyId Identifier of the policy.
-     * @return remaining Amount of coverage remaining after all approved claims.
+     * @return remainingCoverage Amount of coverage remaining after all approved claims.
      */
-    function remainingCoverage(uint256 policyId) external view returns (uint256 remaining);
+    function remainingCoverage(uint256 policyId) external view returns (uint256 remainingCoverage);
 
     /**
      * @notice Returns the number of pending (filed but not resolved) claims for a policy.

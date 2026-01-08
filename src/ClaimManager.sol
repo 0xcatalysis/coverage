@@ -62,7 +62,7 @@ contract ClaimManager is
     address public override priceFeed;
 
     mapping(uint256 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
-    mapping(uint256 policyId => PolicyClaim) private _policyClaims;
+    mapping(uint256 policyId => PolicyClaimState) private _policyClaimStates;
     mapping(uint256 policyId => uint256 pendingClaimCount) private _pendingClaimCounts;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -221,11 +221,9 @@ contract ClaimManager is
     {
         IPolicy.PolicyMetadata memory metadata;
         (claimId, metadata) = _fileClaimWithMetadata(policyId, requestedAmount, evidenceHash);
+        _lockEscrowOnFirstClaim(policyId);
 
-        // slither-disable-next-line calls-loop
-        IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
-
-        ClaimRecord storage claim = _claims[policyId];
+        ClaimRecord storage claim = _claims[policyId][claimId];
 
         ClaimRecord storage claim = _claims[policyId][claimId];
         ISpec.EvaluationResult memory result = _evaluateSpec(policyId, metadata, evidenceHash, additionalData);
@@ -235,17 +233,16 @@ contract ClaimManager is
 
         if (!result.isPayable) {
             claim.status = ClaimStatus.Rejected;
-            emit ClaimRejected(policyId, "Spec evaluation failed", block.timestamp);
-            return;
+            _pendingClaimCounts[policyId]--;
+            emit ClaimRejected(policyId, claimId, "Spec evaluation failed", block.timestamp);
+            _unlockEscrowIfNoPendingClaims(policyId);
+            return claimId;
         }
 
         claim.status = ClaimStatus.Approved;
         _pendingClaimCounts[policyId]--;
 
-        // slither-disable-next-line calls-loop
-        IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
-
-        // slither-disable-next-line reentrancy-no-eth
+        uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
         claim.payoutAmount = totalPayout;
 
         emit ClaimApproved(policyId, claimId, metadata.payoutReceiver, totalPayout, block.timestamp);
@@ -276,7 +273,9 @@ contract ClaimManager is
             claim.evaluationResult = result;
             claim.resolvedAt = block.timestamp;
             claim.status = ClaimStatus.Rejected;
-            _rejectClaimAndUnlock(policyId, claimId, "Spec evaluation failed");
+            _pendingClaimCounts[policyId]--;
+            emit ClaimRejected(policyId, claimId, "Spec evaluation failed", block.timestamp);
+            _unlockEscrowIfNoPendingClaims(policyId);
             return;
         }
 
@@ -285,10 +284,7 @@ contract ClaimManager is
         claim.status = ClaimStatus.Approved;
         _pendingClaimCounts[policyId]--;
 
-        uint256 requestedAmount = claim.requestedAmount;
-        uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
-        require(totalPayout > 0, ZeroPayoutAmount(policyId));
-        // slither-disable-next-line reentrancy-no-eth
+        uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, claim.requestedAmount);
         claim.payoutAmount = totalPayout;
 
         emit ClaimApproved(policyId, claimId, metadata.payoutReceiver, totalPayout, block.timestamp);
@@ -314,7 +310,10 @@ contract ClaimManager is
 
         claim.status = ClaimStatus.Rejected;
         claim.resolvedAt = block.timestamp;
-        _rejectClaimAndUnlock(policyId, claimId, reason);
+        _pendingClaimCounts[policyId]--;
+
+        emit ClaimRejected(policyId, claimId, reason, block.timestamp);
+        _unlockEscrowIfNoPendingClaims(policyId);
     }
 
     /**
@@ -327,8 +326,8 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function policyClaim(uint256 policyId) external view override returns (PolicyClaim memory) {
-        return _policyClaims[policyId];
+    function policyClaimState(uint256 policyId) external view override returns (PolicyClaimState memory) {
+        return _policyClaimStates[policyId];
     }
 
     /**
@@ -336,7 +335,7 @@ contract ClaimManager is
      */
     function remainingCoverage(uint256 policyId) external view override returns (uint256) {
         IPolicy.PolicyMetadata memory metadata = IPolicy(policy).policyMetadata(policyId);
-        uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
+        uint256 totalPaidOut = _policyClaimStates[policyId].totalPaidOut;
         return totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
     }
 
@@ -382,18 +381,6 @@ contract ClaimManager is
     }
 
     /**
-     * @notice Rejects a claim by decrementing pending count, emitting rejection event, and unlocking escrow.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim.
-     * @param reason Reason for rejection.
-     */
-    function _rejectClaimAndUnlock(uint256 policyId, uint256 claimId, string memory reason) private {
-        _pendingClaimCounts[policyId]--;
-        emit ClaimRejected(policyId, claimId, reason, block.timestamp);
-        _unlockEscrowIfNoPendingClaims(policyId);
-    }
-
-    /**
      * @notice Internal helper for filing a claim with all validations.
      * @param policyId Identifier of the policy to claim against.
      * @param requestedAmount Requested payout amount in payout token terms.
@@ -414,7 +401,7 @@ contract ClaimManager is
         IPolicy.PolicyMetadata memory metadata = IPolicy(policy).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
 
-        uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
+        uint256 totalPaidOut = _policyClaimStates[policyId].totalPaidOut;
         uint256 remaining = totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
 
         require(
@@ -428,7 +415,7 @@ contract ClaimManager is
 
         require(!IPremiumReserve(premiumReserve).isEscrowReleased(policyId), EscrowAlreadyReleased(policyId));
 
-        claimId = _policyClaims[policyId].claimCount;
+        claimId = _policyClaimStates[policyId].claimCount;
         ClaimRecord storage claim = _claims[policyId][claimId];
         require(claim.status == ClaimStatus.None, ClaimAlreadyFiled(policyId, claimId));
 
@@ -438,7 +425,7 @@ contract ClaimManager is
         claim.evidenceHash = evidenceHash;
         claim.requestedAmount = requestedAmount;
 
-        _policyClaims[policyId].claimCount++;
+        _policyClaimStates[policyId].claimCount++;
         _pendingClaimCounts[policyId]++;
 
         emit ClaimFiled(policyId, claimId, msg.sender, evidenceHash, requestedAmount, block.timestamp);
@@ -466,7 +453,7 @@ contract ClaimManager is
         metadata = IPolicy(policy).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
 
-        uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
+        uint256 totalPaidOut = _policyClaimStates[policyId].totalPaidOut;
         uint256 remaining = totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
 
         require(
@@ -480,7 +467,7 @@ contract ClaimManager is
 
         require(!IPremiumReserve(premiumReserve).isEscrowReleased(policyId), EscrowAlreadyReleased(policyId));
 
-        claimId = _policyClaims[policyId].claimCount;
+        claimId = _policyClaimStates[policyId].claimCount;
         ClaimRecord storage claim = _claims[policyId][claimId];
         require(claim.status == ClaimStatus.None, ClaimAlreadyFiled(policyId, claimId));
 
@@ -490,7 +477,7 @@ contract ClaimManager is
         claim.evidenceHash = evidenceHash;
         claim.requestedAmount = requestedAmount;
 
-        _policyClaims[policyId].claimCount++;
+        _policyClaimStates[policyId].claimCount++;
         _pendingClaimCounts[policyId]++;
 
         emit ClaimFiled(policyId, claimId, msg.sender, evidenceHash, requestedAmount, block.timestamp);
@@ -513,18 +500,13 @@ contract ClaimManager is
         private
         returns (uint256 totalPayout)
     {
-        uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
+        uint256 totalPaidOut = _policyClaimStates[policyId].totalPaidOut;
         uint256 remaining = totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
         uint256 cappedAmount = requestedAmount > remaining ? remaining : requestedAmount;
 
         if (cappedAmount > 0) {
-            _policyClaims[policyId].totalPaidOut += cappedAmount;
             totalPayout = _executeSlashingAndPayout(policyId, claimId, metadata, cappedAmount);
-
-            if (totalPayout < cappedAmount) {
-                // slither-disable-next-line reentrancy-no-eth
-                _policyClaims[policyId].totalPaidOut -= (cappedAmount - totalPayout);
-            }
+            _policyClaimStates[policyId].totalPaidOut += totalPayout;
         }
     }
 
