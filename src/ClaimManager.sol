@@ -222,6 +222,9 @@ contract ClaimManager is
         IPolicy.PolicyMetadata memory metadata;
         (claimId, metadata) = _fileClaimWithMetadata(policyId, requestedAmount, evidenceHash);
 
+        // slither-disable-next-line reentrancy-no-eth
+        _lockEscrowOnFirstClaim(policyId);
+
         ClaimRecord storage claim = _claims[policyId][claimId];
         ISpec.EvaluationResult memory result = _evaluateSpec(policyId, metadata, evidenceHash, additionalData);
 
@@ -239,7 +242,6 @@ contract ClaimManager is
         claim.status = ClaimStatus.Approved;
         _pendingClaimCounts[policyId]--;
 
-        _lockEscrowOnFirstClaim(policyId);
         uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
         // slither-disable-next-line reentrancy-no-eth
         claim.payoutAmount = totalPayout;
