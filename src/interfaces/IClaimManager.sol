@@ -45,7 +45,7 @@ interface IClaimManager is IAccessControl {
     /**
      * @notice Policy claim state tracking total payouts and claim count.
      */
-    struct PolicyClaimState {
+    struct PolicyClaim {
         /// @notice Total amount paid out across all claims for this policy.
         uint256 totalPaidOut;
         /// @notice Number of claims filed for this policy.
@@ -399,9 +399,9 @@ interface IClaimManager is IAccessControl {
     /**
      * @notice Returns the policy claim state tracking total payouts.
      * @param policyId Identifier of the policy.
-     * @return PolicyClaimState snapshot with total paid out and claim count.
+     * @return PolicyClaim snapshot with total paid out and claim count.
      */
-    function policyClaimState(uint256 policyId) external view returns (PolicyClaimState memory);
+    function policyClaim(uint256 policyId) external view returns (PolicyClaim memory);
 
     /**
      * @notice Returns the remaining coverage available for a policy.

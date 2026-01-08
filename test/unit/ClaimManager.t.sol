@@ -1602,7 +1602,7 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(record2.status), uint8(IClaimManager.ClaimStatus.Approved), "Second claim should be approved");
 
         // Verify total payout
-        IClaimManager.PolicyClaimState memory state = claimManager.policyClaimState(POLICY_ID);
+        IClaimManager.PolicyClaim memory state = claimManager.policyClaim(POLICY_ID);
         assertEq(state.totalPaidOut, COVERAGE_LIMIT, "Total payout should equal coverage limit");
         assertEq(state.claimCount, 2, "Should have 2 claims");
 
@@ -1710,7 +1710,7 @@ contract ClaimManagerTest is Test {
         assertEq(record2.payoutAmount, expectedSecondPayout, "Second claim should be capped to remaining coverage");
 
         // Verify total paid equals coverage limit
-        IClaimManager.PolicyClaimState memory state = claimManager.policyClaimState(POLICY_ID);
+        IClaimManager.PolicyClaim memory state = claimManager.policyClaim(POLICY_ID);
         assertEq(state.totalPaidOut, COVERAGE_LIMIT, "Total paid should equal coverage limit");
         assertEq(claimManager.remainingCoverage(POLICY_ID), 0, "No coverage should remain");
     }
