@@ -62,7 +62,7 @@ contract ClaimManager is
     address public override priceFeed;
 
     mapping(uint256 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
-    mapping(uint256 policyId => PolicyClaimState) private _policyClaimStates;
+    mapping(uint256 policyId => PolicyClaim) private _policyClaims;
     mapping(uint256 policyId => uint256 pendingClaimCount) private _pendingClaimCounts;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -327,8 +327,8 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function policyClaimState(uint256 policyId) external view override returns (PolicyClaimState memory) {
-        return _policyClaimStates[policyId];
+    function policyClaim(uint256 policyId) external view override returns (PolicyClaim memory) {
+        return _policyClaims[policyId];
     }
 
     /**
@@ -336,7 +336,7 @@ contract ClaimManager is
      */
     function remainingCoverage(uint256 policyId) external view override returns (uint256) {
         IPolicy.PolicyMetadata memory metadata = IPolicy(policy).policyMetadata(policyId);
-        uint256 totalPaidOut = _policyClaimStates[policyId].totalPaidOut;
+        uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
         return totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
     }
 
@@ -402,7 +402,7 @@ contract ClaimManager is
         IPolicy.PolicyMetadata memory metadata = IPolicy(policy).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
 
-        uint256 totalPaidOut = _policyClaimStates[policyId].totalPaidOut;
+        uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
         uint256 remaining = totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
 
         require(
@@ -416,7 +416,7 @@ contract ClaimManager is
 
         require(!IPremiumReserve(premiumReserve).isEscrowReleased(policyId), EscrowAlreadyReleased(policyId));
 
-        claimId = _policyClaimStates[policyId].claimCount;
+        claimId = _policyClaims[policyId].claimCount;
         ClaimRecord storage claim = _claims[policyId][claimId];
         require(claim.status == ClaimStatus.None, ClaimAlreadyFiled(policyId, claimId));
 
@@ -426,7 +426,7 @@ contract ClaimManager is
         claim.evidenceHash = evidenceHash;
         claim.requestedAmount = requestedAmount;
 
-        _policyClaimStates[policyId].claimCount++;
+        _policyClaims[policyId].claimCount++;
         _pendingClaimCounts[policyId]++;
 
         emit ClaimFiled(policyId, claimId, msg.sender, evidenceHash, requestedAmount, block.timestamp);
@@ -454,7 +454,7 @@ contract ClaimManager is
         metadata = IPolicy(policy).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
 
-        uint256 totalPaidOut = _policyClaimStates[policyId].totalPaidOut;
+        uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
         uint256 remaining = totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
 
         require(
@@ -468,7 +468,7 @@ contract ClaimManager is
 
         require(!IPremiumReserve(premiumReserve).isEscrowReleased(policyId), EscrowAlreadyReleased(policyId));
 
-        claimId = _policyClaimStates[policyId].claimCount;
+        claimId = _policyClaims[policyId].claimCount;
         ClaimRecord storage claim = _claims[policyId][claimId];
         require(claim.status == ClaimStatus.None, ClaimAlreadyFiled(policyId, claimId));
 
@@ -478,7 +478,7 @@ contract ClaimManager is
         claim.evidenceHash = evidenceHash;
         claim.requestedAmount = requestedAmount;
 
-        _policyClaimStates[policyId].claimCount++;
+        _policyClaims[policyId].claimCount++;
         _pendingClaimCounts[policyId]++;
 
         emit ClaimFiled(policyId, claimId, msg.sender, evidenceHash, requestedAmount, block.timestamp);
@@ -501,17 +501,17 @@ contract ClaimManager is
         private
         returns (uint256 totalPayout)
     {
-        uint256 totalPaidOut = _policyClaimStates[policyId].totalPaidOut;
+        uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
         uint256 remaining = totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
         uint256 cappedAmount = requestedAmount > remaining ? remaining : requestedAmount;
 
         if (cappedAmount > 0) {
-            _policyClaimStates[policyId].totalPaidOut += cappedAmount;
+            _policyClaims[policyId].totalPaidOut += cappedAmount;
             totalPayout = _executeSlashingAndPayout(policyId, claimId, metadata, cappedAmount);
 
             if (totalPayout < cappedAmount) {
                 // slither-disable-next-line reentrancy-no-eth
-                _policyClaimStates[policyId].totalPaidOut -= (cappedAmount - totalPayout);
+                _policyClaims[policyId].totalPaidOut -= (cappedAmount - totalPayout);
             }
         }
     }
