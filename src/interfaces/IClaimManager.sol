@@ -406,9 +406,9 @@ interface IClaimManager is IAccessControl {
     /**
      * @notice Returns the remaining coverage available for a policy.
      * @param policyId Identifier of the policy.
-     * @return remainingCoverage Amount of coverage remaining after all approved claims.
+     * @return remaining Amount of coverage remaining after all approved claims.
      */
-    function remainingCoverage(uint256 policyId) external view returns (uint256 remainingCoverage);
+    function remainingCoverage(uint256 policyId) external view returns (uint256 remaining);
 
     /**
      * @notice Returns the number of pending (filed but not resolved) claims for a policy.
