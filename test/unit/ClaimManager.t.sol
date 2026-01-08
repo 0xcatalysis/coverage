@@ -1915,6 +1915,8 @@ contract MockPremiumReserve {
     mapping(uint256 => uint256) private _premiumAvailable;
     address private _premiumToken;
 
+    error EscrowNotLocked(uint256 policyId);
+
     function setEscrowReleased(uint256 policyId, bool released) external {
         _escrowReleased[policyId] = released;
     }
@@ -1947,6 +1949,8 @@ contract MockPremiumReserve {
         external
         returns (uint256 paidAmount, address premiumToken)
     {
+        require(_claimLocked[policyId], EscrowNotLocked(policyId));
+
         uint256 available = _premiumAvailable[policyId];
         paidAmount = available >= settledAmount ? settledAmount : available;
         premiumToken = _premiumToken;
