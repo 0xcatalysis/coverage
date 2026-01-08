@@ -1503,13 +1503,11 @@ contract ClaimManagerTest is Test {
         vm.prank(claimOperator);
         claimManager.approveClaim(POLICY_ID, claimId1, "");
 
+        assertEq(claimManager.remainingCoverage(POLICY_ID), 0, "No coverage should remain after first claim");
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.ZeroPayoutAmount.selector, POLICY_ID));
         vm.prank(claimOperator);
         claimManager.approveClaim(POLICY_ID, claimId2, "");
-
-        IClaimManager.ClaimRecord memory record2 = claimManager.claimRecord(POLICY_ID, claimId2);
-        assertEq(uint8(record2.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should still be approved");
-        assertEq(record2.payoutAmount, 0, "Payout should be zero when coverage exhausted");
-        assertEq(claimManager.remainingCoverage(POLICY_ID), 0, "No coverage should remain");
     }
 
     function test_approveClaim_WhenSlashingReturnsZeroButArraysNonEmpty_Reverts() public {

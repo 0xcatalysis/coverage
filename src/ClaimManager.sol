@@ -243,6 +243,7 @@ contract ClaimManager is
         _pendingClaimCounts[policyId]--;
 
         uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
+        require(totalPayout > 0, ZeroPayoutAmount(policyId));
         // slither-disable-next-line reentrancy-no-eth
         claim.payoutAmount = totalPayout;
 
@@ -287,6 +288,7 @@ contract ClaimManager is
 
         uint256 requestedAmount = claim.requestedAmount;
         uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
+        require(totalPayout > 0, ZeroPayoutAmount(policyId));
         // slither-disable-next-line reentrancy-no-eth
         claim.payoutAmount = totalPayout;
 
