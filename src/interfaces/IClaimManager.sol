@@ -34,7 +34,7 @@ interface IClaimManager is IAccessControl {
         uint256 resolvedAt;
         /// @notice Hash of evidence submitted with the claim.
         bytes32 evidenceHash;
-        /// @notice Requested payout amount in payout token terms (must be <= coverageLimit).
+        /// @notice Requested payout amount in payout token terms (must be <= remaining coverage).
         uint256 requestedAmount;
         /// @notice Evaluation result from the Spec (if evaluated).
         ISpec.EvaluationResult evaluationResult;
@@ -43,8 +43,19 @@ interface IClaimManager is IAccessControl {
     }
 
     /**
+     * @notice Policy claim state tracking total payouts and claim count.
+     */
+    struct PolicyClaimState {
+        /// @notice Total amount paid out across all claims for this policy.
+        uint256 totalPaidOut;
+        /// @notice Number of claims filed for this policy.
+        uint256 claimCount;
+    }
+
+    /**
      * @notice Emitted when a claim is filed against a policy.
      * @param policyId Identifier of the policy.
+     * @param claimId Unique identifier for this claim.
      * @param reporter Address that filed the claim.
      * @param evidenceHash Hash of evidence supporting the claim.
      * @param requestedAmount Requested payout amount in payout token terms.
@@ -52,6 +63,7 @@ interface IClaimManager is IAccessControl {
      */
     event ClaimFiled(
         uint256 indexed policyId,
+        uint256 indexed claimId,
         address indexed reporter,
         bytes32 evidenceHash,
         uint256 requestedAmount,
@@ -61,23 +73,32 @@ interface IClaimManager is IAccessControl {
     /**
      * @notice Emitted when a claim is approved and payout is executed.
      * @param policyId Identifier of the policy.
+     * @param claimId Unique identifier for this claim.
      * @param beneficiary Address receiving the payout.
      * @param payoutAmount Amount paid in payout token terms.
      * @param timestamp Block timestamp when approved.
      */
-    event ClaimApproved(uint256 indexed policyId, address indexed beneficiary, uint256 payoutAmount, uint256 timestamp);
+    event ClaimApproved(
+        uint256 indexed policyId,
+        uint256 indexed claimId,
+        address indexed beneficiary,
+        uint256 payoutAmount,
+        uint256 timestamp
+    );
 
     /**
      * @notice Emitted when a claim is rejected.
      * @param policyId Identifier of the policy.
+     * @param claimId Unique identifier for this claim.
      * @param reason Human-readable rejection reason.
      * @param timestamp Block timestamp when rejected.
      */
-    event ClaimRejected(uint256 indexed policyId, string reason, uint256 timestamp);
+    event ClaimRejected(uint256 indexed policyId, uint256 indexed claimId, string reason, uint256 timestamp);
 
     /**
      * @notice Emitted when slashed collateral is swapped to payout token.
      * @param policyId Identifier of the policy.
+     * @param claimId Unique identifier for this claim.
      * @param collateralToken Address of the slashed collateral token.
      * @param collateralAmount Amount of collateral swapped.
      * @param payoutToken Address of the payout token.
@@ -85,9 +106,10 @@ interface IClaimManager is IAccessControl {
      */
     event CollateralSwapped(
         uint256 indexed policyId,
+        uint256 indexed claimId,
         address indexed collateralToken,
         uint256 collateralAmount,
-        address indexed payoutToken,
+        address payoutToken,
         uint256 payoutAmount
     );
 
@@ -146,20 +168,23 @@ interface IClaimManager is IAccessControl {
     /**
      * @notice Reverts when attempting to file a claim that has already been filed.
      * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
      */
-    error ClaimAlreadyFiled(uint256 policyId);
+    error ClaimAlreadyFiled(uint256 policyId, uint256 claimId);
 
     /**
      * @notice Reverts when attempting to resolve a claim that hasn't been filed.
      * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
      */
-    error ClaimNotFiled(uint256 policyId);
+    error ClaimNotFiled(uint256 policyId, uint256 claimId);
 
     /**
      * @notice Reverts when attempting to resolve a claim that has already been resolved.
      * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
      */
-    error ClaimAlreadyResolved(uint256 policyId);
+    error ClaimAlreadyResolved(uint256 policyId, uint256 claimId);
 
     /**
      * @notice Reverts when attempting to file a claim outside the coverage window.
@@ -201,12 +226,12 @@ interface IClaimManager is IAccessControl {
     error InvalidEvidenceHash();
 
     /**
-     * @notice Reverts when the requested amount exceeds the policy's coverage limit.
+     * @notice Reverts when the requested amount exceeds the policy's remaining coverage.
      * @param policyId Identifier of the policy.
      * @param requestedAmount Amount requested by the claimant.
-     * @param coverageLimit Maximum coverage amount from the policy.
+     * @param remainingCoverage Remaining coverage amount after previous claims.
      */
-    error RequestedAmountExceedsCoverage(uint256 policyId, uint256 requestedAmount, uint256 coverageLimit);
+    error RequestedAmountExceedsRemainingCoverage(uint256 policyId, uint256 requestedAmount, uint256 remainingCoverage);
 
     /**
      * @notice Pauses claim operations.
@@ -267,11 +292,19 @@ interface IClaimManager is IAccessControl {
      * @dev Anyone can file a claim (spam deterred by off-chain bond and rate limits).
      *      Locks the escrow to prevent premium release during evaluation.
      *      Does not automatically evaluate; requires separate approveClaim or rejectClaim call.
+     *      Multiple partial claims can be filed against the same policy up to the coverage limit.
      * @param policyId Identifier of the policy to claim against.
-     * @param requestedAmount Requested payout amount in payout token terms (must be <= coverageLimit).
+     * @param requestedAmount Requested payout amount in payout token terms (must be <= remaining coverage).
      * @param evidenceHash Hash of evidence supporting the claim (e.g., IPFS CID).
+     * @return claimId Unique identifier for the filed claim.
      */
-    function fileClaim(uint256 policyId, uint256 requestedAmount, bytes32 evidenceHash) external;
+    function fileClaim(
+        uint256 policyId,
+        uint256 requestedAmount,
+        bytes32 evidenceHash
+    )
+        external
+        returns (uint256 claimId);
 
     /**
      * @notice Atomically files and resolves a claim in a single transaction.
@@ -280,11 +313,13 @@ interface IClaimManager is IAccessControl {
      *      2. Evaluates the registered Spec for the policy's product
      *      3. If approved: executes premium waterfall → slashes shortfall → swaps → pays beneficiary
      *      4. Unlocks escrow regardless of outcome
+     *      Multiple partial claims can be filed against the same policy up to the coverage limit.
      *
      * @param policyId Identifier of the policy to claim against.
-     * @param requestedAmount Requested payout amount in payout token terms (must be <= coverageLimit).
+     * @param requestedAmount Requested payout amount in payout token terms (must be <= remaining coverage).
      * @param evidenceHash Hash of evidence supporting the claim (e.g., IPFS CID).
      * @param additionalData Optional ABI-encoded data for Spec evaluation.
+     * @return claimId Unique identifier for the filed claim.
      */
     function fileAndResolveClaim(
         uint256 policyId,
@@ -292,7 +327,8 @@ interface IClaimManager is IAccessControl {
         bytes32 evidenceHash,
         bytes calldata additionalData
     )
-        external;
+        external
+        returns (uint256 claimId);
 
     /**
      * @notice Approves a filed claim by evaluating the Spec and executing payout if approved.
@@ -300,10 +336,11 @@ interface IClaimManager is IAccessControl {
      *      Evaluates the registered Spec for the policy's product.
      *      If approved: slashes stake, swaps collateral via pre-configured routes, pays beneficiary, unlocks escrow.
      *      If rejected: unlocks escrow without payout.
-     * @param policyId Identifier of the policy to approve.
+     * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim to approve.
      * @param additionalData Optional ABI-encoded data for Spec evaluation.
      */
-    function approveClaim(uint256 policyId, bytes calldata additionalData) external;
+    function approveClaim(uint256 policyId, uint256 claimId, bytes calldata additionalData) external;
 
     /**
      * @notice Manually rejects a claim without Spec evaluation.
@@ -311,9 +348,10 @@ interface IClaimManager is IAccessControl {
      *      Used for administrative rejections (e.g., fraud, invalid evidence).
      *      Unlocks escrow without payout.
      * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim to reject.
      * @param reason Human-readable rejection reason.
      */
-    function rejectClaim(uint256 policyId, string calldata reason) external;
+    function rejectClaim(uint256 policyId, uint256 claimId, string calldata reason) external;
 
     /**
      * @notice AccessControl identifier for the claim operator role.
@@ -351,11 +389,34 @@ interface IClaimManager is IAccessControl {
     function priceFeed() external view returns (address);
 
     /**
-     * @notice Returns the claim record for a policy.
-     * @param policyId Identifier to query.
+     * @notice Returns the claim record for a specific claim.
+     * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
      * @return ClaimRecord snapshot describing the claim state.
      */
-    function claimRecord(uint256 policyId) external view returns (ClaimRecord memory);
+    function claimRecord(uint256 policyId, uint256 claimId) external view returns (ClaimRecord memory);
+
+    /**
+     * @notice Returns the policy claim state tracking total payouts.
+     * @param policyId Identifier of the policy.
+     * @return PolicyClaimState snapshot with total paid out and claim count.
+     */
+    function policyClaimState(uint256 policyId) external view returns (PolicyClaimState memory);
+
+    /**
+     * @notice Returns the remaining coverage available for a policy.
+     * @param policyId Identifier of the policy.
+     * @return remainingCoverage Amount of coverage remaining after all approved claims.
+     */
+    function remainingCoverage(uint256 policyId) external view returns (uint256 remainingCoverage);
+
+    /**
+     * @notice Returns the number of pending (filed but not resolved) claims for a policy.
+     * @dev Escrow is locked when pendingClaimCount > 0 and unlocked when it reaches 0.
+     * @param policyId Identifier of the policy.
+     * @return count Number of pending claims.
+     */
+    function pendingClaimCount(uint256 policyId) external view returns (uint256 count);
 
     /**
      * @notice Returns true when the contract is paused.
