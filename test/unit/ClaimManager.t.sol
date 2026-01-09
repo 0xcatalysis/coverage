@@ -626,10 +626,10 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           RESOLVE CLAIM
+                           APPROVE CLAIM
     //////////////////////////////////////////////////////////////*/
 
-    function test_resolveClaim_WhenPaused_Reverts() public {
+    function test_approveClaim_WhenPaused_Reverts() public {
         _fileClaim();
 
         vm.prank(admin);
@@ -637,16 +637,16 @@ contract ClaimManagerTest is Test {
 
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
     }
 
-    function test_resolveClaim_WhenClaimNotFiled_Reverts() public {
+    function test_approveClaim_WhenClaimNotFiled_Reverts() public {
         vm.expectRevert(abi.encodeWithSelector(IClaimManager.ClaimNotFiled.selector, POLICY_ID));
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
     }
 
-    function test_resolveClaim_WhenCallerNotOperator_Reverts() public {
+    function test_approveClaim_WhenCallerNotOperator_Reverts() public {
         _fileClaim();
 
         vm.expectRevert(
@@ -657,10 +657,10 @@ contract ClaimManagerTest is Test {
             )
         );
         vm.prank(unauthorized);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
     }
 
-    function test_resolveClaim_WhenSpecRejectsPayable_RejectsClaim() public {
+    function test_approveClaim_WhenSpecRejectsPayable_RejectsClaim() public {
         _fileClaim();
 
         specMock.setEvaluationResult(false, 0, keccak256("rejected"));
@@ -669,7 +669,7 @@ contract ClaimManagerTest is Test {
         emit ClaimRejected(POLICY_ID, "Spec evaluation failed", block.timestamp);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Rejected), "Status should be Rejected");
@@ -678,7 +678,7 @@ contract ClaimManagerTest is Test {
         assertFalse(premiumReserveMock.isClaimLockSet(POLICY_ID), "Claim lock should be cleared");
     }
 
-    function test_resolveClaim_WhenNoCollateralSlashed_Reverts() public {
+    function test_approveClaim_WhenNoCollateralSlashed_Reverts() public {
         _fileClaim();
 
         specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
@@ -686,10 +686,10 @@ contract ClaimManagerTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(IClaimManager.NoCollateralSlashed.selector, POLICY_ID));
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
     }
 
-    function test_resolveClaim_WhenAllCollateralAmountsZero_Reverts() public {
+    function test_approveClaim_WhenAllCollateralAmountsZero_Reverts() public {
         _fileClaim();
 
         specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
@@ -704,10 +704,10 @@ contract ClaimManagerTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(IClaimManager.ZeroPayoutAmount.selector, POLICY_ID));
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
     }
 
-    function test_resolveClaim_WhenSpecApproves_ExecutesPayoutAndEmits() public {
+    function test_approveClaim_WhenSpecApproves_ExecutesPayoutAndEmits() public {
         _fileClaim();
 
         specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
@@ -732,7 +732,7 @@ contract ClaimManagerTest is Test {
         emit ClaimApproved(POLICY_ID, payoutReceiver, swapOutput, block.timestamp);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Status should be Approved");
@@ -743,7 +743,7 @@ contract ClaimManagerTest is Test {
         assertEq(payoutTokenMock.balanceOf(payoutReceiver), swapOutput, "Receiver should get payout tokens");
     }
 
-    function test_resolveClaim_WhenCollateralMatchesPayoutToken_TransfersDirect() public {
+    function test_approveClaim_WhenCollateralMatchesPayoutToken_TransfersDirect() public {
         _fileClaim();
 
         IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
@@ -765,14 +765,14 @@ contract ClaimManagerTest is Test {
         emit CollateralSwapped(POLICY_ID, collateralToken, SLASH_AMOUNT, collateralToken, SLASH_AMOUNT);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, SLASH_AMOUNT, "Payout should equal slashed amount");
         assertEq(collateralTokenMock.balanceOf(payoutReceiver), SLASH_AMOUNT, "Receiver should get tokens");
     }
 
-    function test_resolveClaim_WhenMultipleCollateralTypes_ProcessesAll() public {
+    function test_approveClaim_WhenMultipleCollateralTypes_ProcessesAll() public {
         _fileClaim();
 
         specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
@@ -795,14 +795,14 @@ contract ClaimManagerTest is Test {
         swapperMock.setPayoutToken(payoutToken);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, 500 ether, "Total payout should be sum of both swaps");
         assertEq(payoutTokenMock.balanceOf(payoutReceiver), 500 ether, "Receiver should get payout tokens");
     }
 
-    function test_resolveClaim_WhenZeroAmountCollateral_SkipsProcessing() public {
+    function test_approveClaim_WhenZeroAmountCollateral_SkipsProcessing() public {
         _fileClaim();
 
         specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
@@ -823,14 +823,14 @@ contract ClaimManagerTest is Test {
         swapperMock.setPayoutToken(payoutToken);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, swapOutput, "Should only count non-zero amounts");
         assertEq(payoutTokenMock.balanceOf(payoutReceiver), swapOutput, "Receiver should get payout tokens");
     }
 
-    function test_resolveClaim_WhenSwapOutputExceedsRequestedAmount_CapsTransfer() public {
+    function test_approveClaim_WhenSwapOutputExceedsRequestedAmount_CapsTransfer() public {
         uint256 requestedAmount = 300 ether;
         vm.prank(buyer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash);
@@ -854,7 +854,7 @@ contract ClaimManagerTest is Test {
         emit CollateralSwapped(POLICY_ID, collateralToken, SLASH_AMOUNT, payoutToken, requestedAmount);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, requestedAmount, "Payout should be capped at requestedAmount");
@@ -863,7 +863,7 @@ contract ClaimManagerTest is Test {
         assertEq(payoutTokenMock.balanceOf(address(claimManager)), excess, "Excess should remain in ClaimManager");
     }
 
-    function test_resolveClaim_WhenDirectTransferExceedsRequestedAmount_CapsTransfer() public {
+    function test_approveClaim_WhenDirectTransferExceedsRequestedAmount_CapsTransfer() public {
         uint256 requestedAmount = 300 ether;
         vm.prank(buyer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash);
@@ -887,7 +887,7 @@ contract ClaimManagerTest is Test {
         emit CollateralSwapped(POLICY_ID, collateralToken, SLASH_AMOUNT, collateralToken, requestedAmount);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, requestedAmount, "Payout should be capped at requestedAmount");
@@ -898,11 +898,7 @@ contract ClaimManagerTest is Test {
         assertEq(collateralTokenMock.balanceOf(address(claimManager)), excess, "Excess should remain in ClaimManager");
     }
 
-    /*//////////////////////////////////////////////////////////////
-                    PREMIUM RESERVE WATERFALL
-    //////////////////////////////////////////////////////////////*/
-
-    function test_resolveClaim_WhenPremiumReserveSufficient_NeverSlashes() public {
+    function test_approveClaim_WhenPremiumReserveSufficient_NeverSlashes() public {
         uint256 requestedAmount = 500 ether;
         uint256 premiumAvailable = 600 ether;
 
@@ -915,14 +911,14 @@ contract ClaimManagerTest is Test {
         premiumReserveMock.setPremiumToken(address(payoutTokenMock));
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, requestedAmount, "Should pay full requested amount from premium reserve");
         assertEq(payoutTokenMock.balanceOf(payoutReceiver), requestedAmount, "Receiver should get full payout");
     }
 
-    function test_resolveClaim_WhenPremiumReservePartial_SlashesShortfall() public {
+    function test_approveClaim_WhenPremiumReservePartial_SlashesShortfall() public {
         uint256 requestedAmount = 1000 ether;
         uint256 premiumAvailable = 400 ether;
         uint256 shortfall = requestedAmount - premiumAvailable;
@@ -951,7 +947,7 @@ contract ClaimManagerTest is Test {
         emit CollateralSwapped(POLICY_ID, collateralToken, shortfall, payoutToken, shortfall);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, requestedAmount, "Should pay full requested amount from premium + slashing");
@@ -962,7 +958,7 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    function test_resolveClaim_WhenPremiumReserveEmpty_SlashesFull() public {
+    function test_approveClaim_WhenPremiumReserveEmpty_SlashesFull() public {
         uint256 requestedAmount = 800 ether;
 
         vm.prank(buyer);
@@ -989,14 +985,14 @@ contract ClaimManagerTest is Test {
         emit CollateralSwapped(POLICY_ID, collateralToken, requestedAmount, payoutToken, requestedAmount);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, requestedAmount, "Should pay full requested amount from slashing");
         assertEq(payoutTokenMock.balanceOf(payoutReceiver), requestedAmount, "Receiver should get full slashed amount");
     }
 
-    function test_resolveClaim_WhenPremiumReserve100k_Claim70k_NoSlashing() public {
+    function test_approveClaim_WhenPremiumReserve100k_Claim70k_NoSlashing() public {
         uint256 premiumAvailable = 100_000 ether;
         uint256 requestedAmount = 70_000 ether;
         uint256 highCoverageLimit = 2_000_000 ether;
@@ -1014,14 +1010,14 @@ contract ClaimManagerTest is Test {
         premiumReserveMock.setPremiumToken(address(payoutTokenMock));
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, requestedAmount, "Should pay 70k from premium reserve");
         assertEq(payoutTokenMock.balanceOf(payoutReceiver), requestedAmount, "Receiver should get 70k");
     }
 
-    function test_resolveClaim_WhenPremiumReserve100k_Claim250k_Slash150k() public {
+    function test_approveClaim_WhenPremiumReserve100k_Claim250k_Slash150k() public {
         uint256 premiumAvailable = 100_000 ether;
         uint256 requestedAmount = 250_000 ether;
         uint256 shortfall = 150_000 ether;
@@ -1055,7 +1051,7 @@ contract ClaimManagerTest is Test {
         emit CollateralSwapped(POLICY_ID, collateralToken, shortfall, payoutToken, shortfall);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, requestedAmount, "Should pay 250k total");
@@ -1066,11 +1062,7 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    /*//////////////////////////////////////////////////////////////
-                    PREMIUM/PAYOUT TOKEN CONVERSION
-    //////////////////////////////////////////////////////////////*/
-
-    function test_resolveClaim_WhenPremiumTokenDifferentFromPayoutToken_ConvertsAndPays() public {
+    function test_approveClaim_WhenPremiumTokenDifferentFromPayoutToken_ConvertsAndPays() public {
         uint256 requestedAmount = 500 ether;
         uint256 premiumAvailable = 600 ether;
         uint256 swappedAmount = 550 ether;
@@ -1092,7 +1084,7 @@ contract ClaimManagerTest is Test {
         emit CollateralSwapped(POLICY_ID, address(differentPremiumToken), requestedAmount, payoutToken, requestedAmount);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(record.payoutAmount, requestedAmount, "Should be capped at requested amount");
@@ -1103,7 +1095,7 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    function test_resolveClaim_WhenPremiumTokenDifferent_PartialReserve_ConvertsAndSlashes() public {
+    function test_approveClaim_WhenPremiumTokenDifferent_PartialReserve_ConvertsAndSlashes() public {
         uint256 requestedAmount = 1000 ether;
         uint256 premiumAvailable = 400 ether;
         uint256 swappedPremiumAmount = 400 ether;
@@ -1137,14 +1129,14 @@ contract ClaimManagerTest is Test {
         );
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertGe(record.payoutAmount, swappedPremiumAmount, "Should pay at least the premium conversion amount");
         assertGt(payoutTokenMock.balanceOf(payoutReceiver), 0, "Receiver should receive payout tokens");
     }
 
-    function test_resolveClaim_WhenPremiumTokenDifferent_ConversionYieldsMore_StillSlashesCorrectShortfall() public {
+    function test_approveClaim_WhenPremiumTokenDifferent_ConversionYieldsMore_StillSlashesCorrectShortfall() public {
         uint256 requestedAmount = 1000 ether;
         uint256 premiumAvailable = 600 ether;
         uint256 swappedPremiumAmount = 720 ether;
@@ -1173,7 +1165,7 @@ contract ClaimManagerTest is Test {
         swapperMock.setPayoutToken(payoutToken);
 
         vm.prank(claimOperator);
-        claimManager.resolveClaim(POLICY_ID, "");
+        claimManager.approveClaim(POLICY_ID, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
         assertEq(
@@ -1241,7 +1233,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                               VIEWS
+                            CLAIM RECORD
     //////////////////////////////////////////////////////////////*/
 
     function test_claimRecord_WhenClaimNotFiled_ReturnsDefault() public view {
@@ -1263,6 +1255,10 @@ contract ClaimManagerTest is Test {
         assertEq(record.evidenceHash, evidenceHash, "EvidenceHash mismatch");
     }
 
+    /*//////////////////////////////////////////////////////////////
+                               PAUSED
+    //////////////////////////////////////////////////////////////*/
+
     function test_paused_WhenNotPaused_ReturnsFalse() public view {
         assertFalse(claimManager.paused(), "Should not be paused");
     }
@@ -1271,6 +1267,328 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.pause();
         assertTrue(claimManager.paused(), "Should be paused");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        FILE AND RESOLVE CLAIM
+    //////////////////////////////////////////////////////////////*/
+
+    function test_fileAndResolveClaim_WhenPaused_Reverts() public {
+        vm.prank(admin);
+        claimManager.pause();
+
+        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
+    function test_fileAndResolveClaim_WhenCallerNotOperator_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                unauthorized,
+                claimManager.CLAIM_OPERATOR_ROLE()
+            )
+        );
+        vm.prank(unauthorized);
+        claimManager.fileAndResolveClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
+    function test_fileAndResolveClaim_WhenEvidenceHashZero_Reverts() public {
+        vm.expectRevert(IClaimManager.InvalidEvidenceHash.selector);
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, COVERAGE_LIMIT, bytes32(0), "");
+    }
+
+    function test_fileAndResolveClaim_WhenRequestedAmountZero_Reverts() public {
+        vm.expectRevert(IClaimManager.ZeroAmount.selector);
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, 0, evidenceHash, "");
+    }
+
+    function test_fileAndResolveClaim_WhenClaimAlreadyFiled_Reverts() public {
+        _fileClaim();
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.ClaimAlreadyFiled.selector, POLICY_ID));
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
+    function test_fileAndResolveClaim_WhenSpecRejects_RejectsAtomically() public {
+        specMock.setEvaluationResult(false, 0, keccak256("rejected"));
+
+        vm.expectEmit(true, true, false, true, address(claimManager));
+        emit ClaimFiled(POLICY_ID, claimOperator, evidenceHash, COVERAGE_LIMIT, block.timestamp);
+
+        vm.expectEmit(true, false, false, false, address(claimManager));
+        emit ClaimRejected(POLICY_ID, "Spec evaluation failed", block.timestamp);
+
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Rejected), "Status should be Rejected");
+        assertEq(record.reporter, claimOperator, "Reporter should be claimOperator");
+        assertEq(record.filedAt, block.timestamp, "FiledAt mismatch");
+        assertEq(record.resolvedAt, block.timestamp, "ResolvedAt mismatch");
+        assertFalse(premiumReserveMock.isClaimLockSet(POLICY_ID), "Claim lock should be cleared");
+    }
+
+    function test_fileAndResolveClaim_WhenSpecApproves_ExecutesPayoutAtomically() public {
+        uint256 requestedAmount = 500 ether;
+        uint256 swapOutput = 450 ether;
+
+        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+        swapperMock.setSwapOutput(swapOutput);
+        swapperMock.setPayoutToken(payoutToken);
+
+        vm.expectEmit(true, true, false, true, address(claimManager));
+        emit ClaimFiled(POLICY_ID, claimOperator, evidenceHash, requestedAmount, block.timestamp);
+
+        vm.expectEmit(true, true, false, true, address(claimManager));
+        emit ClaimApproved(POLICY_ID, payoutReceiver, swapOutput, block.timestamp);
+
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Status should be Approved");
+        assertEq(record.reporter, claimOperator, "Reporter should be claimOperator");
+        assertEq(record.filedAt, block.timestamp, "FiledAt mismatch");
+        assertEq(record.resolvedAt, block.timestamp, "ResolvedAt mismatch");
+        assertEq(record.payoutAmount, swapOutput, "PayoutAmount mismatch");
+        assertFalse(premiumReserveMock.isClaimLockSet(POLICY_ID), "Claim lock should be cleared");
+    }
+
+    function test_fileAndResolveClaim_WhenPremiumReserveSufficient_NoSlashing() public {
+        uint256 requestedAmount = 70 ether;
+        uint256 premiumAvailable = 100 ether;
+
+        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+        premiumReserveMock.setPremiumAvailable(POLICY_ID, premiumAvailable);
+        premiumReserveMock.setPremiumToken(payoutToken);
+
+        payoutTokenMock.mint(address(premiumReserveMock), premiumAvailable);
+
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Status should be Approved");
+        assertEq(record.payoutAmount, requestedAmount, "Payout should equal requested amount");
+    }
+
+    function test_fileAndResolveClaim_FilesAndResolvesInSameBlock() public {
+        uint256 requestedAmount = 500 ether;
+        uint256 swapOutput = 450 ether;
+
+        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+        swapperMock.setSwapOutput(swapOutput);
+        swapperMock.setPayoutToken(payoutToken);
+
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+
+        assertEq(record.filedAt, record.resolvedAt, "Filing and resolution should happen in same block");
+        assertEq(record.filedAt, block.timestamp, "Timestamps should match current block");
+    }
+
+    function test_fileAndResolveClaim_WhenPolicyNotFound_Reverts() public {
+        uint256 invalidPolicyId = 999;
+        policyMock.setPolicyMetadata(
+            invalidPolicyId,
+            IPolicy.PolicyMetadata({
+                buyer: address(0),
+                beneficiary: address(0),
+                premiumToken: address(0),
+                basePremium: 0,
+                payoutToken: address(0),
+                pool: address(0),
+                coverageLimit: 0,
+                payoutReceiver: address(0),
+                poolPolicyId: bytes32(0),
+                specId: bytes32(0),
+                termsHash: bytes32(0),
+                policyCommit: bytes32(0),
+                committeeId: 0,
+                startTime: 0,
+                maturityTime: 0,
+                operator: address(0)
+            })
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.PolicyNotFound.selector, invalidPolicyId));
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(invalidPolicyId, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
+    function test_fileAndResolveClaim_WhenRequestedAmountExceedsCoverage_Reverts() public {
+        uint256 excessAmount = COVERAGE_LIMIT + 1;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimManager.RequestedAmountExceedsCoverage.selector, POLICY_ID, excessAmount, COVERAGE_LIMIT
+            )
+        );
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, excessAmount, evidenceHash, "");
+    }
+
+    function test_fileAndResolveClaim_WhenBeforeCoverageWindow_Reverts() public {
+        IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.startTime = uint64(block.timestamp + 1 days);
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimManager.ClaimOutsideCoverageWindow.selector,
+                POLICY_ID,
+                metadata.startTime,
+                metadata.maturityTime,
+                block.timestamp
+            )
+        );
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
+    function test_fileAndResolveClaim_WhenAfterCoverageWindow_Reverts() public {
+        IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        vm.warp(metadata.maturityTime + 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimManager.ClaimOutsideCoverageWindow.selector,
+                POLICY_ID,
+                metadata.startTime,
+                metadata.maturityTime,
+                metadata.maturityTime + 1
+            )
+        );
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
+    function test_fileAndResolveClaim_WhenEscrowAlreadyReleased_Reverts() public {
+        premiumReserveMock.setEscrowReleased(POLICY_ID, true);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.EscrowAlreadyReleased.selector, POLICY_ID));
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
+    function test_fileAndResolveClaim_WhenPremiumReservePartial_SlashesShortfall() public {
+        uint256 requestedAmount = 1000 ether;
+        uint256 premiumAvailable = 400 ether;
+        uint256 shortfall = requestedAmount - premiumAvailable;
+
+        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+
+        premiumReserveMock.setPremiumAvailable(POLICY_ID, premiumAvailable);
+        premiumReserveMock.setPremiumToken(address(payoutTokenMock));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = shortfall;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), shortfall);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+
+        swapperMock.setSwapOutput(shortfall);
+        swapperMock.setPayoutToken(payoutToken);
+
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(record.payoutAmount, requestedAmount, "Should pay full requested amount from premium + slashing");
+        assertEq(
+            payoutTokenMock.balanceOf(payoutReceiver),
+            premiumAvailable + shortfall,
+            "Receiver should get premium + slashed amount"
+        );
+    }
+
+    function test_fileAndResolveClaim_WhenPremiumTokenDifferent_ConvertsAndPays() public {
+        uint256 requestedAmount = 500 ether;
+        uint256 premiumAvailable = 600 ether;
+        uint256 swappedAmount = 550 ether;
+
+        MockToken differentPremiumToken = new MockToken("Premium", "PREM");
+
+        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+
+        premiumReserveMock.setPremiumAvailable(POLICY_ID, premiumAvailable);
+        premiumReserveMock.setPremiumToken(address(differentPremiumToken));
+
+        swapperMock.setSwapOutput(swappedAmount);
+        swapperMock.setPayoutToken(payoutToken);
+
+        vm.prank(claimOperator);
+        claimManager.fileAndResolveClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID);
+        assertEq(record.payoutAmount, requestedAmount, "Should be capped at requested amount");
+        assertEq(
+            payoutTokenMock.balanceOf(payoutReceiver),
+            requestedAmount,
+            "Receiver should get requested amount (capped to prevent over-payment)"
+        );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                               UPGRADES
+    //////////////////////////////////////////////////////////////*/
+
+    function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
+        address newImplementation = address(new ClaimManager());
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                unauthorized,
+                claimManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(unauthorized);
+        claimManager.upgradeToAndCall(newImplementation, "");
+    }
+
+    function test_authorizeUpgrade_WhenCalledByAdmin_Succeeds() public {
+        ClaimManager newImplementation = new ClaimManager();
+
+        vm.prank(admin);
+        claimManager.upgradeToAndCall(address(newImplementation), "");
+
+        assertEq(claimManager.specRegistry(), specRegistry, "SpecRegistry should be preserved");
+        assertEq(claimManager.slashingManager(), slashingManager, "SlashingManager should be preserved");
+        assertEq(claimManager.swapper(), swapper, "Swapper should be preserved");
+        assertEq(claimManager.policy(), policy, "Policy should be preserved");
+        assertEq(claimManager.premiumReserve(), premiumReserve, "PremiumReserve should be preserved");
+        assertEq(claimManager.priceFeed(), priceFeed, "PriceFeed should be preserved");
     }
 
     /*//////////////////////////////////////////////////////////////
