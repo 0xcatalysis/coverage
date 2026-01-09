@@ -266,7 +266,7 @@ interface IClaimManager is IAccessControl {
      * @notice Files a claim against a policy and locks the escrow.
      * @dev Anyone can file a claim (spam deterred by off-chain bond and rate limits).
      *      Locks the escrow to prevent premium release during evaluation.
-     *      Does not automatically evaluate; requires separate resolveClaim call.
+     *      Does not automatically evaluate; requires separate approveClaim or rejectClaim call.
      * @param policyId Identifier of the policy to claim against.
      * @param requestedAmount Requested payout amount in payout token terms (must be <= coverageLimit).
      * @param evidenceHash Hash of evidence supporting the claim (e.g., IPFS CID).
@@ -274,15 +274,36 @@ interface IClaimManager is IAccessControl {
     function fileClaim(uint256 policyId, uint256 requestedAmount, bytes32 evidenceHash) external;
 
     /**
-     * @notice Resolves a filed claim by evaluating the Spec and executing payout if approved.
+     * @notice Atomically files and resolves a claim in a single transaction.
+     * @dev Requires CLAIM_OPERATOR_ROLE. Combines filing and resolution into one atomic operation:
+     *      1. Validates claim preconditions and locks escrow
+     *      2. Evaluates the registered Spec for the policy's product
+     *      3. If approved: executes premium waterfall → slashes shortfall → swaps → pays beneficiary
+     *      4. Unlocks escrow regardless of outcome
+     *
+     * @param policyId Identifier of the policy to claim against.
+     * @param requestedAmount Requested payout amount in payout token terms (must be <= coverageLimit).
+     * @param evidenceHash Hash of evidence supporting the claim (e.g., IPFS CID).
+     * @param additionalData Optional ABI-encoded data for Spec evaluation.
+     */
+    function fileAndResolveClaim(
+        uint256 policyId,
+        uint256 requestedAmount,
+        bytes32 evidenceHash,
+        bytes calldata additionalData
+    )
+        external;
+
+    /**
+     * @notice Approves a filed claim by evaluating the Spec and executing payout if approved.
      * @dev Requires CLAIM_OPERATOR_ROLE.
      *      Evaluates the registered Spec for the policy's product.
      *      If approved: slashes stake, swaps collateral via pre-configured routes, pays beneficiary, unlocks escrow.
      *      If rejected: unlocks escrow without payout.
-     * @param policyId Identifier of the policy to resolve.
+     * @param policyId Identifier of the policy to approve.
      * @param additionalData Optional ABI-encoded data for Spec evaluation.
      */
-    function resolveClaim(uint256 policyId, bytes calldata additionalData) external;
+    function approveClaim(uint256 policyId, bytes calldata additionalData) external;
 
     /**
      * @notice Manually rejects a claim without Spec evaluation.

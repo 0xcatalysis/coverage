@@ -30,7 +30,7 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  *
  *      Claim Flow:
  *      1. fileClaim: Any reporter files claim, escrow locked
- *      2. resolveClaim: Operator evaluates Spec, if approved → premium reserve waterfall → slash shortfall → swap
+ *      2. approveClaim: Operator evaluates Spec, if approved → premium reserve waterfall → slash shortfall → swap
  * → payout
  *      3. rejectClaim: Operator manually rejects, escrow unlocked
  *
@@ -196,35 +196,7 @@ contract ClaimManager is
         whenNotPaused
         nonReentrant
     {
-        require(evidenceHash != bytes32(0), InvalidEvidenceHash());
-        require(requestedAmount > 0, ZeroAmount());
-
-        IPolicy.PolicyMetadata memory metadata = IPolicy(policy).policyMetadata(policyId);
-        require(metadata.buyer != address(0), PolicyNotFound(policyId));
-
-        require(
-            requestedAmount <= metadata.coverageLimit,
-            RequestedAmountExceedsCoverage(policyId, requestedAmount, metadata.coverageLimit)
-        );
-
-        require(
-            block.timestamp >= metadata.startTime && block.timestamp <= metadata.maturityTime,
-            ClaimOutsideCoverageWindow(policyId, metadata.startTime, metadata.maturityTime, block.timestamp)
-        );
-
-        require(!IPremiumReserve(premiumReserve).isEscrowReleased(policyId), EscrowAlreadyReleased(policyId));
-
-        ClaimRecord storage claim = _claims[policyId];
-        require(claim.status == ClaimStatus.None, ClaimAlreadyFiled(policyId));
-
-        claim.status = ClaimStatus.Filed;
-        claim.reporter = msg.sender;
-        claim.filedAt = block.timestamp;
-        claim.evidenceHash = evidenceHash;
-        claim.requestedAmount = requestedAmount;
-
-        emit ClaimFiled(policyId, msg.sender, evidenceHash, requestedAmount, block.timestamp);
-
+        _fileClaim(policyId, requestedAmount, evidenceHash);
         // slither-disable-next-line calls-loop
         IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
     }
@@ -232,7 +204,51 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function resolveClaim(
+    function fileAndResolveClaim(
+        uint256 policyId,
+        uint256 requestedAmount,
+        bytes32 evidenceHash,
+        bytes calldata additionalData
+    )
+        external
+        override
+        whenNotPaused
+        nonReentrant
+        onlyRole(CLAIM_OPERATOR_ROLE)
+    {
+        IPolicy.PolicyMetadata memory metadata = _fileClaim(policyId, requestedAmount, evidenceHash);
+
+        ClaimRecord storage claim = _claims[policyId];
+
+        ISpec.EvaluationResult memory result = _evaluateSpec(policyId, metadata, evidenceHash, additionalData);
+        claim.evaluationResult = result;
+        claim.resolvedAt = block.timestamp;
+
+        if (!result.isPayable) {
+            claim.status = ClaimStatus.Rejected;
+            emit ClaimRejected(policyId, "Spec evaluation failed", block.timestamp);
+            return;
+        }
+
+        claim.status = ClaimStatus.Approved;
+
+        // slither-disable-next-line calls-loop
+        IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
+
+        // slither-disable-next-line reentrancy-no-eth
+        uint256 totalPayout = _executeSlashingAndPayout(policyId, metadata, requestedAmount);
+        claim.payoutAmount = totalPayout;
+
+        emit ClaimApproved(policyId, metadata.payoutReceiver, totalPayout, block.timestamp);
+
+        // slither-disable-next-line calls-loop
+        IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
+    function approveClaim(
         uint256 policyId,
         bytes calldata additionalData
     )
@@ -314,6 +330,53 @@ contract ClaimManager is
      * @notice Restricts UUPS upgrade authorization to DEFAULT_ADMIN_ROLE holders.
      */
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
+
+    /**
+     * @notice Internal helper for filing a claim with all validations.
+     * @dev Validates preconditions and records the claim. Caller must lock escrow.
+     *      Returns policy metadata for use in atomic resolution.
+     * @param policyId Identifier of the policy to claim against.
+     * @param requestedAmount Requested payout amount in payout token terms.
+     * @param evidenceHash Hash of evidence supporting the claim.
+     * @return metadata Policy metadata for subsequent resolution.
+     */
+    function _fileClaim(
+        uint256 policyId,
+        uint256 requestedAmount,
+        bytes32 evidenceHash
+    )
+        private
+        returns (IPolicy.PolicyMetadata memory metadata)
+    {
+        require(evidenceHash != bytes32(0), InvalidEvidenceHash());
+        require(requestedAmount > 0, ZeroAmount());
+
+        metadata = IPolicy(policy).policyMetadata(policyId);
+        require(metadata.buyer != address(0), PolicyNotFound(policyId));
+
+        require(
+            requestedAmount <= metadata.coverageLimit,
+            RequestedAmountExceedsCoverage(policyId, requestedAmount, metadata.coverageLimit)
+        );
+
+        require(
+            block.timestamp >= metadata.startTime && block.timestamp <= metadata.maturityTime,
+            ClaimOutsideCoverageWindow(policyId, metadata.startTime, metadata.maturityTime, block.timestamp)
+        );
+
+        require(!IPremiumReserve(premiumReserve).isEscrowReleased(policyId), EscrowAlreadyReleased(policyId));
+
+        ClaimRecord storage claim = _claims[policyId];
+        require(claim.status == ClaimStatus.None, ClaimAlreadyFiled(policyId));
+
+        claim.status = ClaimStatus.Filed;
+        claim.reporter = msg.sender;
+        claim.filedAt = block.timestamp;
+        claim.evidenceHash = evidenceHash;
+        claim.requestedAmount = requestedAmount;
+
+        emit ClaimFiled(policyId, msg.sender, evidenceHash, requestedAmount, block.timestamp);
+    }
 
     /**
      * @notice Executes premium reserve waterfall followed by slashing and converts collateral to payout tokens.
