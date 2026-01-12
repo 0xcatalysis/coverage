@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
+import {Upgrades, Options} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Script, console2} from "forge-std/Script.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
@@ -196,19 +196,25 @@ abstract contract Deploy is Script {
         private
         returns (DeployedContracts memory contracts)
     {
+        // OZ 5.5 uses base ReentrancyGuard (not Upgradeable variant) with namespaced storage.
+        // The constructor is safe for proxies but the validation tool still flags it.
+        Options memory opts;
+        opts.unsafeAllow = "constructor";
+
         contracts.coverPoolImplementation = address(new CoverPool());
 
         contracts.swapperProxy = Upgrades.deployUUPSProxy(
             "Swapper.sol:Swapper",
             abi.encodeCall(
                 Swapper.initialize, (roles.deployer, roles.swapManager, roles.deployer, external_.nativeWrapper)
-            )
+            ),
+            opts
         );
         contracts.swapperImpl = Upgrades.getImplementationAddress(contracts.swapperProxy);
 
-        _deployPolicyContracts(contracts, roles);
-        _deployPremiumContracts(contracts, roles);
-        _deployClaimAndFactoryContracts(contracts, roles, external_);
+        _deployPolicyContracts(contracts, roles, opts);
+        _deployPremiumContracts(contracts, roles, opts);
+        _deployClaimAndFactoryContracts(contracts, roles, external_, opts);
     }
 
     /**
@@ -217,10 +223,17 @@ abstract contract Deploy is Script {
      *      admin and POLICY_MANAGER_ROLE holder until PolicyManager is deployed.
      * @param contracts DeployedContracts struct to populate with Policy addresses.
      * @param roles Role configuration containing admin and deployer addresses.
+     * @param opts Upgrade options to skip constructor validation for OZ 5.5 ReentrancyGuard.
      */
-    function _deployPolicyContracts(DeployedContracts memory contracts, RoleConfig memory roles) private {
+    function _deployPolicyContracts(
+        DeployedContracts memory contracts,
+        RoleConfig memory roles,
+        Options memory opts
+    )
+        private
+    {
         contracts.policyProxy = Upgrades.deployUUPSProxy(
-            "Policy.sol:Policy", abi.encodeCall(Policy.initialize, (roles.deployer, roles.deployer))
+            "Policy.sol:Policy", abi.encodeCall(Policy.initialize, (roles.deployer, roles.deployer)), opts
         );
         contracts.policyImpl = Upgrades.getImplementationAddress(contracts.policyProxy);
     }
@@ -231,11 +244,19 @@ abstract contract Deploy is Script {
      *      and fee distribution. Both use deployer as temporary admin and placeholder for manager roles.
      * @param contracts DeployedContracts struct to populate with premium contract addresses.
      * @param roles Role configuration containing admin, deployer, and platformTreasury addresses.
+     * @param opts Upgrade options to skip constructor validation for OZ 5.5 ReentrancyGuard.
      */
-    function _deployPremiumContracts(DeployedContracts memory contracts, RoleConfig memory roles) private {
+    function _deployPremiumContracts(
+        DeployedContracts memory contracts,
+        RoleConfig memory roles,
+        Options memory opts
+    )
+        private
+    {
         contracts.premiumReserveProxy = Upgrades.deployUUPSProxy(
             "PremiumReserve.sol:PremiumReserve",
-            abi.encodeCall(PremiumReserve.initialize, (roles.deployer, roles.deployer, roles.deployer, roles.deployer))
+            abi.encodeCall(PremiumReserve.initialize, (roles.deployer, roles.deployer, roles.deployer, roles.deployer)),
+            opts
         );
         contracts.premiumReserveImpl = Upgrades.getImplementationAddress(contracts.premiumReserveProxy);
 
@@ -244,7 +265,8 @@ abstract contract Deploy is Script {
             abi.encodeCall(
                 PremiumManager.initialize,
                 (roles.deployer, roles.deployer, contracts.premiumReserveProxy, roles.platformTreasury)
-            )
+            ),
+            opts
         );
         contracts.premiumManagerImpl = Upgrades.getImplementationAddress(contracts.premiumManagerProxy);
     }
@@ -259,11 +281,13 @@ abstract contract Deploy is Script {
      * @param contracts DeployedContracts struct to populate with remaining contract addresses.
      * @param roles Role configuration containing admin and role holder addresses.
      * @param external_ External configuration containing Catalysis Core addresses.
+     * @param opts Upgrade options to skip constructor validation for OZ 5.5 ReentrancyGuard.
      */
     function _deployClaimAndFactoryContracts(
         DeployedContracts memory contracts,
         RoleConfig memory roles,
-        ExternalConfig memory external_
+        ExternalConfig memory external_,
+        Options memory opts
     )
         private
     {
@@ -281,7 +305,8 @@ abstract contract Deploy is Script {
                     contracts.premiumReserveProxy,
                     external_.priceFeed
                 )
-            )
+            ),
+            opts
         );
         contracts.claimManagerImpl = Upgrades.getImplementationAddress(contracts.claimManagerProxy);
 
@@ -289,7 +314,8 @@ abstract contract Deploy is Script {
             "PolicyManager.sol:PolicyManager",
             abi.encodeCall(
                 PolicyManager.initialize, (roles.deployer, contracts.premiumManagerProxy, contracts.policyProxy)
-            )
+            ),
+            opts
         );
         contracts.policyManagerImpl = Upgrades.getImplementationAddress(contracts.policyManagerProxy);
 
@@ -304,7 +330,8 @@ abstract contract Deploy is Script {
                     contracts.policyManagerProxy,
                     external_.sspRouter
                 )
-            )
+            ),
+            opts
         );
         contracts.coverPoolFactoryImpl = Upgrades.getImplementationAddress(contracts.coverPoolFactoryProxy);
     }

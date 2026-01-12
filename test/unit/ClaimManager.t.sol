@@ -155,7 +155,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           INITIALIZATION
+                               INITIALIZE
     //////////////////////////////////////////////////////////////*/
 
     function test_initialize_WhenAdminZero_Reverts() public {
@@ -245,7 +245,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              PAUSING
+                                 PAUSE
     //////////////////////////////////////////////////////////////*/
 
     function test_pause_WhenCallerNotAdmin_Reverts() public {
@@ -265,6 +265,10 @@ contract ClaimManagerTest is Test {
         claimManager.pause();
         assertTrue(claimManager.paused(), "Contract not paused");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                UNPAUSE
+    //////////////////////////////////////////////////////////////*/
 
     function test_unpause_WhenCallerNotAdmin_Reverts() public {
         vm.prank(admin);
@@ -292,7 +296,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           CONFIGURATION
+                         SET SPEC REGISTRY
     //////////////////////////////////////////////////////////////*/
 
     function test_setSpecRegistry_WhenCallerNotAdmin_Reverts() public {
@@ -326,6 +330,10 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.specRegistry(), newSpecRegistry, "SpecRegistry not updated");
     }
 
+    /*//////////////////////////////////////////////////////////////
+                         SET SLASHING MANAGER
+    //////////////////////////////////////////////////////////////*/
+
     function test_setSlashingManager_WhenCallerNotAdmin_Reverts() public {
         address newSlashingManager = makeAddr("newSlashingManager");
         vm.expectRevert(
@@ -356,6 +364,10 @@ contract ClaimManagerTest is Test {
 
         assertEq(claimManager.slashingManager(), newSlashingManager, "SlashingManager not updated");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                              SET SWAPPER
+    //////////////////////////////////////////////////////////////*/
 
     function test_setSwapper_WhenCallerNotAdmin_Reverts() public {
         address newSwapper = makeAddr("newSwapper");
@@ -388,6 +400,10 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.swapper(), newSwapper, "Swapper not updated");
     }
 
+    /*//////////////////////////////////////////////////////////////
+                              SET POLICY
+    //////////////////////////////////////////////////////////////*/
+
     function test_setPolicy_WhenCallerNotAdmin_Reverts() public {
         address newPolicy = makeAddr("newPolicy");
         vm.expectRevert(
@@ -419,6 +435,10 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.policy(), newPolicy, "Policy not updated");
     }
 
+    /*//////////////////////////////////////////////////////////////
+                         SET PREMIUM RESERVE
+    //////////////////////////////////////////////////////////////*/
+
     function test_setPremiumReserve_WhenCallerNotAdmin_Reverts() public {
         address newPremiumReserve = makeAddr("newPremiumReserve");
         vm.expectRevert(
@@ -449,6 +469,10 @@ contract ClaimManagerTest is Test {
 
         assertEq(claimManager.premiumReserve(), newPremiumReserve, "PremiumReserve not updated");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                            SET PRICE FEED
+    //////////////////////////////////////////////////////////////*/
 
     function test_setPriceFeed_WhenCallerNotAdmin_Reverts() public {
         address newPriceFeed = makeAddr("newPriceFeed");
@@ -1211,7 +1235,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           REJECT CLAIM
+                            REJECT CLAIM
     //////////////////////////////////////////////////////////////*/
 
     function test_rejectClaim_WhenPaused_Reverts() public {
@@ -1286,7 +1310,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            POLICY CLAIM
+                          POLICY CLAIM
     //////////////////////////////////////////////////////////////*/
 
     function test_policyClaim_WhenNoClaims_ReturnsDefaults() public view {
@@ -1363,7 +1387,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          REMAINING COVERAGE
+                        REMAINING COVERAGE
     //////////////////////////////////////////////////////////////*/
 
     function test_remainingCoverage_WhenNoClaims_ReturnsFullCoverage() public view {
@@ -1527,7 +1551,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        FILE AND RESOLVE CLAIM
+                      FILE AND RESOLVE CLAIM
     //////////////////////////////////////////////////////////////*/
 
     function test_fileAndResolveClaim_WhenPaused_Reverts() public {
@@ -1936,7 +1960,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        MULTIPLE CLAIMS SCENARIOS
+                     MULTIPLE CLAIMS SCENARIOS
     //////////////////////////////////////////////////////////////*/
 
     function test_multipleClaims_WhenSomeApprovedSomeRejected_TracksCorrectly() public {
