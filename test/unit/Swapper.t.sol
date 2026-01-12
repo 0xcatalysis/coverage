@@ -70,7 +70,7 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           RECEIVE FUNCTION
+                                RECEIVE
     //////////////////////////////////////////////////////////////*/
 
     function test_receive_AcceptsNativeToken() public {
@@ -81,7 +81,7 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            INITIALIZATION
+                               INITIALIZE
     //////////////////////////////////////////////////////////////*/
 
     function test_initialize_WhenAdminZero_Reverts() public {
@@ -120,10 +120,10 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            ACCESS CONTROL
+                             GRANT ROLE
     //////////////////////////////////////////////////////////////*/
 
-    function test_adminProtection_CanGrantOtherRoles_Success() public {
+    function test_grantRole_WhenCalledByAdmin_GrantsRole() public {
         address newManager = makeAddr("newManager");
         bytes32 managerRole = swapper.SWAP_MANAGER_ROLE();
 
@@ -134,7 +134,11 @@ contract SwapperTest is Test {
         assertTrue(swapper.hasRole(managerRole, newManager));
     }
 
-    function test_adminProtection_CanRevokeOtherRoles_Success() public {
+    /*//////////////////////////////////////////////////////////////
+                             REVOKE ROLE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_revokeRole_WhenCalledByAdmin_RevokesRole() public {
         bytes32 managerRole = swapper.SWAP_MANAGER_ROLE();
 
         vm.startPrank(admin);
@@ -144,7 +148,11 @@ contract SwapperTest is Test {
         assertFalse(swapper.hasRole(managerRole, swapManager));
     }
 
-    function test_adminProtection_CanRenounceOtherRoles_Success() public {
+    /*//////////////////////////////////////////////////////////////
+                            RENOUNCE ROLE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_renounceRole_WhenCalledByRoleHolder_RenounceRole() public {
         bytes32 managerRole = swapper.SWAP_MANAGER_ROLE();
 
         vm.startPrank(swapManager);
@@ -155,7 +163,7 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                             PAUSE/UNPAUSE
+                                 PAUSE
     //////////////////////////////////////////////////////////////*/
 
     function test_pause_WhenCalledByAdmin_PausesContract() public {
@@ -173,6 +181,10 @@ contract SwapperTest is Test {
         );
         swapper.pause();
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                UNPAUSE
+    //////////////////////////////////////////////////////////////*/
 
     function test_unpause_WhenCalledByAdmin_UnpausesContract() public {
         vm.startPrank(admin);
@@ -196,7 +208,7 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                       SWAP TARGET WHITELIST
+                      SET SWAP TARGET WHITELIST
     //////////////////////////////////////////////////////////////*/
 
     function test_setSwapTargetWhitelist_WhenTargetZero_Reverts() public {
@@ -237,7 +249,7 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          NATIVE WRAPPER
+                         SET NATIVE WRAPPER
     //////////////////////////////////////////////////////////////*/
 
     function test_setNativeWrapper_WhenWrapperZero_Reverts() public {
@@ -388,7 +400,7 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            SET SWAP ROUTE
+                           SET SWAP ROUTE
     //////////////////////////////////////////////////////////////*/
 
     function test_setSwapRoute_WhenTokenInZero_Reverts() public {
@@ -783,7 +795,7 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            EXECUTE SWAP - NATIVE ETH
+                     EXECUTE SWAP - NATIVE ETH
     //////////////////////////////////////////////////////////////*/
 
     function test_executeSwap_WhenNativeETHInput_WrapsAndSwaps() public {
@@ -1036,10 +1048,6 @@ contract SwapperTest is Test {
         assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient1 balance mismatch");
         assertEq(tokenOut.balanceOf(recipient2), amountOut, "Recipient2 balance mismatch");
     }
-
-    /*//////////////////////////////////////////////////////////////
-                         SET SWAP ROUTE
-    //////////////////////////////////////////////////////////////*/
 
     function test_setSwapRoute_UpdateExistingRoute_UpdatesTarget() public {
         address dexTarget2 = makeAddr("dexTarget2");

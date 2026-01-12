@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -35,13 +35,7 @@ import {IWETH} from "./interfaces/IWETH.sol";
  *      Integrates with any DEX or aggregator (Uniswap, Curve, 1inch, ParaSwap) via generic calldata approach.
  */
 // slither-disable-next-line unimplemented-functions
-contract Swapper is
-    UUPSUpgradeable,
-    AccessControlUpgradeable,
-    PausableUpgradeable,
-    ReentrancyGuardUpgradeable,
-    ISwapper
-{
+contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeable, ReentrancyGuard, ISwapper {
     using Address for address payable;
     using SafeERC20 for IERC20;
 
@@ -87,10 +81,8 @@ contract Swapper is
             ZeroAddress()
         );
 
-        __UUPSUpgradeable_init();
         __AccessControl_init();
         __Pausable_init();
-        __ReentrancyGuard_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
 

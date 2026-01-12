@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -47,7 +47,7 @@ contract ClaimManager is
     UUPSUpgradeable,
     AccessControlUpgradeable,
     PausableUpgradeable,
-    ReentrancyGuardUpgradeable,
+    ReentrancyGuard,
     IClaimManager
 {
     using SafeERC20 for IERC20;
@@ -101,10 +101,8 @@ contract ClaimManager is
             ZeroAddress()
         );
 
-        __UUPSUpgradeable_init();
         __AccessControl_init();
         __Pausable_init();
-        __ReentrancyGuard_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
         _grantRole(CLAIM_OPERATOR_ROLE, claimOperator_);
@@ -233,7 +231,9 @@ contract ClaimManager is
 
         if (!result.isPayable) {
             claim.status = ClaimStatus.Rejected;
-            _rejectClaimAndUnlock(policyId, claimId, "Spec evaluation failed");
+            _pendingClaimCounts[policyId]--;
+            emit ClaimRejected(policyId, claimId, "Spec evaluation failed", block.timestamp);
+            _unlockEscrowIfNoPendingClaims(policyId);
             return claimId;
         }
 
@@ -273,7 +273,9 @@ contract ClaimManager is
             claim.evaluationResult = result;
             claim.resolvedAt = block.timestamp;
             claim.status = ClaimStatus.Rejected;
-            _rejectClaimAndUnlock(policyId, claimId, "Spec evaluation failed");
+            _pendingClaimCounts[policyId]--;
+            emit ClaimRejected(policyId, claimId, "Spec evaluation failed", block.timestamp);
+            _unlockEscrowIfNoPendingClaims(policyId);
             return;
         }
 
@@ -311,7 +313,10 @@ contract ClaimManager is
 
         claim.status = ClaimStatus.Rejected;
         claim.resolvedAt = block.timestamp;
-        _rejectClaimAndUnlock(policyId, claimId, reason);
+        _pendingClaimCounts[policyId]--;
+
+        emit ClaimRejected(policyId, claimId, reason, block.timestamp);
+        _unlockEscrowIfNoPendingClaims(policyId);
     }
 
     /**
@@ -376,18 +381,6 @@ contract ClaimManager is
             // slither-disable-next-line calls-loop
             IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
         }
-    }
-
-    /**
-     * @notice Rejects a claim by decrementing pending count, emitting rejection event, and unlocking escrow.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim.
-     * @param reason Reason for rejection.
-     */
-    function _rejectClaimAndUnlock(uint256 policyId, uint256 claimId, string memory reason) private {
-        _pendingClaimCounts[policyId]--;
-        emit ClaimRejected(policyId, claimId, reason, block.timestamp);
-        _unlockEscrowIfNoPendingClaims(policyId);
     }
 
     /**

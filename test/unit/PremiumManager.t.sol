@@ -76,7 +76,7 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              INITIALIZATION
+                               INITIALIZE
     //////////////////////////////////////////////////////////////*/
 
     function test_initialize_WhenAdminZero_Reverts() public {
@@ -118,7 +118,7 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            PAUSE/UNPAUSE
+                                 PAUSE
     //////////////////////////////////////////////////////////////*/
 
     function test_pause_WhenCallerNotAdmin_Reverts() public {
@@ -137,6 +137,10 @@ contract PremiumManagerTest is Test {
 
         assertTrue(premiumManager.paused(), "Manager not paused");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                UNPAUSE
+    //////////////////////////////////////////////////////////////*/
 
     function test_unpause_WhenCallerNotAdmin_Reverts() public {
         vm.prank(admin);
@@ -194,7 +198,7 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    SET PLATFORM TREASURY
+                       SET PLATFORM TREASURY
     //////////////////////////////////////////////////////////////*/
 
     function test_setPlatformTreasury_WhenCallerNotAdmin_Reverts() public {
@@ -568,7 +572,7 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            GET FEE SPLITS
+                           GET FEE SPLITS
     //////////////////////////////////////////////////////////////*/
 
     function test_getFeeSplits_CalculatesCorrectly() public view {
@@ -622,7 +626,7 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          REENTRANCY GUARD
+                     COLLECT PREMIUM - REENTRANCY
     //////////////////////////////////////////////////////////////*/
 
     function test_collectPremium_IsProtectedByReentrancyGuard() public {

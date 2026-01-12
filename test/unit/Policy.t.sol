@@ -69,7 +69,7 @@ contract PolicyTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              INITIALIZATION
+                               INITIALIZE
     //////////////////////////////////////////////////////////////*/
 
     function test_initialize_WhenAdminZero_Reverts() public {
@@ -97,7 +97,7 @@ contract PolicyTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                  MINTING
+                             MINT POLICY
     //////////////////////////////////////////////////////////////*/
 
     function test_mintPolicy_WhenCallerNotPolicyManager_Reverts() public {
@@ -276,7 +276,7 @@ contract PolicyTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                               METADATA
+                           POLICY METADATA
     //////////////////////////////////////////////////////////////*/
 
     function test_policyMetadata_WhenPolicyMissing_Reverts() public {
@@ -285,7 +285,7 @@ contract PolicyTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                               SOULBOUND
+                            TRANSFER FROM
     //////////////////////////////////////////////////////////////*/
 
     function test_transferFrom_WhenCalled_Reverts() public {

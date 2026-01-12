@@ -62,7 +62,7 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              INITIALIZATION
+                               INITIALIZE
     //////////////////////////////////////////////////////////////*/
     function test_initialize_WhenCuratorZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
@@ -110,8 +110,9 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              CONFIGURATION
+                          SET POOL FEE BPS
     //////////////////////////////////////////////////////////////*/
+
     function test_setPoolFeeBps_WhenCallerNotCurator_Reverts() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager));
         vm.prank(policyManager);
@@ -137,8 +138,9 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                PAUSING
+                                 PAUSE
     //////////////////////////////////////////////////////////////*/
+
     function test_pause_WhenCallerNotCurator_Reverts() public {
         vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, policyManager));
         vm.prank(policyManager);
@@ -150,6 +152,10 @@ contract CoverPoolTest is Test {
         coverPool.pause();
         assertTrue(coverPool.paused(), "Pool not paused");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                UNPAUSE
+    //////////////////////////////////////////////////////////////*/
 
     function test_unpause_WhenCallerNotCurator_Reverts() public {
         vm.prank(curator);
@@ -171,8 +177,9 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                               ACCESS CONTROL
+                             GRANT ROLE
     //////////////////////////////////////////////////////////////*/
+
     function test_grantRole_WhenCalledByOwner_AddsQuoteSigner() public {
         address newSigner = makeAddr("newSigner");
         bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
@@ -197,6 +204,10 @@ contract CoverPoolTest is Test {
         vm.prank(curator);
         coverPool.grantRole(adminRole, policyManager);
     }
+
+    /*//////////////////////////////////////////////////////////////
+                             REVOKE ROLE
+    //////////////////////////////////////////////////////////////*/
 
     function test_revokeRole_WhenCalledByOwner_RemovesQuoteSigner() public {
         address newSigner = makeAddr("newSigner");
@@ -227,6 +238,10 @@ contract CoverPoolTest is Test {
         vm.prank(curator);
         coverPool.revokeRole(adminRole, curator);
     }
+
+    /*//////////////////////////////////////////////////////////////
+                            RENOUNCE ROLE
+    //////////////////////////////////////////////////////////////*/
 
     function test_renounceRole_WhenDefaultAdminRequested_Reverts() public {
         bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
@@ -261,9 +276,10 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                               OWNERSHIP
+                        TRANSFER OWNERSHIP
     //////////////////////////////////////////////////////////////*/
-    function test_transferOwnershipTwoStep_UpdatesAdminRole() public {
+
+    function test_transferOwnership_TwoStep_UpdatesAdminRole() public {
         address newOwner = makeAddr("newOwner");
         bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
         address additionalSigner = makeAddr("additionalSigner");
@@ -288,6 +304,10 @@ contract CoverPoolTest is Test {
         coverPool.grantRole(signerRole, makeAddr("shouldFail"));
     }
 
+    /*//////////////////////////////////////////////////////////////
+                         ACCEPT OWNERSHIP
+    //////////////////////////////////////////////////////////////*/
+
     function test_acceptOwnership_WhenNotPendingOwner_Reverts() public {
         address newOwner = makeAddr("nextOwner");
         address unauthorized = makeAddr("unauthorized");
@@ -300,7 +320,7 @@ contract CoverPoolTest is Test {
         coverPool.acceptOwnership();
     }
 
-    function test_transferOwnershipTwoStep_UpdatesQuoteSignerAdmin() public {
+    function test_transferOwnership_TwoStep_UpdatesQuoteSignerAdmin() public {
         address newOwner = makeAddr("newOwnerB");
         address newSigner = makeAddr("signerAfterTransfer");
         bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
@@ -320,7 +340,7 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                 QUOTES
+                           VALIDATE QUOTE
     //////////////////////////////////////////////////////////////*/
     function test_validateQuote_WhenPaused_Reverts() public {
         ICoverPool.QuoteData memory quote = _defaultQuote();
@@ -414,7 +434,7 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                BINDING
+                            BIND POLICY
     //////////////////////////////////////////////////////////////*/
     function test_bindPolicy_WhenPaused_Reverts() public {
         ICoverPool.QuoteData memory quote = _defaultQuote();
@@ -519,9 +539,10 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                 VIEWS
+                          GET BOUND POLICY
     //////////////////////////////////////////////////////////////*/
-    function test_getPoolPolicy_WhenUnknown_Reverts() public {
+
+    function test_getBoundPolicy_WhenUnknown_Reverts() public {
         // forge-lint: disable-next-line(unsafe-typecast)
         vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyNotFound.selector, bytes32("unknown")));
         // forge-lint: disable-next-line(unsafe-typecast)

@@ -37,7 +37,6 @@ contract Policy is UUPSUpgradeable, AccessControlUpgradeable, ERC721Upgradeable,
 
         __ERC721_init(_NAME, _SYMBOL);
         __AccessControl_init();
-        __UUPSUpgradeable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);

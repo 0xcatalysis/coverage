@@ -82,7 +82,7 @@ contract PremiumReserveTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              INITIALIZATION
+                               INITIALIZE
     //////////////////////////////////////////////////////////////*/
 
     function test_initialize_WhenAddressZero_Reverts() public {
@@ -93,7 +93,7 @@ contract PremiumReserveTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                 ESCROW
+                              OPEN ESCROW
     //////////////////////////////////////////////////////////////*/
 
     function test_openEscrow_WhenCallerUnauthorized_Reverts() public {
@@ -165,7 +165,7 @@ contract PremiumReserveTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                CLAIM LOCK
+                         SET CLAIM LOCK STATUS
     //////////////////////////////////////////////////////////////*/
 
     function test_setClaimLockStatus_SetsFlag() public {
@@ -182,7 +182,7 @@ contract PremiumReserveTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                 CLAIM PAYOUT
+                               PAY CLAIM
     //////////////////////////////////////////////////////////////*/
 
     function test_payClaim_WhenNotLocked_Reverts() public {
@@ -293,7 +293,7 @@ contract PremiumReserveTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                 RELEASE
+                            RELEASE ESCROW
     //////////////////////////////////////////////////////////////*/
 
     function test_releaseEscrow_WhenLocked_Reverts() public {
@@ -373,7 +373,7 @@ contract PremiumReserveTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            QUERY FUNCTIONS
+                          IS ESCROW RELEASED
     //////////////////////////////////////////////////////////////*/
 
     function test_isEscrowReleased_WhenNotReleased_ReturnsFalse() public {
@@ -392,6 +392,10 @@ contract PremiumReserveTest is Test {
 
         assertTrue(reserve.isEscrowReleased(POLICY_ID), "should be released after release");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                           IS ESCROW LOCKED
+    //////////////////////////////////////////////////////////////*/
 
     function test_isEscrowLocked_WhenNotLocked_ReturnsFalse() public {
         _openEscrow();
@@ -417,6 +421,10 @@ contract PremiumReserveTest is Test {
 
         assertFalse(reserve.isEscrowLocked(POLICY_ID), "should not be locked after unlock");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                        GET REMAINING PREMIUM
+    //////////////////////////////////////////////////////////////*/
 
     function test_getRemainingPremium_InitiallyReturnsTotal() public {
         _openEscrow();
@@ -444,6 +452,10 @@ contract PremiumReserveTest is Test {
 
         assertEq(reserve.getRemainingPremium(POLICY_ID), 0, "should return zero after full claim");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                               GET POOL
+    //////////////////////////////////////////////////////////////*/
 
     function test_getPool_ReturnsCorrectPool() public {
         _openEscrow();
