@@ -89,7 +89,7 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              INITIALIZATION
+                               INITIALIZE
     //////////////////////////////////////////////////////////////*/
 
     function test_initialize_WhenAdminZero_Reverts() public {
@@ -121,7 +121,7 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            PAUSE/UNPAUSE
+                                 PAUSE
     //////////////////////////////////////////////////////////////*/
 
     function test_pause_WhenCallerNotAdmin_Reverts() public {
@@ -140,6 +140,10 @@ contract PolicyManagerTest is Test {
 
         assertTrue(policyManager.paused(), "Manager not paused");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                UNPAUSE
+    //////////////////////////////////////////////////////////////*/
 
     function test_unpause_WhenCallerNotAdmin_Reverts() public {
         vm.prank(admin);
@@ -197,7 +201,7 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            SET POLICY
+                             SET POLICY
     //////////////////////////////////////////////////////////////*/
 
     function test_setPolicy_WhenCallerNotAdmin_Reverts() public {

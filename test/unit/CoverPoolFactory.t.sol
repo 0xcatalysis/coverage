@@ -69,7 +69,7 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              INITIALIZATION
+                               INITIALIZE
     //////////////////////////////////////////////////////////////*/
     function test_initialize_WhenImplementationZero_Reverts() public {
         CoverPoolFactory factoryImpl = new CoverPoolFactory();
@@ -103,8 +103,9 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              CONFIGURATION
+                    SET COVER POOL IMPLEMENTATION
     //////////////////////////////////////////////////////////////*/
+
     function test_setCoverPoolImplementation_WhenCallerNotCreator_Reverts() public {
         address caller = makeAddr("notCreator");
         CoverPool newImplementation = new CoverPool();
@@ -134,6 +135,10 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.coverPoolImplementation(), address(newImplementation), "Implementation not updated");
     }
 
+    /*//////////////////////////////////////////////////////////////
+                         SET POLICY MANAGER
+    //////////////////////////////////////////////////////////////*/
+
     function test_setPolicyManager_WhenCallerNotCreator_Reverts() public {
         address caller = makeAddr("notCreatorPolicy");
         vm.expectRevert(
@@ -162,8 +167,9 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                PAUSING
+                                 PAUSE
     //////////////////////////////////////////////////////////////*/
+
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, creator, ADMIN_ROLE)
@@ -177,6 +183,10 @@ contract CoverPoolFactoryTest is Test {
         factory.pause();
         assertTrue(factory.paused(), "Factory not paused");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                UNPAUSE
+    //////////////////////////////////////////////////////////////*/
 
     function test_unpause_WhenCallerNotAdmin_Reverts() public {
         vm.prank(admin);
@@ -200,8 +210,9 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                               POOL CREATION
+                         CREATE COVER POOL
     //////////////////////////////////////////////////////////////*/
+
     function test_createCoverPool_WhenPaused_Reverts() public {
         vm.prank(admin);
         factory.pause();
@@ -345,6 +356,10 @@ contract CoverPoolFactoryTest is Test {
         assertEq(pool2.owner(), params2.curator, "Second pool curator mismatch");
     }
 
+    /*//////////////////////////////////////////////////////////////
+                     COMPUTE COVER POOL ADDRESS
+    //////////////////////////////////////////////////////////////*/
+
     function test_computeCoverPoolAddress_PredictsDeployment() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
         address expected = _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
@@ -452,9 +467,10 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                  VIEWS
+                         COVER TOTAL POOLS
     //////////////////////////////////////////////////////////////*/
-    function test_totalPools_WhenMultiplePools_Increments() public {
+
+    function test_coverTotalPools_WhenMultiplePools_Increments() public {
         for (uint256 i = 0; i < 3; ++i) {
             ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
             params.curator = makeAddr(string.concat("curator", vm.toString(i)));
@@ -480,21 +496,29 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.coverTotalPools(), 3, "Unexpected total pools");
     }
 
-    function test_poolAt_WhenOutOfBounds_Reverts() public {
+    /*//////////////////////////////////////////////////////////////
+                           COVER POOL AT
+    //////////////////////////////////////////////////////////////*/
+
+    function test_coverPoolAt_WhenOutOfBounds_Reverts() public {
         vm.expectRevert(ICoverPoolFactory.InvalidLimit.selector);
         factory.coverPoolAt(0);
     }
 
-    function test_getPools_WhenLimitZero_Reverts() public {
+    /*//////////////////////////////////////////////////////////////
+                          GET COVER POOLS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_getCoverPools_WhenLimitZero_Reverts() public {
         vm.expectRevert(ICoverPoolFactory.InvalidLimit.selector);
         factory.getCoverPools(0, 0);
     }
 
-    function test_getPools_WhenOffsetPastEnd_ReturnsEmpty() public view {
+    function test_getCoverPools_WhenOffsetPastEnd_ReturnsEmpty() public view {
         assertEq(factory.getCoverPools(5, 1).length, 0, "Expected empty array");
     }
 
-    function test_getPools_WhenMultiplePools_Paginates() public {
+    function test_getCoverPools_WhenMultiplePools_Paginates() public {
         for (uint256 i = 0; i < 3; ++i) {
             ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
             params.curator = makeAddr(string.concat("curator", vm.toString(i)));
@@ -526,20 +550,24 @@ contract CoverPoolFactoryTest is Test {
         assertNotEq(firstPage[0], secondPage[0], "Overlap across pages");
     }
 
-    function test_poolExists_WhenUnknown_ReturnsFalse() public view {
+    /*//////////////////////////////////////////////////////////////
+                         COVER POOL EXISTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_coverPoolExists_WhenUnknown_ReturnsFalse() public view {
         assertFalse(factory.coverPoolExists(address(0x1234)));
     }
 
-    function test_poolAt_WhenPoolsDeployed_ReturnsExpectedAddress() public {
+    function test_coverPoolAt_WhenPoolsDeployed_ReturnsExpectedAddress() public {
         address pool = _createPool("primary");
         assertEq(factory.coverPoolAt(0), pool, "Pool address mismatch");
     }
 
-    function test_totalPools_WhenNone_ReturnsZero() public view {
+    function test_coverTotalPools_WhenNone_ReturnsZero() public view {
         assertEq(factory.coverTotalPools(), 0, "Expected zero pools");
     }
 
-    function test_getPools_WhenOffsetNonZero_ReturnsSlice() public {
+    function test_getCoverPools_WhenOffsetNonZero_ReturnsSlice() public {
         address first = _createPool("first");
         address second = _createPool("second");
         assertNotEq(first, second, "Pools should differ");
@@ -549,7 +577,7 @@ contract CoverPoolFactoryTest is Test {
         assertEq(slice[0], second, "Unexpected pool returned");
     }
 
-    function test_getPools_WhenLimitExceedsRemaining_Truncates() public {
+    function test_getCoverPools_WhenLimitExceedsRemaining_Truncates() public {
         _createPool("a");
         _createPool("b");
         _createPool("c");
@@ -630,8 +658,9 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         SSP ROUTER CONFIGURATION
+                           SET SSP ROUTER
     //////////////////////////////////////////////////////////////*/
+
     function test_setSSPRouter_WhenCallerNotCreator_Reverts() public {
         address caller = makeAddr("notCreator");
         address newSSPRouter = makeAddr("newSSPRouter");
