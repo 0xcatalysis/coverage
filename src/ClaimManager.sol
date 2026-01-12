@@ -233,9 +233,7 @@ contract ClaimManager is
 
         if (!result.isPayable) {
             claim.status = ClaimStatus.Rejected;
-            _pendingClaimCounts[policyId]--;
-            emit ClaimRejected(policyId, claimId, "Spec evaluation failed", block.timestamp);
-            _unlockEscrowIfNoPendingClaims(policyId);
+            _rejectClaimAndUnlock(policyId, claimId, "Spec evaluation failed");
             return claimId;
         }
 
@@ -275,9 +273,7 @@ contract ClaimManager is
             claim.evaluationResult = result;
             claim.resolvedAt = block.timestamp;
             claim.status = ClaimStatus.Rejected;
-            _pendingClaimCounts[policyId]--;
-            emit ClaimRejected(policyId, claimId, "Spec evaluation failed", block.timestamp);
-            _unlockEscrowIfNoPendingClaims(policyId);
+            _rejectClaimAndUnlock(policyId, claimId, "Spec evaluation failed");
             return;
         }
 
@@ -315,10 +311,7 @@ contract ClaimManager is
 
         claim.status = ClaimStatus.Rejected;
         claim.resolvedAt = block.timestamp;
-        _pendingClaimCounts[policyId]--;
-
-        emit ClaimRejected(policyId, claimId, reason, block.timestamp);
-        _unlockEscrowIfNoPendingClaims(policyId);
+        _rejectClaimAndUnlock(policyId, claimId, reason);
     }
 
     /**
@@ -383,6 +376,18 @@ contract ClaimManager is
             // slither-disable-next-line calls-loop
             IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
         }
+    }
+
+    /**
+     * @notice Rejects a claim by decrementing pending count, emitting rejection event, and unlocking escrow.
+     * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
+     * @param reason Reason for rejection.
+     */
+    function _rejectClaimAndUnlock(uint256 policyId, uint256 claimId, string memory reason) private {
+        _pendingClaimCounts[policyId]--;
+        emit ClaimRejected(policyId, claimId, reason, block.timestamp);
+        _unlockEscrowIfNoPendingClaims(policyId);
     }
 
     /**
