@@ -329,8 +329,8 @@ help:
 	@echo ""
 	@echo "Deployment:"
 	@echo "  make deploy-anvil                - Deploy contracts to Anvil"
-	@echo "  make deploy-sepolia              - Deploy contracts to Sepolia
-	@echo "  make deploy-specregistry-sepolia - Deploy SpecRegistry mocks to Sepolia
+	@echo "  make deploy-sepolia              - Deploy contracts to Sepolia"
+	@echo "  make deploy-specregistry-sepolia - Deploy SpecRegistry mocks to Sepolia"
 	@echo "  make deploy-ethereum             - Deploy contracts to Ethereum"
 	@echo ""
 	@echo "Verification (implementations only, Etherscan auto-links proxies):"
