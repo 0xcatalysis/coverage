@@ -42,6 +42,7 @@ import {Swapper} from "../src/Swapper.sol";
  *        - SPEC_REGISTRY: Catalysis Core SpecRegistry address (required)
  *        - SLASHING_MANAGER: Catalysis Core SlashingManager address (required)
  *        - SSP_ROUTER: Catalysis Core SSPRouter address (required)
+ *        - PRICE_FEED: Catalysis Core ChainlinkPriceFeed address (required)
  *        - PLATFORM_TREASURY: Platform fee recipient (defaults to admin)
  *        - COVER_POOL_FACTORY_CREATOR: Factory creator role (defaults to admin)
  *        - CLAIM_OPERATOR: Claim resolution operator (defaults to admin)

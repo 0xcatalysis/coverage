@@ -11,9 +11,10 @@ import {Deploy} from "./Deploy.s.sol";
  *      - SPEC_REGISTRY: Address of SpecRegistry from Catalysis Core
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
  *      - SSP_ROUTER: Address of SSPRouter from Catalysis Core
+ *      - PRICE_FEED: Address of ChainlinkPriceFeed from Catalysis Core
  *
  *      Usage:
- *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... SSP_ROUTER=0x... PRIVATE_KEY=0x... \
+ *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... SSP_ROUTER=0x... PRICE_FEED=0x... PRIVATE_KEY=0x... \
  *          forge script script/DeploySepolia.s.sol --broadcast --rpc-url sepolia --verify
  */
 contract DeploySepolia is Deploy {
