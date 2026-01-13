@@ -11,7 +11,7 @@ import {ISpec} from "../interfaces/ISpec.sol";
  *      Custom behavior: map specific evidence hashes to specific outcomes.
  */
 contract MockSpec is ISpec {
-    address public owner;
+    address public immutable owner;
     bool private _defaultIsPayable;
     uint256 private _defaultAmountUsd;
     bytes32 private _defaultNotesHash;

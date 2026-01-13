@@ -13,7 +13,7 @@ import {ISpecRegistry} from "../interfaces/ISpecRegistry.sol";
 contract MockSpecRegistry is ISpecRegistry {
     mapping(address pool => mapping(bytes32 specId => ISpec spec)) private _specs;
     address private _defaultSpec;
-    address public owner;
+    address public immutable owner;
 
     /**
      * @notice Emitted when a spec is registered for a specific pool and specId combination.
@@ -40,6 +40,11 @@ contract MockSpecRegistry is ISpecRegistry {
     error NoSpecRegistered();
 
     /**
+     * @notice Thrown when a zero address is provided where it's not allowed.
+     */
+    error ZeroAddress();
+
+    /**
      * @dev Restricts function access to the contract owner.
      */
     modifier onlyOwner() {
@@ -52,6 +57,7 @@ contract MockSpecRegistry is ISpecRegistry {
      * @param defaultSpec_ Address of the default ISpec implementation to use for unregistered pool/specId pairs.
      */
     constructor(address defaultSpec_) {
+        require(defaultSpec_ != address(0), ZeroAddress());
         owner = msg.sender;
         _defaultSpec = defaultSpec_;
     }
@@ -72,6 +78,7 @@ contract MockSpecRegistry is ISpecRegistry {
      * @param spec Address of the default ISpec implementation.
      */
     function setDefaultSpec(address spec) external onlyOwner {
+        require(spec != address(0), ZeroAddress());
         _defaultSpec = spec;
         emit DefaultSpecSet(spec);
     }
