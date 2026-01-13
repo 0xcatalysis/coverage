@@ -8,7 +8,7 @@ import {Deploy} from "./Deploy.s.sol";
  * @notice Deploys all Catalysis Coverage contracts to the Ethereum Sepolia testnet.
  * @dev WETH address is hardcoded for Sepolia. Catalysis Core addresses must be provided
  *      via environment variables:
- *      - SPEC_REGISTRY: Address of SpecRegistry from Catalysis Core
+ *      - SPEC_REGISTRY: Address of SpecRegistry contract
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
  *      - SSP_ROUTER: Address of SSPRouter from Catalysis Core
  *      - CHAINLINK_PRICE_FEED: Address of ChainlinkPriceFeed

@@ -75,7 +75,7 @@ contract ClaimManager is
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
      * @param claimOperator_ Address granted CLAIM_OPERATOR_ROLE for resolving claims.
      * @param specRegistry_ Address of the SpecRegistry contract.
-     * @param slashingManager_ Address of the SlashingManager contract (Catalysis Core).
+     * @param slashingManager_ Address of the SlashingManager contract.
      * @param swapper_ Address of the Swapper contract.
      * @param policy_ Address of the Policy contract.
      * @param premiumReserve_ Address of the PremiumReserve contract.

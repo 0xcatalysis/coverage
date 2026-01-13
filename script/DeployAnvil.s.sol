@@ -8,7 +8,7 @@ import {Deploy} from "./Deploy.s.sol";
  * @notice Deploys all Catalysis Coverage contracts to a local Anvil chain.
  * @dev All external dependencies must be provided via environment variables:
  *      - NATIVE_WRAPPER: Address of WETH or mock wrapper contract
- *      - SPEC_REGISTRY: Address of SpecRegistry from Catalysis Core
+ *      - SPEC_REGISTRY: Address of SpecRegistry contract
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
  *      - SSP_ROUTER: Address of SSPRouter from Catalysis Core
  *      - CHAINLINK_PRICE_FEED: Address of ChainlinkPriceFeed

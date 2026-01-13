@@ -39,7 +39,7 @@ import {Swapper} from "../src/Swapper.sol";
  *        - PRIVATE_KEY: Deployer private key (defaults to Anvil key 0)
  *        - ADMIN: Admin address for all contracts (defaults to deployer)
  *        - NATIVE_WRAPPER: WETH address (required)
- *        - SPEC_REGISTRY: Catalysis Core SpecRegistry address (required)
+ *        - SPEC_REGISTRY: SpecRegistry address (required)
  *        - SLASHING_MANAGER: Catalysis Core SlashingManager address (required)
  *        - SSP_ROUTER: Catalysis Core SSPRouter address (required)
  *        - CHAINLINK_PRICE_FEED: ChainlinkPriceFeed address (required)
@@ -66,7 +66,7 @@ abstract contract Deploy is Script {
     /**
      * @notice External contract addresses required for deployment.
      * @param nativeWrapper WETH or equivalent native token wrapper address.
-     * @param specRegistry SpecRegistry contract address from Catalysis Core.
+     * @param specRegistry SpecRegistry contract address.
      * @param slashingManager SlashingManager contract address from Catalysis Core.
      * @param chainlinkPriceFeed ChainlinkPriceFeed contract address from Catalysis Core.
      * @param sspRouter SSPRouter contract address from Catalysis Core.
