@@ -19,17 +19,46 @@ contract MockSpec is ISpec {
     mapping(bytes32 evidenceHash => EvaluationResult result) private _customResults;
     mapping(bytes32 evidenceHash => bool exists) private _hasCustomResult;
 
+    /**
+     * @notice Emitted when the default evaluation result is updated.
+     * @param isPayable Whether claims should be approved by default.
+     * @param amountUsd Default USD amount (0 = approve full requested amount).
+     * @param notesHash Default notes hash for audit trail.
+     */
     event DefaultResultUpdated(bool isPayable, uint256 amountUsd, bytes32 notesHash);
+
+    /**
+     * @notice Emitted when a custom result is configured for a specific evidence hash.
+     * @param evidenceHash The evidence hash that will trigger this custom result.
+     * @param isPayable Whether this specific claim should be approved.
+     * @param amountUsd USD amount for this claim (0 = use requested amount).
+     * @param notesHash Notes hash for this specific claim.
+     */
     event CustomResultSet(bytes32 indexed evidenceHash, bool isPayable, uint256 amountUsd, bytes32 notesHash);
+
+    /**
+     * @notice Emitted when a custom result mapping is removed.
+     * @param evidenceHash The evidence hash for which custom behavior was removed.
+     */
     event CustomResultRemoved(bytes32 indexed evidenceHash);
 
+    /**
+     * @notice Thrown when caller is not the owner.
+     */
     error NotOwner();
 
+    /**
+     * @dev Restricts function access to the contract owner.
+     */
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
         _;
     }
 
+    /**
+     * @notice Deploys a new MockSpec with auto-approve default behavior.
+     * @dev Initializes with default payable result and zero amount (full claim approval).
+     */
     constructor() {
         owner = msg.sender;
         _defaultIsPayable = true;
