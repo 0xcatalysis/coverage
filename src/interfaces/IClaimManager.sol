@@ -144,10 +144,10 @@ interface IClaimManager is IAccessControl {
     event PremiumReserveSet(address indexed premiumReserve);
 
     /**
-     * @notice Emitted when the PriceFeed address is updated.
-     * @param priceFeed New PriceFeed address.
+     * @notice Emitted when the ChainlinkPriceFeed address is updated.
+     * @param chainlinkPriceFeed New ChainlinkPriceFeed address.
      */
-    event PriceFeedSet(address indexed priceFeed);
+    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed);
 
     /**
      * @notice Reverts when a required address argument is zero.
@@ -281,11 +281,11 @@ interface IClaimManager is IAccessControl {
     function setPremiumReserve(address premiumReserve_) external;
 
     /**
-     * @notice Sets the PriceFeed address.
+     * @notice Sets the ChainlinkPriceFeed address.
      * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param priceFeed_ Address of the PriceFeed contract.
+     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
      */
-    function setPriceFeed(address priceFeed_) external;
+    function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
 
     /**
      * @notice Files a claim against a policy and locks the escrow.
@@ -384,9 +384,9 @@ interface IClaimManager is IAccessControl {
     function premiumReserve() external view returns (address);
 
     /**
-     * @notice Returns the PriceFeed address.
+     * @notice Returns the ChainlinkPriceFeed address.
      */
-    function priceFeed() external view returns (address);
+    function chainlinkPriceFeed() external view returns (address);
 
     /**
      * @notice Returns the claim record for a specific claim.

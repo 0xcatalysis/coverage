@@ -98,7 +98,7 @@ Required for testnet/mainnet deployments:
 | `NATIVE_WRAPPER` | WETH or equivalent native wrapper address |
 | `SPEC_REGISTRY` | Catalysis Core SpecRegistry address |
 | `SLASHING_MANAGER` | Catalysis Core SlashingManager address |
-| `PRICE_FEED` | Catalysis Core ChainlinkPriceFeed address |
+| `CHAINLINK_PRICE_FEED` | ChainlinkPriceFeed address |
 | `SEPOLIA_RPC_URL` | Sepolia RPC endpoint |
 | `ETHEREUM_RPC_URL` | Ethereum mainnet RPC endpoint |
 | `SEPOLIA_ETHERSCAN_API_KEY` | Etherscan API key for Sepolia verification |

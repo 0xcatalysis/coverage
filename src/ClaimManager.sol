@@ -59,7 +59,7 @@ contract ClaimManager is
     address public override swapper;
     address public override policy;
     address public override premiumReserve;
-    address public override priceFeed;
+    address public override chainlinkPriceFeed;
 
     mapping(uint256 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
     mapping(uint256 policyId => PolicyClaim) private _policyClaims;
@@ -79,7 +79,7 @@ contract ClaimManager is
      * @param swapper_ Address of the Swapper contract.
      * @param policy_ Address of the Policy contract.
      * @param premiumReserve_ Address of the PremiumReserve contract.
-     * @param priceFeed_ Address of the PriceFeed contract (Catalysis Core).
+     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
      */
     function initialize(
         address admin_,
@@ -89,7 +89,7 @@ contract ClaimManager is
         address swapper_,
         address policy_,
         address premiumReserve_,
-        address priceFeed_
+        address chainlinkPriceFeed_
     )
         external
         initializer
@@ -97,7 +97,7 @@ contract ClaimManager is
         require(
             admin_ != address(0) && claimOperator_ != address(0) && specRegistry_ != address(0)
                 && slashingManager_ != address(0) && swapper_ != address(0) && policy_ != address(0)
-                && premiumReserve_ != address(0) && priceFeed_ != address(0),
+                && premiumReserve_ != address(0) && chainlinkPriceFeed_ != address(0),
             ZeroAddress()
         );
 
@@ -112,7 +112,7 @@ contract ClaimManager is
         swapper = swapper_;
         policy = policy_;
         premiumReserve = premiumReserve_;
-        priceFeed = priceFeed_;
+        chainlinkPriceFeed = chainlinkPriceFeed_;
     }
 
     /**
@@ -177,10 +177,10 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function setPriceFeed(address priceFeed_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(priceFeed_ != address(0), ZeroAddress());
-        priceFeed = priceFeed_;
-        emit PriceFeedSet(priceFeed_);
+    function setChainlinkPriceFeed(address chainlinkPriceFeed_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(chainlinkPriceFeed_ != address(0), ZeroAddress());
+        chainlinkPriceFeed = chainlinkPriceFeed_;
+        emit ChainlinkPriceFeedSet(chainlinkPriceFeed_);
     }
 
     /**
@@ -633,7 +633,7 @@ contract ClaimManager is
         returns (uint256 payoutFromSlashing)
     {
         // slither-disable-next-line calls-loop
-        uint256 slashAmountUSD = IChainlinkPriceFeed(priceFeed).getUSDValue(metadata.payoutToken, amount);
+        uint256 slashAmountUSD = IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(metadata.payoutToken, amount);
 
         // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
