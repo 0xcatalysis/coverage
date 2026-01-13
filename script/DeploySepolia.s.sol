@@ -13,6 +13,10 @@ import {Deploy} from "./Deploy.s.sol";
  *      - SSP_ROUTER: Address of SSPRouter from Catalysis Core
  *      - CHAINLINK_PRICE_FEED: Address of ChainlinkPriceFeed
  *
+ *      For testnet testing, deploy mock SpecRegistry first using:
+ *        make deploy-specregistry-sepolia
+ *      Then use the output address as SPEC_REGISTRY value.
+ *
  *      Usage:
  *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... SSP_ROUTER=0x... CHAINLINK_PRICE_FEED=0x... PRIVATE_KEY=0x... \
  *          forge script script/DeploySepolia.s.sol --broadcast --rpc-url sepolia --verify
