@@ -23,7 +23,16 @@ Coverage contracts live in `src/`. Tests in `test/unit`, `test/fuzz`, and `test/
 
 ### Interfaces (`src/interfaces/`)
 
-Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus external dependencies (`ISpecRegistry`, `ISlashingManager`).
+Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus external Catalysis Core dependencies (`ISpecRegistry`, `ISlashingManager`, `IChainlinkPriceFeed`, `ISSPRouter`).
+
+### Mock Contracts (`src/mocks/`)
+
+Mock implementations of external dependencies for testnet deployments:
+
+| Mock | Purpose |
+|------|---------|
+| `MockSpec.sol` | Configurable claim evaluation logic; auto-approves by default. |
+| `MockSpecRegistry.sol` | Registry mapping pools to Spec implementations; supports default fallback. |
 
 ### Test Structure
 
@@ -34,7 +43,10 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus 
 ### Deployment Scripts (`script/`)
 
 - `Deploy.s.sol` – shared base handling all deployment logic
-- `DeployAnvil.s.sol`, `DeploySepolia.s.sol`, `DeployEthereum.s.sol` – network-specific runners
+- `DeployAnvil.s.sol` – local Anvil deployment for rapid iteration
+- `DeploySpecRegistrySepolia.s.sol` – standalone mock SpecRegistry deployment for Sepolia testing
+- `DeploySepolia.s.sol` – Sepolia deployment (requires SPEC_REGISTRY)
+- `DeployEthereum.s.sol` – mainnet deployment
 - `Show.s.sol`, `ShowSepolia.s.sol`, `ShowEthereum.s.sol` – inspect deployment metadata
 
 ## Build, Test, and Development Commands
@@ -62,13 +74,16 @@ Add `.t.sol` files alongside each feature in the appropriate `test` subfolder an
 
 ## Deployment Guidelines
 
-All network deployments extend `Deploy.s.sol`. The base script deploys contracts in dependency order, configures cross-contract roles, then logs results. Required environment variables:
+All network deployments extend `Deploy.s.sol`. The base script deploys contracts in dependency order, configures cross-contract roles, then logs results.
 
+### Required Environment Variables
+
+**All deployments**:
 - `PRIVATE_KEY` – deployer key
-- `NATIVE_WRAPPER`, `SPEC_REGISTRY`, `SLASHING_MANAGER` – external dependencies
-- `SEPOLIA_RPC_URL`, `ETHEREUM_RPC_URL` – RPC endpoints for testnet/mainnet
+- `NATIVE_WRAPPER` – WETH or equivalent wrapper address
+- Network-specific RPC: `SEPOLIA_RPC_URL`, `ETHEREUM_RPC_URL`
 
-Optional role overrides default to deployer/admin:
+**Optional role overrides** (default to deployer):
 - `ADMIN`, `PLATFORM_TREASURY`, `COVER_POOL_FACTORY_CREATOR`, `CLAIM_OPERATOR`, `SWAP_MANAGER`
 
 ## Commit & Pull Request Guidelines

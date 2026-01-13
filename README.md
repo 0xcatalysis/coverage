@@ -49,27 +49,27 @@ make test
 ## Development
 
 ```bash
-make setup          # installs pre-commit hook for format checks and unit tests
-make build          # compile with default profile (200 optimizer runs)
-make build-prod     # compile with production profile (1000 optimizer runs, via-ir)
-make test           # 3-path test harness (unit, fuzz, invariant)
-make test-unit      # target only the unit-test suite while iterating
-make test-fuzz      # target only the fuzz suite while iterating
-make test-invariant # target only the invariant suite while iterating
-make test-ci        # run full suite with CI profile (higher fuzz/invariant runs)
-make gas            # gas report using the production profile
-make cover          # summary coverage report
-make cover-lcov     # LCOV + optional HTML artifacts (requires genhtml)
-make format         # forge fmt with project style defaults
-make format-check   # check formatting without modifying files
-make lint           # run forge lint with configured exclusions
-make docs           # regenerate NatSpec documentation into docs/
-make snapshot       # capture gas snapshot baseline for regression tracking
-make snapshot-check # verify current gas usage against baseline
-make slither        # static analysis with Slither
-make mythril        # symbolic analysis with Mythril
-make clean          # remove build artifacts, localhost broadcasts, and coverage files
-make help           # show all available commands
+make setup                      # installs pre-commit hook for format checks and unit tests
+make build                      # compile with default profile (200 optimizer runs)
+make build-prod                 # compile with production profile (1000 optimizer runs, via-ir)
+make test                       # 3-path test harness (unit, fuzz, invariant)
+make test-unit                  # target only the unit-test suite while iterating
+make test-fuzz                  # target only the fuzz suite while iterating
+make test-invariant             # target only the invariant suite while iterating
+make test-ci                    # run full suite with CI profile (higher fuzz/invariant runs)
+make gas                        # gas report using the production profile
+make cover                      # summary coverage report
+make cover-lcov                 # LCOV + optional HTML artifacts (requires genhtml)
+make format                     # forge fmt with project style defaults
+make format-check               # check formatting without modifying files
+make lint                       # run forge lint with configured exclusions
+make docs                       # regenerate NatSpec documentation into docs/
+make snapshot                   # capture gas snapshot baseline for regression tracking
+make snapshot-check             # verify current gas usage against baseline
+make slither                    # static analysis with Slither
+make mythril                    # symbolic analysis with Mythril
+make clean                      # remove build artifacts, localhost broadcasts, and coverage files
+make help                       # show all available commands
 ```
 
 ## Deployment
@@ -77,15 +77,16 @@ make help           # show all available commands
 All deployment scripts extend the shared `Deploy.s.sol` base which handles contract deployment, cross-contract role configuration, and logging.
 
 ```bash
-make deploy-anvil      # local iteration loop against anvil (uses default Anvil key)
-make deploy-sepolia    # broadcast to Sepolia testnet
-make deploy-ethereum   # mainnet deployment with production optimizer profile
+make deploy-anvil                # local iteration loop against anvil
+make deploy-specregistry-sepolia # deploy SpecRegistry mocks to Sepolia
+make deploy-sepolia              # deploy Coverage contracts to Sepolia
+make deploy-ethereum             # mainnet deployment with production optimizer profile
 
-make show-sepolia      # inspect last Sepolia deployment metadata
-make show-ethereum     # inspect last Ethereum deployment metadata
+make show-sepolia                # inspect last Sepolia deployment metadata
+make show-ethereum               # inspect last Ethereum deployment metadata
 
-make verify-coverpool-sepolia   # verify CoverPool on Sepolia Etherscan
-make verify-coverpool-ethereum  # verify CoverPool on Ethereum Etherscan
+make verify-coverpool-sepolia    # verify CoverPool on Sepolia Etherscan
+make verify-coverpool-ethereum   # verify CoverPool on Ethereum Etherscan
 ```
 
 ### Environment Variables
@@ -99,6 +100,7 @@ Required for testnet/mainnet deployments:
 | `SPEC_REGISTRY` | SpecRegistry address |
 | `SLASHING_MANAGER` | Catalysis Core SlashingManager address |
 | `CHAINLINK_PRICE_FEED` | ChainlinkPriceFeed address |
+| `SSP_ROUTER` | Catalysis Core SSPRouter address |
 | `SEPOLIA_RPC_URL` | Sepolia RPC endpoint |
 | `ETHEREUM_RPC_URL` | Ethereum mainnet RPC endpoint |
 | `SEPOLIA_ETHERSCAN_API_KEY` | Etherscan API key for Sepolia verification |
