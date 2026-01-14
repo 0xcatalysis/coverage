@@ -8,12 +8,13 @@ import {Deploy} from "./Deploy.s.sol";
  * @notice Deploys all Catalysis Coverage contracts to Ethereum mainnet.
  * @dev WETH address is hardcoded for mainnet. Catalysis Core addresses must be provided
  *      via environment variables:
- *      - SPEC_REGISTRY: Address of SpecRegistry from Catalysis Core
+ *      - SPEC_REGISTRY: Address of SpecRegistry contract
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
  *      - SSP_ROUTER: Address of SSPRouter from Catalysis Core
+ *      - CHAINLINK_PRICE_FEED: Address of ChainlinkPriceFeed
  *
  *      Usage:
- *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... SSP_ROUTER=0x... PRIVATE_KEY=0x... \
+ *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... SSP_ROUTER=0x... CHAINLINK_PRICE_FEED=0x... PRIVATE_KEY=0x... \
  *          forge script script/DeployEthereum.s.sol --broadcast --rpc-url mainnet --verify
  */
 contract DeployEthereum is Deploy {
@@ -40,7 +41,7 @@ contract DeployEthereum is Deploy {
             specRegistry: vm.envAddress("SPEC_REGISTRY"),
             slashingManager: vm.envAddress("SLASHING_MANAGER"),
             sspRouter: vm.envAddress("SSP_ROUTER"),
-            priceFeed: vm.envAddress("PRICE_FEED")
+            chainlinkPriceFeed: vm.envAddress("CHAINLINK_PRICE_FEED")
         });
     }
 }
