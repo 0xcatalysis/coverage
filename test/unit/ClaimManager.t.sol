@@ -28,7 +28,7 @@ contract ClaimManagerTest is Test {
     address internal swapper;
     address internal policy;
     address internal premiumReserve;
-    address internal priceFeed;
+    address internal chainlinkPriceFeed;
     address internal buyer;
     address internal payoutReceiver;
     address internal operator;
@@ -44,7 +44,7 @@ contract ClaimManagerTest is Test {
     MockSwapper internal swapperMock;
     MockPolicy internal policyMock;
     MockPremiumReserve internal premiumReserveMock;
-    MockChainlinkPriceFeed internal priceFeedMock;
+    MockChainlinkPriceFeed internal chainlinkPriceFeedMock;
     MockToken internal collateralTokenMock;
     MockToken internal payoutTokenMock;
 
@@ -80,7 +80,7 @@ contract ClaimManagerTest is Test {
     event SwapperSet(address indexed swapper);
     event PolicySet(address indexed policy);
     event PremiumReserveSet(address indexed premiumReserve);
-    event PriceFeedSet(address indexed priceFeed);
+    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed);
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
@@ -115,7 +115,7 @@ contract ClaimManagerTest is Test {
         swapperMock = new MockSwapper();
         policyMock = new MockPolicy();
         premiumReserveMock = new MockPremiumReserve();
-        priceFeedMock = new MockChainlinkPriceFeed();
+        chainlinkPriceFeedMock = new MockChainlinkPriceFeed();
         collateralTokenMock = new MockToken("Collateral", "COL");
         payoutTokenMock = new MockToken("Payout", "PAY");
 
@@ -124,7 +124,7 @@ contract ClaimManagerTest is Test {
         swapper = address(swapperMock);
         policy = address(policyMock);
         premiumReserve = address(premiumReserveMock);
-        priceFeed = address(priceFeedMock);
+        chainlinkPriceFeed = address(chainlinkPriceFeedMock);
         collateralToken = address(collateralTokenMock);
         payoutToken = address(payoutTokenMock);
 
@@ -133,7 +133,7 @@ contract ClaimManagerTest is Test {
         vm.label(swapper, "Swapper");
         vm.label(policy, "Policy");
         vm.label(premiumReserve, "PremiumReserve");
-        vm.label(priceFeed, "PriceFeed");
+        vm.label(chainlinkPriceFeed, "ChainlinkPriceFeed");
         vm.label(collateralToken, "CollateralToken");
         vm.label(payoutToken, "PayoutToken");
 
@@ -143,7 +143,16 @@ contract ClaimManagerTest is Test {
             "ClaimManager.sol",
             abi.encodeCall(
                 ClaimManager.initialize,
-                (admin, claimOperator, specRegistry, slashingManager, swapper, policy, premiumReserve, priceFeed)
+                (
+                    admin,
+                    claimOperator,
+                    specRegistry,
+                    slashingManager,
+                    swapper,
+                    policy,
+                    premiumReserve,
+                    chainlinkPriceFeed
+                )
             ),
             deployOpts
         );
@@ -163,7 +172,14 @@ contract ClaimManagerTest is Test {
         ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(
-            address(0), claimOperator, specRegistry, slashingManager, swapper, policy, premiumReserve, priceFeed
+            address(0),
+            claimOperator,
+            specRegistry,
+            slashingManager,
+            swapper,
+            policy,
+            premiumReserve,
+            chainlinkPriceFeed
         );
     }
 
@@ -172,7 +188,7 @@ contract ClaimManagerTest is Test {
         ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(
-            admin, address(0), specRegistry, slashingManager, swapper, policy, premiumReserve, priceFeed
+            admin, address(0), specRegistry, slashingManager, swapper, policy, premiumReserve, chainlinkPriceFeed
         );
     }
 
@@ -181,7 +197,7 @@ contract ClaimManagerTest is Test {
         ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(
-            admin, claimOperator, address(0), slashingManager, swapper, policy, premiumReserve, priceFeed
+            admin, claimOperator, address(0), slashingManager, swapper, policy, premiumReserve, chainlinkPriceFeed
         );
     }
 
@@ -190,7 +206,7 @@ contract ClaimManagerTest is Test {
         ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(
-            admin, claimOperator, specRegistry, address(0), swapper, policy, premiumReserve, priceFeed
+            admin, claimOperator, specRegistry, address(0), swapper, policy, premiumReserve, chainlinkPriceFeed
         );
     }
 
@@ -199,7 +215,7 @@ contract ClaimManagerTest is Test {
         ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(
-            admin, claimOperator, specRegistry, slashingManager, address(0), policy, premiumReserve, priceFeed
+            admin, claimOperator, specRegistry, slashingManager, address(0), policy, premiumReserve, chainlinkPriceFeed
         );
     }
 
@@ -208,7 +224,7 @@ contract ClaimManagerTest is Test {
         ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(
-            admin, claimOperator, specRegistry, slashingManager, swapper, address(0), premiumReserve, priceFeed
+            admin, claimOperator, specRegistry, slashingManager, swapper, address(0), premiumReserve, chainlinkPriceFeed
         );
     }
 
@@ -217,7 +233,7 @@ contract ClaimManagerTest is Test {
         ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(
-            admin, claimOperator, specRegistry, slashingManager, swapper, policy, address(0), priceFeed
+            admin, claimOperator, specRegistry, slashingManager, swapper, policy, address(0), chainlinkPriceFeed
         );
     }
 
@@ -240,7 +256,7 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.swapper(), swapper, "Swapper mismatch");
         assertEq(claimManager.policy(), policy, "Policy mismatch");
         assertEq(claimManager.premiumReserve(), premiumReserve, "PremiumReserve mismatch");
-        assertEq(claimManager.priceFeed(), priceFeed, "PriceFeed mismatch");
+        assertEq(claimManager.chainlinkPriceFeed(), chainlinkPriceFeed, "ChainlinkPriceFeed mismatch");
         assertFalse(claimManager.paused(), "Contract unexpectedly paused");
     }
 
@@ -474,8 +490,8 @@ contract ClaimManagerTest is Test {
                             SET PRICE FEED
     //////////////////////////////////////////////////////////////*/
 
-    function test_setPriceFeed_WhenCallerNotAdmin_Reverts() public {
-        address newPriceFeed = makeAddr("newPriceFeed");
+    function test_setChainlinkPriceFeed_WhenCallerNotAdmin_Reverts() public {
+        address newChainlinkPriceFeed = makeAddr("newChainlinkPriceFeed");
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector,
@@ -484,25 +500,25 @@ contract ClaimManagerTest is Test {
             )
         );
         vm.prank(unauthorized);
-        claimManager.setPriceFeed(newPriceFeed);
+        claimManager.setChainlinkPriceFeed(newChainlinkPriceFeed);
     }
 
-    function test_setPriceFeed_WhenAddressZero_Reverts() public {
+    function test_setChainlinkPriceFeed_WhenAddressZero_Reverts() public {
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         vm.prank(admin);
-        claimManager.setPriceFeed(address(0));
+        claimManager.setChainlinkPriceFeed(address(0));
     }
 
-    function test_setPriceFeed_WhenValid_UpdatesState() public {
-        address newPriceFeed = makeAddr("newPriceFeed");
+    function test_setChainlinkPriceFeed_WhenValid_UpdatesState() public {
+        address newChainlinkPriceFeed = makeAddr("newChainlinkPriceFeed");
 
         vm.expectEmit(true, true, true, true, address(claimManager));
-        emit PriceFeedSet(newPriceFeed);
+        emit ChainlinkPriceFeedSet(newChainlinkPriceFeed);
 
         vm.prank(admin);
-        claimManager.setPriceFeed(newPriceFeed);
+        claimManager.setChainlinkPriceFeed(newChainlinkPriceFeed);
 
-        assertEq(claimManager.priceFeed(), newPriceFeed, "PriceFeed not updated");
+        assertEq(claimManager.chainlinkPriceFeed(), newChainlinkPriceFeed, "ChainlinkPriceFeed not updated");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -2210,7 +2226,7 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.swapper(), swapper, "Swapper should be preserved");
         assertEq(claimManager.policy(), policy, "Policy should be preserved");
         assertEq(claimManager.premiumReserve(), premiumReserve, "PremiumReserve should be preserved");
-        assertEq(claimManager.priceFeed(), priceFeed, "PriceFeed should be preserved");
+        assertEq(claimManager.chainlinkPriceFeed(), chainlinkPriceFeed, "ChainlinkPriceFeed should be preserved");
     }
 
     /*//////////////////////////////////////////////////////////////
