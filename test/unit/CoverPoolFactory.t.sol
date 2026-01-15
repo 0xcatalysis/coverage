@@ -13,7 +13,7 @@ import {CoverPool} from "../../src/CoverPool.sol";
 import {CoverPoolFactory} from "../../src/CoverPoolFactory.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
-import {ISSPRouter} from "../../src/interfaces/ISSPRouter.sol";
+import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 
 contract CoverPoolFactoryTest is Test {
     bytes32 internal constant ADMIN_ROLE = 0x00;
@@ -22,7 +22,7 @@ contract CoverPoolFactoryTest is Test {
     address internal admin;
     address internal creator;
     address internal policyManager;
-    address internal sspRouter;
+    address internal stakeManager;
     address internal curator;
     address internal quoteSigner;
 
@@ -51,15 +51,15 @@ contract CoverPoolFactoryTest is Test {
 
         // Deploy mock contracts with code for external dependencies
         policyManager = address(new CoverPool());
-        sspRouter = address(new CoverPool());
+        stakeManager = address(new CoverPool());
 
         vm.label(policyManager, "PolicyManager");
-        vm.label(sspRouter, "SSPRouter");
+        vm.label(stakeManager, "StakeManager");
 
         address proxy = Upgrades.deployUUPSProxy(
             "CoverPoolFactory.sol:CoverPoolFactory",
             abi.encodeCall(
-                CoverPoolFactory.initialize, (admin, creator, address(implementation), policyManager, sspRouter)
+                CoverPoolFactory.initialize, (admin, creator, address(implementation), policyManager, stakeManager)
             ),
             opts
         );
@@ -76,7 +76,7 @@ contract CoverPoolFactoryTest is Test {
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(0), policyManager, sspRouter))
+            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(0), policyManager, stakeManager))
         );
     }
 
@@ -86,12 +86,12 @@ contract CoverPoolFactoryTest is Test {
         new ERC1967Proxy(
             address(factoryImpl),
             abi.encodeCall(
-                CoverPoolFactory.initialize, (admin, creator, address(implementation), address(0), sspRouter)
+                CoverPoolFactory.initialize, (admin, creator, address(implementation), address(0), stakeManager)
             )
         );
     }
 
-    function test_initialize_WhenSSPRouterZero_Reverts() public {
+    function test_initialize_WhenStakeManagerZero_Reverts() public {
         CoverPoolFactory factoryImpl = new CoverPoolFactory();
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         new ERC1967Proxy(
@@ -255,14 +255,14 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.computeCoverPoolAddress(params), expected, "Prediction mismatch");
 
         vm.mockCall(
-            sspRouter,
-            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            stakeManager,
+            abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
             abi.encode(false)
         );
         vm.mockCall(
-            sspRouter,
+            stakeManager,
             abi.encodeWithSelector(
-                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
             ),
             ""
         );
@@ -293,14 +293,14 @@ contract CoverPoolFactoryTest is Test {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
 
         vm.mockCall(
-            sspRouter,
-            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            stakeManager,
+            abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
             abi.encode(false)
         );
         vm.mockCall(
-            sspRouter,
+            stakeManager,
             abi.encodeWithSelector(
-                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
             ),
             ""
         );
@@ -318,14 +318,14 @@ contract CoverPoolFactoryTest is Test {
         params1.poolFeeBps = 100;
 
         vm.mockCall(
-            sspRouter,
-            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params1.curator),
+            stakeManager,
+            abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params1.curator),
             abi.encode(false)
         );
         vm.mockCall(
-            sspRouter,
+            stakeManager,
             abi.encodeWithSelector(
-                ISSPRouter.registerOperatorToNetwork.selector, params1.curator, params1.deadline, params1.signature
+                IStakeManager.registerOperatorToNetwork.selector, params1.curator, params1.deadline, params1.signature
             ),
             ""
         );
@@ -338,8 +338,8 @@ contract CoverPoolFactoryTest is Test {
         params2.poolFeeBps = 200;
 
         vm.mockCall(
-            sspRouter,
-            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params2.curator),
+            stakeManager,
+            abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params2.curator),
             abi.encode(true)
         );
 
@@ -366,14 +366,14 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.computeCoverPoolAddress(params), expected, "Prediction mismatch");
 
         vm.mockCall(
-            sspRouter,
-            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            stakeManager,
+            abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
             abi.encode(false)
         );
         vm.mockCall(
-            sspRouter,
+            stakeManager,
             abi.encodeWithSelector(
-                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
             ),
             ""
         );
@@ -400,14 +400,14 @@ contract CoverPoolFactoryTest is Test {
         assertNotEq(updatedPrediction, initialPrediction, "Expected salt to incorporate policy manager");
 
         vm.mockCall(
-            sspRouter,
-            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            stakeManager,
+            abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
             abi.encode(false)
         );
         vm.mockCall(
-            sspRouter,
+            stakeManager,
             abi.encodeWithSelector(
-                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
             ),
             ""
         );
@@ -428,14 +428,14 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.computeCoverPoolAddress(params), firstPrediction, "Prediction mismatch");
 
         vm.mockCall(
-            sspRouter,
-            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            stakeManager,
+            abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
             abi.encode(false)
         );
         vm.mockCall(
-            sspRouter,
+            stakeManager,
             abi.encodeWithSelector(
-                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
             ),
             ""
         );
@@ -454,8 +454,8 @@ contract CoverPoolFactoryTest is Test {
         assertNotEq(secondPrediction, firstPrediction, "Implementation change should affect prediction");
 
         vm.mockCall(
-            sspRouter,
-            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            stakeManager,
+            abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
             abi.encode(true)
         );
 
@@ -477,14 +477,14 @@ contract CoverPoolFactoryTest is Test {
             params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
 
             vm.mockCall(
-                sspRouter,
-                abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+                stakeManager,
+                abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
                 abi.encode(false)
             );
             vm.mockCall(
-                sspRouter,
+                stakeManager,
                 abi.encodeWithSelector(
-                    ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                    IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
                 ),
                 ""
             );
@@ -525,14 +525,14 @@ contract CoverPoolFactoryTest is Test {
             params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
 
             vm.mockCall(
-                sspRouter,
-                abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+                stakeManager,
+                abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
                 abi.encode(false)
             );
             vm.mockCall(
-                sspRouter,
+                stakeManager,
                 abi.encodeWithSelector(
-                    ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                    IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
                 ),
                 ""
             );
@@ -639,14 +639,14 @@ contract CoverPoolFactoryTest is Test {
         params.quoteSigner = makeAddr(string.concat("signer_", label));
 
         vm.mockCall(
-            sspRouter,
-            abi.encodeWithSelector(ISSPRouter.isOperatorRegisteredToNetwork.selector, params.curator),
+            stakeManager,
+            abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
             abi.encode(false)
         );
         vm.mockCall(
-            sspRouter,
+            stakeManager,
             abi.encodeWithSelector(
-                ISSPRouter.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
             ),
             ""
         );
@@ -661,31 +661,31 @@ contract CoverPoolFactoryTest is Test {
                            SET SSP ROUTER
     //////////////////////////////////////////////////////////////*/
 
-    function test_setSSPRouter_WhenCallerNotCreator_Reverts() public {
+    function test_setStakeManager_WhenCallerNotCreator_Reverts() public {
         address caller = makeAddr("notCreator");
-        address newSSPRouter = makeAddr("newSSPRouter");
+        address newStakeManager = makeAddr("newStakeManager");
 
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
         );
         vm.prank(caller);
-        factory.setSSPRouter(newSSPRouter);
+        factory.setStakeManager(newStakeManager);
     }
 
-    function test_setSSPRouter_WhenZeroAddress_Reverts() public {
+    function test_setStakeManager_WhenZeroAddress_Reverts() public {
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         vm.prank(creator);
-        factory.setSSPRouter(address(0));
+        factory.setStakeManager(address(0));
     }
 
-    function test_setSSPRouter_Success() public {
-        address newSSPRouter = address(new CoverPool());
+    function test_setStakeManager_Success() public {
+        address newStakeManager = address(new CoverPool());
 
         vm.expectEmit(true, true, false, false);
-        emit ICoverPoolFactory.SSPRouterSet(sspRouter, newSSPRouter);
+        emit ICoverPoolFactory.StakeManagerSet(stakeManager, newStakeManager);
         vm.prank(creator);
-        factory.setSSPRouter(newSSPRouter);
+        factory.setStakeManager(newStakeManager);
 
-        assertEq(factory.sspRouter(), newSSPRouter, "SSPRouter not updated");
+        assertEq(factory.stakeManager(), newStakeManager, "StakeManager not updated");
     }
 }

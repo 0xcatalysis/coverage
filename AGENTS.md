@@ -23,7 +23,7 @@ Coverage contracts live in `src/`. Tests in `test/unit`, `test/fuzz`, and `test/
 
 ### Interfaces (`src/interfaces/`)
 
-Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus external Catalysis Core dependencies (`ISpecRegistry`, `ISlashingManager`, `IChainlinkPriceFeed`, `ISSPRouter`).
+Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus external Catalysis Core dependencies (`ISpecRegistry`, `ISlashingManager`, `IRewardsManager`, `IChainlinkPriceFeed`, `IStakeManager`).
 
 ### Mock Contracts (`src/mocks/`)
 

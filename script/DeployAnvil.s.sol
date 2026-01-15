@@ -10,11 +10,13 @@ import {Deploy} from "./Deploy.s.sol";
  *      - NATIVE_WRAPPER: Address of WETH or mock wrapper contract
  *      - SPEC_REGISTRY: Address of SpecRegistry contract
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
- *      - SSP_ROUTER: Address of SSPRouter from Catalysis Core
+ *      - STAKE_MANAGER: Address of StakeManager from Catalysis Core
+ *      - REWARDS_MANAGER: Address of RewardsManager from Catalysis Core
  *      - CHAINLINK_PRICE_FEED: Address of ChainlinkPriceFeed
  *
  *      Usage:
- *        NATIVE_WRAPPER=0x... SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... SSP_ROUTER=0x... CHAINLINK_PRICE_FEED=0x... \
+ *        NATIVE_WRAPPER=0x... SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... STAKE_MANAGER=0x... REWARDS_MANAGER=0x...
+ * CHAINLINK_PRICE_FEED=0x... \
  *          forge script script/DeployAnvil.s.sol --broadcast --rpc-url http://localhost:8545
  */
 contract DeployAnvil is Deploy {
@@ -30,17 +32,17 @@ contract DeployAnvil is Deploy {
      * @inheritdoc Deploy
      * @dev Loads all external addresses from environment variables. No hardcoded addresses
      *      for local testing to allow flexible mock contract deployment.
-     * @return ExternalConfig loaded from NATIVE_WRAPPER, SPEC_REGISTRY, SLASHING_MANAGER, SSP_ROUTER,
-     * CHAINLINK_PRICE_FEED env
-     * vars.
+     * @return ExternalConfig loaded from NATIVE_WRAPPER, SPEC_REGISTRY, SLASHING_MANAGER, STAKE_MANAGER,
+     * REWARDS_MANAGER, CHAINLINK_PRICE_FEED env vars.
      */
     function getExternalConfig() internal view override returns (ExternalConfig memory) {
         return ExternalConfig({
             nativeWrapper: vm.envAddress("NATIVE_WRAPPER"),
             specRegistry: vm.envAddress("SPEC_REGISTRY"),
             slashingManager: vm.envAddress("SLASHING_MANAGER"),
-            sspRouter: vm.envAddress("SSP_ROUTER"),
-            chainlinkPriceFeed: vm.envAddress("CHAINLINK_PRICE_FEED")
+            chainlinkPriceFeed: vm.envAddress("CHAINLINK_PRICE_FEED"),
+            stakeManager: vm.envAddress("STAKE_MANAGER"),
+            rewardsManager: vm.envAddress("REWARDS_MANAGER")
         });
     }
 }

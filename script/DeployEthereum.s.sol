@@ -10,11 +10,13 @@ import {Deploy} from "./Deploy.s.sol";
  *      via environment variables:
  *      - SPEC_REGISTRY: Address of SpecRegistry contract
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
- *      - SSP_ROUTER: Address of SSPRouter from Catalysis Core
+ *      - STAKE_MANAGER: Address of StakeManager from Catalysis Core
+ *      - REWARDS_MANAGER: Address of RewardsManager from Catalysis Core
  *      - CHAINLINK_PRICE_FEED: Address of ChainlinkPriceFeed
  *
  *      Usage:
- *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... SSP_ROUTER=0x... CHAINLINK_PRICE_FEED=0x... PRIVATE_KEY=0x... \
+ *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... STAKE_MANAGER=0x... REWARDS_MANAGER=0x...
+ * CHAINLINK_PRICE_FEED=0x... PRIVATE_KEY=0x... \
  *          forge script script/DeployEthereum.s.sol --broadcast --rpc-url mainnet --verify
  */
 contract DeployEthereum is Deploy {
@@ -31,8 +33,8 @@ contract DeployEthereum is Deploy {
 
     /**
      * @inheritdoc Deploy
-     * @dev Uses hardcoded WETH address for mainnet. SpecRegistry, SlashingManager, and SSPRouter
-     *      addresses must be provided via environment variables.
+     * @dev Uses hardcoded WETH address for mainnet. SpecRegistry, SlashingManager, StakeManager,
+     *      and RewardsManager addresses must be provided via environment variables.
      * @return ExternalConfig with mainnet WETH and env-loaded Catalysis Core addresses.
      */
     function getExternalConfig() internal view override returns (ExternalConfig memory) {
@@ -40,8 +42,9 @@ contract DeployEthereum is Deploy {
             nativeWrapper: WETH_MAINNET,
             specRegistry: vm.envAddress("SPEC_REGISTRY"),
             slashingManager: vm.envAddress("SLASHING_MANAGER"),
-            sspRouter: vm.envAddress("SSP_ROUTER"),
-            chainlinkPriceFeed: vm.envAddress("CHAINLINK_PRICE_FEED")
+            chainlinkPriceFeed: vm.envAddress("CHAINLINK_PRICE_FEED"),
+            stakeManager: vm.envAddress("STAKE_MANAGER"),
+            rewardsManager: vm.envAddress("REWARDS_MANAGER")
         });
     }
 }

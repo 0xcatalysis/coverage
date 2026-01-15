@@ -102,7 +102,8 @@ Required for testnet/mainnet deployments:
 | `SPEC_REGISTRY` | SpecRegistry address |
 | `SLASHING_MANAGER` | Catalysis Core SlashingManager address |
 | `CHAINLINK_PRICE_FEED` | ChainlinkPriceFeed address |
-| `SSP_ROUTER` | Catalysis Core SSPRouter address |
+| `STAKE_MANAGER` | Catalysis Core StakeManager address |
+| `REWARDS_MANAGER` | Catalysis Core RewardsManager address |
 | `SEPOLIA_RPC_URL` | Sepolia RPC endpoint |
 | `ETHEREUM_RPC_URL` | Ethereum mainnet RPC endpoint |
 | `SEPOLIA_ETHERSCAN_API_KEY` | Etherscan API key for Sepolia verification |
