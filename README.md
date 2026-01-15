@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/0xcatalysis/coverage/actions/workflows/ci.yml/badge.svg)](https://github.com/0xcatalysis/coverage/actions/workflows/ci.yml)
 
+<!-- [![Wiki](https://github.com/0xcatalysis/coverage/actions/workflows/wiki.yml/badge.svg)](https://github.com/0xcatalysis/coverage/actions/workflows/wiki.yml) -->
+
 Coverage is the onchain risk coverage infrastructure for institutional DeFi. It transforms the $20B+ of restaked ETH, BTC, SOL and other assets into programmable protection for lending markets, stablecoins, structured yield desks, and other real-world credit exposures. The smart contracts in this repository back Catalysis Core and its CoverPool marketplace, providing the onchain rails for premium intake, underwriting logic, and claims execution.
 
 ## Overview

@@ -1,7 +1,6 @@
 broadcast/
 cache/
 coverage/
-docs/
 keystores/
 node_modules/
 out/
