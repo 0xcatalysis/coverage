@@ -5,6 +5,7 @@ on:
 
 jobs:
   wiki:
+    if: false
     name: Wiki
     runs-on: ubuntu-latest
     steps:
