@@ -14,8 +14,6 @@ interface IPolicyManager is IAccessControl {
      * @dev Phase 1 supports single pool bindings only; multi-pool aggregation is deferred.
      */
     struct BindPolicyRequest {
-        /// @notice Identifier to assign to the newly bound policy.
-        uint256 policyId;
         /// @notice Policy buyer responsible for paying premiums.
         address buyer;
         /// @notice Beneficiary receiving payouts upon approved claims.
@@ -68,12 +66,6 @@ interface IPolicyManager is IAccessControl {
      * @notice Reverts when a zero address is provided where not allowed.
      */
     error ZeroAddress();
-
-    /**
-     * @notice Reverts when attempting to bind a policy that has already been minted.
-     * @param policyId Identifier that already exists.
-     */
-    error PolicyAlreadyExists(uint256 policyId);
 
     /**
      * @notice Reverts when supplied coverage timestamps are invalid.

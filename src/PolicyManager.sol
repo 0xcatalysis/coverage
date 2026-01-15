@@ -27,6 +27,7 @@ contract PolicyManager is
 {
     address public override premiumManager;
     address public override policy;
+    uint256 private _nextPolicyId;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -89,6 +90,8 @@ contract PolicyManager is
     function bindPolicy(BindPolicyRequest calldata request) external override nonReentrant whenNotPaused {
         _validateRequest(request);
 
+        uint256 policyId = ++_nextPolicyId;
+
         ICoverPool.QuoteData calldata quote = request.quote;
         bytes32 policyCommit = ICoverPool(quote.pool).validateQuote(quote, request.signature);
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
@@ -97,7 +100,7 @@ contract PolicyManager is
             ICoverPool(quote.pool).bindPolicy(policyCommit, quote, request.signature);
 
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
-            policyId: request.policyId,
+            policyId: policyId,
             policyCommit: policyCommit,
             basePremium: quote.basePremium,
             buyer: request.buyer,
@@ -136,10 +139,10 @@ contract PolicyManager is
             policyCommit: policyCommit
         });
 
-        IPolicy(policy).mintPolicy(request.buyer, request.policyId, metadata);
+        IPolicy(policy).mintPolicy(request.buyer, policyId, metadata);
 
         emit PolicyBound(
-            request.policyId,
+            policyId,
             request.buyer,
             request.beneficiary,
             quote.pool,

@@ -444,7 +444,6 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_MultiplePoliciesToSameBuyer_Succeeds() public {
         IPolicyManager.BindPolicyRequest memory request1 = _defaultRequest();
         IPolicyManager.BindPolicyRequest memory request2 = _defaultRequest();
-        request2.policyId = 2;
 
         coverPool.setReturnPolicyCommit(keccak256("policy-commit-1"));
         vm.prank(buyer);
@@ -460,7 +459,6 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_IsProtectedByReentrancyGuard() public {
         IPolicyManager.BindPolicyRequest memory request1 = _defaultRequest();
         IPolicyManager.BindPolicyRequest memory request2 = _defaultRequest();
-        request2.policyId = 2;
 
         coverPool.setReturnPolicyCommit(keccak256("policy-commit-1"));
         vm.prank(buyer);
@@ -493,7 +491,6 @@ contract PolicyManagerTest is Test {
         });
 
         return IPolicyManager.BindPolicyRequest({
-            policyId: POLICY_ID,
             buyer: buyer,
             beneficiary: beneficiary,
             premiumToken: premiumToken,
