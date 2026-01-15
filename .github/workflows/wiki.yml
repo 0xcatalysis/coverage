@@ -1,0 +1,33 @@
+name: Wiki
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  wiki:
+    if: false
+    name: Wiki
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: coverage
+
+      - name: Checkout wiki repository
+        uses: actions/checkout@v4
+        with:
+          repository: 0xcatalysis/coverage.wiki
+          path: coverage.wiki
+
+      - name: Mirror docs to wiki
+        run: |
+          cd $GITHUB_WORKSPACE/coverage.wiki
+          git config user.name Actions
+          git config user.email actions@users.noreply.github.com
+          cp $GITHUB_WORKSPACE/coverage/docs/*.md $GITHUB_WORKSPACE/coverage.wiki
+          git add .
+          git diff-index --quiet HEAD -- || git commit -m "Mirror docs to wiki"
+          git push
