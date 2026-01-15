@@ -25,8 +25,8 @@ contract PolicyManager is
     ReentrancyGuard,
     IPolicyManager
 {
-    /// @dev Maximum allowed combined fees (platform + pool) in basis points (10% = 1000 bps).
-    uint16 private constant _MAX_TOTAL_FEE_BPS = 1000;
+    /// @dev Maximum allowed combined fees (platform + pool) in basis points (25% = 2500 bps).
+    uint16 private constant _MAX_TOTAL_FEE_BPS = 2500;
 
     address public override premiumManager;
     address public override policy;

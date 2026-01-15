@@ -132,7 +132,7 @@ interface IPolicyManager is IAccessControl {
 
     /**
      * @notice Sets the platform fee charged on policy premiums.
-     * @dev Requires DEFAULT_ADMIN_ROLE. Combined with pool fees must not exceed 100%.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Must not exceed 25% (2500 bps).
      * @param platformFeeBps_ Platform fee in basis points (1 bps = 0.01%).
      */
     function setPlatformFee(uint16 platformFeeBps_) external;

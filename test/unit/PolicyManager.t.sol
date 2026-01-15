@@ -119,8 +119,8 @@ contract PolicyManagerTest is Test {
     function test_initialize_WhenPlatformFeeExceedsMax_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidPlatformFee.selector, 1001));
-        freshManager.initialize(admin, address(mockPremiumManager), address(mockPolicy), 1001);
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidPlatformFee.selector, 2501));
+        freshManager.initialize(admin, address(mockPremiumManager), address(mockPolicy), 2501);
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -226,9 +226,9 @@ contract PolicyManagerTest is Test {
     }
 
     function test_setPlatformFee_WhenExceedsMax_Reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidPlatformFee.selector, 1001));
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidPlatformFee.selector, 2501));
         vm.prank(admin);
-        policyManager.setPlatformFee(1001);
+        policyManager.setPlatformFee(2501);
     }
 
     function test_setPlatformFee_WhenValid_UpdatesStateAndEmits() public {
@@ -252,9 +252,9 @@ contract PolicyManagerTest is Test {
 
     function test_setPlatformFee_AllowsMaxFee() public {
         vm.prank(admin);
-        policyManager.setPlatformFee(1000);
+        policyManager.setPlatformFee(2500);
 
-        assertEq(policyManager.platformFeeBps(), 1000, "Platform fee should be max");
+        assertEq(policyManager.platformFeeBps(), 2500, "Platform fee should be max");
     }
 
     /*//////////////////////////////////////////////////////////////
