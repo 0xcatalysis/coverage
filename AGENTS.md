@@ -80,7 +80,6 @@ All network deployments extend `Deploy.s.sol`. The base script deploys contracts
 
 **All deployments**:
 - `PRIVATE_KEY` – deployer key
-- `NATIVE_WRAPPER` – WETH or equivalent wrapper address
 - Network-specific RPC: `SEPOLIA_RPC_URL`, `ETHEREUM_RPC_URL`
 
 **Optional role overrides** (default to deployer):

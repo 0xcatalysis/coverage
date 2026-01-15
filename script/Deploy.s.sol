@@ -38,7 +38,6 @@ import {Swapper} from "../src/Swapper.sol";
  *      Environment Variables:
  *        - PRIVATE_KEY: Deployer private key (defaults to Anvil key 0)
  *        - ADMIN: Admin address for all contracts (defaults to deployer)
- *        - NATIVE_WRAPPER: WETH address (required)
  *        - SPEC_REGISTRY: SpecRegistry address (required)
  *        - SLASHING_MANAGER: Catalysis Core SlashingManager address (required)
  *        - STAKE_MANAGER: Catalysis Core StakeManager address (required)
@@ -540,7 +539,7 @@ abstract contract Deploy is Script {
      */
     function _loadAndValidateExternalConfig() private view returns (ExternalConfig memory external_) {
         external_ = getExternalConfig();
-        require(external_.nativeWrapper != address(0), "NATIVE_WRAPPER required");
+        require(external_.nativeWrapper != address(0), "Native wrapper address required");
         require(external_.specRegistry != address(0), "SPEC_REGISTRY required");
         require(external_.slashingManager != address(0), "SLASHING_MANAGER required");
         require(external_.chainlinkPriceFeed != address(0), "CHAINLINK_PRICE_FEED required");

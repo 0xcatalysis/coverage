@@ -98,7 +98,6 @@ Required for testnet/mainnet deployments:
 | Variable | Description |
 |----------|-------------|
 | `PRIVATE_KEY` | Deployer private key |
-| `NATIVE_WRAPPER` | WETH or equivalent native wrapper address |
 | `SPEC_REGISTRY` | SpecRegistry address |
 | `SLASHING_MANAGER` | Catalysis Core SlashingManager address |
 | `CHAINLINK_PRICE_FEED` | ChainlinkPriceFeed address |
