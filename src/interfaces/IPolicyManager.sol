@@ -26,8 +26,6 @@ interface IPolicyManager is IAccessControl {
         ICoverPool.QuoteData quote;
         /// @notice EIP-712 signature from the pool's authorized quote signer.
         bytes signature;
-        /// @notice Platform fee in basis points applied to the premium.
-        uint16 platformFeeBps;
     }
 
     /**
@@ -63,9 +61,21 @@ interface IPolicyManager is IAccessControl {
     event PolicyContractSet(address indexed policy_);
 
     /**
+     * @notice Emitted when the platform fee is updated.
+     * @param platformFeeBps_ New platform fee in basis points.
+     */
+    event PlatformFeeSet(uint16 indexed platformFeeBps_);
+
+    /**
      * @notice Reverts when a zero address is provided where not allowed.
      */
     error ZeroAddress();
+
+    /**
+     * @notice Reverts when platform fee exceeds maximum allowed.
+     * @param feeBps The invalid fee value.
+     */
+    error InvalidPlatformFee(uint16 feeBps);
 
     /**
      * @notice Reverts when supplied coverage timestamps are invalid.
@@ -121,6 +131,13 @@ interface IPolicyManager is IAccessControl {
     function setPolicy(address policy_) external;
 
     /**
+     * @notice Sets the platform fee charged on policy premiums.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Combined with pool fees must not exceed 100%.
+     * @param platformFeeBps_ Platform fee in basis points (1 bps = 0.01%).
+     */
+    function setPlatformFee(uint16 platformFeeBps_) external;
+
+    /**
      * @notice Binds a single-pool coverage policy by validating the quote, collecting premium,
      *         and minting a soulbound policy receipt.
      * @dev Phase 1: Single pool binding only. Multi-pool aggregation deferred to future scope.
@@ -146,4 +163,9 @@ interface IPolicyManager is IAccessControl {
      * @notice Returns the configured Policy contract address.
      */
     function policy() external view returns (address);
+
+    /**
+     * @notice Returns the platform fee in basis points.
+     */
+    function platformFeeBps() external view returns (uint16);
 }

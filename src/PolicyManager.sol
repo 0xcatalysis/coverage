@@ -25,8 +25,12 @@ contract PolicyManager is
     ReentrancyGuard,
     IPolicyManager
 {
+    /// @dev Maximum allowed combined fees (platform + pool) in basis points (10% = 1000 bps).
+    uint16 private constant _MAX_TOTAL_FEE_BPS = 1000;
+
     address public override premiumManager;
     address public override policy;
+    uint16 public override platformFeeBps;
     uint256 private _nextPolicyId;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -39,9 +43,19 @@ contract PolicyManager is
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
      * @param premiumManager_ Address of the PremiumManager contract.
      * @param policy_ Address of the Policy contract.
+     * @param platformFeeBps_ Initial platform fee in basis points.
      */
-    function initialize(address admin_, address premiumManager_, address policy_) external initializer {
+    function initialize(
+        address admin_,
+        address premiumManager_,
+        address policy_,
+        uint16 platformFeeBps_
+    )
+        external
+        initializer
+    {
         require(admin_ != address(0) && premiumManager_ != address(0) && policy_ != address(0), ZeroAddress());
+        require(platformFeeBps_ <= _MAX_TOTAL_FEE_BPS, InvalidPlatformFee(platformFeeBps_));
 
         __AccessControl_init();
         __Pausable_init();
@@ -50,6 +64,7 @@ contract PolicyManager is
 
         premiumManager = premiumManager_;
         policy = policy_;
+        platformFeeBps = platformFeeBps_;
     }
 
     /**
@@ -87,6 +102,15 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
+    function setPlatformFee(uint16 platformFeeBps_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(platformFeeBps_ <= _MAX_TOTAL_FEE_BPS, InvalidPlatformFee(platformFeeBps_));
+        platformFeeBps = platformFeeBps_;
+        emit PlatformFeeSet(platformFeeBps_);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
     function bindPolicy(BindPolicyRequest calldata request) external override nonReentrant whenNotPaused {
         _validateRequest(request);
 
@@ -106,7 +130,7 @@ contract PolicyManager is
             buyer: request.buyer,
             committeeId: boundPolicy.committeeId,
             premiumToken: request.premiumToken,
-            platformFeeBps: request.platformFeeBps,
+            platformFeeBps: platformFeeBps,
             startTime: boundPolicy.startTime,
             maturityTime: boundPolicy.maturityTime,
             poolShare: IPremiumManager.PoolShare({

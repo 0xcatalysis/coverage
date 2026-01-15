@@ -44,6 +44,7 @@ import {Swapper} from "../src/Swapper.sol";
  *        - SSP_ROUTER: Catalysis Core SSPRouter address (required)
  *        - CHAINLINK_PRICE_FEED: ChainlinkPriceFeed address (required)
  *        - PLATFORM_TREASURY: Platform fee recipient (defaults to admin)
+ *        - PLATFORM_FEE_BPS: Platform fee in basis points (defaults to 50 = 0.5%)
  *        - COVER_POOL_FACTORY_CREATOR: Factory creator role (defaults to admin)
  *        - CLAIM_OPERATOR: Claim resolution operator (defaults to admin)
  *        - SWAP_MANAGER: Swap route configuration manager (defaults to admin)
@@ -52,6 +53,9 @@ abstract contract Deploy is Script {
     /// @dev Default Anvil private key for local testing.
     uint256 internal constant DEFAULT_PRIVATE_KEY =
         uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80);
+
+    /// @dev Default platform fee in basis points (0.5%).
+    uint16 internal constant DEFAULT_PLATFORM_FEE_BPS = 50;
 
     /**
      * @notice Network-specific metadata used to validate deployments.
@@ -87,6 +91,7 @@ abstract contract Deploy is Script {
      * @param claimOperator CLAIM_OPERATOR_ROLE holder on ClaimManager.
      * @param swapManager SWAP_MANAGER_ROLE holder on Swapper.
      * @param platformTreasury Recipient address for platform fees.
+     * @param platformFeeBps Platform fee in basis points.
      */
     struct RoleConfig {
         address deployer;
@@ -95,6 +100,7 @@ abstract contract Deploy is Script {
         address claimOperator;
         address swapManager;
         address platformTreasury;
+        uint16 platformFeeBps;
     }
 
     /**
@@ -314,7 +320,8 @@ abstract contract Deploy is Script {
         contracts.policyManagerProxy = Upgrades.deployUUPSProxy(
             "PolicyManager.sol:PolicyManager",
             abi.encodeCall(
-                PolicyManager.initialize, (roles.deployer, contracts.premiumManagerProxy, contracts.policyProxy)
+                PolicyManager.initialize,
+                (roles.deployer, contracts.premiumManagerProxy, contracts.policyProxy, roles.platformFeeBps)
             ),
             opts
         );
@@ -517,6 +524,7 @@ abstract contract Deploy is Script {
         roles.claimOperator = vm.envOr("CLAIM_OPERATOR", roles.admin);
         roles.swapManager = vm.envOr("SWAP_MANAGER", roles.admin);
         roles.platformTreasury = vm.envOr("PLATFORM_TREASURY", roles.admin);
+        roles.platformFeeBps = uint16(vm.envOr("PLATFORM_FEE_BPS", uint256(DEFAULT_PLATFORM_FEE_BPS)));
     }
 
     /**

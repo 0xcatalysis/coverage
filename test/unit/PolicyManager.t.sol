@@ -47,6 +47,7 @@ contract PolicyManagerTest is Test {
 
     event PremiumManagerSet(address indexed premiumManager_);
     event PolicyContractSet(address indexed policy_);
+    event PlatformFeeSet(uint16 indexed platformFeeBps_);
 
     function setUp() public {
         vm.warp(1_000_000);
@@ -77,7 +78,9 @@ contract PolicyManagerTest is Test {
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
             "PolicyManager.sol",
-            abi.encodeCall(PolicyManager.initialize, (admin, address(mockPremiumManager), address(mockPolicy))),
+            abi.encodeCall(
+                PolicyManager.initialize, (admin, address(mockPremiumManager), address(mockPolicy), PLATFORM_FEE_BPS)
+            ),
             deployOpts
         );
         policyManager = PolicyManager(proxy);
@@ -96,27 +99,35 @@ contract PolicyManagerTest is Test {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(address(0), address(mockPremiumManager), address(mockPolicy));
+        freshManager.initialize(address(0), address(mockPremiumManager), address(mockPolicy), PLATFORM_FEE_BPS);
     }
 
     function test_initialize_WhenPremiumManagerZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(0), address(mockPolicy));
+        freshManager.initialize(admin, address(0), address(mockPolicy), PLATFORM_FEE_BPS);
     }
 
     function test_initialize_WhenPolicyZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(mockPremiumManager), address(0));
+        freshManager.initialize(admin, address(mockPremiumManager), address(0), PLATFORM_FEE_BPS);
+    }
+
+    function test_initialize_WhenPlatformFeeExceedsMax_Reverts() public {
+        PolicyManager implementation = new PolicyManager();
+        PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidPlatformFee.selector, 1001));
+        freshManager.initialize(admin, address(mockPremiumManager), address(mockPolicy), 1001);
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
         assertTrue(policyManager.hasRole(policyManager.DEFAULT_ADMIN_ROLE(), admin), "Admin role missing");
         assertEq(policyManager.premiumManager(), address(mockPremiumManager), "Premium manager mismatch");
         assertEq(policyManager.policy(), address(mockPolicy), "Policy mismatch");
+        assertEq(policyManager.platformFeeBps(), PLATFORM_FEE_BPS, "Platform fee mismatch");
         assertFalse(policyManager.paused(), "Manager unexpectedly paused");
     }
 
@@ -198,6 +209,52 @@ contract PolicyManagerTest is Test {
         policyManager.setPremiumManager(address(newManager));
 
         assertEq(policyManager.premiumManager(), address(newManager), "Premium manager not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        SET PLATFORM FEE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setPlatformFee_WhenCallerNotAdmin_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(buyer);
+        policyManager.setPlatformFee(100);
+    }
+
+    function test_setPlatformFee_WhenExceedsMax_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidPlatformFee.selector, 1001));
+        vm.prank(admin);
+        policyManager.setPlatformFee(1001);
+    }
+
+    function test_setPlatformFee_WhenValid_UpdatesStateAndEmits() public {
+        uint16 newFee = 100;
+
+        vm.expectEmit(true, true, true, true, address(policyManager));
+        emit PlatformFeeSet(newFee);
+
+        vm.prank(admin);
+        policyManager.setPlatformFee(newFee);
+
+        assertEq(policyManager.platformFeeBps(), newFee, "Platform fee not updated");
+    }
+
+    function test_setPlatformFee_AllowsZeroFee() public {
+        vm.prank(admin);
+        policyManager.setPlatformFee(0);
+
+        assertEq(policyManager.platformFeeBps(), 0, "Platform fee should be zero");
+    }
+
+    function test_setPlatformFee_AllowsMaxFee() public {
+        vm.prank(admin);
+        policyManager.setPlatformFee(1000);
+
+        assertEq(policyManager.platformFeeBps(), 1000, "Platform fee should be max");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -471,6 +528,124 @@ contract PolicyManagerTest is Test {
         assertEq(mockPremiumManager.collectPremiumCallCount(), 2, "Should allow sequential calls");
     }
 
+    function test_bindPolicy_WhenMaturityEqualsBlockTimestamp_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.quote.startTime = uint64(block.timestamp - 1 days);
+        request.quote.maturityTime = uint64(block.timestamp);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPolicyManager.InvalidCoverageWindow.selector, request.quote.startTime, request.quote.maturityTime
+            )
+        );
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+    }
+
+    function test_bindPolicy_WhenStartEqualsMaturity_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        uint64 sameTime = uint64(block.timestamp + 1 days);
+        request.quote.startTime = sameTime;
+        request.quote.maturityTime = sameTime;
+
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidCoverageWindow.selector, sameTime, sameTime));
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+    }
+
+    function test_bindPolicy_UsesPlatformFeeFromState() public {
+        uint16 newPlatformFee = 200;
+        vm.prank(admin);
+        policyManager.setPlatformFee(newPlatformFee);
+
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+
+        IPremiumManager.PremiumAllocation memory allocation = mockPremiumManager.lastAllocation();
+        assertEq(allocation.platformFeeBps, newPlatformFee, "Should use updated platform fee");
+    }
+
+    function test_bindPolicy_PolicyIdIncrementsCorrectly() public {
+        IPolicyManager.BindPolicyRequest memory request1 = _defaultRequest();
+        IPolicyManager.BindPolicyRequest memory request2 = _defaultRequest();
+
+        coverPool.setReturnPolicyCommit(keccak256("policy-commit-1"));
+        vm.prank(buyer);
+        policyManager.bindPolicy(request1);
+
+        IPremiumManager.PremiumAllocation memory allocation1 = mockPremiumManager.lastAllocation();
+        assertEq(allocation1.policyId, 1, "First policy ID should be 1");
+
+        coverPool.setReturnPolicyCommit(keccak256("policy-commit-2"));
+        vm.prank(buyer);
+        policyManager.bindPolicy(request2);
+
+        IPremiumManager.PremiumAllocation memory allocation2 = mockPremiumManager.lastAllocation();
+        assertEq(allocation2.policyId, 2, "Second policy ID should be 2");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            UPGRADE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
+        address newImplementation = address(new PolicyManager());
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(buyer);
+        policyManager.upgradeToAndCall(newImplementation, "");
+    }
+
+    function test_authorizeUpgrade_WhenCalledByAdmin_Succeeds() public {
+        address newImplementation = address(new PolicyManager());
+
+        vm.prank(admin);
+        policyManager.upgradeToAndCall(newImplementation, "");
+
+        assertEq(policyManager.premiumManager(), address(mockPremiumManager), "Premium manager should persist");
+        assertEq(policyManager.policy(), address(mockPolicy), "Policy should persist");
+        assertEq(policyManager.platformFeeBps(), PLATFORM_FEE_BPS, "Platform fee should persist");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            VIEW FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_paused_ReturnsCorrectState() public {
+        assertFalse(policyManager.paused(), "Should not be paused initially");
+
+        vm.prank(admin);
+        policyManager.pause();
+        assertTrue(policyManager.paused(), "Should be paused after pause()");
+
+        vm.prank(admin);
+        policyManager.unpause();
+        assertFalse(policyManager.paused(), "Should not be paused after unpause()");
+    }
+
+    function test_premiumManager_ReturnsCorrectAddress() public view {
+        assertEq(policyManager.premiumManager(), address(mockPremiumManager), "Should return premium manager");
+    }
+
+    function test_policy_ReturnsCorrectAddress() public view {
+        assertEq(policyManager.policy(), address(mockPolicy), "Should return policy address");
+    }
+
+    function test_platformFeeBps_ReturnsCorrectValue() public {
+        assertEq(policyManager.platformFeeBps(), PLATFORM_FEE_BPS, "Should return initial platform fee");
+
+        uint16 newFee = 300;
+        vm.prank(admin);
+        policyManager.setPlatformFee(newFee);
+
+        assertEq(policyManager.platformFeeBps(), newFee, "Should return updated platform fee");
+    }
+
     /*//////////////////////////////////////////////////////////////
                                  HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -496,8 +671,7 @@ contract PolicyManagerTest is Test {
             premiumToken: premiumToken,
             payoutToken: payoutToken,
             quote: quote,
-            signature: abi.encodePacked("mock-signature"),
-            platformFeeBps: PLATFORM_FEE_BPS
+            signature: abi.encodePacked("mock-signature")
         });
     }
 }
