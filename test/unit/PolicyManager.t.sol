@@ -15,6 +15,7 @@ contract PolicyManagerTest is Test {
     uint256 internal constant POLICY_ID = 1;
     uint256 internal constant COVERAGE_LIMIT = 1_000_000e18;
     uint256 internal constant BASE_PREMIUM = 10_000e18;
+    uint256 internal constant COVERAGE_AMOUNT = 500_000e8; // USD with 8 decimals
     uint16 internal constant PLATFORM_FEE_BPS = 50;
     uint16 internal constant POOL_FEE_BPS = 150;
     uint64 internal constant COVERAGE_DURATION = 30 days;
@@ -408,6 +409,15 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request);
     }
 
+    function test_bindPolicy_WhenCoverageAmountZero_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.coverageAmount = 0;
+
+        vm.expectRevert(IPolicyManager.InvalidCoverageAmount.selector);
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+    }
+
     function test_bindPolicy_WhenInvalidCoverageWindow_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         request.quote.startTime = uint64(block.timestamp + 1 days);
@@ -625,6 +635,29 @@ contract PolicyManagerTest is Test {
         assertEq(allocation2.policyId, 2, "Second policy ID should be 2");
     }
 
+    function test_bindPolicy_WhenValid_CreatesCommitteeWithCoverageAmount() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+
+        assertEq(mockStakeManager.createCommitteeCallCount(), 1, "CreateCommittee not called");
+        assertEq(mockStakeManager.lastCommitteeId(), uint96(POLICY_ID), "Committee ID mismatch");
+        assertEq(mockStakeManager.lastStakeRecipient(), address(mockClaimManager), "Stake recipient mismatch");
+        assertEq(mockStakeManager.lastMaxStake(), COVERAGE_AMOUNT, "Coverage amount mismatch");
+    }
+
+    function test_bindPolicy_PassesCustomCoverageAmount() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        uint256 customAmount = 999_999e8;
+        request.coverageAmount = customAmount;
+
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+
+        assertEq(mockStakeManager.lastMaxStake(), customAmount, "Should pass custom coverage amount");
+    }
+
     /*//////////////////////////////////////////////////////////////
                             UPGRADE
     //////////////////////////////////////////////////////////////*/
@@ -710,6 +743,7 @@ contract PolicyManagerTest is Test {
             beneficiary: beneficiary,
             premiumToken: premiumToken,
             payoutToken: payoutToken,
+            coverageAmount: COVERAGE_AMOUNT,
             quote: quote,
             signature: abi.encodePacked("mock-signature")
         });

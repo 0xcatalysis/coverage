@@ -22,6 +22,8 @@ interface IPolicyManager is IAccessControl {
         address premiumToken;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
+        /// @notice Coverage amount as the stake requirement for committee creation (in USD with 8 decimals).
+        uint256 coverageAmount;
         /// @notice Coverage quote data from a single CoverPool.
         ICoverPool.QuoteData quote;
         /// @notice EIP-712 signature from the pool's authorized quote signer.
@@ -105,6 +107,11 @@ interface IPolicyManager is IAccessControl {
      * @notice Reverts when base premium is zero.
      */
     error InvalidBasePremium();
+
+    /**
+     * @notice Reverts when coverage amount is zero.
+     */
+    error InvalidCoverageAmount();
 
     /**
      * @notice Reverts when the quote pool address does not match expected pool.

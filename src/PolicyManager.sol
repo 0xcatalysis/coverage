@@ -155,7 +155,7 @@ contract PolicyManager is
         ICoverPool.BoundPolicy memory boundPolicy =
             ICoverPool(quote.pool).bindPolicy(policyCommit, quote, request.signature);
 
-        IStakeManager(stakeManager).createCommittee(uint96(policyId), claimManager, 0);
+        IStakeManager(stakeManager).createCommittee(uint96(policyId), claimManager, request.coverageAmount);
 
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
             policyId: policyId,
@@ -235,6 +235,7 @@ contract PolicyManager is
         require(request.quote.pool != address(0), InvalidQuotePool());
         require(request.quote.coverageLimit != 0, InvalidCoverageLimit());
         require(request.quote.basePremium != 0, InvalidBasePremium());
+        require(request.coverageAmount != 0, InvalidCoverageAmount());
         require(
             request.quote.startTime < request.quote.maturityTime && request.quote.maturityTime > block.timestamp,
             InvalidCoverageWindow(request.quote.startTime, request.quote.maturityTime)
