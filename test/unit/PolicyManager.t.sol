@@ -30,6 +30,8 @@ contract PolicyManagerTest is Test {
     MockCoverPool internal coverPool;
     MockPremiumManager internal mockPremiumManager;
     MockPolicy internal mockPolicy;
+    MockStakeManager internal mockStakeManager;
+    MockClaimManager internal mockClaimManager;
 
     bytes32 internal policyCommit;
     bytes32 internal specId;
@@ -69,6 +71,8 @@ contract PolicyManagerTest is Test {
         coverPool = new MockCoverPool();
         mockPremiumManager = new MockPremiumManager();
         mockPolicy = new MockPolicy();
+        mockStakeManager = new MockStakeManager();
+        mockClaimManager = new MockClaimManager();
 
         policyCommit = keccak256("policy-commit");
         specId = keccak256("spec-id");
@@ -79,7 +83,15 @@ contract PolicyManagerTest is Test {
         address proxy = Upgrades.deployUUPSProxy(
             "PolicyManager.sol",
             abi.encodeCall(
-                PolicyManager.initialize, (admin, address(mockPremiumManager), address(mockPolicy), PLATFORM_FEE_BPS)
+                PolicyManager.initialize,
+                (
+                    admin,
+                    address(mockPremiumManager),
+                    address(mockPolicy),
+                    address(mockStakeManager),
+                    address(mockClaimManager),
+                    PLATFORM_FEE_BPS
+                )
             ),
             deployOpts
         );
@@ -99,28 +111,56 @@ contract PolicyManagerTest is Test {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(address(0), address(mockPremiumManager), address(mockPolicy), PLATFORM_FEE_BPS);
+        freshManager.initialize(
+            address(0),
+            address(mockPremiumManager),
+            address(mockPolicy),
+            address(mockStakeManager),
+            address(mockClaimManager),
+            PLATFORM_FEE_BPS
+        );
     }
 
     function test_initialize_WhenPremiumManagerZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(0), address(mockPolicy), PLATFORM_FEE_BPS);
+        freshManager.initialize(
+            admin,
+            address(0),
+            address(mockPolicy),
+            address(mockStakeManager),
+            address(mockClaimManager),
+            PLATFORM_FEE_BPS
+        );
     }
 
     function test_initialize_WhenPolicyZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(mockPremiumManager), address(0), PLATFORM_FEE_BPS);
+        freshManager.initialize(
+            admin,
+            address(mockPremiumManager),
+            address(0),
+            address(mockStakeManager),
+            address(mockClaimManager),
+            PLATFORM_FEE_BPS
+        );
     }
 
     function test_initialize_WhenPlatformFeeExceedsMax_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidPlatformFee.selector, 2501));
-        freshManager.initialize(admin, address(mockPremiumManager), address(mockPolicy), 2501);
+        freshManager.initialize(
+            admin,
+            address(mockPremiumManager),
+            address(mockPolicy),
+            address(mockStakeManager),
+            address(mockClaimManager),
+            2501
+        );
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -769,3 +809,22 @@ contract MockPolicy {
         return (_lastTo, _lastPolicyId, _lastMetadata);
     }
 }
+
+contract MockStakeManager {
+    uint256 public createCommitteeCallCount;
+    uint96 public lastCommitteeId;
+    address public lastStakeRecipient;
+    uint256 public lastMaxStake;
+
+    function createCommittee(uint96 committeeId, address stakeRecipient, uint256 maxStakeForCommittee) external {
+        createCommitteeCallCount++;
+        lastCommitteeId = committeeId;
+        lastStakeRecipient = stakeRecipient;
+        lastMaxStake = maxStakeForCommittee;
+    }
+}
+
+contract MockClaimManager {
+    // Empty mock for ClaimManager
+
+    }

@@ -325,7 +325,14 @@ abstract contract Deploy is Script {
             "PolicyManager.sol:PolicyManager",
             abi.encodeCall(
                 PolicyManager.initialize,
-                (roles.deployer, contracts.premiumManagerProxy, contracts.policyProxy, roles.platformFeeBps)
+                (
+                    roles.deployer,
+                    contracts.premiumManagerProxy,
+                    contracts.policyProxy,
+                    external_.stakeManager,
+                    contracts.claimManagerProxy,
+                    roles.platformFeeBps
+                )
             ),
             opts
         );

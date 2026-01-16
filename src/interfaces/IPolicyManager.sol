@@ -67,6 +67,18 @@ interface IPolicyManager is IAccessControl {
     event PlatformFeeSet(uint16 indexed platformFeeBps_);
 
     /**
+     * @notice Emitted when the StakeManager dependency is set or updated.
+     * @param stakeManager_ Address of the stake manager contract.
+     */
+    event StakeManagerSet(address indexed stakeManager_);
+
+    /**
+     * @notice Emitted when the ClaimManager dependency is set or updated.
+     * @param claimManager_ Address of the claim manager contract.
+     */
+    event ClaimManagerSet(address indexed claimManager_);
+
+    /**
      * @notice Reverts when a zero address is provided where not allowed.
      */
     error ZeroAddress();
@@ -131,6 +143,20 @@ interface IPolicyManager is IAccessControl {
     function setPolicy(address policy_) external;
 
     /**
+     * @notice Sets the StakeManager contract used for committee creation.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param stakeManager_ Address of the StakeManager implementation.
+     */
+    function setStakeManager(address stakeManager_) external;
+
+    /**
+     * @notice Sets the ClaimManager contract used as stake recipient for committees.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param claimManager_ Address of the ClaimManager implementation.
+     */
+    function setClaimManager(address claimManager_) external;
+
+    /**
      * @notice Sets the platform fee charged on policy premiums.
      * @dev Requires DEFAULT_ADMIN_ROLE. Must not exceed 25% (2500 bps).
      * @param platformFeeBps_ Platform fee in basis points (1 bps = 0.01%).
@@ -140,11 +166,6 @@ interface IPolicyManager is IAccessControl {
     /**
      * @notice Binds a single-pool coverage policy by validating the quote, collecting premium,
      *         and minting a soulbound policy receipt.
-     * @dev Phase 1: Single pool binding only. Multi-pool aggregation deferred to future scope.
-     *      Orchestrates:
-     *      1. Quote validation and policy binding via CoverPool
-     *      2. Premium collection via PremiumManager
-     *      3. Policy NFT minting via Policy contract
      * @param request Struct containing all binding parameters and signed quote.
      */
     function bindPolicy(BindPolicyRequest calldata request) external;
@@ -163,6 +184,16 @@ interface IPolicyManager is IAccessControl {
      * @notice Returns the configured Policy contract address.
      */
     function policy() external view returns (address);
+
+    /**
+     * @notice Returns the configured StakeManager address.
+     */
+    function stakeManager() external view returns (address);
+
+    /**
+     * @notice Returns the configured ClaimManager address.
+     */
+    function claimManager() external view returns (address);
 
     /**
      * @notice Returns the platform fee in basis points.

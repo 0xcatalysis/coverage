@@ -9,6 +9,7 @@ import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
 import {IPolicy} from "./interfaces/IPolicy.sol";
+import {IStakeManager} from "./interfaces/IStakeManager.sol";
 
 /**
  * @title PolicyManager
@@ -30,7 +31,10 @@ contract PolicyManager is
 
     address public override premiumManager;
     address public override policy;
+    address public override stakeManager;
+    address public override claimManager;
     uint16 public override platformFeeBps;
+
     uint256 private _nextPolicyId;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -43,18 +47,26 @@ contract PolicyManager is
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
      * @param premiumManager_ Address of the PremiumManager contract.
      * @param policy_ Address of the Policy contract.
+     * @param stakeManager_ Address of the StakeManager contract.
+     * @param claimManager_ Address of the ClaimManager contract.
      * @param platformFeeBps_ Initial platform fee in basis points.
      */
     function initialize(
         address admin_,
         address premiumManager_,
         address policy_,
+        address stakeManager_,
+        address claimManager_,
         uint16 platformFeeBps_
     )
         external
         initializer
     {
-        require(admin_ != address(0) && premiumManager_ != address(0) && policy_ != address(0), ZeroAddress());
+        require(
+            admin_ != address(0) && premiumManager_ != address(0) && policy_ != address(0)
+                && stakeManager_ != address(0) && claimManager_ != address(0),
+            ZeroAddress()
+        );
         require(platformFeeBps_ <= _MAX_TOTAL_FEE_BPS, InvalidPlatformFee(platformFeeBps_));
 
         __AccessControl_init();
@@ -64,6 +76,8 @@ contract PolicyManager is
 
         premiumManager = premiumManager_;
         policy = policy_;
+        stakeManager = stakeManager_;
+        claimManager = claimManager_;
         platformFeeBps = platformFeeBps_;
     }
 
@@ -111,6 +125,24 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
+    function setStakeManager(address stakeManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(stakeManager_ != address(0), ZeroAddress());
+        stakeManager = stakeManager_;
+        emit StakeManagerSet(stakeManager_);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
+    function setClaimManager(address claimManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(claimManager_ != address(0), ZeroAddress());
+        claimManager = claimManager_;
+        emit ClaimManagerSet(claimManager_);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
     function bindPolicy(BindPolicyRequest calldata request) external override nonReentrant whenNotPaused {
         _validateRequest(request);
 
@@ -122,6 +154,8 @@ contract PolicyManager is
 
         ICoverPool.BoundPolicy memory boundPolicy =
             ICoverPool(quote.pool).bindPolicy(policyCommit, quote, request.signature);
+
+        IStakeManager(stakeManager).createCommittee(uint96(policyId), claimManager, 0);
 
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
             policyId: policyId,

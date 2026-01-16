@@ -17,6 +17,14 @@ interface IStakeManager {
     function registerOperatorToNetwork(address operator, uint48 deadline, bytes calldata signature) external;
 
     /**
+     * @notice Creates a committee by setting up operator sets and network limits across protocols.
+     * @param committeeId The committee ID.
+     * @param stakeRecipient The address that will receive slashed funds.
+     * @param maxStakeForCommittee The maximum stake limit for Symbiotic vaults.
+     */
+    function createCommittee(uint96 committeeId, address stakeRecipient, uint256 maxStakeForCommittee) external;
+
+    /**
      * @notice Checks if an operator is registered to the network.
      * @param operator The address of the operator.
      * @return True if operator is registered to the network.
