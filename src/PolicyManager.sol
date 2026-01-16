@@ -155,14 +155,15 @@ contract PolicyManager is
         ICoverPool.BoundPolicy memory boundPolicy =
             ICoverPool(quote.pool).bindPolicy(policyCommit, quote, request.signature);
 
-        IStakeManager(stakeManager).createCommittee(uint96(policyId), claimManager, request.coverageAmount);
+        uint96 committeeId = uint96(policyId);
+        IStakeManager(stakeManager).createCommittee(committeeId, claimManager, request.coverageAmount);
 
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
             policyId: policyId,
             policyCommit: policyCommit,
             basePremium: quote.basePremium,
             buyer: request.buyer,
-            committeeId: boundPolicy.committeeId,
+            committeeId: committeeId,
             premiumToken: request.premiumToken,
             platformFeeBps: platformFeeBps,
             startTime: boundPolicy.startTime,
@@ -180,7 +181,7 @@ contract PolicyManager is
 
         IPolicy.PolicyMetadata memory metadata = IPolicy.PolicyMetadata({
             buyer: request.buyer,
-            committeeId: boundPolicy.committeeId,
+            committeeId: committeeId,
             beneficiary: request.beneficiary,
             startTime: boundPolicy.startTime,
             premiumToken: request.premiumToken,

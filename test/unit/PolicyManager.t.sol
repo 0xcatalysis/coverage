@@ -487,6 +487,7 @@ contract PolicyManagerTest is Test {
         assertEq(allocation.policyId, POLICY_ID, "Policy ID mismatch");
         assertEq(allocation.policyCommit, policyCommit, "Policy commit mismatch");
         assertEq(allocation.buyer, buyer, "Buyer mismatch");
+        assertEq(allocation.committeeId, uint96(POLICY_ID), "Committee ID mismatch");
         assertEq(allocation.premiumToken, premiumToken, "Premium token mismatch");
         assertEq(allocation.basePremium, BASE_PREMIUM, "Base premium mismatch");
         assertEq(allocation.platformFeeBps, PLATFORM_FEE_BPS, "Platform fee mismatch");
@@ -521,7 +522,7 @@ contract PolicyManagerTest is Test {
         assertEq(metadata.poolPolicyId, coverPool.lastBoundPolicy().policyId, "Metadata pool policy ID mismatch");
         assertEq(metadata.termsHash, termsHash, "Metadata terms hash mismatch");
         assertEq(metadata.policyCommit, policyCommit, "Metadata policy commit mismatch");
-        assertEq(metadata.committeeId, uint96(123), "Metadata committee ID mismatch");
+        assertEq(metadata.committeeId, uint96(POLICY_ID), "Metadata committee ID mismatch");
         assertEq(metadata.startTime, uint64(block.timestamp), "Metadata start time mismatch");
         assertEq(metadata.maturityTime, uint64(block.timestamp + COVERAGE_DURATION), "Metadata maturity time mismatch");
         assertEq(metadata.operator, operator, "Metadata operator mismatch");
