@@ -299,6 +299,72 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                        SET STAKE MANAGER
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setStakeManager_WhenCallerNotAdmin_Reverts() public {
+        MockStakeManager newManager = new MockStakeManager();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(buyer);
+        policyManager.setStakeManager(address(newManager));
+    }
+
+    function test_setStakeManager_WhenAddressZero_Reverts() public {
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(admin);
+        policyManager.setStakeManager(address(0));
+    }
+
+    function test_setStakeManager_WhenValid_UpdatesStateAndEmits() public {
+        MockStakeManager newManager = new MockStakeManager();
+
+        vm.expectEmit(true, true, true, true, address(policyManager));
+        emit IPolicyManager.StakeManagerSet(address(newManager));
+
+        vm.prank(admin);
+        policyManager.setStakeManager(address(newManager));
+
+        assertEq(policyManager.stakeManager(), address(newManager), "Stake manager not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        SET CLAIM MANAGER
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setClaimManager_WhenCallerNotAdmin_Reverts() public {
+        MockClaimManager newManager = new MockClaimManager();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(buyer);
+        policyManager.setClaimManager(address(newManager));
+    }
+
+    function test_setClaimManager_WhenAddressZero_Reverts() public {
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(admin);
+        policyManager.setClaimManager(address(0));
+    }
+
+    function test_setClaimManager_WhenValid_UpdatesStateAndEmits() public {
+        MockClaimManager newManager = new MockClaimManager();
+
+        vm.expectEmit(true, true, true, true, address(policyManager));
+        emit IPolicyManager.ClaimManagerSet(address(newManager));
+
+        vm.prank(admin);
+        policyManager.setClaimManager(address(newManager));
+
+        assertEq(policyManager.claimManager(), address(newManager), "Claim manager not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                              SET POLICY
     //////////////////////////////////////////////////////////////*/
 
@@ -856,7 +922,4 @@ contract MockStakeManager {
     }
 }
 
-contract MockClaimManager {
-    // Empty mock for ClaimManager
-
-    }
+contract MockClaimManager {}

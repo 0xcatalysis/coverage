@@ -165,6 +165,20 @@ contract PremiumReserveTest is Test {
         assertEq(stored.operator, operator0, "operator mismatch");
     }
 
+    function test_openEscrow_WhenCalledTwiceForSamePolicy_Reverts() public {
+        IPremiumReserve.EscrowPosition memory position = _defaultPosition();
+
+        premiumToken.mint(premiumManager, RESTAKER_PREMIUM * 2);
+        vm.startPrank(premiumManager);
+        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
+        reserve.openEscrow(position);
+
+        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
+        vm.expectRevert();
+        reserve.openEscrow(position);
+        vm.stopPrank();
+    }
+
     /*//////////////////////////////////////////////////////////////
                          SET CLAIM LOCK STATUS
     //////////////////////////////////////////////////////////////*/
@@ -371,6 +385,32 @@ contract PremiumReserveTest is Test {
             premiumToken.balanceOf(rewardsManager), RESTAKER_PREMIUM - 300 ether, "restaker payout matches remainder"
         );
         assertEq(premiumToken.balanceOf(buyer), 0, "buyer should remain unpaid");
+    }
+
+    function test_releaseEscrow_WhenRestakerPremiumZero_SkipsDistribution() public {
+        _openEscrow();
+
+        vm.startPrank(claimManager);
+        reserve.setClaimLockStatus(POLICY_ID, true);
+        reserve.payClaim(POLICY_ID, payoutRecipient, RESTAKER_PREMIUM);
+        reserve.setClaimLockStatus(POLICY_ID, false);
+        vm.stopPrank();
+
+        uint64 maturityTime = reserve.escrowPosition(POLICY_ID).maturityTime;
+        vm.warp(maturityTime);
+
+        uint256 rewardsManagerBalanceBefore = premiumToken.balanceOf(rewardsManager);
+
+        vm.prank(policyManager);
+        reserve.releaseEscrow(POLICY_ID, rewardsManager);
+
+        assertEq(
+            premiumToken.balanceOf(rewardsManager),
+            rewardsManagerBalanceBefore,
+            "RewardsManager should not receive tokens when premium is zero"
+        );
+
+        assertTrue(reserve.isEscrowReleased(POLICY_ID), "Escrow should be released");
     }
 
     /*//////////////////////////////////////////////////////////////
