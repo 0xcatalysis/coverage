@@ -157,7 +157,7 @@ interface IPolicyManager is IAccessControl {
     function setStakeManager(address stakeManager_) external;
 
     /**
-     * @notice Sets the ClaimManager contract used as stake recipient for committees.
+     * @notice Sets the ClaimManager contract reference.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      * @param claimManager_ Address of the ClaimManager implementation.
      */

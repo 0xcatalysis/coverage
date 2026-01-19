@@ -644,7 +644,6 @@ contract PolicyManagerTest is Test {
 
         assertEq(mockStakeManager.createCommitteeCallCount(), 1, "CreateCommittee not called");
         assertEq(mockStakeManager.lastCommitteeId(), uint96(POLICY_ID), "Committee ID mismatch");
-        assertEq(mockStakeManager.lastStakeRecipient(), address(mockClaimManager), "Stake recipient mismatch");
         assertEq(mockStakeManager.lastMaxStake(), COVERAGE_AMOUNT, "Coverage amount mismatch");
     }
 
@@ -848,13 +847,11 @@ contract MockPolicy {
 contract MockStakeManager {
     uint256 public createCommitteeCallCount;
     uint96 public lastCommitteeId;
-    address public lastStakeRecipient;
     uint256 public lastMaxStake;
 
-    function createCommittee(uint96 committeeId, address stakeRecipient, uint256 maxStakeForCommittee) external {
+    function createCommittee(uint96 committeeId, uint256 maxStakeForCommittee) external {
         createCommitteeCallCount++;
         lastCommitteeId = committeeId;
-        lastStakeRecipient = stakeRecipient;
         lastMaxStake = maxStakeForCommittee;
     }
 }

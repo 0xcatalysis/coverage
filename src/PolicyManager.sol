@@ -156,7 +156,7 @@ contract PolicyManager is
             ICoverPool(quote.pool).bindPolicy(policyCommit, quote, request.signature);
 
         uint96 committeeId = uint96(policyId);
-        IStakeManager(stakeManager).createCommittee(committeeId, claimManager, request.coverageAmount);
+        IStakeManager(stakeManager).createCommittee(committeeId, request.coverageAmount);
 
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
             policyId: policyId,

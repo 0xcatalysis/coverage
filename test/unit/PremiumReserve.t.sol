@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
@@ -323,7 +324,7 @@ contract PremiumReserveTest is Test {
         vm.warp(maturityTime);
 
         vm.expectEmit(true, true, true, true, address(rewardsManagerMock));
-        emit RewardsManagerMock.RewardsDistributed(COMMITTEE_ID, operator0, RESTAKER_PREMIUM);
+        emit RewardsManagerMock.RewardsDistributed(COMMITTEE_ID, operator0, RESTAKER_PREMIUM, address(premiumToken));
         vm.expectEmit();
         emit PremiumReleased(POLICY_ID, rewardsManager, RESTAKER_PREMIUM);
         vm.expectEmit();
@@ -528,9 +529,16 @@ contract MockToken is ERC20 {
 }
 
 contract RewardsManagerMock {
-    event RewardsDistributed(uint96 committeeId, address operator, uint256 rewardAmount);
+    event RewardsDistributed(uint96 committeeId, address operator, uint256 rewardAmount, address rewardToken);
 
-    function distributeRewards(uint96 committeeId, address operator, uint256 rewardAmount) external {
-        emit RewardsDistributed(committeeId, operator, rewardAmount);
+    function distributeRewards(
+        uint96 committeeId,
+        address operator,
+        uint256 rewardAmount,
+        IERC20 rewardToken
+    )
+        external
+    {
+        emit RewardsDistributed(committeeId, operator, rewardAmount, address(rewardToken));
     }
 }
