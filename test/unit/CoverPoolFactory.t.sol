@@ -275,7 +275,7 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.createCoverPool(params);
 
-        assertEq(factory.coverTotalPools(), 1, "Unexpected total pools");
+        assertEq(factory.totalCoverPools(), 1, "Unexpected total pools");
         assertTrue(factory.coverPoolExists(factory.coverPoolAt(0)), "Pool not exists");
         assertEq(factory.coverPoolAt(0), expected, "Unexpected pool address");
 
@@ -332,7 +332,7 @@ contract CoverPoolFactoryTest is Test {
 
         vm.prank(creator);
         factory.createCoverPool(params1);
-        assertEq(factory.coverTotalPools(), 1, "First pool not created");
+        assertEq(factory.totalCoverPools(), 1, "First pool not created");
 
         ICoverPoolFactory.CreateCoverPoolParams memory params2 = _defaultCreateParams();
         params2.poolFeeBps = 200;
@@ -345,7 +345,7 @@ contract CoverPoolFactoryTest is Test {
 
         vm.prank(creator);
         factory.createCoverPool(params2);
-        assertEq(factory.coverTotalPools(), 2, "Second pool not created");
+        assertEq(factory.totalCoverPools(), 2, "Second pool not created");
 
         CoverPool pool1 = CoverPool(factory.coverPoolAt(0));
         assertEq(pool1.poolFeeBps(), 100, "First pool fee mismatch");
@@ -462,15 +462,15 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.createCoverPool(params);
 
-        assertEq(factory.coverTotalPools(), 2, "Unexpected total pools after second deployment");
+        assertEq(factory.totalCoverPools(), 2, "Unexpected total pools after second deployment");
         assertEq(factory.coverPoolAt(1), secondPrediction, "Second deployment mismatch");
     }
 
     /*//////////////////////////////////////////////////////////////
-                         COVER TOTAL POOLS
+                         TOTAL COVER POOLS
     //////////////////////////////////////////////////////////////*/
 
-    function test_coverTotalPools_WhenMultiplePools_Increments() public {
+    function test_totalCoverPools_WhenMultiplePools_Increments() public {
         for (uint256 i = 0; i < 3; ++i) {
             ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
             params.curator = makeAddr(string.concat("curator", vm.toString(i)));
@@ -493,7 +493,7 @@ contract CoverPoolFactoryTest is Test {
             factory.createCoverPool(params);
         }
 
-        assertEq(factory.coverTotalPools(), 3, "Unexpected total pools");
+        assertEq(factory.totalCoverPools(), 3, "Unexpected total pools");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -563,8 +563,8 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.coverPoolAt(0), pool, "Pool address mismatch");
     }
 
-    function test_coverTotalPools_WhenNone_ReturnsZero() public view {
-        assertEq(factory.coverTotalPools(), 0, "Expected zero pools");
+    function test_totalCoverPools_WhenNone_ReturnsZero() public view {
+        assertEq(factory.totalCoverPools(), 0, "Expected zero pools");
     }
 
     function test_getCoverPools_WhenOffsetNonZero_ReturnsSlice() public {
@@ -582,7 +582,7 @@ contract CoverPoolFactoryTest is Test {
         _createPool("b");
         _createPool("c");
 
-        uint256 total = factory.coverTotalPools();
+        uint256 total = factory.totalCoverPools();
         address[] memory slice = factory.getCoverPools(1, 10);
         assertEq(slice.length, total - 1, "Slice should truncate to remaining pools");
 
@@ -654,7 +654,7 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(creator);
         factory.createCoverPool(params);
 
-        pool = factory.coverPoolAt(factory.coverTotalPools() - 1);
+        pool = factory.coverPoolAt(factory.totalCoverPools() - 1);
     }
 
     /*//////////////////////////////////////////////////////////////

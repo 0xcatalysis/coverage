@@ -165,7 +165,7 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function coverTotalPools() external view override returns (uint256) {
+    function totalCoverPools() external view override returns (uint256) {
         return _pools.length();
     }
 
