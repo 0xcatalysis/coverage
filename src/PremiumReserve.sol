@@ -192,7 +192,10 @@ contract PremiumReserve is
         if (totalRestakerPayout != 0) {
             IERC20(escrow.premiumToken).safeTransfer(rewardsManager, totalRestakerPayout);
             // slither-disable-next-line calls-loop
-            IRewardsManager(rewardsManager).distributeRewards(escrow.committeeId, escrow.operator, totalRestakerPayout);
+            IRewardsManager(rewardsManager)
+                .distributeRewards(
+                    escrow.committeeId, escrow.operator, totalRestakerPayout, IERC20(escrow.premiumToken)
+                );
 
             emit PremiumReleased(policyId, rewardsManager, totalRestakerPayout);
         }

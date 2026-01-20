@@ -38,12 +38,13 @@ import {Swapper} from "../src/Swapper.sol";
  *      Environment Variables:
  *        - PRIVATE_KEY: Deployer private key (defaults to Anvil key 0)
  *        - ADMIN: Admin address for all contracts (defaults to deployer)
- *        - NATIVE_WRAPPER: WETH address (required)
  *        - SPEC_REGISTRY: SpecRegistry address (required)
  *        - SLASHING_MANAGER: Catalysis Core SlashingManager address (required)
- *        - SSP_ROUTER: Catalysis Core SSPRouter address (required)
+ *        - STAKE_MANAGER: Catalysis Core StakeManager address (required)
+ *        - REWARDS_MANAGER: Catalysis Core RewardsManager address (required)
  *        - CHAINLINK_PRICE_FEED: ChainlinkPriceFeed address (required)
  *        - PLATFORM_TREASURY: Platform fee recipient (defaults to admin)
+ *        - PLATFORM_FEE_BPS: Platform fee in basis points (defaults to 500 = 5%)
  *        - COVER_POOL_FACTORY_CREATOR: Factory creator role (defaults to admin)
  *        - CLAIM_OPERATOR: Claim resolution operator (defaults to admin)
  *        - SWAP_MANAGER: Swap route configuration manager (defaults to admin)
@@ -52,6 +53,9 @@ abstract contract Deploy is Script {
     /// @dev Default Anvil private key for local testing.
     uint256 internal constant DEFAULT_PRIVATE_KEY =
         uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80);
+
+    /// @dev Default platform fee in basis points (5%).
+    uint16 internal constant DEFAULT_PLATFORM_FEE_BPS = 500;
 
     /**
      * @notice Network-specific metadata used to validate deployments.
@@ -69,14 +73,16 @@ abstract contract Deploy is Script {
      * @param specRegistry SpecRegistry contract address.
      * @param slashingManager SlashingManager contract address from Catalysis Core.
      * @param chainlinkPriceFeed ChainlinkPriceFeed contract address from Catalysis Core.
-     * @param sspRouter SSPRouter contract address from Catalysis Core.
+     * @param stakeManager StakeManager contract address from Catalysis Core.
+     * @param rewardsManager RewardsManager contract address from Catalysis Core.
      */
     struct ExternalConfig {
         address nativeWrapper;
         address specRegistry;
         address slashingManager;
         address chainlinkPriceFeed;
-        address sspRouter;
+        address stakeManager;
+        address rewardsManager;
     }
 
     /**
@@ -87,6 +93,7 @@ abstract contract Deploy is Script {
      * @param claimOperator CLAIM_OPERATOR_ROLE holder on ClaimManager.
      * @param swapManager SWAP_MANAGER_ROLE holder on Swapper.
      * @param platformTreasury Recipient address for platform fees.
+     * @param platformFeeBps Platform fee in basis points.
      */
     struct RoleConfig {
         address deployer;
@@ -95,6 +102,7 @@ abstract contract Deploy is Script {
         address claimOperator;
         address swapManager;
         address platformTreasury;
+        uint16 platformFeeBps;
     }
 
     /**
@@ -170,7 +178,8 @@ abstract contract Deploy is Script {
      * @notice Provides external contract addresses required for deployment.
      * @dev Override in network-specific scripts to hardcode known addresses (e.g., WETH on mainnet).
      *      Falls back to environment variables when not overridden.
-     * @return ExternalConfig containing nativeWrapper, specRegistry, and slashingManager addresses.
+     * @return ExternalConfig containing nativeWrapper, specRegistry, slashingManager, stakeManager, and rewardsManager
+     * addresses.
      */
     function getExternalConfig() internal view virtual returns (ExternalConfig memory) {
         return ExternalConfig({
@@ -178,7 +187,8 @@ abstract contract Deploy is Script {
             specRegistry: vm.envOr("SPEC_REGISTRY", address(0)),
             slashingManager: vm.envOr("SLASHING_MANAGER", address(0)),
             chainlinkPriceFeed: vm.envOr("CHAINLINK_PRICE_FEED", address(0)),
-            sspRouter: vm.envOr("SSP_ROUTER", address(0))
+            stakeManager: vm.envOr("STAKE_MANAGER", address(0)),
+            rewardsManager: vm.envOr("REWARDS_MANAGER", address(0))
         });
     }
 
@@ -314,7 +324,15 @@ abstract contract Deploy is Script {
         contracts.policyManagerProxy = Upgrades.deployUUPSProxy(
             "PolicyManager.sol:PolicyManager",
             abi.encodeCall(
-                PolicyManager.initialize, (roles.deployer, contracts.premiumManagerProxy, contracts.policyProxy)
+                PolicyManager.initialize,
+                (
+                    roles.deployer,
+                    contracts.premiumManagerProxy,
+                    contracts.policyProxy,
+                    external_.stakeManager,
+                    contracts.claimManagerProxy,
+                    roles.platformFeeBps
+                )
             ),
             opts
         );
@@ -329,7 +347,7 @@ abstract contract Deploy is Script {
                     roles.coverPoolFactoryCreator,
                     contracts.coverPoolImplementation,
                     contracts.policyManagerProxy,
-                    external_.sspRouter
+                    external_.stakeManager
                 )
             ),
             opts
@@ -475,7 +493,8 @@ abstract contract Deploy is Script {
         console2.log("Native Wrapper (WETH):", external_.nativeWrapper);
         console2.log("SpecRegistry:", external_.specRegistry);
         console2.log("SlashingManager:", external_.slashingManager);
-        console2.log("SSPRouter:", external_.sspRouter);
+        console2.log("StakeManager:", external_.stakeManager);
+        console2.log("RewardsManager:", external_.rewardsManager);
         console2.log("");
 
         console2.log("--- Deployed Contracts ---");
@@ -517,6 +536,7 @@ abstract contract Deploy is Script {
         roles.claimOperator = vm.envOr("CLAIM_OPERATOR", roles.admin);
         roles.swapManager = vm.envOr("SWAP_MANAGER", roles.admin);
         roles.platformTreasury = vm.envOr("PLATFORM_TREASURY", roles.admin);
+        roles.platformFeeBps = uint16(vm.envOr("PLATFORM_FEE_BPS", uint256(DEFAULT_PLATFORM_FEE_BPS)));
     }
 
     /**
@@ -526,10 +546,11 @@ abstract contract Deploy is Script {
      */
     function _loadAndValidateExternalConfig() private view returns (ExternalConfig memory external_) {
         external_ = getExternalConfig();
-        require(external_.nativeWrapper != address(0), "NATIVE_WRAPPER required");
+        require(external_.nativeWrapper != address(0), "Native wrapper address required");
         require(external_.specRegistry != address(0), "SPEC_REGISTRY required");
         require(external_.slashingManager != address(0), "SLASHING_MANAGER required");
         require(external_.chainlinkPriceFeed != address(0), "CHAINLINK_PRICE_FEED required");
-        require(external_.sspRouter != address(0), "SSP_ROUTER required");
+        require(external_.stakeManager != address(0), "STAKE_MANAGER required");
+        require(external_.rewardsManager != address(0), "REWARDS_MANAGER required");
     }
 }

@@ -23,7 +23,7 @@ Coverage contracts live in `src/`. Tests in `test/unit`, `test/fuzz`, and `test/
 
 ### Interfaces (`src/interfaces/`)
 
-Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus external Catalysis Core dependencies (`ISpecRegistry`, `ISlashingManager`, `IChainlinkPriceFeed`, `ISSPRouter`).
+Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus external Catalysis Core dependencies (`ISpecRegistry`, `ISlashingManager`, `IRewardsManager`, `IChainlinkPriceFeed`, `IStakeManager`).
 
 ### Mock Contracts (`src/mocks/`)
 
@@ -80,7 +80,6 @@ All network deployments extend `Deploy.s.sol`. The base script deploys contracts
 
 **All deployments**:
 - `PRIVATE_KEY` – deployer key
-- `NATIVE_WRAPPER` – WETH or equivalent wrapper address
 - Network-specific RPC: `SEPOLIA_RPC_URL`, `ETHEREUM_RPC_URL`
 
 **Optional role overrides** (default to deployer):

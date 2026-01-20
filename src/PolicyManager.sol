@@ -9,6 +9,7 @@ import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
 import {IPolicy} from "./interfaces/IPolicy.sol";
+import {IStakeManager} from "./interfaces/IStakeManager.sol";
 
 /**
  * @title PolicyManager
@@ -25,8 +26,16 @@ contract PolicyManager is
     ReentrancyGuard,
     IPolicyManager
 {
+    /// @dev Maximum allowed combined fees (platform + pool) in basis points (25% = 2500 bps).
+    uint16 private constant _MAX_TOTAL_FEE_BPS = 2500;
+
     address public override premiumManager;
     address public override policy;
+    address public override stakeManager;
+    address public override claimManager;
+    uint16 public override platformFeeBps;
+
+    uint256 private _nextPolicyId;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -38,9 +47,27 @@ contract PolicyManager is
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
      * @param premiumManager_ Address of the PremiumManager contract.
      * @param policy_ Address of the Policy contract.
+     * @param stakeManager_ Address of the StakeManager contract.
+     * @param claimManager_ Address of the ClaimManager contract.
+     * @param platformFeeBps_ Initial platform fee in basis points.
      */
-    function initialize(address admin_, address premiumManager_, address policy_) external initializer {
-        require(admin_ != address(0) && premiumManager_ != address(0) && policy_ != address(0), ZeroAddress());
+    function initialize(
+        address admin_,
+        address premiumManager_,
+        address policy_,
+        address stakeManager_,
+        address claimManager_,
+        uint16 platformFeeBps_
+    )
+        external
+        initializer
+    {
+        require(
+            admin_ != address(0) && premiumManager_ != address(0) && policy_ != address(0)
+                && stakeManager_ != address(0) && claimManager_ != address(0),
+            ZeroAddress()
+        );
+        require(platformFeeBps_ <= _MAX_TOTAL_FEE_BPS, InvalidPlatformFee(platformFeeBps_));
 
         __AccessControl_init();
         __Pausable_init();
@@ -49,6 +76,9 @@ contract PolicyManager is
 
         premiumManager = premiumManager_;
         policy = policy_;
+        stakeManager = stakeManager_;
+        claimManager = claimManager_;
+        platformFeeBps = platformFeeBps_;
     }
 
     /**
@@ -86,8 +116,37 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
+    function setPlatformFee(uint16 platformFeeBps_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(platformFeeBps_ <= _MAX_TOTAL_FEE_BPS, InvalidPlatformFee(platformFeeBps_));
+        platformFeeBps = platformFeeBps_;
+        emit PlatformFeeSet(platformFeeBps_);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
+    function setStakeManager(address stakeManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(stakeManager_ != address(0), ZeroAddress());
+        stakeManager = stakeManager_;
+        emit StakeManagerSet(stakeManager_);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
+    function setClaimManager(address claimManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(claimManager_ != address(0), ZeroAddress());
+        claimManager = claimManager_;
+        emit ClaimManagerSet(claimManager_);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
     function bindPolicy(BindPolicyRequest calldata request) external override nonReentrant whenNotPaused {
         _validateRequest(request);
+
+        uint256 policyId = ++_nextPolicyId;
 
         ICoverPool.QuoteData calldata quote = request.quote;
         bytes32 policyCommit = ICoverPool(quote.pool).validateQuote(quote, request.signature);
@@ -96,14 +155,17 @@ contract PolicyManager is
         ICoverPool.BoundPolicy memory boundPolicy =
             ICoverPool(quote.pool).bindPolicy(policyCommit, quote, request.signature);
 
+        uint96 committeeId = uint96(policyId);
+        IStakeManager(stakeManager).createCommittee(committeeId, request.coverageAmount);
+
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
-            policyId: request.policyId,
+            policyId: policyId,
             policyCommit: policyCommit,
             basePremium: quote.basePremium,
             buyer: request.buyer,
-            committeeId: boundPolicy.committeeId,
+            committeeId: committeeId,
             premiumToken: request.premiumToken,
-            platformFeeBps: request.platformFeeBps,
+            platformFeeBps: platformFeeBps,
             startTime: boundPolicy.startTime,
             maturityTime: boundPolicy.maturityTime,
             poolShare: IPremiumManager.PoolShare({
@@ -119,7 +181,7 @@ contract PolicyManager is
 
         IPolicy.PolicyMetadata memory metadata = IPolicy.PolicyMetadata({
             buyer: request.buyer,
-            committeeId: boundPolicy.committeeId,
+            committeeId: committeeId,
             beneficiary: request.beneficiary,
             startTime: boundPolicy.startTime,
             premiumToken: request.premiumToken,
@@ -136,10 +198,10 @@ contract PolicyManager is
             policyCommit: policyCommit
         });
 
-        IPolicy(policy).mintPolicy(request.buyer, request.policyId, metadata);
+        IPolicy(policy).mintPolicy(request.buyer, policyId, metadata);
 
         emit PolicyBound(
-            request.policyId,
+            policyId,
             request.buyer,
             request.beneficiary,
             quote.pool,
@@ -174,6 +236,7 @@ contract PolicyManager is
         require(request.quote.pool != address(0), InvalidQuotePool());
         require(request.quote.coverageLimit != 0, InvalidCoverageLimit());
         require(request.quote.basePremium != 0, InvalidBasePremium());
+        require(request.coverageAmount != 0, InvalidCoverageAmount());
         require(
             request.quote.startTime < request.quote.maturityTime && request.quote.maturityTime > block.timestamp,
             InvalidCoverageWindow(request.quote.startTime, request.quote.maturityTime)

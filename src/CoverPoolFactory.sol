@@ -10,7 +10,7 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
-import {ISSPRouter} from "./interfaces/ISSPRouter.sol";
+import {IStakeManager} from "./interfaces/IStakeManager.sol";
 
 /**
  * @title CoverPoolFactory
@@ -33,7 +33,7 @@ contract CoverPoolFactory is
 
     EnumerableSet.AddressSet private _pools;
 
-    address public override sspRouter;
+    address public override stakeManager;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -48,14 +48,14 @@ contract CoverPoolFactory is
         address creator_,
         address coverPoolImplementation_,
         address policyManager_,
-        address sspRouter_
+        address stakeManager_
     )
         external
         initializer
     {
         require(
             admin_ != address(0) && creator_ != address(0) && coverPoolImplementation_ != address(0)
-                && policyManager_ != address(0) && sspRouter_ != address(0),
+                && policyManager_ != address(0) && stakeManager_ != address(0),
             ZeroAddress()
         );
         require(coverPoolImplementation_.code.length != 0, InvalidImplementation());
@@ -68,7 +68,7 @@ contract CoverPoolFactory is
 
         coverPoolImplementation = coverPoolImplementation_;
         policyManager = policyManager_;
-        sspRouter = sspRouter_;
+        stakeManager = stakeManager_;
     }
 
     /**
@@ -105,8 +105,8 @@ contract CoverPoolFactory is
 
         emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager, params.poolFeeBps);
 
-        if (!ISSPRouter(sspRouter).isOperatorRegisteredToNetwork(params.curator)) {
-            ISSPRouter(sspRouter).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
+        if (!IStakeManager(stakeManager).isOperatorRegisteredToNetwork(params.curator)) {
+            IStakeManager(stakeManager).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
         }
     }
 
@@ -138,13 +138,13 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function setSSPRouter(address sspRouter_) external override onlyRole(CREATOR_ROLE) {
-        require(sspRouter_ != address(0), ZeroAddress());
+    function setStakeManager(address stakeManager_) external override onlyRole(CREATOR_ROLE) {
+        require(stakeManager_ != address(0), ZeroAddress());
 
-        address previousSSPRouter = sspRouter;
-        sspRouter = sspRouter_;
+        address previousStakeManager = stakeManager;
+        stakeManager = stakeManager_;
 
-        emit SSPRouterSet(previousSSPRouter, sspRouter_);
+        emit StakeManagerSet(previousStakeManager, stakeManager_);
     }
 
     /**

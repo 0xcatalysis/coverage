@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
@@ -164,6 +165,20 @@ contract PremiumReserveTest is Test {
         assertEq(stored.operator, operator0, "operator mismatch");
     }
 
+    function test_openEscrow_WhenCalledTwiceForSamePolicy_Reverts() public {
+        IPremiumReserve.EscrowPosition memory position = _defaultPosition();
+
+        premiumToken.mint(premiumManager, RESTAKER_PREMIUM * 2);
+        vm.startPrank(premiumManager);
+        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
+        reserve.openEscrow(position);
+
+        premiumToken.transfer(address(reserve), RESTAKER_PREMIUM);
+        vm.expectRevert();
+        reserve.openEscrow(position);
+        vm.stopPrank();
+    }
+
     /*//////////////////////////////////////////////////////////////
                          SET CLAIM LOCK STATUS
     //////////////////////////////////////////////////////////////*/
@@ -323,7 +338,7 @@ contract PremiumReserveTest is Test {
         vm.warp(maturityTime);
 
         vm.expectEmit(true, true, true, true, address(rewardsManagerMock));
-        emit RewardsManagerMock.RewardsDistributed(COMMITTEE_ID, operator0, RESTAKER_PREMIUM);
+        emit RewardsManagerMock.RewardsDistributed(COMMITTEE_ID, operator0, RESTAKER_PREMIUM, address(premiumToken));
         vm.expectEmit();
         emit PremiumReleased(POLICY_ID, rewardsManager, RESTAKER_PREMIUM);
         vm.expectEmit();
@@ -370,6 +385,32 @@ contract PremiumReserveTest is Test {
             premiumToken.balanceOf(rewardsManager), RESTAKER_PREMIUM - 300 ether, "restaker payout matches remainder"
         );
         assertEq(premiumToken.balanceOf(buyer), 0, "buyer should remain unpaid");
+    }
+
+    function test_releaseEscrow_WhenRestakerPremiumZero_SkipsDistribution() public {
+        _openEscrow();
+
+        vm.startPrank(claimManager);
+        reserve.setClaimLockStatus(POLICY_ID, true);
+        reserve.payClaim(POLICY_ID, payoutRecipient, RESTAKER_PREMIUM);
+        reserve.setClaimLockStatus(POLICY_ID, false);
+        vm.stopPrank();
+
+        uint64 maturityTime = reserve.escrowPosition(POLICY_ID).maturityTime;
+        vm.warp(maturityTime);
+
+        uint256 rewardsManagerBalanceBefore = premiumToken.balanceOf(rewardsManager);
+
+        vm.prank(policyManager);
+        reserve.releaseEscrow(POLICY_ID, rewardsManager);
+
+        assertEq(
+            premiumToken.balanceOf(rewardsManager),
+            rewardsManagerBalanceBefore,
+            "RewardsManager should not receive tokens when premium is zero"
+        );
+
+        assertTrue(reserve.isEscrowReleased(POLICY_ID), "Escrow should be released");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -528,9 +569,16 @@ contract MockToken is ERC20 {
 }
 
 contract RewardsManagerMock {
-    event RewardsDistributed(uint96 committeeId, address operator, uint256 rewardAmount);
+    event RewardsDistributed(uint96 committeeId, address operator, uint256 rewardAmount, address rewardToken);
 
-    function distributeRewards(uint96 committeeId, address operator, uint256 rewardAmount) external {
-        emit RewardsDistributed(committeeId, operator, rewardAmount);
+    function distributeRewards(
+        uint96 committeeId,
+        address operator,
+        uint256 rewardAmount,
+        IERC20 rewardToken
+    )
+        external
+    {
+        emit RewardsDistributed(committeeId, operator, rewardAmount, address(rewardToken));
     }
 }
