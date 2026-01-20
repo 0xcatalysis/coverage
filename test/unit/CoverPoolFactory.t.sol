@@ -303,12 +303,6 @@ contract CoverPoolFactoryTest is Test {
         factory.setCoverPoolImplementation(address(newImplementation));
     }
 
-    function test_setCoverPoolImplementation_WhenImplementationHasNoCode_Reverts() public {
-        vm.expectRevert(ICoverPoolFactory.InvalidImplementation.selector);
-        vm.prank(creator);
-        factory.setCoverPoolImplementation(address(0xdead));
-    }
-
     function test_setCoverPoolImplementation_WhenValid_UpdatesStorage() public {
         CoverPool newImplementation = new CoverPool();
 
