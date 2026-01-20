@@ -103,9 +103,7 @@ contract CoverPoolFactory is
 
         emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager, params.poolFeeBps);
 
-        if (!IStakeManager(stakeManager).isOperatorRegisteredToNetwork(params.curator)) {
-            IStakeManager(stakeManager).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
-        }
+        IStakeManager(stakeManager).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
     }
 
     /**
