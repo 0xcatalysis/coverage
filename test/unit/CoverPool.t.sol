@@ -97,16 +97,6 @@ contract CoverPoolTest is Test {
         assertTrue(coverPool.hasRole(coverPool.POLICY_MANAGER_ROLE(), policyManager), "Policy manager role missing");
         assertTrue(coverPool.hasRole(coverPool.QUOTE_SIGNER_ROLE(), quoteSigner), "Quote signer role missing");
 
-        bytes32 expectedDomain = keccak256(
-            abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256(bytes(NAME)),
-                keccak256(bytes(VERSION)),
-                block.chainid,
-                address(coverPool)
-            )
-        );
-        assertEq(coverPool.quoteDomainSeparator(), expectedDomain, "Domain separator mismatch");
         assertTrue(
             coverPool.supportsInterface(type(IAccessControlDefaultAdminRules).interfaceId),
             "AccessControlDefaultAdminRules interface missing"
@@ -117,9 +107,53 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                                 PAUSE
+    //////////////////////////////////////////////////////////////*/
+    function test_pause_WhenCallerNotCurator_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(policyManager);
+        coverPool.pause();
+    }
+
+    function test_pause_WhenCalledByCurator_PausesPool() public {
+        vm.prank(curator);
+        coverPool.pause();
+        assertTrue(coverPool.paused(), "Pool not paused");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                UNPAUSE
+    //////////////////////////////////////////////////////////////*/
+    function test_unpause_WhenCallerNotCurator_Reverts() public {
+        vm.prank(curator);
+        coverPool.pause();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(policyManager);
+        coverPool.unpause();
+    }
+
+    function test_unpause_WhenCalledByCurator_ClearsPause() public {
+        vm.prank(curator);
+        coverPool.pause();
+        assertTrue(coverPool.paused(), "Pool not paused");
+
+        vm.prank(curator);
+        coverPool.unpause();
+        assertFalse(coverPool.paused(), "Pool still paused");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                           SET POOL FEE BPS
     //////////////////////////////////////////////////////////////*/
-
     function test_setPoolFeeBps_WhenCallerNotCurator_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -146,361 +180,6 @@ contract CoverPoolTest is Test {
         coverPool.setPoolFeeBps(newFee);
 
         assertEq(coverPool.poolFeeBps(), newFee, "Pool fee not updated");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                                 PAUSE
-    //////////////////////////////////////////////////////////////*/
-
-    function test_pause_WhenCallerNotCurator_Reverts() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        vm.prank(policyManager);
-        coverPool.pause();
-    }
-
-    function test_pause_WhenCalledByCurator_PausesPool() public {
-        vm.prank(curator);
-        coverPool.pause();
-        assertTrue(coverPool.paused(), "Pool not paused");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                                UNPAUSE
-    //////////////////////////////////////////////////////////////*/
-
-    function test_unpause_WhenCallerNotCurator_Reverts() public {
-        vm.prank(curator);
-        coverPool.pause();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        vm.prank(policyManager);
-        coverPool.unpause();
-    }
-
-    function test_unpause_WhenCalledByCurator_ClearsPause() public {
-        vm.prank(curator);
-        coverPool.pause();
-        assertTrue(coverPool.paused(), "Pool not paused");
-
-        vm.prank(curator);
-        coverPool.unpause();
-        assertFalse(coverPool.paused(), "Pool still paused");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                             GRANT ROLE
-    //////////////////////////////////////////////////////////////*/
-
-    function test_grantRole_WhenCalledByOwner_AddsQuoteSigner() public {
-        address newSigner = makeAddr("newSigner");
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-        vm.prank(curator);
-        coverPool.grantRole(signerRole, newSigner);
-
-        assertTrue(coverPool.hasRole(signerRole, newSigner), "Quote signer role not granted");
-    }
-
-    function test_grantRole_WhenCallerNotAdmin_Reverts() public {
-        address caller = makeAddr("notAdmin");
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, caller, coverPool.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        vm.prank(caller);
-        coverPool.grantRole(signerRole, makeAddr("randomSigner"));
-    }
-
-    function test_grantRole_WhenDefaultAdminRequested_Reverts() public {
-        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControlDefaultAdminRules.AccessControlEnforcedDefaultAdminRules.selector)
-        );
-        vm.prank(curator);
-        coverPool.grantRole(adminRole, policyManager);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                             REVOKE ROLE
-    //////////////////////////////////////////////////////////////*/
-
-    function test_revokeRole_WhenCalledByOwner_RemovesQuoteSigner() public {
-        address newSigner = makeAddr("newSigner");
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-
-        vm.startPrank(curator);
-        coverPool.grantRole(signerRole, newSigner);
-        coverPool.revokeRole(signerRole, newSigner);
-        assertFalse(coverPool.hasRole(signerRole, newSigner), "Quote signer role not revoked");
-        vm.stopPrank();
-    }
-
-    function test_revokeRole_WhenCallerNotAdmin_Reverts() public {
-        address caller = makeAddr("randomCaller");
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-
-        vm.prank(curator);
-        coverPool.grantRole(signerRole, caller);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, caller, coverPool.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        vm.prank(caller);
-        coverPool.revokeRole(signerRole, quoteSigner);
-    }
-
-    function test_revokeRole_WhenDefaultAdminRequested_Reverts() public {
-        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControlDefaultAdminRules.AccessControlEnforcedDefaultAdminRules.selector)
-        );
-        vm.prank(curator);
-        coverPool.revokeRole(adminRole, curator);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                            RENOUNCE ROLE
-    //////////////////////////////////////////////////////////////*/
-
-    function test_renounceRole_WhenDefaultAdminRequested_Reverts() public {
-        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControlDefaultAdminRules.AccessControlEnforcedDefaultAdminDelay.selector, 0)
-        );
-        vm.prank(curator);
-        coverPool.renounceRole(adminRole, curator);
-    }
-
-    function test_renounceRole_WhenQuoteSignerRenounces_RemovesRole() public {
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-        address newSigner = makeAddr("renouncingSigner");
-
-        vm.prank(curator);
-        coverPool.grantRole(signerRole, newSigner);
-
-        vm.prank(newSigner);
-        coverPool.renounceRole(signerRole, newSigner);
-
-        assertFalse(coverPool.hasRole(signerRole, newSigner), "Quote signer role not renounced");
-    }
-
-    function test_renounceRole_WhenOwnerRenouncesNonAdmin_RemovesRole() public {
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-
-        vm.prank(curator);
-        coverPool.grantRole(signerRole, curator);
-
-        vm.prank(curator);
-        coverPool.renounceRole(signerRole, curator);
-
-        assertFalse(coverPool.hasRole(signerRole, curator), "Owner role renounce failed");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                    DEFAULT ADMIN TRANSFER
-    //////////////////////////////////////////////////////////////*/
-
-    function test_beginDefaultAdminTransfer_SchedulesTransfer() public {
-        address newAdmin = makeAddr("newAdmin");
-
-        vm.prank(curator);
-        coverPool.beginDefaultAdminTransfer(newAdmin);
-
-        (address pendingAdmin, uint48 schedule) = coverPool.pendingDefaultAdmin();
-        assertEq(pendingAdmin, newAdmin, "Pending admin mismatch");
-        assertEq(schedule, block.timestamp, "Schedule mismatch");
-    }
-
-    function test_acceptDefaultAdminTransfer_WhenDelayNotPassed_Reverts() public {
-        address newAdmin = makeAddr("newAdmin");
-
-        vm.prank(curator);
-        coverPool.beginDefaultAdminTransfer(newAdmin);
-
-        (, uint48 schedule) = coverPool.pendingDefaultAdmin();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControlDefaultAdminRules.AccessControlEnforcedDefaultAdminDelay.selector, schedule
-            )
-        );
-        vm.prank(newAdmin);
-        coverPool.acceptDefaultAdminTransfer();
-    }
-
-    function test_acceptDefaultAdminTransfer_TwoStep_UpdatesAdminRole() public {
-        address newAdmin = makeAddr("newAdmin");
-        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
-        address additionalSigner = makeAddr("additionalSigner");
-
-        vm.prank(curator);
-        coverPool.beginDefaultAdminTransfer(newAdmin);
-
-        (address pendingAdmin, uint48 schedule) = coverPool.pendingDefaultAdmin();
-        assertEq(pendingAdmin, newAdmin, "Pending admin mismatch");
-
-        vm.warp(schedule + 1);
-
-        vm.startPrank(newAdmin);
-        coverPool.acceptDefaultAdminTransfer();
-
-        assertEq(coverPool.owner(), newAdmin, "Owner not updated");
-        assertEq(coverPool.defaultAdmin(), newAdmin, "Default admin not updated");
-        assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), newAdmin), "New admin missing admin role");
-        assertFalse(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), curator), "Old admin still has role");
-
-        coverPool.grantRole(signerRole, additionalSigner);
-        assertTrue(coverPool.hasRole(signerRole, additionalSigner), "New admin failed to grant role");
-        vm.stopPrank();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, curator, coverPool.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        vm.prank(curator);
-        coverPool.grantRole(signerRole, makeAddr("shouldFail"));
-    }
-
-    function test_acceptDefaultAdminTransfer_WhenNotPendingAdmin_Reverts() public {
-        address newAdmin = makeAddr("nextAdmin");
-        address unauthorized = makeAddr("unauthorized");
-
-        vm.prank(curator);
-        coverPool.beginDefaultAdminTransfer(newAdmin);
-
-        (, uint48 schedule) = coverPool.pendingDefaultAdmin();
-        vm.warp(schedule + 1);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControlDefaultAdminRules.AccessControlInvalidDefaultAdmin.selector, unauthorized
-            )
-        );
-        vm.prank(unauthorized);
-        coverPool.acceptDefaultAdminTransfer();
-    }
-
-    function test_cancelDefaultAdminTransfer_CancelsPendingTransfer() public {
-        address newAdmin = makeAddr("newAdmin");
-
-        vm.startPrank(curator);
-        coverPool.beginDefaultAdminTransfer(newAdmin);
-
-        (address pendingAdmin,) = coverPool.pendingDefaultAdmin();
-        assertEq(pendingAdmin, newAdmin, "Pending admin not set");
-
-        coverPool.cancelDefaultAdminTransfer();
-
-        (pendingAdmin,) = coverPool.pendingDefaultAdmin();
-        assertEq(pendingAdmin, address(0), "Pending admin not cleared");
-        vm.stopPrank();
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                           VALIDATE QUOTE
-    //////////////////////////////////////////////////////////////*/
-    function test_validateQuote_WhenPaused_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        bytes memory signature = _signQuote(quote);
-
-        vm.prank(curator);
-        coverPool.pause();
-
-        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
-        coverPool.validateQuote(quote, signature);
-    }
-
-    function test_validateQuote_WhenValidSignature_ReturnsCommit() public view {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        bytes memory signature = _signQuote(quote);
-
-        bytes32 policyCommit = coverPool.validateQuote(quote, signature);
-        assertEq(policyCommit, _structHash(quote), "Policy commit mismatch");
-    }
-
-    function test_validateQuote_WhenSignatureInvalid_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        uint256 otherKey = uint256(keccak256("invalid-key"));
-        bytes memory signature = _signQuoteWithKey(quote, otherKey);
-
-        vm.expectRevert(ICoverPool.QuoteSignatureInvalid.selector);
-        coverPool.validateQuote(quote, signature);
-    }
-
-    function test_validateQuote_WhenQuoteExpired_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.quoteExpiry = uint64(block.timestamp - 1);
-        bytes memory signature = _signQuote(quote);
-
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.QuoteExpired.selector, quote.quoteExpiry, block.timestamp));
-        coverPool.validateQuote(quote, signature);
-    }
-
-    function test_validateQuote_WhenPoolAddressMismatch_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.pool = makeAddr("otherPool");
-        bytes memory signature = _signQuote(quote);
-
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PoolAddressMismatch.selector, address(coverPool), quote.pool));
-        coverPool.validateQuote(quote, signature);
-    }
-
-    function test_validateQuote_WhenCoverageLimitZero_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.coverageLimit = 0;
-        bytes memory signature = _signQuote(quote);
-
-        vm.expectRevert(ICoverPool.InvalidCoverageLimit.selector);
-        coverPool.validateQuote(quote, signature);
-    }
-
-    function test_validateQuote_WhenSpecIdZero_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.specId = bytes32(0);
-        bytes memory signature = _signQuote(quote);
-
-        vm.expectRevert(ICoverPool.InvalidSpecId.selector);
-        coverPool.validateQuote(quote, signature);
-    }
-
-    function test_validateQuote_WhenPayoutAddressZero_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.payoutReceiver = address(0);
-        bytes memory signature = _signQuote(quote);
-
-        vm.expectRevert(ICoverPool.InvalidQuoteRecipient.selector);
-        coverPool.validateQuote(quote, signature);
-    }
-
-    function test_validateQuote_WhenOperatorZero_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.operator = address(0);
-        bytes memory signature = _signQuote(quote);
-
-        vm.expectRevert(ICoverPool.InvalidQuoteRecipient.selector);
-        coverPool.validateQuote(quote, signature);
-    }
-
-    function test_validateQuote_WhenWindowInvalid_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.startTime = quote.maturityTime;
-        bytes memory signature = _signQuote(quote);
-
-        vm.expectRevert(ICoverPool.InvalidCoverageWindow.selector);
-        coverPool.validateQuote(quote, signature);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -609,14 +288,333 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                        QUOTE DOMAIN SEPARATOR
+    //////////////////////////////////////////////////////////////*/
+    function test_quoteDomainSeparator_ReturnsExpectedSeparator() public view {
+        bytes32 expectedDomain = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes(NAME)),
+                keccak256(bytes(VERSION)),
+                block.chainid,
+                address(coverPool)
+            )
+        );
+        assertEq(coverPool.quoteDomainSeparator(), expectedDomain, "Domain separator mismatch");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                           GET BOUND POLICY
     //////////////////////////////////////////////////////////////*/
-
     function test_getBoundPolicy_WhenUnknown_Reverts() public {
         // forge-lint: disable-next-line(unsafe-typecast)
         vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyNotFound.selector, bytes32("unknown")));
         // forge-lint: disable-next-line(unsafe-typecast)
         coverPool.getBoundPolicy(bytes32("unknown"));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           VALIDATE QUOTE
+    //////////////////////////////////////////////////////////////*/
+    function test_validateQuote_WhenPaused_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        bytes memory signature = _signQuote(quote);
+
+        vm.prank(curator);
+        coverPool.pause();
+
+        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        coverPool.validateQuote(quote, signature);
+    }
+
+    function test_validateQuote_WhenValidSignature_ReturnsCommit() public view {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        bytes memory signature = _signQuote(quote);
+
+        bytes32 policyCommit = coverPool.validateQuote(quote, signature);
+        assertEq(policyCommit, _structHash(quote), "Policy commit mismatch");
+    }
+
+    function test_validateQuote_WhenSignatureInvalid_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        uint256 otherKey = uint256(keccak256("invalid-key"));
+        bytes memory signature = _signQuoteWithKey(quote, otherKey);
+
+        vm.expectRevert(ICoverPool.QuoteSignatureInvalid.selector);
+        coverPool.validateQuote(quote, signature);
+    }
+
+    function test_validateQuote_WhenQuoteExpired_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        quote.quoteExpiry = uint64(block.timestamp - 1);
+        bytes memory signature = _signQuote(quote);
+
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.QuoteExpired.selector, quote.quoteExpiry, block.timestamp));
+        coverPool.validateQuote(quote, signature);
+    }
+
+    function test_validateQuote_WhenPoolAddressMismatch_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        quote.pool = makeAddr("otherPool");
+        bytes memory signature = _signQuote(quote);
+
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PoolAddressMismatch.selector, address(coverPool), quote.pool));
+        coverPool.validateQuote(quote, signature);
+    }
+
+    function test_validateQuote_WhenCoverageLimitZero_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        quote.coverageLimit = 0;
+        bytes memory signature = _signQuote(quote);
+
+        vm.expectRevert(ICoverPool.InvalidCoverageLimit.selector);
+        coverPool.validateQuote(quote, signature);
+    }
+
+    function test_validateQuote_WhenSpecIdZero_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        quote.specId = bytes32(0);
+        bytes memory signature = _signQuote(quote);
+
+        vm.expectRevert(ICoverPool.InvalidSpecId.selector);
+        coverPool.validateQuote(quote, signature);
+    }
+
+    function test_validateQuote_WhenPayoutAddressZero_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        quote.payoutReceiver = address(0);
+        bytes memory signature = _signQuote(quote);
+
+        vm.expectRevert(ICoverPool.InvalidQuoteRecipient.selector);
+        coverPool.validateQuote(quote, signature);
+    }
+
+    function test_validateQuote_WhenOperatorZero_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        quote.operator = address(0);
+        bytes memory signature = _signQuote(quote);
+
+        vm.expectRevert(ICoverPool.InvalidQuoteRecipient.selector);
+        coverPool.validateQuote(quote, signature);
+    }
+
+    function test_validateQuote_WhenWindowInvalid_Reverts() public {
+        ICoverPool.QuoteData memory quote = _defaultQuote();
+        quote.startTime = quote.maturityTime;
+        bytes memory signature = _signQuote(quote);
+
+        vm.expectRevert(ICoverPool.InvalidCoverageWindow.selector);
+        coverPool.validateQuote(quote, signature);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                             GRANT ROLE
+    //////////////////////////////////////////////////////////////*/
+    function test_grantRole_WhenCalledByOwner_AddsQuoteSigner() public {
+        address newSigner = makeAddr("newSigner");
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+        vm.prank(curator);
+        coverPool.grantRole(signerRole, newSigner);
+
+        assertTrue(coverPool.hasRole(signerRole, newSigner), "Quote signer role not granted");
+    }
+
+    function test_grantRole_WhenCallerNotAdmin_Reverts() public {
+        address caller = makeAddr("notAdmin");
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, caller, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(caller);
+        coverPool.grantRole(signerRole, makeAddr("randomSigner"));
+    }
+
+    function test_grantRole_WhenDefaultAdminRequested_Reverts() public {
+        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControlDefaultAdminRules.AccessControlEnforcedDefaultAdminRules.selector)
+        );
+        vm.prank(curator);
+        coverPool.grantRole(adminRole, policyManager);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                             REVOKE ROLE
+    //////////////////////////////////////////////////////////////*/
+    function test_revokeRole_WhenCalledByOwner_RemovesQuoteSigner() public {
+        address newSigner = makeAddr("newSigner");
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+
+        vm.startPrank(curator);
+        coverPool.grantRole(signerRole, newSigner);
+        coverPool.revokeRole(signerRole, newSigner);
+        assertFalse(coverPool.hasRole(signerRole, newSigner), "Quote signer role not revoked");
+        vm.stopPrank();
+    }
+
+    function test_revokeRole_WhenCallerNotAdmin_Reverts() public {
+        address caller = makeAddr("randomCaller");
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+
+        vm.prank(curator);
+        coverPool.grantRole(signerRole, caller);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, caller, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(caller);
+        coverPool.revokeRole(signerRole, quoteSigner);
+    }
+
+    function test_revokeRole_WhenDefaultAdminRequested_Reverts() public {
+        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControlDefaultAdminRules.AccessControlEnforcedDefaultAdminRules.selector)
+        );
+        vm.prank(curator);
+        coverPool.revokeRole(adminRole, curator);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            RENOUNCE ROLE
+    //////////////////////////////////////////////////////////////*/
+    function test_renounceRole_WhenDefaultAdminRequested_Reverts() public {
+        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControlDefaultAdminRules.AccessControlEnforcedDefaultAdminDelay.selector, 0)
+        );
+        vm.prank(curator);
+        coverPool.renounceRole(adminRole, curator);
+    }
+
+    function test_renounceRole_WhenQuoteSignerRenounces_RemovesRole() public {
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+        address newSigner = makeAddr("renouncingSigner");
+
+        vm.prank(curator);
+        coverPool.grantRole(signerRole, newSigner);
+
+        vm.prank(newSigner);
+        coverPool.renounceRole(signerRole, newSigner);
+
+        assertFalse(coverPool.hasRole(signerRole, newSigner), "Quote signer role not renounced");
+    }
+
+    function test_renounceRole_WhenOwnerRenouncesNonAdmin_RemovesRole() public {
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+
+        vm.prank(curator);
+        coverPool.grantRole(signerRole, curator);
+
+        vm.prank(curator);
+        coverPool.renounceRole(signerRole, curator);
+
+        assertFalse(coverPool.hasRole(signerRole, curator), "Owner role renounce failed");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    DEFAULT ADMIN TRANSFER
+    //////////////////////////////////////////////////////////////*/
+    function test_beginDefaultAdminTransfer_SchedulesTransfer() public {
+        address newAdmin = makeAddr("newAdmin");
+
+        vm.prank(curator);
+        coverPool.beginDefaultAdminTransfer(newAdmin);
+
+        (address pendingAdmin, uint48 schedule) = coverPool.pendingDefaultAdmin();
+        assertEq(pendingAdmin, newAdmin, "Pending admin mismatch");
+        assertEq(schedule, block.timestamp, "Schedule mismatch");
+    }
+
+    function test_acceptDefaultAdminTransfer_WhenDelayNotPassed_Reverts() public {
+        address newAdmin = makeAddr("newAdmin");
+
+        vm.prank(curator);
+        coverPool.beginDefaultAdminTransfer(newAdmin);
+
+        (, uint48 schedule) = coverPool.pendingDefaultAdmin();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControlDefaultAdminRules.AccessControlEnforcedDefaultAdminDelay.selector, schedule
+            )
+        );
+        vm.prank(newAdmin);
+        coverPool.acceptDefaultAdminTransfer();
+    }
+
+    function test_acceptDefaultAdminTransfer_TwoStep_UpdatesAdminRole() public {
+        address newAdmin = makeAddr("newAdmin");
+        bytes32 signerRole = coverPool.QUOTE_SIGNER_ROLE();
+        address additionalSigner = makeAddr("additionalSigner");
+
+        vm.prank(curator);
+        coverPool.beginDefaultAdminTransfer(newAdmin);
+
+        (address pendingAdmin, uint48 schedule) = coverPool.pendingDefaultAdmin();
+        assertEq(pendingAdmin, newAdmin, "Pending admin mismatch");
+
+        vm.warp(schedule + 1);
+
+        vm.startPrank(newAdmin);
+        coverPool.acceptDefaultAdminTransfer();
+
+        assertEq(coverPool.owner(), newAdmin, "Owner not updated");
+        assertEq(coverPool.defaultAdmin(), newAdmin, "Default admin not updated");
+        assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), newAdmin), "New admin missing admin role");
+        assertFalse(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), curator), "Old admin still has role");
+
+        coverPool.grantRole(signerRole, additionalSigner);
+        assertTrue(coverPool.hasRole(signerRole, additionalSigner), "New admin failed to grant role");
+        vm.stopPrank();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, curator, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(curator);
+        coverPool.grantRole(signerRole, makeAddr("shouldFail"));
+    }
+
+    function test_acceptDefaultAdminTransfer_WhenNotPendingAdmin_Reverts() public {
+        address newAdmin = makeAddr("nextAdmin");
+        address unauthorized = makeAddr("unauthorized");
+
+        vm.prank(curator);
+        coverPool.beginDefaultAdminTransfer(newAdmin);
+
+        (, uint48 schedule) = coverPool.pendingDefaultAdmin();
+        vm.warp(schedule + 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControlDefaultAdminRules.AccessControlInvalidDefaultAdmin.selector, unauthorized
+            )
+        );
+        vm.prank(unauthorized);
+        coverPool.acceptDefaultAdminTransfer();
+    }
+
+    function test_cancelDefaultAdminTransfer_CancelsPendingTransfer() public {
+        address newAdmin = makeAddr("newAdmin");
+
+        vm.startPrank(curator);
+        coverPool.beginDefaultAdminTransfer(newAdmin);
+
+        (address pendingAdmin,) = coverPool.pendingDefaultAdmin();
+        assertEq(pendingAdmin, newAdmin, "Pending admin not set");
+
+        coverPool.cancelDefaultAdminTransfer();
+
+        (pendingAdmin,) = coverPool.pendingDefaultAdmin();
+        assertEq(pendingAdmin, address(0), "Pending admin not cleared");
+        vm.stopPrank();
     }
 
     /*//////////////////////////////////////////////////////////////
