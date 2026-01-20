@@ -103,73 +103,8 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    SET COVER POOL IMPLEMENTATION
+                                  PAUSE
     //////////////////////////////////////////////////////////////*/
-
-    function test_setCoverPoolImplementation_WhenCallerNotCreator_Reverts() public {
-        address caller = makeAddr("notCreator");
-        CoverPool newImplementation = new CoverPool();
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
-        );
-        vm.prank(caller);
-        factory.setCoverPoolImplementation(address(newImplementation));
-    }
-
-    function test_setCoverPoolImplementation_WhenImplementationHasNoCode_Reverts() public {
-        vm.expectRevert(ICoverPoolFactory.InvalidImplementation.selector);
-        vm.prank(creator);
-        factory.setCoverPoolImplementation(address(0xdead));
-    }
-
-    function test_setCoverPoolImplementation_WhenValid_UpdatesStorage() public {
-        CoverPool newImplementation = new CoverPool();
-
-        vm.expectEmit(true, true, true, true, address(factory));
-        emit ICoverPoolFactory.CoverPoolImplementationSet(address(implementation), address(newImplementation));
-
-        vm.prank(creator);
-        factory.setCoverPoolImplementation(address(newImplementation));
-
-        assertEq(factory.coverPoolImplementation(), address(newImplementation), "Implementation not updated");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                         SET POLICY MANAGER
-    //////////////////////////////////////////////////////////////*/
-
-    function test_setPolicyManager_WhenCallerNotCreator_Reverts() public {
-        address caller = makeAddr("notCreatorPolicy");
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
-        );
-        vm.prank(caller);
-        factory.setPolicyManager(makeAddr("policy2"));
-    }
-
-    function test_setPolicyManager_WhenZero_Reverts() public {
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        vm.prank(creator);
-        factory.setPolicyManager(address(0));
-    }
-
-    function test_setPolicyManager_WhenValid_UpdatesState() public {
-        address newPolicyManager = makeAddr("policyManagerNew");
-
-        vm.expectEmit(true, true, true, true, address(factory));
-        emit ICoverPoolFactory.PolicyManagerSet(policyManager, newPolicyManager);
-
-        vm.prank(creator);
-        factory.setPolicyManager(newPolicyManager);
-
-        assertEq(factory.policyManager(), newPolicyManager, "Policy manager not updated");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                                 PAUSE
-    //////////////////////////////////////////////////////////////*/
-
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, creator, ADMIN_ROLE)
@@ -185,9 +120,8 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                UNPAUSE
+                                 UNPAUSE
     //////////////////////////////////////////////////////////////*/
-
     function test_unpause_WhenCallerNotAdmin_Reverts() public {
         vm.prank(admin);
         factory.pause();
@@ -210,9 +144,8 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         CREATE COVER POOL
+                            CREATE COVER POOL
     //////////////////////////////////////////////////////////////*/
-
     function test_createCoverPool_WhenPaused_Reverts() public {
         vm.prank(admin);
         factory.pause();
@@ -357,9 +290,222 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                     COMPUTE COVER POOL ADDRESS
+                      SET COVER POOL IMPLEMENTATION
     //////////////////////////////////////////////////////////////*/
+    function test_setCoverPoolImplementation_WhenCallerNotCreator_Reverts() public {
+        address caller = makeAddr("notCreator");
+        CoverPool newImplementation = new CoverPool();
 
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
+        );
+        vm.prank(caller);
+        factory.setCoverPoolImplementation(address(newImplementation));
+    }
+
+    function test_setCoverPoolImplementation_WhenImplementationHasNoCode_Reverts() public {
+        vm.expectRevert(ICoverPoolFactory.InvalidImplementation.selector);
+        vm.prank(creator);
+        factory.setCoverPoolImplementation(address(0xdead));
+    }
+
+    function test_setCoverPoolImplementation_WhenValid_UpdatesStorage() public {
+        CoverPool newImplementation = new CoverPool();
+
+        vm.expectEmit(true, true, true, true, address(factory));
+        emit ICoverPoolFactory.CoverPoolImplementationSet(address(implementation), address(newImplementation));
+
+        vm.prank(creator);
+        factory.setCoverPoolImplementation(address(newImplementation));
+
+        assertEq(factory.coverPoolImplementation(), address(newImplementation), "Implementation not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           SET POLICY MANAGER
+    //////////////////////////////////////////////////////////////*/
+    function test_setPolicyManager_WhenCallerNotCreator_Reverts() public {
+        address caller = makeAddr("notCreatorPolicy");
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
+        );
+        vm.prank(caller);
+        factory.setPolicyManager(makeAddr("policy2"));
+    }
+
+    function test_setPolicyManager_WhenZero_Reverts() public {
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(creator);
+        factory.setPolicyManager(address(0));
+    }
+
+    function test_setPolicyManager_WhenValid_UpdatesState() public {
+        address newPolicyManager = makeAddr("policyManagerNew");
+
+        vm.expectEmit(true, true, true, true, address(factory));
+        emit ICoverPoolFactory.PolicyManagerSet(policyManager, newPolicyManager);
+
+        vm.prank(creator);
+        factory.setPolicyManager(newPolicyManager);
+
+        assertEq(factory.policyManager(), newPolicyManager, "Policy manager not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           SET STAKE MANAGER
+    //////////////////////////////////////////////////////////////*/
+    function test_setStakeManager_WhenCallerNotCreator_Reverts() public {
+        address caller = makeAddr("notCreator");
+        address newStakeManager = makeAddr("newStakeManager");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
+        );
+        vm.prank(caller);
+        factory.setStakeManager(newStakeManager);
+    }
+
+    function test_setStakeManager_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(creator);
+        factory.setStakeManager(address(0));
+    }
+
+    function test_setStakeManager_Success() public {
+        address newStakeManager = address(new CoverPool());
+
+        vm.expectEmit(true, true, false, false);
+        emit ICoverPoolFactory.StakeManagerSet(stakeManager, newStakeManager);
+        vm.prank(creator);
+        factory.setStakeManager(newStakeManager);
+
+        assertEq(factory.stakeManager(), newStakeManager, "StakeManager not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           COVER POOL EXISTS
+    //////////////////////////////////////////////////////////////*/
+    function test_coverPoolExists_WhenUnknown_ReturnsFalse() public view {
+        assertFalse(factory.coverPoolExists(address(0x1234)));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                             COVER POOL AT
+    //////////////////////////////////////////////////////////////*/
+    function test_coverPoolAt_WhenOutOfBounds_Reverts() public {
+        vm.expectRevert(ICoverPoolFactory.InvalidLimit.selector);
+        factory.coverPoolAt(0);
+    }
+
+    function test_coverPoolAt_WhenPoolsDeployed_ReturnsExpectedAddress() public {
+        address pool = _createPool("primary");
+        assertEq(factory.coverPoolAt(0), pool, "Pool address mismatch");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           TOTAL COVER POOLS
+    //////////////////////////////////////////////////////////////*/
+    function test_totalCoverPools_WhenNone_ReturnsZero() public view {
+        assertEq(factory.totalCoverPools(), 0, "Expected zero pools");
+    }
+
+    function test_totalCoverPools_WhenMultiplePools_Increments() public {
+        for (uint256 i = 0; i < 3; ++i) {
+            ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+            params.curator = makeAddr(string.concat("curator", vm.toString(i)));
+            params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
+
+            vm.mockCall(
+                stakeManager,
+                abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
+                abi.encode(false)
+            );
+            vm.mockCall(
+                stakeManager,
+                abi.encodeWithSelector(
+                    IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                ),
+                ""
+            );
+
+            vm.prank(creator);
+            factory.createCoverPool(params);
+        }
+
+        assertEq(factory.totalCoverPools(), 3, "Unexpected total pools");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            GET COVER POOLS
+    //////////////////////////////////////////////////////////////*/
+    function test_getCoverPools_WhenLimitZero_Reverts() public {
+        vm.expectRevert(ICoverPoolFactory.InvalidLimit.selector);
+        factory.getCoverPools(0, 0);
+    }
+
+    function test_getCoverPools_WhenOffsetPastEnd_ReturnsEmpty() public view {
+        assertEq(factory.getCoverPools(5, 1).length, 0, "Expected empty array");
+    }
+
+    function test_getCoverPools_WhenMultiplePools_Paginates() public {
+        for (uint256 i = 0; i < 3; ++i) {
+            ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+            params.curator = makeAddr(string.concat("curator", vm.toString(i)));
+            params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
+
+            vm.mockCall(
+                stakeManager,
+                abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
+                abi.encode(false)
+            );
+            vm.mockCall(
+                stakeManager,
+                abi.encodeWithSelector(
+                    IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+                ),
+                ""
+            );
+
+            vm.prank(creator);
+            factory.createCoverPool(params);
+        }
+
+        address[] memory firstPage = factory.getCoverPools(0, 2);
+        address[] memory secondPage = factory.getCoverPools(2, 2);
+
+        assertEq(firstPage.length, 2, "Unexpected first page size");
+        assertEq(secondPage.length, 1, "Unexpected second page size");
+        assertNotEq(firstPage[0], firstPage[1], "Duplicate pool on first page");
+        assertNotEq(firstPage[0], secondPage[0], "Overlap across pages");
+    }
+
+    function test_getCoverPools_WhenOffsetNonZero_ReturnsSlice() public {
+        address first = _createPool("first");
+        address second = _createPool("second");
+        assertNotEq(first, second, "Pools should differ");
+
+        address[] memory slice = factory.getCoverPools(1, 1);
+        assertEq(slice.length, 1, "Unexpected slice length");
+        assertEq(slice[0], second, "Unexpected pool returned");
+    }
+
+    function test_getCoverPools_WhenLimitExceedsRemaining_Truncates() public {
+        _createPool("a");
+        _createPool("b");
+        _createPool("c");
+
+        uint256 total = factory.totalCoverPools();
+        address[] memory slice = factory.getCoverPools(1, 10);
+        assertEq(slice.length, total - 1, "Slice should truncate to remaining pools");
+
+        for (uint256 i = 0; i < slice.length; ++i) {
+            assertEq(slice[i], factory.coverPoolAt(i + 1), "Unexpected pool order");
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                       COMPUTE COVER POOL ADDRESS
+    //////////////////////////////////////////////////////////////*/
     function test_computeCoverPoolAddress_PredictsDeployment() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
         address expected = _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
@@ -467,131 +613,6 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         TOTAL COVER POOLS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_totalCoverPools_WhenMultiplePools_Increments() public {
-        for (uint256 i = 0; i < 3; ++i) {
-            ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
-            params.curator = makeAddr(string.concat("curator", vm.toString(i)));
-            params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
-
-            vm.mockCall(
-                stakeManager,
-                abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
-                abi.encode(false)
-            );
-            vm.mockCall(
-                stakeManager,
-                abi.encodeWithSelector(
-                    IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-                ),
-                ""
-            );
-
-            vm.prank(creator);
-            factory.createCoverPool(params);
-        }
-
-        assertEq(factory.totalCoverPools(), 3, "Unexpected total pools");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                           COVER POOL AT
-    //////////////////////////////////////////////////////////////*/
-
-    function test_coverPoolAt_WhenOutOfBounds_Reverts() public {
-        vm.expectRevert(ICoverPoolFactory.InvalidLimit.selector);
-        factory.coverPoolAt(0);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                          GET COVER POOLS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_getCoverPools_WhenLimitZero_Reverts() public {
-        vm.expectRevert(ICoverPoolFactory.InvalidLimit.selector);
-        factory.getCoverPools(0, 0);
-    }
-
-    function test_getCoverPools_WhenOffsetPastEnd_ReturnsEmpty() public view {
-        assertEq(factory.getCoverPools(5, 1).length, 0, "Expected empty array");
-    }
-
-    function test_getCoverPools_WhenMultiplePools_Paginates() public {
-        for (uint256 i = 0; i < 3; ++i) {
-            ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
-            params.curator = makeAddr(string.concat("curator", vm.toString(i)));
-            params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
-
-            vm.mockCall(
-                stakeManager,
-                abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
-                abi.encode(false)
-            );
-            vm.mockCall(
-                stakeManager,
-                abi.encodeWithSelector(
-                    IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-                ),
-                ""
-            );
-
-            vm.prank(creator);
-            factory.createCoverPool(params);
-        }
-
-        address[] memory firstPage = factory.getCoverPools(0, 2);
-        address[] memory secondPage = factory.getCoverPools(2, 2);
-
-        assertEq(firstPage.length, 2, "Unexpected first page size");
-        assertEq(secondPage.length, 1, "Unexpected second page size");
-        assertNotEq(firstPage[0], firstPage[1], "Duplicate pool on first page");
-        assertNotEq(firstPage[0], secondPage[0], "Overlap across pages");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                         COVER POOL EXISTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_coverPoolExists_WhenUnknown_ReturnsFalse() public view {
-        assertFalse(factory.coverPoolExists(address(0x1234)));
-    }
-
-    function test_coverPoolAt_WhenPoolsDeployed_ReturnsExpectedAddress() public {
-        address pool = _createPool("primary");
-        assertEq(factory.coverPoolAt(0), pool, "Pool address mismatch");
-    }
-
-    function test_totalCoverPools_WhenNone_ReturnsZero() public view {
-        assertEq(factory.totalCoverPools(), 0, "Expected zero pools");
-    }
-
-    function test_getCoverPools_WhenOffsetNonZero_ReturnsSlice() public {
-        address first = _createPool("first");
-        address second = _createPool("second");
-        assertNotEq(first, second, "Pools should differ");
-
-        address[] memory slice = factory.getCoverPools(1, 1);
-        assertEq(slice.length, 1, "Unexpected slice length");
-        assertEq(slice[0], second, "Unexpected pool returned");
-    }
-
-    function test_getCoverPools_WhenLimitExceedsRemaining_Truncates() public {
-        _createPool("a");
-        _createPool("b");
-        _createPool("c");
-
-        uint256 total = factory.totalCoverPools();
-        address[] memory slice = factory.getCoverPools(1, 10);
-        assertEq(slice.length, total - 1, "Slice should truncate to remaining pools");
-
-        for (uint256 i = 0; i < slice.length; ++i) {
-            assertEq(slice[i], factory.coverPoolAt(i + 1), "Unexpected pool order");
-        }
-    }
-
-    /*//////////////////////////////////////////////////////////////
                                 HELPERS
     //////////////////////////////////////////////////////////////*/
     function _predictCoverPoolAddress(
@@ -655,37 +676,5 @@ contract CoverPoolFactoryTest is Test {
         factory.createCoverPool(params);
 
         pool = factory.coverPoolAt(factory.totalCoverPools() - 1);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                           SET SSP ROUTER
-    //////////////////////////////////////////////////////////////*/
-
-    function test_setStakeManager_WhenCallerNotCreator_Reverts() public {
-        address caller = makeAddr("notCreator");
-        address newStakeManager = makeAddr("newStakeManager");
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
-        );
-        vm.prank(caller);
-        factory.setStakeManager(newStakeManager);
-    }
-
-    function test_setStakeManager_WhenZeroAddress_Reverts() public {
-        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        vm.prank(creator);
-        factory.setStakeManager(address(0));
-    }
-
-    function test_setStakeManager_Success() public {
-        address newStakeManager = address(new CoverPool());
-
-        vm.expectEmit(true, true, false, false);
-        emit ICoverPoolFactory.StakeManagerSet(stakeManager, newStakeManager);
-        vm.prank(creator);
-        factory.setStakeManager(newStakeManager);
-
-        assertEq(factory.stakeManager(), newStakeManager, "StakeManager not updated");
     }
 }
