@@ -19,7 +19,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @dev Consumed by PolicyManager to derive deterministic policy commits.
      *      Each quote represents a complete policy from a single pool.
      */
-    struct QuoteData {
+    struct Quote {
         /// @notice Address of the CoverPool issuing the quote.
         address pool;
         /// @notice Restaking committee identifier associated with the policy.
@@ -41,7 +41,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         /// @notice Policy coverage maturity timestamp proposed in the quote.
         uint64 maturityTime;
         /// @notice Expiration timestamp for the signed quote.
-        uint64 quoteExpiry;
+        uint64 expirationTime;
     }
 
     /**
@@ -103,10 +103,10 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
 
     /**
      * @notice Reverts when a quote has already expired.
-     * @param quoteExpiry Expiration timestamp encoded within the quote.
+     * @param expirationTime Expiration timestamp encoded within the quote.
      * @param currentTimestamp Current block timestamp at validation.
      */
-    error QuoteExpired(uint64 quoteExpiry, uint256 currentTimestamp);
+    error QuoteExpired(uint64 expirationTime, uint256 currentTimestamp);
 
     /**
      * @notice Reverts when an incoming quote specifies zero coverage.
@@ -186,13 +186,13 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Locks coverage for a previously validated policy commit.
      * @dev Requires POLICY_MANAGER_ROLE. Each binding represents a complete policy from this pool.
      * @param policyCommit Deterministic hash representing the policy.
-     * @param quote Quote data that has been validated for binding.
+     * @param quote Quote that has been validated for binding.
      * @param signature EIP-712 signature from an authorized quote signer.
      * @return BoundPolicy metadata describing the pool's coverage allocation.
      */
     function bindPolicy(
         bytes32 policyCommit,
-        QuoteData calldata quote,
+        Quote calldata quote,
         bytes calldata signature
     )
         external
@@ -220,17 +220,11 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
 
     /**
      * @notice Verifies a coverage quote and returns the resulting policy commit hash.
-     * @param quote Quote data struct signed by an authorized quote signer.
+     * @param quote Quote struct signed by an authorized quote signer.
      * @param signature EIP-712 signature authorizing the quote.
      * @return policyCommit Deterministic hash representing the policy.
      */
-    function validateQuote(
-        QuoteData calldata quote,
-        bytes calldata signature
-    )
-        external
-        view
-        returns (bytes32 policyCommit);
+    function verifyQuote(Quote calldata quote, bytes calldata signature) external view returns (bytes32 policyCommit);
 
     /**
      * @notice AccessControl identifier for the PolicyManager binding role.

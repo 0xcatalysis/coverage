@@ -30,10 +30,9 @@ contract CoverPoolFactory is
 
     address public override coverPoolImplementation;
     address public override policyManager;
+    address public override stakeManager;
 
     EnumerableSet.AddressSet private _pools;
-
-    address public override stakeManager;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {

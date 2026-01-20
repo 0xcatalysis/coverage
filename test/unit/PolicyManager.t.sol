@@ -528,7 +528,7 @@ contract PolicyManagerTest is Test {
         vm.prank(buyer);
         policyManager.bindPolicy(request);
 
-        assertEq(coverPool.bindPolicyCallCount(), 1, "BindPolicy should be called after validateQuote");
+        assertEq(coverPool.bindPolicyCallCount(), 1, "BindPolicy should be called after verifyQuote");
     }
 
     function test_bindPolicy_WhenValid_BindsPolicyOnCoverPool() public {
@@ -790,7 +790,7 @@ contract PolicyManagerTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function _defaultRequest() internal view returns (IPolicyManager.BindPolicyRequest memory) {
-        ICoverPool.QuoteData memory quote = ICoverPool.QuoteData({
+        ICoverPool.Quote memory quote = ICoverPool.Quote({
             pool: address(coverPool),
             coverageLimit: COVERAGE_LIMIT,
             basePremium: BASE_PREMIUM,
@@ -801,7 +801,7 @@ contract PolicyManagerTest is Test {
             operator: operator,
             startTime: uint64(block.timestamp),
             maturityTime: uint64(block.timestamp + COVERAGE_DURATION),
-            quoteExpiry: uint64(block.timestamp + 1 hours)
+            expirationTime: uint64(block.timestamp + 1 hours)
         });
 
         return IPolicyManager.BindPolicyRequest({
@@ -837,13 +837,13 @@ contract MockCoverPool {
         });
     }
 
-    function validateQuote(ICoverPool.QuoteData calldata, bytes calldata) external view returns (bytes32) {
+    function verifyQuote(ICoverPool.Quote calldata, bytes calldata) external view returns (bytes32) {
         return _returnPolicyCommit;
     }
 
     function bindPolicy(
         bytes32 policyCommit,
-        ICoverPool.QuoteData calldata quote,
+        ICoverPool.Quote calldata quote,
         bytes calldata
     )
         external

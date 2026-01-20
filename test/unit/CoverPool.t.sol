@@ -14,7 +14,7 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 
 contract CoverPoolTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "QuoteData(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint64 startTime,address operator,uint64 maturityTime,uint64 quoteExpiry)"
+        "Quote(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
     );
     string internal constant NAME = "Catalysis Cover Pool";
     string internal constant VERSION = "1";
@@ -186,9 +186,9 @@ contract CoverPoolTest is Test {
                             BIND POLICY
     //////////////////////////////////////////////////////////////*/
     function test_bindPolicy_WhenPaused_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+        ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory signature = _signQuote(quote);
-        bytes32 policyCommit = coverPool.validateQuote(quote, signature);
+        bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
 
         vm.prank(curator);
         coverPool.pause();
@@ -199,9 +199,9 @@ contract CoverPoolTest is Test {
     }
 
     function test_bindPolicy_WhenCalledByPolicyManager_BindsMetadata() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+        ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory signature = _signQuote(quote);
-        bytes32 policyCommit = coverPool.validateQuote(quote, signature);
+        bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
 
         bytes32 expectedPolicyId = keccak256(abi.encodePacked(address(coverPool), policyCommit));
 
@@ -226,9 +226,9 @@ contract CoverPoolTest is Test {
     }
 
     function test_bindPolicy_WhenCalledTwice_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+        ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory signature = _signQuote(quote);
-        bytes32 policyCommit = coverPool.validateQuote(quote, signature);
+        bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
 
         vm.prank(policyManager);
         coverPool.bindPolicy(policyCommit, quote, signature);
@@ -239,9 +239,9 @@ contract CoverPoolTest is Test {
     }
 
     function test_bindPolicy_WhenCommitMismatch_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+        ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory originalSignature = _signQuote(quote);
-        bytes32 validCommit = coverPool.validateQuote(quote, originalSignature);
+        bytes32 validCommit = coverPool.verifyQuote(quote, originalSignature);
 
         quote.coverageLimit += 1;
         bytes memory mismatchedSignature = _signQuote(quote);
@@ -254,21 +254,21 @@ contract CoverPoolTest is Test {
     }
 
     function test_bindPolicy_WhenQuoteExpired_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+        ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory signature = _signQuote(quote);
-        bytes32 policyCommit = coverPool.validateQuote(quote, signature);
+        bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
 
-        vm.warp(quote.quoteExpiry + 1);
+        vm.warp(quote.expirationTime + 1);
 
         vm.prank(policyManager);
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.QuoteExpired.selector, quote.quoteExpiry, block.timestamp));
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.QuoteExpired.selector, quote.expirationTime, block.timestamp));
         coverPool.bindPolicy(policyCommit, quote, signature);
     }
 
     function test_bindPolicy_WhenCallerNotPolicyManager_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+        ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory signature = _signQuote(quote);
-        bytes32 policyCommit = coverPool.validateQuote(quote, signature);
+        bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -279,7 +279,7 @@ contract CoverPoolTest is Test {
     }
 
     function test_bindPolicy_WhenPolicyCommitZero_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+        ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory signature = _signQuote(quote);
 
         vm.prank(policyManager);
@@ -314,97 +314,97 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           VALIDATE QUOTE
+                           VERIFY QUOTE
     //////////////////////////////////////////////////////////////*/
-    function test_validateQuote_WhenPaused_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+    function test_verifyQuote_WhenPaused_Reverts() public {
+        ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory signature = _signQuote(quote);
 
         vm.prank(curator);
         coverPool.pause();
 
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
-        coverPool.validateQuote(quote, signature);
+        coverPool.verifyQuote(quote, signature);
     }
 
-    function test_validateQuote_WhenValidSignature_ReturnsCommit() public view {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+    function test_verifyQuote_WhenValidSignature_ReturnsCommit() public view {
+        ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory signature = _signQuote(quote);
 
-        bytes32 policyCommit = coverPool.validateQuote(quote, signature);
+        bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
         assertEq(policyCommit, _structHash(quote), "Policy commit mismatch");
     }
 
-    function test_validateQuote_WhenSignatureInvalid_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+    function test_verifyQuote_WhenSignatureInvalid_Reverts() public {
+        ICoverPool.Quote memory quote = _defaultQuote();
         uint256 otherKey = uint256(keccak256("invalid-key"));
         bytes memory signature = _signQuoteWithKey(quote, otherKey);
 
         vm.expectRevert(ICoverPool.QuoteSignatureInvalid.selector);
-        coverPool.validateQuote(quote, signature);
+        coverPool.verifyQuote(quote, signature);
     }
 
-    function test_validateQuote_WhenQuoteExpired_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
-        quote.quoteExpiry = uint64(block.timestamp - 1);
+    function test_verifyQuote_WhenQuoteExpired_Reverts() public {
+        ICoverPool.Quote memory quote = _defaultQuote();
+        quote.expirationTime = uint64(block.timestamp - 1);
         bytes memory signature = _signQuote(quote);
 
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.QuoteExpired.selector, quote.quoteExpiry, block.timestamp));
-        coverPool.validateQuote(quote, signature);
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.QuoteExpired.selector, quote.expirationTime, block.timestamp));
+        coverPool.verifyQuote(quote, signature);
     }
 
-    function test_validateQuote_WhenPoolAddressMismatch_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+    function test_verifyQuote_WhenPoolAddressMismatch_Reverts() public {
+        ICoverPool.Quote memory quote = _defaultQuote();
         quote.pool = makeAddr("otherPool");
         bytes memory signature = _signQuote(quote);
 
         vm.expectRevert(abi.encodeWithSelector(ICoverPool.PoolAddressMismatch.selector, address(coverPool), quote.pool));
-        coverPool.validateQuote(quote, signature);
+        coverPool.verifyQuote(quote, signature);
     }
 
-    function test_validateQuote_WhenCoverageLimitZero_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+    function test_verifyQuote_WhenCoverageLimitZero_Reverts() public {
+        ICoverPool.Quote memory quote = _defaultQuote();
         quote.coverageLimit = 0;
         bytes memory signature = _signQuote(quote);
 
         vm.expectRevert(ICoverPool.InvalidCoverageLimit.selector);
-        coverPool.validateQuote(quote, signature);
+        coverPool.verifyQuote(quote, signature);
     }
 
-    function test_validateQuote_WhenSpecIdZero_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+    function test_verifyQuote_WhenSpecIdZero_Reverts() public {
+        ICoverPool.Quote memory quote = _defaultQuote();
         quote.specId = bytes32(0);
         bytes memory signature = _signQuote(quote);
 
         vm.expectRevert(ICoverPool.InvalidSpecId.selector);
-        coverPool.validateQuote(quote, signature);
+        coverPool.verifyQuote(quote, signature);
     }
 
-    function test_validateQuote_WhenPayoutAddressZero_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+    function test_verifyQuote_WhenPayoutAddressZero_Reverts() public {
+        ICoverPool.Quote memory quote = _defaultQuote();
         quote.payoutReceiver = address(0);
         bytes memory signature = _signQuote(quote);
 
         vm.expectRevert(ICoverPool.InvalidQuoteRecipient.selector);
-        coverPool.validateQuote(quote, signature);
+        coverPool.verifyQuote(quote, signature);
     }
 
-    function test_validateQuote_WhenOperatorZero_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+    function test_verifyQuote_WhenOperatorZero_Reverts() public {
+        ICoverPool.Quote memory quote = _defaultQuote();
         quote.operator = address(0);
         bytes memory signature = _signQuote(quote);
 
         vm.expectRevert(ICoverPool.InvalidQuoteRecipient.selector);
-        coverPool.validateQuote(quote, signature);
+        coverPool.verifyQuote(quote, signature);
     }
 
-    function test_validateQuote_WhenWindowInvalid_Reverts() public {
-        ICoverPool.QuoteData memory quote = _defaultQuote();
+    function test_verifyQuote_WhenWindowInvalid_Reverts() public {
+        ICoverPool.Quote memory quote = _defaultQuote();
         quote.startTime = quote.maturityTime;
         bytes memory signature = _signQuote(quote);
 
         vm.expectRevert(ICoverPool.InvalidCoverageWindow.selector);
-        coverPool.validateQuote(quote, signature);
+        coverPool.verifyQuote(quote, signature);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -620,8 +620,8 @@ contract CoverPoolTest is Test {
     /*//////////////////////////////////////////////////////////////
                                 HELPERS
     //////////////////////////////////////////////////////////////*/
-    function _defaultQuote() private view returns (ICoverPool.QuoteData memory quote) {
-        quote = ICoverPool.QuoteData({
+    function _defaultQuote() private view returns (ICoverPool.Quote memory quote) {
+        quote = ICoverPool.Quote({
             pool: address(coverPool),
             committeeId: uint96(123),
             coverageLimit: 1000 ether,
@@ -632,22 +632,22 @@ contract CoverPoolTest is Test {
             startTime: uint64(block.timestamp + 1 hours),
             operator: operator,
             maturityTime: uint64(block.timestamp + 25 hours),
-            quoteExpiry: uint64(block.timestamp + 2 days)
+            expirationTime: uint64(block.timestamp + 2 days)
         });
     }
 
-    function _signQuote(ICoverPool.QuoteData memory quote) private view returns (bytes memory) {
+    function _signQuote(ICoverPool.Quote memory quote) private view returns (bytes memory) {
         return _signQuoteWithKey(quote, quoteSignerKey);
     }
 
-    function _signQuoteWithKey(ICoverPool.QuoteData memory quote, uint256 key) private view returns (bytes memory) {
+    function _signQuoteWithKey(ICoverPool.Quote memory quote, uint256 key) private view returns (bytes memory) {
         bytes32 structHash = _structHash(quote);
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", coverPool.quoteDomainSeparator(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, digest);
         return abi.encodePacked(r, s, v);
     }
 
-    function _structHash(ICoverPool.QuoteData memory quote) private pure returns (bytes32) {
+    function _structHash(ICoverPool.Quote memory quote) private pure returns (bytes32) {
         return EfficientHashLib.hash(
             uint256(QUOTE_TYPEHASH),
             uint256(uint160(quote.pool)),
@@ -660,7 +660,7 @@ contract CoverPoolTest is Test {
             uint256(quote.startTime),
             uint256(uint160(quote.operator)),
             uint256(quote.maturityTime),
-            uint256(quote.quoteExpiry)
+            uint256(quote.expirationTime)
         );
     }
 }
