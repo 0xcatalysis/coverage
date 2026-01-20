@@ -45,7 +45,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
         require(quote.coverageLimit != 0, InvalidCoverageLimit());
         require(quote.specId != bytes32(0), InvalidSpecId());
-        require(quote.payoutReceiver != address(0) && quote.operator != address(0), InvalidQuoteRecipient());
+        require(quote.termsHash != bytes32(0), InvalidTermsHash());
+        require(quote.payoutReceiver != address(0), InvalidPayoutReceiver());
+        require(quote.operator != address(0), InvalidOperator());
         require(quote.startTime < quote.maturityTime, InvalidCoverageWindow());
 
         uint256 currentTimestamp = block.timestamp;

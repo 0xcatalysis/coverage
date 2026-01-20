@@ -114,14 +114,24 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidCoverageLimit();
 
     /**
-     * @notice Reverts when payout or operator addresses are missing.
+     * @notice Reverts when the payout receiver address is zero.
      */
-    error InvalidQuoteRecipient();
+    error InvalidPayoutReceiver();
+
+    /**
+     * @notice Reverts when the operator address is zero.
+     */
+    error InvalidOperator();
 
     /**
      * @notice Reverts when a required spec identifier is empty.
      */
     error InvalidSpecId();
+
+    /**
+     * @notice Reverts when the terms hash is empty.
+     */
+    error InvalidTermsHash();
 
     /**
      * @notice Reverts when a quote is validated but its signature cannot be recovered to the authorized signer.

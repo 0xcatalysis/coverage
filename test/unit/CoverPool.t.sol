@@ -380,12 +380,21 @@ contract CoverPoolTest is Test {
         coverPool.verifyQuote(quote, signature);
     }
 
+    function test_verifyQuote_WhenTermsHashZero_Reverts() public {
+        ICoverPool.Quote memory quote = _defaultQuote();
+        quote.termsHash = bytes32(0);
+        bytes memory signature = _signQuote(quote);
+
+        vm.expectRevert(ICoverPool.InvalidTermsHash.selector);
+        coverPool.verifyQuote(quote, signature);
+    }
+
     function test_verifyQuote_WhenPayoutAddressZero_Reverts() public {
         ICoverPool.Quote memory quote = _defaultQuote();
         quote.payoutReceiver = address(0);
         bytes memory signature = _signQuote(quote);
 
-        vm.expectRevert(ICoverPool.InvalidQuoteRecipient.selector);
+        vm.expectRevert(ICoverPool.InvalidPayoutReceiver.selector);
         coverPool.verifyQuote(quote, signature);
     }
 
@@ -394,7 +403,7 @@ contract CoverPoolTest is Test {
         quote.operator = address(0);
         bytes memory signature = _signQuote(quote);
 
-        vm.expectRevert(ICoverPool.InvalidQuoteRecipient.selector);
+        vm.expectRevert(ICoverPool.InvalidOperator.selector);
         coverPool.verifyQuote(quote, signature);
     }
 
