@@ -377,6 +377,35 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                                UPGRADE
+    //////////////////////////////////////////////////////////////*/
+    function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
+        address newImplementation = address(new CoverPoolFactory());
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, creator, ADMIN_ROLE)
+        );
+        vm.prank(creator);
+        factory.upgradeToAndCall(newImplementation, "");
+    }
+
+    function test_authorizeUpgrade_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(admin);
+        factory.upgradeToAndCall(address(0), "");
+    }
+
+    function test_authorizeUpgrade_WhenCalledByAdmin_Succeeds() public {
+        CoverPoolFactory newImplementation = new CoverPoolFactory();
+
+        vm.prank(admin);
+        factory.upgradeToAndCall(address(newImplementation), "");
+
+        assertEq(factory.coverPoolImplementation(), address(implementation), "Implementation should persist");
+        assertEq(factory.policyManager(), policyManager, "Policy manager should persist");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                            COVER POOL EXISTS
     //////////////////////////////////////////////////////////////*/
     function test_coverPoolExists_WhenUnknown_ReturnsFalse() public view {

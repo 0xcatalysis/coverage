@@ -197,7 +197,9 @@ contract CoverPoolFactory is
     /**
      * @dev Authorizes UUPS upgrades.
      */
-    function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(newImplementation != address(0), ZeroAddress());
+    }
 
     /**
      * @dev Computes the deterministic salt used with CREATE2.
