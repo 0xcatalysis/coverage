@@ -209,9 +209,9 @@ contract CoverPoolFactory is
     function _computeSalt(CreateCoverPoolParams calldata params) private view returns (bytes32) {
         return EfficientHashLib.hash(
             uint256(uint160(params.curator)),
+            uint256(uint160(policyManager)),
             uint256(uint160(params.quoteSigner)),
-            uint256(params.poolFeeBps),
-            uint256(uint160(policyManager))
+            uint256(params.poolFeeBps)
         );
     }
 }

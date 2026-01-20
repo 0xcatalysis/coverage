@@ -638,9 +638,9 @@ contract CoverPoolFactoryTest is Test {
     {
         return EfficientHashLib.hash(
             uint256(uint160(params.curator)),
+            uint256(uint160(policyManagerAddress)),
             uint256(uint160(params.quoteSigner)),
-            uint256(params.poolFeeBps),
-            uint256(uint160(policyManagerAddress))
+            uint256(params.poolFeeBps)
         );
     }
 
