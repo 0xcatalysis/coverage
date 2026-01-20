@@ -1,32 +1,26 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {
+    AccessControlDefaultAdminRulesUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {IOwnable2Step} from "./interfaces/IOwnable2Step.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 
 /**
  * @title CoverPool
  * @notice Curator-controlled pool that validates coverage quotes and records bound policy metadata.
- * @dev Designed for use behind minimal proxy clones. Leverages AccessControl for role separation
- *      and EIP-712 signed quotes for deterministic policy commits. Each policy represents coverage
- *      from a single pool.
+ * @dev Designed for use behind minimal proxy clones. Uses AccessControlDefaultAdminRules for secure
+ *      2-step admin transfers with configurable delay, and EIP-712 signed quotes for deterministic
+ *      policy commits. Each policy represents coverage from a single pool. The curator is the default
+ *      admin and can manage all pool configuration and roles with a time-delayed transfer mechanism.
  */
 // slither-disable-next-line unimplemented-functions
-contract CoverPool is
-    Ownable2StepUpgradeable,
-    AccessControlUpgradeable,
-    EIP712Upgradeable,
-    PausableUpgradeable,
-    ICoverPool
-{
+contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeable, PausableUpgradeable, ICoverPool {
     bytes32 public constant override POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
     bytes32 public constant override QUOTE_SIGNER_ROLE = keccak256("QUOTE_SIGNER_ROLE");
 
@@ -59,14 +53,6 @@ contract CoverPool is
         _;
     }
 
-    /**
-     * @dev Prevents direct interaction with the default admin role outside ownership transfers.
-     */
-    modifier nonAdminRole(bytes32 role) {
-        require(role != DEFAULT_ADMIN_ROLE, ICoverPool.DefaultAdminImmutable());
-        _;
-    }
-
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -87,13 +73,10 @@ contract CoverPool is
         require(curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0), ZeroAddress());
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
 
-        __Ownable_init(curator_);
-        __Ownable2Step_init();
-        __AccessControl_init();
+        __AccessControlDefaultAdminRules_init(0, curator_);
         __EIP712_init(_NAME, _VERSION);
         __Pausable_init();
 
-        _grantRole(DEFAULT_ADMIN_ROLE, curator_);
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
         _grantRole(QUOTE_SIGNER_ROLE, quoteSigner_);
 
@@ -103,21 +86,21 @@ contract CoverPool is
     /**
      * @inheritdoc ICoverPool
      */
-    function pause() external override onlyOwner {
+    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
         _pause();
     }
 
     /**
      * @inheritdoc ICoverPool
      */
-    function unpause() external override onlyOwner {
+    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
         _unpause();
     }
 
     /**
      * @inheritdoc ICoverPool
      */
-    function setPoolFeeBps(uint16 poolFeeBps_) external override onlyOwner {
+    function setPoolFeeBps(uint16 poolFeeBps_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
 
         uint16 previousPoolFeeBps = poolFeeBps;
@@ -201,93 +184,31 @@ contract CoverPool is
     }
 
     /**
-     * @inheritdoc IOwnable2Step
-     */
-    function owner() public view override (IOwnable2Step, OwnableUpgradeable) returns (address) {
-        return super.owner();
-    }
-
-    /**
-     * @inheritdoc IOwnable2Step
-     */
-    function pendingOwner() public view override (IOwnable2Step, Ownable2StepUpgradeable) returns (address) {
-        return super.pendingOwner();
-    }
-
-    /**
-     * @inheritdoc IOwnable2Step
-     */
-    function transferOwnership(address newOwner) public override (IOwnable2Step, Ownable2StepUpgradeable) {
-        super.transferOwnership(newOwner);
-    }
-
-    /**
-     * @inheritdoc IOwnable2Step
-     */
-    function acceptOwnership() public override (IOwnable2Step, Ownable2StepUpgradeable) {
-        super.acceptOwnership();
-    }
-
-    /**
-     * @inheritdoc AccessControlUpgradeable
-     * @dev Restricted to the owner; DEFAULT_ADMIN_ROLE cannot be delegated manually.
+     * @dev See {AccessControlDefaultAdminRulesUpgradeable-grantRole}.
      */
     function grantRole(
         bytes32 role,
         address account
     )
         public
-        override (AccessControlUpgradeable, IAccessControl)
-        onlyOwner
-        nonAdminRole(role)
+        override (AccessControlDefaultAdminRulesUpgradeable, IAccessControl)
+        onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        _grantRole(role, account);
+        super.grantRole(role, account);
     }
 
     /**
-     * @inheritdoc AccessControlUpgradeable
-     * @dev Restricted to the owner; DEFAULT_ADMIN_ROLE cannot be revoked manually.
+     * @dev See {AccessControlDefaultAdminRulesUpgradeable-revokeRole}.
      */
     function revokeRole(
         bytes32 role,
         address account
     )
         public
-        override (AccessControlUpgradeable, IAccessControl)
-        onlyOwner
-        nonAdminRole(role)
+        override (AccessControlDefaultAdminRulesUpgradeable, IAccessControl)
+        onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        _revokeRole(role, account);
-    }
-
-    /**
-     * @inheritdoc AccessControlUpgradeable
-     * @dev DEFAULT_ADMIN_ROLE cannot be renounced; ownership transfer handles admin rotation.
-     */
-    function renounceRole(
-        bytes32 role,
-        address callerConfirmation
-    )
-        public
-        override (AccessControlUpgradeable, IAccessControl)
-        nonAdminRole(role)
-    {
-        super.renounceRole(role, callerConfirmation);
-    }
-
-    /**
-     * @dev Syncs AccessControl admin membership with ownership transfers.
-     * @param newOwner Address that will assume ownership of the contract.
-     */
-    function _transferOwnership(address newOwner) internal override {
-        address oldOwner = owner();
-        super._transferOwnership(newOwner);
-
-        if (oldOwner != address(0)) {
-            _revokeRole(DEFAULT_ADMIN_ROLE, oldOwner);
-        }
-
-        _grantRole(DEFAULT_ADMIN_ROLE, newOwner);
+        super.revokeRole(role, account);
     }
 
     /**

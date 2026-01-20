@@ -2,13 +2,18 @@
 pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {IOwnable2Step} from "./IOwnable2Step.sol";
+import {
+    IAccessControlDefaultAdminRules
+} from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
+import {IERC5313} from "@openzeppelin/contracts/interfaces/IERC5313.sol";
 
 /**
  * @title ICoverPool
  * @notice Interface defining curator-controlled pool functionality for coverage quotes and bindings.
+ * @dev Uses AccessControlDefaultAdminRules for secure 2-step admin transfers with configurable delay.
+ *      Implements IERC5313 for standardized owner() access (returns defaultAdmin).
  */
-interface ICoverPool is IAccessControl, IOwnable2Step {
+interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC5313 {
     /**
      * @notice Signed coverage quote inputs produced by the pool curator.
      * @dev Consumed by PolicyManager to derive deterministic policy commits.
@@ -151,11 +156,6 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
      * @notice Reverts when supplied fee values exceed the defined basis-point cap.
      */
     error InvalidFeeBps();
-
-    /**
-     * @notice Reverts when attempting to modify the default admin role outside ownership transfers.
-     */
-    error DefaultAdminImmutable();
 
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
