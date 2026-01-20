@@ -14,8 +14,6 @@ interface IPolicyManager is IAccessControl {
      * @dev Phase 1 supports single pool bindings only; multi-pool aggregation is deferred.
      */
     struct BindPolicyRequest {
-        /// @notice Identifier to assign to the newly bound policy.
-        uint256 policyId;
         /// @notice Policy buyer responsible for paying premiums.
         address buyer;
         /// @notice Beneficiary receiving payouts upon approved claims.
@@ -24,12 +22,12 @@ interface IPolicyManager is IAccessControl {
         address premiumToken;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
+        /// @notice Coverage amount as the stake requirement for committee creation (in USD with 8 decimals).
+        uint256 coverageAmount;
         /// @notice Coverage quote data from a single CoverPool.
         ICoverPool.QuoteData quote;
         /// @notice EIP-712 signature from the pool's authorized quote signer.
         bytes signature;
-        /// @notice Platform fee in basis points applied to the premium.
-        uint16 platformFeeBps;
     }
 
     /**
@@ -65,15 +63,33 @@ interface IPolicyManager is IAccessControl {
     event PolicyContractSet(address indexed policy_);
 
     /**
+     * @notice Emitted when the platform fee is updated.
+     * @param platformFeeBps_ New platform fee in basis points.
+     */
+    event PlatformFeeSet(uint16 indexed platformFeeBps_);
+
+    /**
+     * @notice Emitted when the StakeManager dependency is set or updated.
+     * @param stakeManager_ Address of the stake manager contract.
+     */
+    event StakeManagerSet(address indexed stakeManager_);
+
+    /**
+     * @notice Emitted when the ClaimManager dependency is set or updated.
+     * @param claimManager_ Address of the claim manager contract.
+     */
+    event ClaimManagerSet(address indexed claimManager_);
+
+    /**
      * @notice Reverts when a zero address is provided where not allowed.
      */
     error ZeroAddress();
 
     /**
-     * @notice Reverts when attempting to bind a policy that has already been minted.
-     * @param policyId Identifier that already exists.
+     * @notice Reverts when platform fee exceeds maximum allowed.
+     * @param feeBps The invalid fee value.
      */
-    error PolicyAlreadyExists(uint256 policyId);
+    error InvalidPlatformFee(uint16 feeBps);
 
     /**
      * @notice Reverts when supplied coverage timestamps are invalid.
@@ -91,6 +107,11 @@ interface IPolicyManager is IAccessControl {
      * @notice Reverts when base premium is zero.
      */
     error InvalidBasePremium();
+
+    /**
+     * @notice Reverts when coverage amount is zero.
+     */
+    error InvalidCoverageAmount();
 
     /**
      * @notice Reverts when the quote pool address does not match expected pool.
@@ -129,13 +150,29 @@ interface IPolicyManager is IAccessControl {
     function setPolicy(address policy_) external;
 
     /**
+     * @notice Sets the StakeManager contract used for committee creation.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param stakeManager_ Address of the StakeManager implementation.
+     */
+    function setStakeManager(address stakeManager_) external;
+
+    /**
+     * @notice Sets the ClaimManager contract reference.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param claimManager_ Address of the ClaimManager implementation.
+     */
+    function setClaimManager(address claimManager_) external;
+
+    /**
+     * @notice Sets the platform fee charged on policy premiums.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Must not exceed 25% (2500 bps).
+     * @param platformFeeBps_ Platform fee in basis points (1 bps = 0.01%).
+     */
+    function setPlatformFee(uint16 platformFeeBps_) external;
+
+    /**
      * @notice Binds a single-pool coverage policy by validating the quote, collecting premium,
      *         and minting a soulbound policy receipt.
-     * @dev Phase 1: Single pool binding only. Multi-pool aggregation deferred to future scope.
-     *      Orchestrates:
-     *      1. Quote validation and policy binding via CoverPool
-     *      2. Premium collection via PremiumManager
-     *      3. Policy NFT minting via Policy contract
      * @param request Struct containing all binding parameters and signed quote.
      */
     function bindPolicy(BindPolicyRequest calldata request) external;
@@ -154,4 +191,19 @@ interface IPolicyManager is IAccessControl {
      * @notice Returns the configured Policy contract address.
      */
     function policy() external view returns (address);
+
+    /**
+     * @notice Returns the configured StakeManager address.
+     */
+    function stakeManager() external view returns (address);
+
+    /**
+     * @notice Returns the configured ClaimManager address.
+     */
+    function claimManager() external view returns (address);
+
+    /**
+     * @notice Returns the platform fee in basis points.
+     */
+    function platformFeeBps() external view returns (uint16);
 }
