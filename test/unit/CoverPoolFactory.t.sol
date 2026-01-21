@@ -242,11 +242,6 @@ contract CoverPoolFactoryTest is Test {
 
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params1.curator),
-            abi.encode(false)
-        );
-        vm.mockCall(
-            stakeManager,
             abi.encodeWithSelector(
                 IStakeManager.registerOperatorToNetwork.selector, params1.curator, params1.deadline, params1.signature
             ),
@@ -432,11 +427,6 @@ contract CoverPoolFactoryTest is Test {
 
             vm.mockCall(
                 stakeManager,
-                abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
-                abi.encode(false)
-            );
-            vm.mockCall(
-                stakeManager,
                 abi.encodeWithSelector(
                     IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
                 ),
@@ -468,11 +458,6 @@ contract CoverPoolFactoryTest is Test {
             params.curator = makeAddr(string.concat("curator", vm.toString(i)));
             params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
 
-            vm.mockCall(
-                stakeManager,
-                abi.encodeWithSelector(IStakeManager.isOperatorRegisteredToNetwork.selector, params.curator),
-                abi.encode(false)
-            );
             vm.mockCall(
                 stakeManager,
                 abi.encodeWithSelector(
