@@ -57,6 +57,7 @@ contract CoverPoolFactory is
                 && policyManager_ != address(0) && stakeManager_ != address(0),
             ZeroAddress()
         );
+        require(coverPoolImplementation_.code.length != 0, InvalidImplementation());
 
         __AccessControl_init();
         __Pausable_init();
@@ -111,6 +112,7 @@ contract CoverPoolFactory is
      */
     function setCoverPoolImplementation(address implementation_) external override onlyRole(CREATOR_ROLE) {
         require(implementation_ != address(0), ZeroAddress());
+        require(implementation_.code.length != 0, InvalidImplementation());
 
         address previousImplementation = coverPoolImplementation;
         coverPoolImplementation = implementation_;

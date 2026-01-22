@@ -61,6 +61,11 @@ interface ICoverPoolFactory is IAccessControl {
     error ZeroAddress();
 
     /**
+     * @notice Reverts when a supplied implementation address lacks contract code.
+     */
+    error InvalidImplementation();
+
+    /**
      * @notice Reverts when a pagination request uses a zero limit.
      */
     error InvalidLimit();

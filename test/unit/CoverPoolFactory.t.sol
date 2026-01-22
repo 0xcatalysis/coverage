@@ -102,6 +102,16 @@ contract CoverPoolFactoryTest is Test {
         );
     }
 
+    function test_initialize_WhenImplementationNoCode_Reverts() public {
+        CoverPoolFactory factoryImpl = new CoverPoolFactory();
+        address eoa = makeAddr("eoa");
+        vm.expectRevert(ICoverPoolFactory.InvalidImplementation.selector);
+        new ERC1967Proxy(
+            address(factoryImpl),
+            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, eoa, policyManager, stakeManager))
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                                   PAUSE
     //////////////////////////////////////////////////////////////*/
@@ -300,6 +310,20 @@ contract CoverPoolFactoryTest is Test {
         factory.setCoverPoolImplementation(address(newImplementation));
 
         assertEq(factory.coverPoolImplementation(), address(newImplementation), "Implementation not updated");
+    }
+
+    function test_setCoverPoolImplementation_WhenNoCode_Reverts() public {
+        address eoa = makeAddr("eoa");
+
+        vm.expectRevert(ICoverPoolFactory.InvalidImplementation.selector);
+        vm.prank(creator);
+        factory.setCoverPoolImplementation(eoa);
+    }
+
+    function test_setCoverPoolImplementation_WhenZero_Reverts() public {
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(creator);
+        factory.setCoverPoolImplementation(address(0));
     }
 
     /*//////////////////////////////////////////////////////////////
