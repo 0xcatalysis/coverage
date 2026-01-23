@@ -30,10 +30,9 @@ contract CoverPoolFactory is
 
     address public override coverPoolImplementation;
     address public override policyManager;
+    address public override stakeManager;
 
     EnumerableSet.AddressSet private _pools;
-
-    address public override stakeManager;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -105,9 +104,7 @@ contract CoverPoolFactory is
 
         emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager, params.poolFeeBps);
 
-        if (!IStakeManager(stakeManager).isOperatorRegisteredToNetwork(params.curator)) {
-            IStakeManager(stakeManager).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
-        }
+        IStakeManager(stakeManager).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
     }
 
     /**
@@ -165,7 +162,7 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function coverTotalPools() external view override returns (uint256) {
+    function totalCoverPools() external view override returns (uint256) {
         return _pools.length();
     }
 
@@ -199,7 +196,9 @@ contract CoverPoolFactory is
     /**
      * @dev Authorizes UUPS upgrades.
      */
-    function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(newImplementation != address(0), ZeroAddress());
+    }
 
     /**
      * @dev Computes the deterministic salt used with CREATE2.
@@ -209,9 +208,9 @@ contract CoverPoolFactory is
     function _computeSalt(CreateCoverPoolParams calldata params) private view returns (bytes32) {
         return EfficientHashLib.hash(
             uint256(uint160(params.curator)),
+            uint256(uint160(policyManager)),
             uint256(uint160(params.quoteSigner)),
-            uint256(params.poolFeeBps),
-            uint256(uint160(policyManager))
+            uint256(params.poolFeeBps)
         );
     }
 }

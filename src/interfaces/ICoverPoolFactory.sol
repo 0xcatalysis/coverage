@@ -155,10 +155,10 @@ interface ICoverPoolFactory is IAccessControl {
     function coverPoolAt(uint256 index) external view returns (address);
 
     /**
-     * @notice Returns the number of pools deployed by the factory.
+     * @notice Returns the total number of pools deployed by the factory.
      * @return The total number of CoverPools created by this factory.
      */
-    function coverTotalPools() external view returns (uint256);
+    function totalCoverPools() external view returns (uint256);
 
     /**
      * @notice Returns a slice of pool addresses.
