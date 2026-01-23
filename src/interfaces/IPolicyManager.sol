@@ -24,8 +24,8 @@ interface IPolicyManager is IAccessControl {
         address payoutToken;
         /// @notice Coverage amount as the stake requirement for committee creation (in USD with 8 decimals).
         uint256 coverageAmount;
-        /// @notice Coverage quote data from a single CoverPool.
-        ICoverPool.QuoteData quote;
+        /// @notice Coverage quote from a single CoverPool.
+        ICoverPool.Quote quote;
         /// @notice EIP-712 signature from the pool's authorized quote signer.
         bytes signature;
     }

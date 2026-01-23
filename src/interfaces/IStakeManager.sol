@@ -24,13 +24,6 @@ interface IStakeManager {
     function createCommittee(uint96 committeeId, uint256 maxStakeForCommittee) external;
 
     /**
-     * @notice Checks if an operator is registered to the network.
-     * @param operator The address of the operator.
-     * @return True if operator is registered to the network.
-     */
-    function isOperatorRegisteredToNetwork(address operator) external view returns (bool);
-
-    /**
      * @notice Returns the total stake of an operator in a specific committee across all vaults (in USD with 8
      * decimals).
      * @param operator The address of the operator.

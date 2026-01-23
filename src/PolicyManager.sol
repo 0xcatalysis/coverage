@@ -148,8 +148,8 @@ contract PolicyManager is
 
         uint256 policyId = ++_nextPolicyId;
 
-        ICoverPool.QuoteData calldata quote = request.quote;
-        bytes32 policyCommit = ICoverPool(quote.pool).validateQuote(quote, request.signature);
+        ICoverPool.Quote calldata quote = request.quote;
+        bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
         ICoverPool.BoundPolicy memory boundPolicy =

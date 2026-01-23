@@ -2,19 +2,24 @@
 pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {IOwnable2Step} from "./IOwnable2Step.sol";
+import {
+    IAccessControlDefaultAdminRules
+} from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
+import {IERC5313} from "@openzeppelin/contracts/interfaces/IERC5313.sol";
 
 /**
  * @title ICoverPool
  * @notice Interface defining curator-controlled pool functionality for coverage quotes and bindings.
+ * @dev Uses AccessControlDefaultAdminRules for secure 2-step admin transfers with configurable delay.
+ *      Implements IERC5313 for standardized owner() access (returns defaultAdmin).
  */
-interface ICoverPool is IAccessControl, IOwnable2Step {
+interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC5313 {
     /**
      * @notice Signed coverage quote inputs produced by the pool curator.
      * @dev Consumed by PolicyManager to derive deterministic policy commits.
      *      Each quote represents a complete policy from a single pool.
      */
-    struct QuoteData {
+    struct Quote {
         /// @notice Address of the CoverPool issuing the quote.
         address pool;
         /// @notice Restaking committee identifier associated with the policy.
@@ -36,7 +41,7 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
         /// @notice Policy coverage maturity timestamp proposed in the quote.
         uint64 maturityTime;
         /// @notice Expiration timestamp for the signed quote.
-        uint64 quoteExpiry;
+        uint64 expirationTime;
     }
 
     /**
@@ -98,10 +103,10 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
 
     /**
      * @notice Reverts when a quote has already expired.
-     * @param quoteExpiry Expiration timestamp encoded within the quote.
+     * @param expirationTime Expiration timestamp encoded within the quote.
      * @param currentTimestamp Current block timestamp at validation.
      */
-    error QuoteExpired(uint64 quoteExpiry, uint256 currentTimestamp);
+    error QuoteExpired(uint64 expirationTime, uint256 currentTimestamp);
 
     /**
      * @notice Reverts when an incoming quote specifies zero coverage.
@@ -109,14 +114,24 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
     error InvalidCoverageLimit();
 
     /**
-     * @notice Reverts when payout or operator addresses are missing.
+     * @notice Reverts when the payout receiver address is zero.
      */
-    error InvalidQuoteRecipient();
+    error InvalidPayoutReceiver();
+
+    /**
+     * @notice Reverts when the operator address is zero.
+     */
+    error InvalidOperator();
 
     /**
      * @notice Reverts when a required spec identifier is empty.
      */
     error InvalidSpecId();
+
+    /**
+     * @notice Reverts when the terms hash is empty.
+     */
+    error InvalidTermsHash();
 
     /**
      * @notice Reverts when a quote is validated but its signature cannot be recovered to the authorized signer.
@@ -153,11 +168,6 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
     error InvalidFeeBps();
 
     /**
-     * @notice Reverts when attempting to modify the default admin role outside ownership transfers.
-     */
-    error DefaultAdminImmutable();
-
-    /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param curator_ Address assigned as the owner (curator).
      * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
@@ -186,13 +196,13 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
      * @notice Locks coverage for a previously validated policy commit.
      * @dev Requires POLICY_MANAGER_ROLE. Each binding represents a complete policy from this pool.
      * @param policyCommit Deterministic hash representing the policy.
-     * @param quote Quote data that has been validated for binding.
+     * @param quote Quote that has been validated for binding.
      * @param signature EIP-712 signature from an authorized quote signer.
      * @return BoundPolicy metadata describing the pool's coverage allocation.
      */
     function bindPolicy(
         bytes32 policyCommit,
-        QuoteData calldata quote,
+        Quote calldata quote,
         bytes calldata signature
     )
         external
@@ -220,17 +230,11 @@ interface ICoverPool is IAccessControl, IOwnable2Step {
 
     /**
      * @notice Verifies a coverage quote and returns the resulting policy commit hash.
-     * @param quote Quote data struct signed by an authorized quote signer.
+     * @param quote Quote struct signed by an authorized quote signer.
      * @param signature EIP-712 signature authorizing the quote.
      * @return policyCommit Deterministic hash representing the policy.
      */
-    function validateQuote(
-        QuoteData calldata quote,
-        bytes calldata signature
-    )
-        external
-        view
-        returns (bytes32 policyCommit);
+    function verifyQuote(Quote calldata quote, bytes calldata signature) external view returns (bytes32 policyCommit);
 
     /**
      * @notice AccessControl identifier for the PolicyManager binding role.
