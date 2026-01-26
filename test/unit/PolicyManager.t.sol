@@ -836,7 +836,7 @@ contract MockCoverPool {
     constructor() {
         _returnPolicyCommit = keccak256("policy-commit");
         _boundPolicy = ICoverPool.BoundPolicy({
-            policyId: keccak256("pool-policy-id"),
+            policyId: 1,
             specId: keccak256("spec-id"),
             termsHash: keccak256("terms-hash"),
             coverageLimit: 1_000_000e18,
@@ -853,6 +853,7 @@ contract MockCoverPool {
     }
 
     function bindPolicy(
+        uint256 policyId,
         bytes32 policyCommit,
         ICoverPool.Quote calldata quote,
         bytes calldata
@@ -862,6 +863,7 @@ contract MockCoverPool {
     {
         bindPolicyCallCount++;
         lastPolicyCommit = policyCommit;
+        _boundPolicy.policyId = policyId;
         _boundPolicy.coverageLimit = quote.coverageLimit;
         _boundPolicy.payoutReceiver = quote.payoutReceiver;
         _boundPolicy.committeeId = quote.committeeId;

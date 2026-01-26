@@ -49,8 +49,8 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @dev Contains the confirmed terms and coverage details for the bound policy.
      */
     struct BoundPolicy {
-        /// @notice Pool-chosen identifier for the bound policy.
-        bytes32 policyId;
+        /// @notice Pool-provided identifier for the policy.
+        uint256 policyId;
         /// @notice Spec identifier attached to the bound policy.
         bytes32 specId;
         /// @notice Terms hash anchored for the bound policy.
@@ -75,7 +75,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param policyId Pool-provided identifier for the policy.
      * @param coverageLimit Coverage notional locked from the pool.
      */
-    event PolicyBound(bytes32 indexed policyCommit, bytes32 indexed policyId, uint256 coverageLimit);
+    event PolicyBound(bytes32 indexed policyCommit, uint256 indexed policyId, uint256 coverageLimit);
 
     /**
      * @notice Emitted when the curator updates the pool fee basis points.
@@ -162,7 +162,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Reverts when querying data for an unknown pool policy identifier.
      * @param policyId Identifier that failed the lookup.
      */
-    error PolicyNotFound(bytes32 policyId);
+    error PolicyNotFound(uint256 policyId);
 
     /**
      * @notice Reverts when attempting to bind using an empty policy commit value.
@@ -183,6 +183,11 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Reverts when attempting to bind an empty array of vaults.
      */
     error EmptyVaults();
+
+    /**
+     * @notice Reverts when an invalid policy identifier is supplied.
+     */
+    error InvalidPolicyId();
 
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
@@ -228,12 +233,14 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Locks coverage for a previously validated policy commit.
      * @dev Requires POLICY_MANAGER_ROLE. Each binding represents a complete policy from this pool.
+     * @param policyId Pool-provided identifier for the policy.
      * @param policyCommit Deterministic hash representing the policy.
      * @param quote Quote that has been validated for binding.
      * @param signature EIP-712 signature from an authorized quote signer.
      * @return BoundPolicy metadata describing the pool's coverage allocation.
      */
     function bindPolicy(
+        uint256 policyId,
         bytes32 policyCommit,
         Quote calldata quote,
         bytes calldata signature
@@ -259,7 +266,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param policyId Identifier returned during binding.
      * @return BoundPolicy metadata describing the allocation.
      */
-    function getBoundPolicy(bytes32 policyId) external view returns (BoundPolicy memory);
+    function getBoundPolicy(uint256 policyId) external view returns (BoundPolicy memory);
 
     /**
      * @notice Verifies a coverage quote and returns the resulting policy commit hash.

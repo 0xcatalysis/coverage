@@ -37,7 +37,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     address public stakeManager;
     mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
 
-    mapping(bytes32 policyId => BoundPolicy policy) private boundPolicies;
+    mapping(uint256 policyId => BoundPolicy policy) private boundPolicies;
 
     /**
      * @dev Ensures incoming quote matches pool metadata and timing constraints before processing.
@@ -142,6 +142,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
      * @inheritdoc ICoverPool
      */
     function bindPolicy(
+        uint256 policyId,
         bytes32 policyCommit,
         Quote calldata quote,
         bytes calldata signature
@@ -153,6 +154,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         whenNotPaused
         returns (BoundPolicy memory boundPolicy)
     {
+        require(policyId != 0, InvalidPolicyId());
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
         bytes32 calculatedPolicyCommit = _validateQuote(quote, signature);
@@ -160,8 +162,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(!boundPolicyCommits[policyCommit], PolicyAlreadyBound(policyCommit));
 
         boundPolicyCommits[policyCommit] = true;
-
-        bytes32 policyId = _derivePolicyId(policyCommit);
 
         boundPolicy = BoundPolicy({
             policyId: policyId,
@@ -190,9 +190,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
-    function getBoundPolicy(bytes32 policyId) external view override returns (BoundPolicy memory policy) {
+    function getBoundPolicy(uint256 policyId) external view override returns (BoundPolicy memory policy) {
         policy = boundPolicies[policyId];
-        require(policy.policyId != bytes32(0), PolicyNotFound(policyId));
+        require(policy.policyId != 0, PolicyNotFound(policyId));
     }
 
     /**
@@ -256,15 +256,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
 
         address signer = ECDSA.recover(digest, signature);
         require(hasRole(QUOTE_SIGNER_ROLE, signer), QuoteSignatureInvalid());
-    }
-
-    /**
-     * @dev Derives a pool-specific identifier for storing bound policy metadata.
-     * @param policyCommit Commit hash associated with the bound policy.
-     * @return policyId Unique identifier produced for the bound policy.
-     */
-    function _derivePolicyId(bytes32 policyCommit) private view returns (bytes32 policyId) {
-        policyId = keccak256(abi.encodePacked(address(this), policyCommit));
     }
 
     /**

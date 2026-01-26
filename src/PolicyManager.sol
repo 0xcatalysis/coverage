@@ -154,7 +154,7 @@ contract PolicyManager is
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
         ICoverPool.BoundPolicy memory boundPolicy =
-            ICoverPool(quote.pool).bindPolicy(policyCommit, quote, request.signature);
+            ICoverPool(quote.pool).bindPolicy(policyId, policyCommit, quote, request.signature);
 
         uint96 committeeId = uint96(policyId);
         IStakeManager(stakeManager).createCommittee(committeeId, request.coverageAmount);
