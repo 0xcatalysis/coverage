@@ -192,7 +192,64 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            BIND POLICY
+                           BIND VAULTS
+    //////////////////////////////////////////////////////////////*/
+    function test_bindVaults_WhenCallerNotCurator_Reverts() public {
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(policyManager);
+        coverPool.bindVaults(1, vaults);
+    }
+
+    function test_bindVaults_WhenPolicyIdZero_Reverts() public {
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault");
+
+        vm.expectRevert(ICoverPool.InvalidPolicyId.selector);
+        vm.prank(curator);
+        coverPool.bindVaults(0, vaults);
+    }
+
+    function test_bindVaults_WhenPolicyIdTooLarge_Reverts() public {
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault");
+
+        vm.expectRevert(ICoverPool.InvalidPolicyId.selector);
+        vm.prank(curator);
+        coverPool.bindVaults(uint256(type(uint96).max) + 1, vaults);
+    }
+
+    function test_bindVaults_WhenVaultsEmpty_Reverts() public {
+        address[] memory vaults = new address[](0);
+
+        vm.expectRevert(ICoverPool.EmptyVaults.selector);
+        vm.prank(curator);
+        coverPool.bindVaults(1, vaults);
+    }
+
+    function test_bindVaults_WhenValid_EmitsVaultsBound() public {
+        address[] memory vaults = new address[](3);
+        vaults[0] = makeAddr("vault1");
+        vaults[1] = makeAddr("vault2");
+        vaults[2] = makeAddr("vault3");
+
+        vm.mockCall(stakeManager, abi.encodeWithSignature("addCommitteeVaults(uint96,address[])"), "");
+
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.VaultsBound(42, 3);
+
+        vm.prank(curator);
+        coverPool.bindVaults(42, vaults);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           BIND POLICY
     //////////////////////////////////////////////////////////////*/
     function test_bindPolicy_WhenPaused_Reverts() public {
         ICoverPool.Quote memory quote = _defaultQuote();
