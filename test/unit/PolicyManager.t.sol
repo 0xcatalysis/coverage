@@ -724,6 +724,17 @@ contract PolicyManagerTest is Test {
         assertEq(mockStakeManager.lastMaxStake(), customAmount, "Should pass custom coverage amount");
     }
 
+    function test_bindPolicy_WhenPolicyIdWouldOverflowUint96_Reverts() public {
+        bytes32 nextPolicyIdSlot = bytes32(uint256(4)); // _nextPolicyId is at storage slot 4
+        vm.store(address(policyManager), nextPolicyIdSlot, bytes32(uint256(type(uint96).max)));
+
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+
+        vm.expectRevert(IPolicyManager.PolicyIdOverflow.selector);
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+    }
+
     /*//////////////////////////////////////////////////////////////
                             UPGRADE
     //////////////////////////////////////////////////////////////*/

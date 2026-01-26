@@ -124,6 +124,11 @@ interface IPolicyManager is IAccessControl {
     error InvalidPolicyCommit();
 
     /**
+     * @notice Reverts when policy ID would overflow uint96 committee ID limit.
+     */
+    error PolicyIdOverflow();
+
+    /**
      * @notice Pauses policy binding operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */

@@ -147,6 +147,7 @@ contract PolicyManager is
         _validateRequest(request);
 
         uint256 policyId = ++_nextPolicyId;
+        require(policyId <= type(uint96).max, PolicyIdOverflow());
 
         ICoverPool.Quote calldata quote = request.quote;
         bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
