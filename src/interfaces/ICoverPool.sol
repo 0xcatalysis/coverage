@@ -87,9 +87,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Emitted when the curator binds vaults to a policy.
      * @param policyId The policy identifier.
-     * @param vaults The array of vault addresses bound to the policy.
+     * @param vaultCount The number of vaults bound to the policy.
      */
-    event VaultsBound(uint256 indexed policyId, address[] vaults);
+    event VaultsBound(uint256 indexed policyId, uint256 vaultCount);
 
     /**
      * @notice Reverts when a required address argument is zero.

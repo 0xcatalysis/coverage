@@ -126,9 +126,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(policyId != 0 && policyId <= type(uint96).max, ICoverPool.InvalidPolicyId());
         require(vaults.length != 0, ICoverPool.EmptyVaults());
 
-        IStakeManager(stakeManager).addCommitteeVaults(uint96(policyId), vaults);
+        emit VaultsBound(policyId, vaults.length);
 
-        emit VaultsBound(policyId, vaults);
+        IStakeManager(stakeManager).addCommitteeVaults(uint96(policyId), vaults);
     }
 
     /**
