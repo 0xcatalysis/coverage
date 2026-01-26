@@ -122,20 +122,13 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
-    function bindVaultsToCommittee(
-        uint96 committeeId,
-        address[] calldata vaults
-    )
-        external
-        override
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
-        require(committeeId != 0, ICoverPool.InvalidCommitteeId());
+    function bindVaults(uint256 policyId, address[] calldata vaults) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(policyId != 0 && policyId <= type(uint96).max, ICoverPool.InvalidPolicyId());
         require(vaults.length != 0, ICoverPool.EmptyVaults());
 
-        IStakeManager(stakeManager).addCommitteeVaults(committeeId, vaults);
+        IStakeManager(stakeManager).addCommitteeVaults(uint96(policyId), vaults);
 
-        emit VaultsBoundToCommittee(committeeId, vaults);
+        emit VaultsBound(policyId, vaults);
     }
 
     /**
