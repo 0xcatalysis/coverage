@@ -10,6 +10,7 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
+import {IStakeManager} from "./interfaces/IStakeManager.sol";
 
 /**
  * @title CoverPool
@@ -33,6 +34,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
 
     uint16 public override poolFeeBps;
+    address public stakeManager;
     mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
 
     mapping(bytes32 policyId => BoundPolicy policy) private boundPolicies;
@@ -67,12 +69,17 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         address curator_,
         address policyManager_,
         address quoteSigner_,
+        address stakeManager_,
         uint16 poolFeeBps_
     )
         external
         initializer
     {
-        require(curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0), ZeroAddress());
+        require(
+            curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0)
+                && stakeManager_ != address(0),
+            ZeroAddress()
+        );
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
 
         __AccessControlDefaultAdminRules_init(0, curator_);
@@ -82,6 +89,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
         _grantRole(QUOTE_SIGNER_ROLE, quoteSigner_);
 
+        stakeManager = stakeManager_;
         poolFeeBps = poolFeeBps_;
     }
 
@@ -109,6 +117,25 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         poolFeeBps = poolFeeBps_;
 
         emit PoolFeeBpsSet(previousPoolFeeBps, poolFeeBps_);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function bindVaultsToCommittee(
+        uint96 committeeId,
+        address[] calldata vaults
+    )
+        external
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        require(committeeId != 0, ICoverPool.InvalidCommitteeId());
+        require(vaults.length != 0, ICoverPool.EmptyVaults());
+
+        IStakeManager(stakeManager).addCommitteeVaults(committeeId, vaults);
+
+        emit VaultsBoundToCommittee(committeeId, vaults);
     }
 
     /**

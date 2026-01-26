@@ -31,4 +31,12 @@ interface IStakeManager {
      * @return The total stake of the operator in the committee in USD.
      */
     function getOperatorCommitteeStake(address operator, uint96 committeeId) external view returns (uint256);
+
+    /**
+     * @notice Associates vaults with a committee.
+     * @dev Can only be called by a registered cover pool.
+     * @param committeeId The ID of the committee.
+     * @param vaults The array of vault addresses to associate.
+     */
+    function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external;
 }

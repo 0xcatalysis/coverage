@@ -97,7 +97,8 @@ contract CoverPoolFactory is
         bytes32 salt = _computeSalt(params);
 
         address coverPool = coverPoolImplementation.cloneDeterministic(salt);
-        ICoverPool(coverPool).initialize(params.curator, policyManager, params.quoteSigner, params.poolFeeBps);
+        ICoverPool(coverPool)
+            .initialize(params.curator, policyManager, params.quoteSigner, stakeManager, params.poolFeeBps);
 
         // slither-disable-next-line unused-return
         _pools.add(coverPool);
@@ -196,7 +197,7 @@ contract CoverPoolFactory is
     /**
      * @dev Authorizes UUPS upgrades.
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function _authorizeUpgrade(address newImplementation) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(newImplementation != address(0), ZeroAddress());
     }
 

@@ -85,6 +85,13 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     event PoolFeeBpsSet(uint16 previousPoolFeeBps, uint16 newPoolFeeBps);
 
     /**
+     * @notice Emitted when the curator binds vaults to a committee.
+     * @param committeeId The committee identifier.
+     * @param vaults The array of vault addresses bound to the committee.
+     */
+    event VaultsBoundToCommittee(uint96 indexed committeeId, address[] vaults);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -168,13 +175,31 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidFeeBps();
 
     /**
+     * @notice Reverts when the committee identifier is zero.
+     */
+    error InvalidCommitteeId();
+
+    /**
+     * @notice Reverts when attempting to bind an empty array of vaults.
+     */
+    error EmptyVaults();
+
+    /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param curator_ Address assigned as the owner (curator).
      * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
+     * @param stakeManager_ Address of the StakeManager contract for vault binding operations.
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
      */
-    function initialize(address curator_, address policyManager_, address quoteSigner_, uint16 poolFeeBps_) external;
+    function initialize(
+        address curator_,
+        address policyManager_,
+        address quoteSigner_,
+        address stakeManager_,
+        uint16 poolFeeBps_
+    )
+        external;
 
     /**
      * @notice Pauses quoting and policy binding on the pool.
@@ -191,6 +216,14 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
      */
     function setPoolFeeBps(uint16 poolFeeBps_) external;
+
+    /**
+     * @notice Binds vaults to a committee through the StakeManager.
+     * @dev Can only be called by the curator (DEFAULT_ADMIN_ROLE).
+     * @param committeeId The committee identifier.
+     * @param vaults The array of vault addresses to bind.
+     */
+    function bindVaultsToCommittee(uint96 committeeId, address[] calldata vaults) external;
 
     /**
      * @notice Locks coverage for a previously validated policy commit.
