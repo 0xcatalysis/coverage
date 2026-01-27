@@ -145,7 +145,7 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
-    function prepareCommittee(PrepareCommitteeRequest calldata request) external override whenNotPaused {
+    function prepareCommittee(PrepareCommitteeRequest calldata request) external override nonReentrant whenNotPaused {
         require(request.maxStake > 0, InvalidCoverageAmount());
 
         ICoverPool.Quote calldata quote = request.quote;
