@@ -207,22 +207,13 @@ contract CoverPoolTest is Test {
         coverPool.bindVaults(1, vaults);
     }
 
-    function test_bindVaults_WhenPolicyIdZero_Reverts() public {
+    function test_bindVaults_WhenCommitteeIdZero_Reverts() public {
         address[] memory vaults = new address[](1);
         vaults[0] = makeAddr("vault");
 
-        vm.expectRevert(ICoverPool.InvalidPolicyId.selector);
+        vm.expectRevert(ICoverPool.InvalidCommitteeId.selector);
         vm.prank(curator);
         coverPool.bindVaults(0, vaults);
-    }
-
-    function test_bindVaults_WhenPolicyIdTooLarge_Reverts() public {
-        address[] memory vaults = new address[](1);
-        vaults[0] = makeAddr("vault");
-
-        vm.expectRevert(ICoverPool.InvalidPolicyId.selector);
-        vm.prank(curator);
-        coverPool.bindVaults(uint256(type(uint96).max) + 1, vaults);
     }
 
     function test_bindVaults_WhenVaultsEmpty_Reverts() public {

@@ -85,11 +85,11 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     event PoolFeeBpsSet(uint16 previousPoolFeeBps, uint16 newPoolFeeBps);
 
     /**
-     * @notice Emitted when the curator binds vaults to a policy.
-     * @param policyId The policy identifier.
-     * @param vaultCount The number of vaults bound to the policy.
+     * @notice Emitted when the curator binds vaults to a committee.
+     * @param committeeId The committee identifier.
+     * @param vaultCount The number of vaults bound to the committee.
      */
-    event VaultsBound(uint256 indexed policyId, uint256 vaultCount);
+    event VaultsBound(uint96 indexed committeeId, uint256 vaultCount);
 
     /**
      * @notice Reverts when a required address argument is zero.
@@ -223,12 +223,13 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function setPoolFeeBps(uint16 poolFeeBps_) external;
 
     /**
-     * @notice Binds vaults to a policy through the StakeManager.
+     * @notice Binds vaults to a committee through the StakeManager.
      * @dev Can only be called by the curator (DEFAULT_ADMIN_ROLE).
-     * @param policyId The policy identifier.
+     *      Must be called after prepareCommittee() and before bindPolicy().
+     * @param committeeId The committee identifier (not policyId).
      * @param vaults The array of vault addresses to bind.
      */
-    function bindVaults(uint256 policyId, address[] calldata vaults) external;
+    function bindVaults(uint96 committeeId, address[] calldata vaults) external;
 
     /**
      * @notice Locks coverage for a previously validated policy commit.
