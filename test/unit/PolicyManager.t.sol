@@ -416,6 +416,19 @@ contract PolicyManagerTest is Test {
         policyManager.prepareCommittee(request);
     }
 
+    function test_prepareCommittee_WhenCommitteeIdZero_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory baseRequest = _defaultRequest();
+        baseRequest.quote.committeeId = 0;
+
+        IPolicyManager.PrepareCommitteeRequest memory request = IPolicyManager.PrepareCommitteeRequest({
+            quote: baseRequest.quote, signature: abi.encodePacked("mock-signature"), maxStake: 1_000_000e8
+        });
+
+        vm.expectRevert(IPolicyManager.InvalidCommitteeId.selector);
+        vm.prank(curator);
+        policyManager.prepareCommittee(request);
+    }
+
     function test_prepareCommittee_WhenPaused_Reverts() public {
         IPolicyManager.PrepareCommitteeRequest memory request = IPolicyManager.PrepareCommitteeRequest({
             quote: _defaultRequest().quote, signature: abi.encodePacked("mock-signature"), maxStake: 1_000_000e8

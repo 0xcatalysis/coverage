@@ -156,6 +156,7 @@ contract PolicyManager is
         require(ICoverPool(quote.pool).hasRole(bytes32(0), msg.sender), UnauthorizedCaller());
 
         uint96 committeeId = quote.committeeId;
+        require(committeeId != 0, InvalidCommitteeId());
         require(_committeeOperators[committeeId] == address(0), CommitteeAlreadyPrepared(committeeId));
 
         _committeeOperators[committeeId] = quote.operator;

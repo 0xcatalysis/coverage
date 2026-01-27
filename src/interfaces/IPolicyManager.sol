@@ -154,6 +154,11 @@ interface IPolicyManager is IAccessControl {
     error UnauthorizedCaller();
 
     /**
+     * @notice Reverts when committee identifier is zero.
+     */
+    error InvalidCommitteeId();
+
+    /**
      * @notice Reverts when policy ID would overflow uint96 committee ID limit.
      */
     error PolicyIdOverflow();
