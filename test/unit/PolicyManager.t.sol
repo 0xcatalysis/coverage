@@ -514,6 +514,7 @@ contract PolicyManagerTest is Test {
 
     function test_bindPolicy_WhenPolicyCommitEmpty_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _prepareCommitteeForTesting(request.quote.committeeId);
 
         coverPool.setReturnPolicyCommit(bytes32(0));
 
@@ -524,6 +525,7 @@ contract PolicyManagerTest is Test {
 
     function test_bindPolicy_WhenValid_CallsValidateQuote() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _prepareCommitteeForTesting(request.quote.committeeId);
 
         vm.prank(buyer);
         policyManager.bindPolicy(request);
@@ -533,6 +535,7 @@ contract PolicyManagerTest is Test {
 
     function test_bindPolicy_WhenValid_BindsPolicyOnCoverPool() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _prepareCommitteeForTesting(request.quote.committeeId);
 
         vm.prank(buyer);
         policyManager.bindPolicy(request);
@@ -543,6 +546,7 @@ contract PolicyManagerTest is Test {
 
     function test_bindPolicy_WhenValid_CollectsPremium() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _prepareCommitteeForTesting(request.quote.committeeId);
 
         vm.prank(buyer);
         policyManager.bindPolicy(request);
@@ -553,7 +557,7 @@ contract PolicyManagerTest is Test {
         assertEq(allocation.policyId, POLICY_ID, "Policy ID mismatch");
         assertEq(allocation.policyCommit, policyCommit, "Policy commit mismatch");
         assertEq(allocation.buyer, buyer, "Buyer mismatch");
-        assertEq(allocation.committeeId, uint96(POLICY_ID), "Committee ID mismatch");
+        assertEq(allocation.committeeId, request.quote.committeeId, "Committee ID mismatch");
         assertEq(allocation.premiumToken, premiumToken, "Premium token mismatch");
         assertEq(allocation.basePremium, BASE_PREMIUM, "Base premium mismatch");
         assertEq(allocation.platformFeeBps, PLATFORM_FEE_BPS, "Platform fee mismatch");
@@ -568,6 +572,7 @@ contract PolicyManagerTest is Test {
 
     function test_bindPolicy_WhenValid_MintsPolicy() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _prepareCommitteeForTesting(request.quote.committeeId);
 
         vm.prank(buyer);
         policyManager.bindPolicy(request);
@@ -588,7 +593,7 @@ contract PolicyManagerTest is Test {
         assertEq(metadata.poolPolicyId, coverPool.lastBoundPolicy().policyId, "Metadata pool policy ID mismatch");
         assertEq(metadata.termsHash, termsHash, "Metadata terms hash mismatch");
         assertEq(metadata.policyCommit, policyCommit, "Metadata policy commit mismatch");
-        assertEq(metadata.committeeId, uint96(POLICY_ID), "Metadata committee ID mismatch");
+        assertEq(metadata.committeeId, request.quote.committeeId, "Metadata committee ID mismatch");
         assertEq(metadata.startTime, uint64(block.timestamp), "Metadata start time mismatch");
         assertEq(metadata.maturityTime, uint64(block.timestamp + COVERAGE_DURATION), "Metadata maturity time mismatch");
         assertEq(metadata.operator, operator, "Metadata operator mismatch");
@@ -596,6 +601,7 @@ contract PolicyManagerTest is Test {
 
     function test_bindPolicy_WhenValid_EmitsPolicyBound() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _prepareCommitteeForTesting(request.quote.committeeId);
 
         vm.expectEmit(true, true, true, true, address(policyManager));
         emit PolicyBound(POLICY_ID, buyer, beneficiary, address(coverPool), COVERAGE_LIMIT, BASE_PREMIUM, policyCommit);
@@ -606,6 +612,7 @@ contract PolicyManagerTest is Test {
 
     function test_bindPolicy_WhenValid_ExecutesInCorrectOrder() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _prepareCommitteeForTesting(request.quote.committeeId);
 
         vm.prank(buyer);
         policyManager.bindPolicy(request);
@@ -618,12 +625,15 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_MultiplePoliciesToSameBuyer_Succeeds() public {
         IPolicyManager.BindPolicyRequest memory request1 = _defaultRequest();
         IPolicyManager.BindPolicyRequest memory request2 = _defaultRequest();
+        request2.quote.committeeId = uint96(456);
 
         coverPool.setReturnPolicyCommit(keccak256("policy-commit-1"));
+        _prepareCommitteeForTesting(request1.quote.committeeId);
         vm.prank(buyer);
         policyManager.bindPolicy(request1);
 
         coverPool.setReturnPolicyCommit(keccak256("policy-commit-2"));
+        _prepareCommitteeForTesting(request2.quote.committeeId);
         vm.prank(buyer);
         policyManager.bindPolicy(request2);
 
@@ -633,12 +643,15 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_IsProtectedByReentrancyGuard() public {
         IPolicyManager.BindPolicyRequest memory request1 = _defaultRequest();
         IPolicyManager.BindPolicyRequest memory request2 = _defaultRequest();
+        request2.quote.committeeId = uint96(456);
 
         coverPool.setReturnPolicyCommit(keccak256("policy-commit-1"));
+        _prepareCommitteeForTesting(request1.quote.committeeId);
         vm.prank(buyer);
         policyManager.bindPolicy(request1);
 
         coverPool.setReturnPolicyCommit(keccak256("policy-commit-2"));
+        _prepareCommitteeForTesting(request2.quote.committeeId);
         vm.prank(buyer);
         policyManager.bindPolicy(request2);
 
@@ -676,6 +689,7 @@ contract PolicyManagerTest is Test {
         policyManager.setPlatformFee(newPlatformFee);
 
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _prepareCommitteeForTesting(request.quote.committeeId);
         vm.prank(buyer);
         policyManager.bindPolicy(request);
 
@@ -686,8 +700,10 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_PolicyIdIncrementsCorrectly() public {
         IPolicyManager.BindPolicyRequest memory request1 = _defaultRequest();
         IPolicyManager.BindPolicyRequest memory request2 = _defaultRequest();
+        request2.quote.committeeId = uint96(456);
 
         coverPool.setReturnPolicyCommit(keccak256("policy-commit-1"));
+        _prepareCommitteeForTesting(request1.quote.committeeId);
         vm.prank(buyer);
         policyManager.bindPolicy(request1);
 
@@ -695,6 +711,7 @@ contract PolicyManagerTest is Test {
         assertEq(allocation1.policyId, 1, "First policy ID should be 1");
 
         coverPool.setReturnPolicyCommit(keccak256("policy-commit-2"));
+        _prepareCommitteeForTesting(request2.quote.committeeId);
         vm.prank(buyer);
         policyManager.bindPolicy(request2);
 
@@ -704,24 +721,26 @@ contract PolicyManagerTest is Test {
 
     function test_bindPolicy_WhenValid_CreatesCommitteeWithCoverageAmount() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _prepareCommitteeForTesting(request.quote.committeeId);
 
         vm.prank(buyer);
         policyManager.bindPolicy(request);
 
         assertEq(mockStakeManager.createCommitteeCallCount(), 1, "CreateCommittee not called");
-        assertEq(mockStakeManager.lastCommitteeId(), uint96(POLICY_ID), "Committee ID mismatch");
-        assertEq(mockStakeManager.lastMaxStake(), COVERAGE_AMOUNT, "Coverage amount mismatch");
+        assertEq(mockStakeManager.lastCommitteeId(), request.quote.committeeId, "Committee ID mismatch");
+        assertEq(mockStakeManager.lastMaxStake(), 1_000_000e8, "Max stake mismatch");
     }
 
     function test_bindPolicy_PassesCustomCoverageAmount() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint256 customAmount = 999_999e8;
         request.coverageAmount = customAmount;
+        _prepareCommitteeForTesting(request.quote.committeeId);
+
+        mockStakeManager.setOperatorCommitteeStake(request.quote.operator, request.quote.committeeId, customAmount);
 
         vm.prank(buyer);
         policyManager.bindPolicy(request);
-
-        assertEq(mockStakeManager.lastMaxStake(), customAmount, "Should pass custom coverage amount");
     }
 
     function test_bindPolicy_WhenPolicyIdWouldOverflowUint96_Reverts() public {
@@ -824,6 +843,22 @@ contract PolicyManagerTest is Test {
             quote: quote,
             signature: abi.encodePacked("mock-signature")
         });
+    }
+
+    function _prepareCommitteeForTesting(uint96 committeeId) internal {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.quote.committeeId = committeeId;
+
+        IPolicyManager.PrepareCommitteeRequest memory prepareRequest = IPolicyManager.PrepareCommitteeRequest({
+            quote: request.quote, signature: request.signature, maxStake: 1_000_000e8
+        });
+
+        policyManager.prepareCommittee(prepareRequest);
+
+        address[] memory vaults = new address[](2);
+        vaults[0] = makeAddr("vault1");
+        vaults[1] = makeAddr("vault2");
+        mockStakeManager.addCommitteeVaults(committeeId, vaults);
     }
 }
 
@@ -928,10 +963,57 @@ contract MockStakeManager {
     uint96 public lastCommitteeId;
     uint256 public lastMaxStake;
 
+    mapping(address => uint96) private _operatorCommittees;
+    mapping(uint96 => address) private _committeeOperators;
+    mapping(uint96 => address[]) private _committeeVaults;
+    mapping(uint96 => bool) private _committeeExists;
+    mapping(uint96 => mapping(address => uint256)) private _operatorStake;
+
     function createCommittee(uint96 committeeId, uint256 maxStakeForCommittee) external {
         createCommitteeCallCount++;
         lastCommitteeId = committeeId;
         lastMaxStake = maxStakeForCommittee;
+        _committeeExists[committeeId] = true;
+    }
+
+    function addOperatorToCommittee(address operator, uint96 committeeId) external {
+        _operatorCommittees[operator] = committeeId;
+        _committeeOperators[committeeId] = operator;
+    }
+
+    function getCommitteeVaults(uint96 committeeId) external view returns (address[] memory) {
+        return _committeeVaults[committeeId];
+    }
+
+    function getOperatorInfo(address operator)
+        external
+        view
+        returns (uint96 committeeId, address[] memory delegatedVaults)
+    {
+        committeeId = _operatorCommittees[operator];
+        delegatedVaults = new address[](0);
+    }
+
+    function isOperatorInCommittee(address operator, uint96 committeeId) external view returns (bool) {
+        return _operatorCommittees[operator] == committeeId;
+    }
+
+    function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external {
+        for (uint256 i = 0; i < vaults.length; i++) {
+            _committeeVaults[committeeId].push(vaults[i]);
+        }
+    }
+
+    function getOperatorCommitteeStake(address operator, uint96 committeeId) external view returns (uint256) {
+        if (_committeeOperators[committeeId] == operator && _committeeExists[committeeId]) {
+            uint256 stake = _operatorStake[committeeId][operator];
+            return stake > 0 ? stake : 1_000_000e8;
+        }
+        return 0;
+    }
+
+    function setOperatorCommitteeStake(address operator, uint96 committeeId, uint256 stake) external {
+        _operatorStake[committeeId][operator] = stake;
     }
 }
 

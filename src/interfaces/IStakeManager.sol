@@ -39,4 +39,38 @@ interface IStakeManager {
      * @param vaults The array of vault addresses to associate.
      */
     function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external;
+
+    /**
+     * @notice Adds an operator to a committee.
+     * @dev Enforces one-operator-per-committee model.
+     * @param operator The address of the operator.
+     * @param committeeId The ID of the committee to add the operator to.
+     */
+    function addOperatorToCommittee(address operator, uint96 committeeId) external;
+
+    /**
+     * @notice Returns all the vault addresses associated with a committee.
+     * @param committeeId The ID of the committee to check.
+     * @return The array of vault addresses associated with the committee.
+     */
+    function getCommitteeVaults(uint96 committeeId) external view returns (address[] memory);
+
+    /**
+     * @notice Returns the operator information for a given address.
+     * @param operator The address of the operator.
+     * @return committeeId The committee the operator is assigned to.
+     * @return delegatedVaults The vaults the operator has delegated to.
+     */
+    function getOperatorInfo(address operator)
+        external
+        view
+        returns (uint96 committeeId, address[] memory delegatedVaults);
+
+    /**
+     * @notice Checks if an operator is part of a specific committee.
+     * @param operator The address of the operator.
+     * @param committeeId The ID of the committee to check.
+     * @return True if the operator is in the committee, false otherwise.
+     */
+    function isOperatorInCommittee(address operator, uint96 committeeId) external view returns (bool);
 }
