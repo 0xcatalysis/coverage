@@ -669,6 +669,38 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request);
     }
 
+    function test_bindPolicy_WhenBindOperatorDifferentFromPreparedOperator_Reverts() public {
+        uint96 committeeId = uint96(1111);
+        address preparedOperator = operator;
+        address differentOperator = makeAddr("differentOperator");
+
+        _prepareCommitteeForTesting(committeeId);
+
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.quote.committeeId = committeeId;
+        request.quote.operator = differentOperator; // Different operator in binding quote
+
+        ICoverPool.BoundPolicy memory boundPolicy = ICoverPool.BoundPolicy({
+            policyId: 1,
+            specId: specId,
+            termsHash: termsHash,
+            coverageLimit: COVERAGE_LIMIT,
+            payoutReceiver: beneficiary,
+            committeeId: committeeId,
+            operator: differentOperator,
+            startTime: uint64(block.timestamp),
+            maturityTime: uint64(block.timestamp + COVERAGE_DURATION)
+        });
+
+        coverPool.setReturnBoundPolicy(boundPolicy);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.OperatorMismatch.selector, preparedOperator, differentOperator)
+        );
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+    }
+
     function test_bindPolicy_WhenPaused_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
 

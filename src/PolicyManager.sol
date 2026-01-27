@@ -180,6 +180,10 @@ contract PolicyManager is
         uint96 committeeId = quote.committeeId;
 
         require(_committeeOperators[committeeId] != address(0), CommitteeNotPrepared(committeeId));
+        require(
+            _committeeOperators[committeeId] == quote.operator,
+            OperatorMismatch(_committeeOperators[committeeId], quote.operator)
+        );
         require(_committeeUsedByPolicy[committeeId] == 0, CommitteeAlreadyUsed(committeeId));
         _committeeUsedByPolicy[committeeId] = policyId;
 
