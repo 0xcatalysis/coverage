@@ -26,6 +26,7 @@ contract PolicyManagerTest is Test {
     address internal premiumToken;
     address internal payoutToken;
     address internal operator;
+    address internal curator;
 
     PolicyManager internal policyManager;
     MockCoverPool internal coverPool;
@@ -62,6 +63,7 @@ contract PolicyManagerTest is Test {
         premiumToken = makeAddr("premiumToken");
         payoutToken = makeAddr("payoutToken");
         operator = makeAddr("operator");
+        curator = makeAddr("curator");
 
         vm.label(admin, "Admin");
         vm.label(buyer, "Buyer");
@@ -69,8 +71,10 @@ contract PolicyManagerTest is Test {
         vm.label(premiumToken, "PremiumToken");
         vm.label(payoutToken, "PayoutToken");
         vm.label(operator, "Operator");
+        vm.label(curator, "Curator");
 
         coverPool = new MockCoverPool();
+        coverPool.setCurator(curator);
         mockPremiumManager = new MockPremiumManager();
         mockPolicy = new MockPolicy();
         mockStakeManager = new MockStakeManager();
@@ -408,6 +412,7 @@ contract PolicyManagerTest is Test {
         });
 
         vm.expectRevert(IPolicyManager.InvalidCoverageAmount.selector);
+        vm.prank(curator);
         policyManager.prepareCommittee(request);
     }
 
@@ -420,6 +425,7 @@ contract PolicyManagerTest is Test {
         policyManager.pause();
 
         vm.expectRevert();
+        vm.prank(curator);
         policyManager.prepareCommittee(request);
     }
 
@@ -431,6 +437,7 @@ contract PolicyManagerTest is Test {
         coverPool.setReturnPolicyCommit(bytes32(0));
 
         vm.expectRevert(IPolicyManager.InvalidPolicyCommit.selector);
+        vm.prank(curator);
         policyManager.prepareCommittee(request);
     }
 
@@ -439,11 +446,13 @@ contract PolicyManagerTest is Test {
             quote: _defaultRequest().quote, signature: abi.encodePacked("mock-signature"), maxStake: 1_000_000e8
         });
 
+        vm.prank(curator);
         policyManager.prepareCommittee(request);
 
         vm.expectRevert(
             abi.encodeWithSelector(IPolicyManager.CommitteeAlreadyPrepared.selector, request.quote.committeeId)
         );
+        vm.prank(curator);
         policyManager.prepareCommittee(request);
     }
 
@@ -459,6 +468,7 @@ contract PolicyManagerTest is Test {
         vm.expectEmit(true, true, false, true);
         emit CommitteePrepared(committeeId, operator, 0, 1_000_000e8);
 
+        vm.prank(curator);
         policyManager.prepareCommittee(request);
     }
 
@@ -472,6 +482,7 @@ contract PolicyManagerTest is Test {
         });
 
         uint256 callCountBefore = mockStakeManager.createCommitteeCallCount();
+        vm.prank(curator);
         policyManager.prepareCommittee(request);
 
         assertEq(
@@ -491,12 +502,25 @@ contract PolicyManagerTest is Test {
             quote: bindRequest.quote, signature: bindRequest.signature, maxStake: 2_000_000e8
         });
 
+        vm.prank(curator);
         policyManager.prepareCommittee(request);
 
         assertTrue(
             mockStakeManager.isOperatorInCommittee(bindRequest.quote.operator, committeeId),
             "Operator should be in committee"
         );
+    }
+
+    function test_prepareCommittee_WhenCallerNotCurator_Reverts() public {
+        IPolicyManager.PrepareCommitteeRequest memory request = IPolicyManager.PrepareCommitteeRequest({
+            quote: _defaultRequest().quote, signature: abi.encodePacked("mock-signature"), maxStake: 1_000_000e8
+        });
+
+        address attacker = makeAddr("attacker");
+
+        vm.expectRevert(IPolicyManager.UnauthorizedCaller.selector);
+        vm.prank(attacker);
+        policyManager.prepareCommittee(request);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -522,6 +546,7 @@ contract PolicyManagerTest is Test {
             quote: request.quote, signature: request.signature, maxStake: 1_000_000e8
         });
 
+        vm.prank(curator);
         policyManager.prepareCommittee(prepareRequest);
 
         address[] memory vaults = new address[](1);
@@ -548,6 +573,7 @@ contract PolicyManagerTest is Test {
             quote: request.quote, signature: request.signature, maxStake: 1_000_000e8
         });
 
+        vm.prank(curator);
         policyManager.prepareCommittee(prepareRequest);
 
         vm.expectRevert(abi.encodeWithSelector(IPolicyManager.NoVaultsBound.selector, committeeId));
@@ -1082,6 +1108,7 @@ contract PolicyManagerTest is Test {
             quote: request.quote, signature: request.signature, maxStake: 1_000_000e8
         });
 
+        vm.prank(curator);
         policyManager.prepareCommittee(prepareRequest);
 
         address[] memory vaults = new address[](2);
@@ -1097,6 +1124,8 @@ contract MockCoverPool {
     bytes32 public lastPolicyCommit;
     ICoverPool.BoundPolicy private _boundPolicy;
     bool private _useOverriddenPolicy;
+    address public curator;
+    bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00;
 
     constructor() {
         _returnPolicyCommit = keccak256("policy-commit");
@@ -1111,6 +1140,17 @@ contract MockCoverPool {
             startTime: uint64(block.timestamp),
             maturityTime: uint64(block.timestamp + 30 days)
         });
+    }
+
+    function setCurator(address curator_) external {
+        curator = curator_;
+    }
+
+    function hasRole(bytes32 role, address account) external view returns (bool) {
+        if (role == DEFAULT_ADMIN_ROLE) {
+            return account == curator;
+        }
+        return false;
     }
 
     function verifyQuote(ICoverPool.Quote calldata, bytes calldata) external view returns (bytes32) {

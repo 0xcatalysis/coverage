@@ -153,6 +153,8 @@ contract PolicyManager is
         bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
+        require(ICoverPool(quote.pool).hasRole(bytes32(0), msg.sender), UnauthorizedCaller());
+
         uint96 committeeId = quote.committeeId;
         require(_committeeOperators[committeeId] == address(0), CommitteeAlreadyPrepared(committeeId));
 

@@ -149,6 +149,11 @@ interface IPolicyManager is IAccessControl {
     error InvalidPolicyCommit();
 
     /**
+     * @notice Reverts when caller is not authorized for the operation.
+     */
+    error UnauthorizedCaller();
+
+    /**
      * @notice Reverts when policy ID would overflow uint96 committee ID limit.
      */
     error PolicyIdOverflow();
