@@ -36,8 +36,8 @@ contract PolicyManager is
     uint16 public override platformFeeBps;
 
     uint256 private _nextPolicyId;
-    mapping(uint96 committeeId => bool isPrepared) private _preparedCommittees;
     mapping(uint96 committeeId => uint256 boundPolicyId) private _committeeUsedByPolicy;
+    mapping(uint96 committeeId => address operator) private _committeeOperators;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -154,9 +154,9 @@ contract PolicyManager is
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
         uint96 committeeId = quote.committeeId;
-        require(!_preparedCommittees[committeeId], CommitteeAlreadyPrepared(committeeId));
+        require(_committeeOperators[committeeId] == address(0), CommitteeAlreadyPrepared(committeeId));
 
-        _preparedCommittees[committeeId] = true;
+        _committeeOperators[committeeId] = quote.operator;
 
         IStakeManager(stakeManager).createCommittee(committeeId, request.maxStake);
         IStakeManager(stakeManager).addOperatorToCommittee(quote.operator, committeeId);
@@ -176,7 +176,7 @@ contract PolicyManager is
         ICoverPool.Quote calldata quote = request.quote;
         uint96 committeeId = quote.committeeId;
 
-        require(_preparedCommittees[committeeId], CommitteeNotPrepared(committeeId));
+        require(_committeeOperators[committeeId] != address(0), CommitteeNotPrepared(committeeId));
         require(_committeeUsedByPolicy[committeeId] == 0, CommitteeAlreadyUsed(committeeId));
         _committeeUsedByPolicy[committeeId] = policyId;
 
@@ -248,33 +248,6 @@ contract PolicyManager is
             quote.basePremium,
             policyCommit
         );
-    }
-
-    /**
-     * @inheritdoc IPolicyManager
-     */
-    function isCommitteePrepared(uint96 committeeId)
-        external
-        view
-        override
-        returns (bool prepared, uint256 stakeAmount)
-    {
-        if (!_preparedCommittees[committeeId]) {
-            return (false, 0);
-        }
-
-        address[] memory vaults = IStakeManager(stakeManager).getCommitteeVaults(committeeId);
-        if (vaults.length == 0) {
-            return (false, 0);
-        }
-
-        prepared = true;
-
-        try IStakeManager(stakeManager).getOperatorCommitteeStake(address(0), committeeId) returns (uint256 stake) {
-            stakeAmount = stake;
-        } catch {
-            stakeAmount = 0;
-        }
     }
 
     /**

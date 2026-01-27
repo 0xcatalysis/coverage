@@ -263,14 +263,6 @@ interface IPolicyManager is IAccessControl {
     function bindPolicy(BindPolicyRequest calldata request) external;
 
     /**
-     * @notice Checks if a committee is prepared and ready for policy binding.
-     * @param committeeId The committee identifier.
-     * @return prepared True if committee exists and has vaults bound.
-     * @return stakeAmount Current total stake in the committee (USD, 8 decimals).
-     */
-    function isCommitteePrepared(uint96 committeeId) external view returns (bool prepared, uint256 stakeAmount);
-
-    /**
      * @notice Returns true when the contract is paused.
      */
     function paused() external view returns (bool);

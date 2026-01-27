@@ -51,6 +51,7 @@ contract PolicyManagerTest is Test {
     event PremiumManagerSet(address indexed premiumManager_);
     event PolicyContractSet(address indexed policy_);
     event PlatformFeeSet(uint16 indexed platformFeeBps_);
+    event CommitteePrepared(uint96 indexed committeeId, address indexed operator, uint256 vaultCount, uint256 maxStake);
 
     function setUp() public {
         vm.warp(1_000_000);
@@ -398,8 +399,236 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                        PREPARE COMMITTEE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_prepareCommittee_WhenMaxStakeZero_Reverts() public {
+        IPolicyManager.PrepareCommitteeRequest memory request = IPolicyManager.PrepareCommitteeRequest({
+            quote: _defaultRequest().quote, signature: abi.encodePacked("mock-signature"), maxStake: 0
+        });
+
+        vm.expectRevert(IPolicyManager.InvalidCoverageAmount.selector);
+        policyManager.prepareCommittee(request);
+    }
+
+    function test_prepareCommittee_WhenPaused_Reverts() public {
+        IPolicyManager.PrepareCommitteeRequest memory request = IPolicyManager.PrepareCommitteeRequest({
+            quote: _defaultRequest().quote, signature: abi.encodePacked("mock-signature"), maxStake: 1_000_000e8
+        });
+
+        vm.prank(admin);
+        policyManager.pause();
+
+        vm.expectRevert();
+        policyManager.prepareCommittee(request);
+    }
+
+    function test_prepareCommittee_WhenInvalidPolicyCommit_Reverts() public {
+        IPolicyManager.PrepareCommitteeRequest memory request = IPolicyManager.PrepareCommitteeRequest({
+            quote: _defaultRequest().quote, signature: abi.encodePacked("mock-signature"), maxStake: 1_000_000e8
+        });
+
+        coverPool.setReturnPolicyCommit(bytes32(0));
+
+        vm.expectRevert(IPolicyManager.InvalidPolicyCommit.selector);
+        policyManager.prepareCommittee(request);
+    }
+
+    function test_prepareCommittee_WhenAlreadyPrepared_Reverts() public {
+        IPolicyManager.PrepareCommitteeRequest memory request = IPolicyManager.PrepareCommitteeRequest({
+            quote: _defaultRequest().quote, signature: abi.encodePacked("mock-signature"), maxStake: 1_000_000e8
+        });
+
+        policyManager.prepareCommittee(request);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.CommitteeAlreadyPrepared.selector, request.quote.committeeId)
+        );
+        policyManager.prepareCommittee(request);
+    }
+
+    function test_prepareCommittee_Success() public {
+        uint96 committeeId = uint96(456);
+        IPolicyManager.BindPolicyRequest memory bindRequest = _defaultRequest();
+        bindRequest.quote.committeeId = committeeId;
+
+        IPolicyManager.PrepareCommitteeRequest memory request = IPolicyManager.PrepareCommitteeRequest({
+            quote: bindRequest.quote, signature: bindRequest.signature, maxStake: 1_000_000e8
+        });
+
+        vm.expectEmit(true, true, false, true);
+        emit CommitteePrepared(committeeId, operator, 0, 1_000_000e8);
+
+        policyManager.prepareCommittee(request);
+    }
+
+    function test_prepareCommittee_CreatesCommitteeInStakeManager() public {
+        uint96 committeeId = uint96(789);
+        IPolicyManager.BindPolicyRequest memory bindRequest = _defaultRequest();
+        bindRequest.quote.committeeId = committeeId;
+
+        IPolicyManager.PrepareCommitteeRequest memory request = IPolicyManager.PrepareCommitteeRequest({
+            quote: bindRequest.quote, signature: bindRequest.signature, maxStake: 1_500_000e8
+        });
+
+        uint256 callCountBefore = mockStakeManager.createCommitteeCallCount();
+        policyManager.prepareCommittee(request);
+
+        assertEq(
+            mockStakeManager.createCommitteeCallCount(), callCountBefore + 1, "createCommittee should be called once"
+        );
+        assertEq(mockStakeManager.lastCommitteeId(), committeeId, "Committee ID mismatch");
+        assertEq(mockStakeManager.lastMaxStake(), 1_500_000e8, "Max stake mismatch");
+    }
+
+    function test_prepareCommittee_AssignsOperatorToCommittee() public {
+        uint96 committeeId = uint96(999);
+        IPolicyManager.BindPolicyRequest memory bindRequest = _defaultRequest();
+        bindRequest.quote.committeeId = committeeId;
+        bindRequest.quote.operator = makeAddr("customOperator");
+
+        IPolicyManager.PrepareCommitteeRequest memory request = IPolicyManager.PrepareCommitteeRequest({
+            quote: bindRequest.quote, signature: bindRequest.signature, maxStake: 2_000_000e8
+        });
+
+        policyManager.prepareCommittee(request);
+
+        assertTrue(
+            mockStakeManager.isOperatorInCommittee(bindRequest.quote.operator, committeeId),
+            "Operator should be in committee"
+        );
+    }
+
+    /*//////////////////////////////////////////////////////////////
                             BIND POLICY
     //////////////////////////////////////////////////////////////*/
+
+    function test_bindPolicy_WhenCommitteeNotPrepared_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.quote.committeeId = uint96(777);
+
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.CommitteeNotPrepared.selector, uint96(777)));
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+    }
+
+    function test_bindPolicy_WhenInsufficientStake_Reverts() public {
+        uint96 committeeId = uint96(888);
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.quote.committeeId = committeeId;
+        request.quote.operator = makeAddr("lowStakeOperator");
+
+        IPolicyManager.PrepareCommitteeRequest memory prepareRequest = IPolicyManager.PrepareCommitteeRequest({
+            quote: request.quote, signature: request.signature, maxStake: 1_000_000e8
+        });
+
+        policyManager.prepareCommittee(prepareRequest);
+
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault1");
+        mockStakeManager.addCommitteeVaults(committeeId, vaults);
+
+        mockStakeManager.setOperatorCommitteeStake(request.quote.operator, committeeId, 100e8);
+
+        request.coverageAmount = 500_000e8;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.InsufficientStake.selector, committeeId, 500_000e8, 100e8)
+        );
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+    }
+
+    function test_bindPolicy_WhenNoVaultsBound_Reverts() public {
+        uint96 committeeId = uint96(555);
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.quote.committeeId = committeeId;
+
+        IPolicyManager.PrepareCommitteeRequest memory prepareRequest = IPolicyManager.PrepareCommitteeRequest({
+            quote: request.quote, signature: request.signature, maxStake: 1_000_000e8
+        });
+
+        policyManager.prepareCommittee(prepareRequest);
+
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.NoVaultsBound.selector, committeeId));
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+    }
+
+    function test_bindPolicy_WhenCommitteeAlreadyUsed_Reverts() public {
+        uint96 committeeId = uint96(666);
+        _prepareCommitteeForTesting(committeeId);
+
+        IPolicyManager.BindPolicyRequest memory request1 = _defaultRequest();
+        request1.quote.committeeId = committeeId;
+
+        vm.prank(buyer);
+        policyManager.bindPolicy(request1);
+
+        IPolicyManager.BindPolicyRequest memory request2 = _defaultRequest();
+        request2.quote.committeeId = committeeId;
+        request2.quote.expirationTime = uint64(block.timestamp + 2 hours);
+
+        coverPool.setReturnPolicyCommit(keccak256("policy-commit-2"));
+
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.CommitteeAlreadyUsed.selector, committeeId));
+        vm.prank(buyer);
+        policyManager.bindPolicy(request2);
+    }
+
+    function test_bindPolicy_WhenCommitteeIdMismatch_Reverts() public {
+        uint96 committeeId = uint96(444);
+        _prepareCommitteeForTesting(committeeId);
+
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.quote.committeeId = committeeId;
+
+        ICoverPool.BoundPolicy memory mismatchedPolicy = ICoverPool.BoundPolicy({
+            policyId: 1,
+            specId: specId,
+            termsHash: termsHash,
+            coverageLimit: COVERAGE_LIMIT,
+            payoutReceiver: beneficiary,
+            committeeId: uint96(999),
+            operator: operator,
+            startTime: uint64(block.timestamp),
+            maturityTime: uint64(block.timestamp + COVERAGE_DURATION)
+        });
+
+        coverPool.setReturnBoundPolicy(mismatchedPolicy);
+
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.CommitteeIdMismatch.selector, committeeId, uint96(999)));
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+    }
+
+    function test_bindPolicy_WhenOperatorMismatch_Reverts() public {
+        uint96 committeeId = uint96(1010);
+        _prepareCommitteeForTesting(committeeId);
+
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.quote.committeeId = committeeId;
+
+        address mismatchedOperator = makeAddr("mismatchedOperator");
+
+        ICoverPool.BoundPolicy memory mismatchedPolicy = ICoverPool.BoundPolicy({
+            policyId: 1,
+            specId: specId,
+            termsHash: termsHash,
+            coverageLimit: COVERAGE_LIMIT,
+            payoutReceiver: beneficiary,
+            committeeId: committeeId,
+            operator: mismatchedOperator,
+            startTime: uint64(block.timestamp),
+            maturityTime: uint64(block.timestamp + COVERAGE_DURATION)
+        });
+
+        coverPool.setReturnBoundPolicy(mismatchedPolicy);
+
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.OperatorMismatch.selector, operator, mismatchedOperator));
+        vm.prank(buyer);
+        policyManager.bindPolicy(request);
+    }
 
     function test_bindPolicy_WhenPaused_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
@@ -867,6 +1096,7 @@ contract MockCoverPool {
     bytes32 private _returnPolicyCommit;
     bytes32 public lastPolicyCommit;
     ICoverPool.BoundPolicy private _boundPolicy;
+    bool private _useOverriddenPolicy;
 
     constructor() {
         _returnPolicyCommit = keccak256("policy-commit");
@@ -898,14 +1128,20 @@ contract MockCoverPool {
     {
         bindPolicyCallCount++;
         lastPolicyCommit = policyCommit;
-        _boundPolicy.policyId = policyId;
-        _boundPolicy.coverageLimit = quote.coverageLimit;
-        _boundPolicy.payoutReceiver = quote.payoutReceiver;
-        _boundPolicy.committeeId = quote.committeeId;
-        _boundPolicy.operator = quote.operator;
-        _boundPolicy.startTime = quote.startTime;
-        _boundPolicy.maturityTime = quote.maturityTime;
-        _boundPolicy.termsHash = quote.termsHash;
+
+        if (!_useOverriddenPolicy) {
+            _boundPolicy.policyId = policyId;
+            _boundPolicy.coverageLimit = quote.coverageLimit;
+            _boundPolicy.payoutReceiver = quote.payoutReceiver;
+            _boundPolicy.committeeId = quote.committeeId;
+            _boundPolicy.operator = quote.operator;
+            _boundPolicy.startTime = quote.startTime;
+            _boundPolicy.maturityTime = quote.maturityTime;
+            _boundPolicy.termsHash = quote.termsHash;
+        } else {
+            _useOverriddenPolicy = false; // Reset after use
+        }
+
         return _boundPolicy;
     }
 
@@ -919,6 +1155,11 @@ contract MockCoverPool {
 
     function setReturnPolicyCommit(bytes32 commit) external {
         _returnPolicyCommit = commit;
+    }
+
+    function setReturnBoundPolicy(ICoverPool.BoundPolicy memory policy) external {
+        _boundPolicy = policy;
+        _useOverriddenPolicy = true;
     }
 
     function lastBoundPolicy() external view returns (ICoverPool.BoundPolicy memory) {
