@@ -226,10 +226,10 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Binds vaults to a committee through the StakeManager.
      * @dev Can only be called by the curator (DEFAULT_ADMIN_ROLE).
      *      Must be called after prepareCommittee() and before bindPolicy().
-     * @param committeeId The committee identifier (not policyId).
+     * @param policyId The policy identifier, must fit in uint96 for StakeManager compatibility.
      * @param vaults The array of vault addresses to bind.
      */
-    function bindVaults(uint96 committeeId, address[] calldata vaults) external;
+    function bindVaults(uint256 policyId, address[] calldata vaults) external;
 
     /**
      * @notice Locks coverage for a previously validated policy commit.
