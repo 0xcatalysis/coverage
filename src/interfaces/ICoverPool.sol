@@ -175,11 +175,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidFeeBps();
 
     /**
-     * @notice Reverts when the committee identifier is zero.
-     */
-    error InvalidCommitteeId();
-
-    /**
      * @notice Reverts when attempting to bind an empty array of vaults.
      */
     error EmptyVaults();
