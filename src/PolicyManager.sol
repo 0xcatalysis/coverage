@@ -200,9 +200,6 @@ contract PolicyManager is
         ICoverPool.BoundPolicy memory boundPolicy =
             ICoverPool(quote.pool).bindPolicy(policyId, policyCommit, quote, request.signature);
 
-        require(boundPolicy.committeeId == committeeId, CommitteeIdMismatch(committeeId, boundPolicy.committeeId));
-        require(boundPolicy.operator == quote.operator, OperatorMismatch(quote.operator, boundPolicy.operator));
-
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
             policyId: policyId,
             policyCommit: policyCommit,

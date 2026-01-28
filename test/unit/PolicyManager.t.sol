@@ -615,60 +615,6 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request2);
     }
 
-    function test_bindPolicy_WhenCommitteeIdMismatch_Reverts() public {
-        uint96 committeeId = uint96(444);
-        _prepareCommitteeForTesting(committeeId);
-
-        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        request.quote.committeeId = committeeId;
-
-        ICoverPool.BoundPolicy memory mismatchedPolicy = ICoverPool.BoundPolicy({
-            policyId: 1,
-            specId: specId,
-            termsHash: termsHash,
-            coverageLimit: COVERAGE_LIMIT,
-            payoutReceiver: beneficiary,
-            committeeId: uint96(999),
-            operator: operator,
-            startTime: uint64(block.timestamp),
-            maturityTime: uint64(block.timestamp + COVERAGE_DURATION)
-        });
-
-        coverPool.setReturnBoundPolicy(mismatchedPolicy);
-
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.CommitteeIdMismatch.selector, committeeId, uint96(999)));
-        vm.prank(buyer);
-        policyManager.bindPolicy(request);
-    }
-
-    function test_bindPolicy_WhenOperatorMismatch_Reverts() public {
-        uint96 committeeId = uint96(1010);
-        _prepareCommitteeForTesting(committeeId);
-
-        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        request.quote.committeeId = committeeId;
-
-        address mismatchedOperator = makeAddr("mismatchedOperator");
-
-        ICoverPool.BoundPolicy memory mismatchedPolicy = ICoverPool.BoundPolicy({
-            policyId: 1,
-            specId: specId,
-            termsHash: termsHash,
-            coverageLimit: COVERAGE_LIMIT,
-            payoutReceiver: beneficiary,
-            committeeId: committeeId,
-            operator: mismatchedOperator,
-            startTime: uint64(block.timestamp),
-            maturityTime: uint64(block.timestamp + COVERAGE_DURATION)
-        });
-
-        coverPool.setReturnBoundPolicy(mismatchedPolicy);
-
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.OperatorMismatch.selector, operator, mismatchedOperator));
-        vm.prank(buyer);
-        policyManager.bindPolicy(request);
-    }
-
     function test_bindPolicy_WhenBindOperatorDifferentFromPreparedOperator_Reverts() public {
         uint96 committeeId = uint96(1111);
         address preparedOperator = operator;

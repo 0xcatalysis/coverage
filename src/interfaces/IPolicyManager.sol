@@ -196,16 +196,9 @@ interface IPolicyManager is IAccessControl {
     error CommitteeAlreadyUsed(uint96 committeeId);
 
     /**
-     * @notice Reverts when bound policy committee ID doesn't match expected committee ID.
-     * @param expected Expected committee ID from quote.
-     * @param actual Actual committee ID from bound policy.
-     */
-    error CommitteeIdMismatch(uint96 expected, uint96 actual);
-
-    /**
-     * @notice Reverts when bound policy operator doesn't match expected operator.
-     * @param expected Expected operator from quote.
-     * @param actual Actual operator from bound policy.
+     * @notice Reverts when operator doesn't match expected operator.
+     * @param expected Expected operator.
+     * @param actual Actual operator.
      */
     error OperatorMismatch(address expected, address actual);
 
