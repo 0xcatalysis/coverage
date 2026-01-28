@@ -695,7 +695,7 @@ contract PolicyManagerTest is Test {
         coverPool.setReturnBoundPolicy(boundPolicy);
 
         vm.expectRevert(
-            abi.encodeWithSelector(IPolicyManager.OperatorMismatch.selector, preparedOperator, differentOperator)
+            abi.encodeWithSelector(IPolicyManager.OperatorMismatch.selector, differentOperator, preparedOperator)
         );
         vm.prank(buyer);
         policyManager.bindPolicy(request);
