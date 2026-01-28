@@ -192,8 +192,7 @@ contract PolicyManager is
             totalStake >= request.coverageAmount, InsufficientStake(committeeId, request.coverageAmount, totalStake)
         );
 
-        address[] memory committeeVaults = IStakeManager(stakeManager).getCommitteeVaults(committeeId);
-        require(committeeVaults.length > 0, NoVaultsBound(committeeId));
+        require(IStakeManager(stakeManager).getCommitteeVaults(committeeId).length > 0, NoVaultsBound(committeeId));
 
         bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
