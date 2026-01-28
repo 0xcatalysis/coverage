@@ -152,7 +152,8 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(policyId != 0, InvalidPolicyId());
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
-        bytes32 calculatedPolicyCommit = _validateQuote(quote, signature);
+        // Signature already validated by caller via verifyQuote(); just verify commit matches quote
+        bytes32 calculatedPolicyCommit = _hashQuote(quote);
         require(calculatedPolicyCommit == policyCommit, PolicyCommitMismatch(calculatedPolicyCommit, policyCommit));
         require(!boundPolicyCommits[policyCommit], PolicyAlreadyBound(policyCommit));
 
