@@ -52,7 +52,7 @@ contract PolicyManagerTest is Test {
     event PremiumManagerSet(address indexed premiumManager_);
     event PolicyContractSet(address indexed policy_);
     event PlatformFeeSet(uint16 indexed platformFeeBps_);
-    event CommitteePrepared(uint96 indexed committeeId, address indexed operator, uint256 vaultCount, uint256 maxStake);
+    event CommitteePrepared(uint96 indexed committeeId, address indexed operator, uint256 maxStake);
 
     function setUp() public {
         vm.warp(1_000_000);
@@ -479,7 +479,7 @@ contract PolicyManagerTest is Test {
         });
 
         vm.expectEmit(true, true, false, true);
-        emit CommitteePrepared(committeeId, operator, 0, 1_000_000e8);
+        emit CommitteePrepared(committeeId, operator, 1_000_000e8);
 
         vm.prank(curator);
         policyManager.prepareCommittee(request);

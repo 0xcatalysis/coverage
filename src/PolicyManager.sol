@@ -164,7 +164,7 @@ contract PolicyManager is
         IStakeManager(stakeManager).createCommittee(committeeId, request.maxStake);
         IStakeManager(stakeManager).addOperatorToCommittee(quote.operator, committeeId);
 
-        emit CommitteePrepared(committeeId, quote.operator, 0, request.maxStake);
+        emit CommitteePrepared(committeeId, quote.operator, request.maxStake);
     }
 
     /**

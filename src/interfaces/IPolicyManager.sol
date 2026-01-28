@@ -50,10 +50,9 @@ interface IPolicyManager is IAccessControl {
      * @dev Curator must separately call CoverPool.bindVaults() to bind vaults.
      * @param committeeId The committee identifier.
      * @param operator The operator assigned to the committee.
-     * @param vaultCount Reserved for future use (currently always 0).
      * @param maxStake The maximum stake limit.
      */
-    event CommitteePrepared(uint96 indexed committeeId, address indexed operator, uint256 vaultCount, uint256 maxStake);
+    event CommitteePrepared(uint96 indexed committeeId, address indexed operator, uint256 maxStake);
 
     /**
      * @notice Emitted when a policy is successfully bound.
