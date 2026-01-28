@@ -229,17 +229,16 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Locks coverage for a previously validated policy commit.
      * @dev Requires POLICY_MANAGER_ROLE. Each binding represents a complete policy from this pool.
+     *      Signature validation must be performed by the caller via verifyQuote() before calling this function.
      * @param policyId Pool-provided identifier for the policy.
      * @param policyCommit Deterministic hash representing the policy.
      * @param quote Quote that has been validated for binding.
-     * @param signature EIP-712 signature from an authorized quote signer.
      * @return BoundPolicy metadata describing the pool's coverage allocation.
      */
     function bindPolicy(
         uint256 policyId,
         bytes32 policyCommit,
-        Quote calldata quote,
-        bytes calldata signature
+        Quote calldata quote
     )
         external
         returns (BoundPolicy memory);

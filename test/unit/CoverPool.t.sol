@@ -264,7 +264,7 @@ contract CoverPoolTest is Test {
 
         vm.prank(policyManager);
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
-        coverPool.bindPolicy(policyId, policyCommit, quote, signature);
+        coverPool.bindPolicy(policyId, policyCommit, quote);
     }
 
     function test_bindPolicy_WhenCalledByPolicyManager_BindsMetadata() public {
@@ -277,7 +277,7 @@ contract CoverPoolTest is Test {
         emit ICoverPool.PolicyBound(policyCommit, policyId, quote.coverageLimit);
 
         vm.prank(policyManager);
-        ICoverPool.BoundPolicy memory bound = coverPool.bindPolicy(policyId, policyCommit, quote, signature);
+        ICoverPool.BoundPolicy memory bound = coverPool.bindPolicy(policyId, policyCommit, quote);
 
         assertEq(bound.policyId, policyId, "Pool policy id mismatch");
         assertEq(bound.specId, quote.specId, "Spec id mismatch");
@@ -300,11 +300,11 @@ contract CoverPoolTest is Test {
         uint256 policyId = 1;
 
         vm.prank(policyManager);
-        coverPool.bindPolicy(policyId, policyCommit, quote, signature);
+        coverPool.bindPolicy(policyId, policyCommit, quote);
 
         vm.prank(policyManager);
         vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyAlreadyBound.selector, policyCommit));
-        coverPool.bindPolicy(policyId, policyCommit, quote, signature);
+        coverPool.bindPolicy(policyId, policyCommit, quote);
     }
 
     function test_bindPolicy_WhenCommitMismatch_Reverts() public {
@@ -314,13 +314,12 @@ contract CoverPoolTest is Test {
         uint256 policyId = 1;
 
         quote.coverageLimit += 1;
-        bytes memory mismatchedSignature = _signQuote(quote);
 
         vm.prank(policyManager);
         vm.expectRevert(
             abi.encodeWithSelector(ICoverPool.PolicyCommitMismatch.selector, _structHash(quote), validCommit)
         );
-        coverPool.bindPolicy(policyId, validCommit, quote, mismatchedSignature);
+        coverPool.bindPolicy(policyId, validCommit, quote);
     }
 
     function test_bindPolicy_WhenQuoteExpired_Reverts() public {
@@ -333,7 +332,7 @@ contract CoverPoolTest is Test {
 
         vm.prank(policyManager);
         vm.expectRevert(abi.encodeWithSelector(ICoverPool.QuoteExpired.selector, quote.expirationTime, block.timestamp));
-        coverPool.bindPolicy(policyId, policyCommit, quote, signature);
+        coverPool.bindPolicy(policyId, policyCommit, quote);
     }
 
     function test_bindPolicy_WhenCallerNotPolicyManager_Reverts() public {
@@ -347,7 +346,7 @@ contract CoverPoolTest is Test {
                 IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), coverPool.POLICY_MANAGER_ROLE()
             )
         );
-        coverPool.bindPolicy(policyId, policyCommit, quote, signature);
+        coverPool.bindPolicy(policyId, policyCommit, quote);
     }
 
     function test_bindPolicy_WhenPolicyIdZero_Reverts() public {
@@ -357,17 +356,16 @@ contract CoverPoolTest is Test {
 
         vm.prank(policyManager);
         vm.expectRevert(ICoverPool.InvalidPolicyId.selector);
-        coverPool.bindPolicy(0, policyCommit, quote, signature);
+        coverPool.bindPolicy(0, policyCommit, quote);
     }
 
     function test_bindPolicy_WhenPolicyCommitZero_Reverts() public {
         ICoverPool.Quote memory quote = _defaultQuote();
-        bytes memory signature = _signQuote(quote);
         uint256 policyId = 1;
 
         vm.prank(policyManager);
         vm.expectRevert(ICoverPool.InvalidPolicyCommit.selector);
-        coverPool.bindPolicy(policyId, bytes32(0), quote, signature);
+        coverPool.bindPolicy(policyId, bytes32(0), quote);
     }
 
     /*//////////////////////////////////////////////////////////////

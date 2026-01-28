@@ -1151,8 +1151,7 @@ contract MockCoverPool {
     function bindPolicy(
         uint256 policyId,
         bytes32 policyCommit,
-        ICoverPool.Quote calldata quote,
-        bytes calldata
+        ICoverPool.Quote calldata quote
     )
         external
         returns (ICoverPool.BoundPolicy memory)

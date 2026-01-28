@@ -197,8 +197,7 @@ contract PolicyManager is
         bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
-        ICoverPool.BoundPolicy memory boundPolicy =
-            ICoverPool(quote.pool).bindPolicy(policyId, policyCommit, quote, request.signature);
+        ICoverPool.BoundPolicy memory boundPolicy = ICoverPool(quote.pool).bindPolicy(policyId, policyCommit, quote);
 
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
             policyId: policyId,

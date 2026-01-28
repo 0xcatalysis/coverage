@@ -139,20 +139,20 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     function bindPolicy(
         uint256 policyId,
         bytes32 policyCommit,
-        Quote calldata quote,
-        bytes calldata signature
+        Quote calldata quote
     )
         external
         override
         onlyRole(POLICY_MANAGER_ROLE)
-        validateQuote(quote)
         whenNotPaused
         returns (BoundPolicy memory boundPolicy)
     {
         require(policyId != 0, InvalidPolicyId());
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
-        // Signature already validated by caller via verifyQuote(); just verify commit matches quote
+        uint256 currentTimestamp = block.timestamp;
+        require(quote.expirationTime >= currentTimestamp, QuoteExpired(quote.expirationTime, currentTimestamp));
+
         bytes32 calculatedPolicyCommit = _hashQuote(quote);
         require(calculatedPolicyCommit == policyCommit, PolicyCommitMismatch(calculatedPolicyCommit, policyCommit));
         require(!boundPolicyCommits[policyCommit], PolicyAlreadyBound(policyCommit));
