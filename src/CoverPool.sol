@@ -200,9 +200,13 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         override
         validateQuote(quote)
         whenNotPaused
-        returns (bytes32)
+        returns (bytes32 policyCommit)
     {
-        return _validateQuote(quote, signature);
+        policyCommit = _hashQuote(quote);
+        bytes32 digest = _hashTypedDataV4(policyCommit);
+
+        address signer = ECDSA.recover(digest, signature);
+        require(hasRole(QUOTE_SIGNER_ROLE, signer), QuoteSignatureInvalid());
     }
 
     /**
@@ -231,24 +235,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         super.revokeRole(role, account);
-    }
-
-    /**
-     * @dev Validates a quote signature and returns the policy commit hash.
-     * @param quote Quote payload associated with the signature.
-     * @param signature EIP-712 signature produced by an authorized quote signer.
-     * @return policyCommit Deterministic commit hash derived from the quote.
-     */
-    function _validateQuote(Quote calldata quote, bytes calldata signature)
-        private
-        view
-        returns (bytes32 policyCommit)
-    {
-        policyCommit = _hashQuote(quote);
-        bytes32 digest = _hashTypedDataV4(policyCommit);
-
-        address signer = ECDSA.recover(digest, signature);
-        require(hasRole(QUOTE_SIGNER_ROLE, signer), QuoteSignatureInvalid());
     }
 
     /**
