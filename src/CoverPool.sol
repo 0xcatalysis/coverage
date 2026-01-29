@@ -150,9 +150,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(policyId != 0, InvalidPolicyId());
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
-        uint256 currentTimestamp = block.timestamp;
-        require(quote.expirationTime >= currentTimestamp, QuoteExpired(quote.expirationTime, currentTimestamp));
-
         bytes32 calculatedPolicyCommit = _hashQuote(quote);
         require(calculatedPolicyCommit == policyCommit, PolicyCommitMismatch(calculatedPolicyCommit, policyCommit));
         require(!boundPolicyCommits[policyCommit], PolicyAlreadyBound(policyCommit));

@@ -322,19 +322,6 @@ contract CoverPoolTest is Test {
         coverPool.bindPolicy(policyId, validCommit, quote);
     }
 
-    function test_bindPolicy_WhenQuoteExpired_Reverts() public {
-        ICoverPool.Quote memory quote = _defaultQuote();
-        bytes memory signature = _signQuote(quote);
-        bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
-        uint256 policyId = 1;
-
-        vm.warp(quote.expirationTime + 1);
-
-        vm.prank(policyManager);
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.QuoteExpired.selector, quote.expirationTime, block.timestamp));
-        coverPool.bindPolicy(policyId, policyCommit, quote);
-    }
-
     function test_bindPolicy_WhenCallerNotPolicyManager_Reverts() public {
         ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory signature = _signQuote(quote);
