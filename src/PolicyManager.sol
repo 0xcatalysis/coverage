@@ -39,7 +39,8 @@ contract PolicyManager is
 
     uint256 private _nextPolicyId;
     mapping(uint96 committeeId => uint256 boundPolicyId) private _committeeUsedByPolicy;
-    mapping(uint96 committeeId => address operator) private _committeeOperators;
+    mapping(uint256 policyId => address pool) private _policyIdPool;
+    mapping(uint256 policyId => bool bound) private _policyIdBound;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -159,29 +160,15 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
-    function prepareCommittee(PrepareCommitteeRequest calldata request) external override nonReentrant whenNotPaused {
-        require(request.maxStake > 0, InvalidCoverageAmount());
+    function reservePolicyId() external override nonReentrant whenNotPaused returns (uint256 policyId) {
+        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(msg.sender), InvalidCoverPool(msg.sender));
 
-        ICoverPool.Quote calldata quote = request.quote;
+        policyId = ++_nextPolicyId;
+        require(policyId <= type(uint96).max, PolicyIdOverflow());
 
-        require(quote.pool != address(0), InvalidCoverPool(quote.pool));
-        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(quote.pool), InvalidCoverPool(quote.pool));
+        _policyIdPool[policyId] = msg.sender;
 
-        bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
-        require(policyCommit != bytes32(0), InvalidPolicyCommit());
-
-        require(ICoverPool(quote.pool).hasRole(bytes32(0), msg.sender), UnauthorizedCaller());
-
-        uint96 committeeId = quote.committeeId;
-        require(committeeId != 0, InvalidCommitteeId());
-        require(_committeeOperators[committeeId] == address(0), CommitteeAlreadyPrepared(committeeId));
-
-        _committeeOperators[committeeId] = quote.operator;
-
-        IStakeManager(stakeManager).createCommittee(committeeId, request.maxStake);
-        IStakeManager(stakeManager).addOperatorToCommittee(quote.operator, committeeId);
-
-        emit CommitteePrepared(committeeId, quote.operator, request.maxStake);
+        emit PolicyIdReserved(policyId, msg.sender);
     }
 
     /**
@@ -190,23 +177,19 @@ contract PolicyManager is
     function bindPolicy(BindPolicyRequest calldata request) external override nonReentrant whenNotPaused {
         _validateRequest(request);
 
-        uint256 policyId = ++_nextPolicyId;
-        require(policyId <= type(uint96).max, PolicyIdOverflow());
+        uint256 policyId = request.policyId;
+        require(_policyIdPool[policyId] == msg.sender, PolicyIdNotReserved(policyId));
+        require(!_policyIdBound[policyId], PolicyIdAlreadyBound(policyId));
 
         ICoverPool.Quote calldata quote = request.quote;
         uint96 committeeId = quote.committeeId;
-
-        require(_committeeOperators[committeeId] != address(0), CommitteeNotPrepared(committeeId));
-        require(
-            _committeeOperators[committeeId] == quote.operator,
-            OperatorMismatch(quote.operator, _committeeOperators[committeeId])
-        );
         require(_committeeUsedByPolicy[committeeId] == 0, CommitteeAlreadyUsed(committeeId));
         _committeeUsedByPolicy[committeeId] = policyId;
+        _policyIdBound[policyId] = true;
 
         uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(quote.operator, committeeId);
         require(
-            totalStake >= request.coverageAmount, InsufficientStake(committeeId, request.coverageAmount, totalStake)
+            totalStake == request.coverageAmount, InsufficientStake(committeeId, request.coverageAmount, totalStake)
         );
 
         require(IStakeManager(stakeManager).getCommitteeVaults(committeeId).length > 0, NoVaultsBound(committeeId));
@@ -214,7 +197,8 @@ contract PolicyManager is
         bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
-        ICoverPool.BoundPolicy memory boundPolicy = ICoverPool(quote.pool).bindPolicy(policyId, policyCommit, quote);
+        ICoverPool.BoundPolicy memory boundPolicy =
+            ICoverPool(quote.pool).recordBoundPolicy(policyId, policyCommit, quote);
 
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
             policyId: policyId,
@@ -291,11 +275,11 @@ contract PolicyManager is
                 && request.payoutToken != address(0),
             ZeroAddress()
         );
+        require(request.policyId != 0, PolicyIdNotReserved(request.policyId));
         require(request.quote.pool != address(0), InvalidCoverPool(request.quote.pool));
-        require(
-            ICoverPoolFactory(coverPoolFactory).coverPoolExists(request.quote.pool),
-            InvalidCoverPool(request.quote.pool)
-        );
+        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(msg.sender), InvalidCoverPool(msg.sender));
+        require(request.quote.pool == msg.sender, UnauthorizedCaller());
+        require(request.quote.committeeId != 0, InvalidCommitteeId());
         require(request.quote.coverageLimit != 0, InvalidCoverageLimit());
         require(request.quote.basePremium != 0, InvalidBasePremium());
         require(request.coverageAmount != 0, InvalidCoverageAmount());

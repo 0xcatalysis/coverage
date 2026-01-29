@@ -10,25 +10,12 @@ import {ICoverPool} from "./ICoverPool.sol";
  */
 interface IPolicyManager is IAccessControl {
     /**
-     * @notice Request payload for preparing a committee before policy binding.
-     * @dev Committee must be prepared before any policy can bind to it.
-     *      This allows time for operators to delegate stake to the vaults.
-     *      Curator must separately call CoverPool.bindVaults() after preparation.
-     */
-    struct PrepareCommitteeRequest {
-        /// @notice Coverage quote containing committeeId and operator.
-        ICoverPool.Quote quote;
-        /// @notice EIP-712 signature from the pool's authorized quote signer.
-        bytes signature;
-        /// @notice Maximum stake limit for the committee (in USD with 8 decimals).
-        uint256 maxStake;
-    }
-
-    /**
      * @notice Request payload for binding a single-pool coverage policy.
      * @dev Phase 1 supports single pool bindings only; multi-pool aggregation is deferred.
      */
     struct BindPolicyRequest {
+        /// @notice Pre-assigned policy identifier reserved at request time.
+        uint256 policyId;
         /// @notice Policy buyer responsible for paying premiums.
         address buyer;
         /// @notice Beneficiary receiving payouts upon approved claims.
@@ -46,13 +33,11 @@ interface IPolicyManager is IAccessControl {
     }
 
     /**
-     * @notice Emitted when a committee is prepared.
-     * @dev Curator must separately call CoverPool.bindVaults() to bind vaults.
-     * @param committeeId The committee identifier.
-     * @param operator The operator assigned to the committee.
-     * @param maxStake The maximum stake limit.
+     * @notice Emitted when a policyId is reserved for a CoverPool.
+     * @param policyId Identifier reserved for binding and minting.
+     * @param pool CoverPool that reserved the policyId.
      */
-    event CommitteePrepared(uint96 indexed committeeId, address indexed operator, uint256 maxStake);
+    event PolicyIdReserved(uint256 indexed policyId, address indexed pool);
 
     /**
      * @notice Emitted when a policy is successfully bound.
@@ -170,16 +155,16 @@ interface IPolicyManager is IAccessControl {
     error PolicyIdOverflow();
 
     /**
-     * @notice Reverts when committee is not prepared before binding policy.
-     * @param committeeId Committee identifier that needs preparation.
+     * @notice Reverts when a policyId has not been reserved for the caller.
+     * @param policyId Identifier that failed validation.
      */
-    error CommitteeNotPrepared(uint96 committeeId);
+    error PolicyIdNotReserved(uint256 policyId);
 
     /**
-     * @notice Reverts when attempting to prepare an already prepared committee.
-     * @param committeeId Committee identifier already prepared.
+     * @notice Reverts when a policyId has already been bound.
+     * @param policyId Identifier already bound.
      */
-    error CommitteeAlreadyPrepared(uint96 committeeId);
+    error PolicyIdAlreadyBound(uint256 policyId);
 
     /**
      * @notice Reverts when committee doesn't have sufficient stake.
@@ -200,13 +185,6 @@ interface IPolicyManager is IAccessControl {
      * @param committeeId Committee identifier already used.
      */
     error CommitteeAlreadyUsed(uint96 committeeId);
-
-    /**
-     * @notice Reverts when operator doesn't match expected operator.
-     * @param expected Expected operator.
-     * @param actual Actual operator.
-     */
-    error OperatorMismatch(address expected, address actual);
 
     /**
      * @notice Pauses policy binding operations.
@@ -263,17 +241,16 @@ interface IPolicyManager is IAccessControl {
     function setPlatformFee(uint16 platformFeeBps_) external;
 
     /**
-     * @notice Prepares a committee by creating it and assigning operator.
-     * @dev This must be called before bindPolicy(). After calling this, the curator must
-     *      separately call CoverPool.bindVaults() to bind vaults to the committee.
-     *      This allows time for operators to delegate stake to the vaults before policy binding.
-     * @param request Committee preparation parameters.
+     * @notice Reserves a unique policyId for a CoverPool request.
+     * @dev Only registered CoverPools may call this function.
+     * @return policyId Reserved identifier for future binding and minting.
      */
-    function prepareCommittee(PrepareCommitteeRequest calldata request) external;
+    function reservePolicyId() external returns (uint256 policyId);
 
     /**
      * @notice Binds a single-pool coverage policy by validating the quote, collecting premium,
      *         and minting a soulbound policy receipt.
+     * @dev Only registered CoverPools may call this function.
      * @param request Struct containing all binding parameters and signed quote.
      */
     function bindPolicy(BindPolicyRequest calldata request) external;

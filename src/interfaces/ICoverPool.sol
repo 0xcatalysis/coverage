@@ -45,6 +45,38 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     }
 
     /**
+     * @notice Status of a policy draft within the CoverPool.
+     */
+    enum PolicyStatus {
+        None,
+        Created,
+        Cancelled,
+        Bound
+    }
+
+    /**
+     * @notice Buyer request data stored before a policy is bound.
+     */
+    struct PolicyDraft {
+        /// @notice Buyer wallet responsible for paying premiums.
+        address buyer;
+        /// @notice Beneficiary receiving payouts upon approved claims.
+        address beneficiary;
+        /// @notice ERC20 token used for premium payments.
+        address premiumToken;
+        /// @notice ERC20 token used for claim payouts.
+        address payoutToken;
+        /// @notice Coverage amount requested (stake requirement in USD with 8 decimals).
+        uint256 coverageAmount;
+        /// @notice Operator address selected for this policy.
+        address operator;
+        /// @notice Restaking committee identifier created for this policy.
+        uint96 committeeId;
+        /// @notice Draft lifecycle status.
+        PolicyStatus status;
+    }
+
+    /**
      * @notice Binding metadata returned after a successful policy bind.
      * @dev Contains the confirmed terms and coverage details for the bound policy.
      */
@@ -78,11 +110,42 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     event PolicyBound(bytes32 indexed policyCommit, uint256 indexed policyId, uint256 coverageLimit);
 
     /**
+     * @notice Emitted when a buyer creates a policy draft.
+     * @param policyId Pool-assigned identifier reserved for binding.
+     * @param buyer Buyer address requesting coverage.
+     * @param beneficiary Beneficiary address for claims.
+     * @param coverageAmount Requested coverage amount (stake requirement).
+     */
+    event PolicyCreated(
+        uint256 indexed policyId, address indexed buyer, address indexed beneficiary, uint256 coverageAmount
+    );
+
+    /**
+     * @notice Emitted when a buyer cancels a draft policy before binding.
+     * @param policyId Identifier of the cancelled draft.
+     */
+    event PolicyCancelled(uint256 indexed policyId);
+
+    /**
      * @notice Emitted when the curator updates the pool fee basis points.
      * @param previousPoolFeeBps Pool fee basis points before the update.
      * @param newPoolFeeBps Pool fee basis points after the update.
      */
     event PoolFeeBpsSet(uint16 previousPoolFeeBps, uint16 newPoolFeeBps);
+
+    /**
+     * @notice Emitted when the default operator is updated.
+     * @param previousOperator Operator before the update.
+     * @param newOperator Operator after the update.
+     */
+    event DefaultOperatorSet(address indexed previousOperator, address indexed newOperator);
+
+    /**
+     * @notice Emitted when the default max stake is updated.
+     * @param previousMaxStake Max stake before the update.
+     * @param newMaxStake Max stake after the update.
+     */
+    event DefaultMaxStakeSet(uint256 previousMaxStake, uint256 newMaxStake);
 
     /**
      * @notice Emitted when the curator binds vaults to a committee.
@@ -95,6 +158,11 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
+
+    /**
+     * @notice Reverts when a requested coverage amount is zero.
+     */
+    error InvalidCoverageAmount();
 
     /**
      * @notice Reverts when the provided pool address does not match contract storage.
@@ -143,7 +211,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Reverts when a quote is validated but its signature cannot be recovered to the authorized signer.
      */
-    error QuoteSignatureInvalid();
+    error InvalidQuoteSignature();
 
     /**
      * @notice Reverts when attempting to bind a policy with a commit hash that has already been processed.
@@ -185,6 +253,45 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidPolicyId();
 
     /**
+     * @notice Reverts when a policy is not in the expected draft status.
+     * @param status Current status of the policy draft.
+     */
+    error InvalidPolicyStatus(PolicyStatus status);
+
+    /**
+     * @notice Reverts when a policy draft has not been created.
+     * @param policyId Identifier that failed lookup.
+     */
+    error PolicyDraftNotFound(uint256 policyId);
+
+    /**
+     * @notice Reverts when a quote committeeId does not match the draft committeeId.
+     * @param expected Committee identifier stored on the draft.
+     * @param actual Committee identifier supplied in the quote.
+     */
+    error CommitteeIdMismatch(uint96 expected, uint96 actual);
+
+    /**
+     * @notice Reverts when a quote operator does not match the draft operator.
+     * @param expected Operator stored on the draft.
+     * @param actual Operator supplied in the quote.
+     */
+    error OperatorMismatch(address expected, address actual);
+
+    /**
+     * @notice Reverts when a non-buyer attempts to cancel a draft.
+     * @param caller Address that attempted cancellation.
+     */
+    error NotPolicyBuyer(address caller);
+
+    /**
+     * @notice Reverts when payout receiver does not match the draft beneficiary.
+     * @param expected Beneficiary stored on the draft.
+     * @param actual Payout receiver supplied in the quote.
+     */
+    error PayoutReceiverMismatch(address expected, address actual);
+
+    /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param curator_ Address assigned as the owner (curator).
      * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
@@ -218,13 +325,75 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function setPoolFeeBps(uint16 poolFeeBps_) external;
 
     /**
+     * @notice Sets the default operator used for new policy drafts.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param operator_ Operator address to set.
+     */
+    function setDefaultOperator(address operator_) external;
+
+    /**
+     * @notice Sets the default max stake used for committee creation.
+     * @dev Requires DEFAULT_ADMIN_ROLE. If set to zero, coverageAmount is used.
+     * @param maxStake_ Max stake limit in USD with 8 decimals.
+     */
+    function setDefaultMaxStake(uint256 maxStake_) external;
+
+    /**
+     * @notice Creates a policy draft and prepares the committee for coverage.
+     * @dev Returns a policyId that will be minted upon binding. No NFT is minted here.
+     * @param beneficiary Address receiving payouts upon approved claims.
+     * @param premiumToken ERC20 token used for premium payments.
+     * @param payoutToken ERC20 token used for claim payouts.
+     * @param coverageAmount Requested coverage amount (stake requirement in USD with 8 decimals).
+     * @return policyId Identifier reserved for binding and minting.
+     */
+    function requestCoverage(
+        address beneficiary,
+        address premiumToken,
+        address payoutToken,
+        uint256 coverageAmount
+    )
+        external
+        returns (uint256 policyId);
+
+    /**
+     * @notice Cancels a previously created policy draft.
+     * @dev Only the original buyer can cancel, and only before binding.
+     * @param policyId Identifier of the draft to cancel.
+     */
+    function cancelCoverageRequest(uint256 policyId) external;
+
+    /**
+     * @notice Returns draft request data for a policyId.
+     * @param policyId Identifier of the draft to fetch.
+     * @return PolicyDraft request snapshot.
+     */
+    function getCoverageRequest(uint256 policyId) external view returns (PolicyDraft memory);
+
+    /**
      * @notice Binds vaults to a committee through the StakeManager.
      * @dev Can only be called by the curator (DEFAULT_ADMIN_ROLE).
-     *      Must be called after prepareCommittee() and before bindPolicy().
-     * @param policyId The policy identifier, must fit in uint96 for StakeManager compatibility.
+     *      Must be called after requestCoverage() and before bindPolicyForRequest().
+     * @param policyId The policy identifier, must fit in uint96 for StakeManager limits.
      * @param vaults The array of vault addresses to bind.
      */
     function bindVaults(uint256 policyId, address[] calldata vaults) external;
+
+    /**
+     * @notice Curator entrypoint to bind a policy draft via PolicyManager.
+     * @dev Binds vaults, assembles BindPolicyRequest, and forwards to PolicyManager.
+     * @param policyId Policy draft identifier returned during requestCoverage.
+     * @param quote Quote struct signed by an authorized quote signer.
+     * @param signature EIP-712 signature authorizing the quote.
+     * @param vaults Vault addresses to bind to the committee.
+     */
+    function bindPolicyForRequest(
+        uint256 policyId,
+        Quote calldata quote,
+        bytes calldata signature,
+        address[] calldata vaults
+    )
+        external;
 
     /**
      * @notice Locks coverage for a previously validated policy commit.
@@ -235,7 +404,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param quote Quote that has been validated for binding.
      * @return BoundPolicy metadata describing the pool's coverage allocation.
      */
-    function bindPolicy(
+    function recordBoundPolicy(
         uint256 policyId,
         bytes32 policyCommit,
         Quote calldata quote
@@ -288,4 +457,19 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @return The pool fee in basis points.
      */
     function poolFeeBps() external view returns (uint16);
+
+    /**
+     * @notice Returns the default operator address used for new policy drafts.
+     */
+    function defaultOperator() external view returns (address);
+
+    /**
+     * @notice Returns the default max stake used for committee creation.
+     */
+    function defaultMaxStake() external view returns (uint256);
+
+    /**
+     * @notice Returns the PolicyManager address used for binding.
+     */
+    function policyManager() external view returns (address);
 }

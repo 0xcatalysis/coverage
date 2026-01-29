@@ -11,6 +11,7 @@ import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {Test} from "forge-std/Test.sol";
 import {CoverPool} from "../../src/CoverPool.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
+import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 
 contract CoverPoolTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
@@ -24,9 +25,14 @@ contract CoverPoolTest is Test {
 
     address internal curator;
     address internal policyManager;
+    address internal buyer;
     address internal payoutRecipient;
+    address internal premiumToken;
+    address internal payoutToken;
     address internal operator;
     address internal stakeManager;
+
+    MockPolicyManager internal mockPolicyManager;
 
     uint256 internal quoteSignerKey;
     address internal quoteSigner;
@@ -42,7 +48,9 @@ contract CoverPoolTest is Test {
         vm.warp(1_000_000);
 
         curator = makeAddr("curator");
-        policyManager = makeAddr("policyManager");
+        buyer = makeAddr("buyer");
+        premiumToken = makeAddr("premiumToken");
+        payoutToken = makeAddr("payoutToken");
         payoutRecipient = makeAddr("payoutRecipient");
         operator = makeAddr("operator");
         stakeManager = makeAddr("stakeManager");
@@ -51,6 +59,9 @@ contract CoverPoolTest is Test {
 
         vm.label(curator, "Curator");
         vm.label(policyManager, "PolicyManager");
+        vm.label(buyer, "Buyer");
+        vm.label(premiumToken, "PremiumToken");
+        vm.label(payoutToken, "PayoutToken");
         vm.label(payoutRecipient, "PayoutRecipient");
         vm.label(operator, "Operator");
         vm.label(stakeManager, "StakeManager");
@@ -60,10 +71,17 @@ contract CoverPoolTest is Test {
         termsHash = keccak256("TERMS");
         poolFeeBps = 125;
 
+        mockPolicyManager = new MockPolicyManager();
+        policyManager = address(mockPolicyManager);
+        vm.label(policyManager, "PolicyManager");
+
         implementation = new CoverPool();
         address clone = Clones.clone(address(implementation));
         coverPool = CoverPool(clone);
         coverPool.initialize(curator, policyManager, quoteSigner, stakeManager, poolFeeBps);
+
+        vm.prank(curator);
+        coverPool.setDefaultOperator(operator);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -211,7 +229,7 @@ contract CoverPoolTest is Test {
         address[] memory vaults = new address[](1);
         vaults[0] = makeAddr("vault");
 
-        vm.expectRevert(ICoverPool.InvalidPolicyId.selector);
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyDraftNotFound.selector, 0));
         vm.prank(curator);
         coverPool.bindVaults(0, vaults);
     }
@@ -222,7 +240,7 @@ contract CoverPoolTest is Test {
 
         uint256 overflowPolicyId = uint256(type(uint96).max) + 1;
 
-        vm.expectRevert(ICoverPool.InvalidPolicyId.selector);
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyDraftNotFound.selector, overflowPolicyId));
         vm.prank(curator);
         coverPool.bindVaults(overflowPolicyId, vaults);
     }
@@ -230,9 +248,11 @@ contract CoverPoolTest is Test {
     function test_bindVaults_WhenVaultsEmpty_Reverts() public {
         address[] memory vaults = new address[](0);
 
+        uint256 policyId = _createDraft();
+
         vm.expectRevert(ICoverPool.EmptyVaults.selector);
         vm.prank(curator);
-        coverPool.bindVaults(1, vaults);
+        coverPool.bindVaults(policyId, vaults);
     }
 
     function test_bindVaults_WhenValid_EmitsVaultsBound() public {
@@ -241,19 +261,21 @@ contract CoverPoolTest is Test {
         vaults[1] = makeAddr("vault2");
         vaults[2] = makeAddr("vault3");
 
+        uint256 policyId = _createDraft();
+
         vm.mockCall(stakeManager, abi.encodeWithSignature("addCommitteeVaults(uint96,address[])"), "");
 
         vm.expectEmit(true, true, true, true, address(coverPool));
-        emit ICoverPool.VaultsBound(42, 3);
+        emit ICoverPool.VaultsBound(uint96(policyId), 3);
 
         vm.prank(curator);
-        coverPool.bindVaults(42, vaults);
+        coverPool.bindVaults(policyId, vaults);
     }
 
     /*//////////////////////////////////////////////////////////////
                            BIND POLICY
     //////////////////////////////////////////////////////////////*/
-    function test_bindPolicy_WhenPaused_Reverts() public {
+    function test_recordBoundPolicy_WhenPaused_Reverts() public {
         ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory signature = _signQuote(quote);
         bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
@@ -264,20 +286,21 @@ contract CoverPoolTest is Test {
 
         vm.prank(policyManager);
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
-        coverPool.bindPolicy(policyId, policyCommit, quote);
+        coverPool.recordBoundPolicy(policyId, policyCommit, quote);
     }
 
-    function test_bindPolicy_WhenCalledByPolicyManager_BindsMetadata() public {
+    function test_recordBoundPolicy_WhenCalledByPolicyManager_BindsMetadata() public {
+        uint256 policyId = _createDraft();
         ICoverPool.Quote memory quote = _defaultQuote();
+        quote.committeeId = uint96(policyId);
         bytes memory signature = _signQuote(quote);
         bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
-        uint256 policyId = 1;
 
         vm.expectEmit(true, true, false, true, address(coverPool));
         emit ICoverPool.PolicyBound(policyCommit, policyId, quote.coverageLimit);
 
         vm.prank(policyManager);
-        ICoverPool.BoundPolicy memory bound = coverPool.bindPolicy(policyId, policyCommit, quote);
+        ICoverPool.BoundPolicy memory bound = coverPool.recordBoundPolicy(policyId, policyCommit, quote);
 
         assertEq(bound.policyId, policyId, "Pool policy id mismatch");
         assertEq(bound.specId, quote.specId, "Spec id mismatch");
@@ -293,25 +316,27 @@ contract CoverPoolTest is Test {
         assertEq(stored.policyId, bound.policyId, "Stored policy not found");
     }
 
-    function test_bindPolicy_WhenCalledTwice_Reverts() public {
+    function test_recordBoundPolicy_WhenCalledTwice_Reverts() public {
+        uint256 policyId = _createDraft();
         ICoverPool.Quote memory quote = _defaultQuote();
+        quote.committeeId = uint96(policyId);
         bytes memory signature = _signQuote(quote);
         bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
-        uint256 policyId = 1;
 
         vm.prank(policyManager);
-        coverPool.bindPolicy(policyId, policyCommit, quote);
+        coverPool.recordBoundPolicy(policyId, policyCommit, quote);
 
         vm.prank(policyManager);
         vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyAlreadyBound.selector, policyCommit));
-        coverPool.bindPolicy(policyId, policyCommit, quote);
+        coverPool.recordBoundPolicy(policyId, policyCommit, quote);
     }
 
-    function test_bindPolicy_WhenCommitMismatch_Reverts() public {
+    function test_recordBoundPolicy_WhenCommitMismatch_Reverts() public {
+        uint256 policyId = _createDraft();
         ICoverPool.Quote memory quote = _defaultQuote();
+        quote.committeeId = uint96(policyId);
         bytes memory originalSignature = _signQuote(quote);
         bytes32 validCommit = coverPool.verifyQuote(quote, originalSignature);
-        uint256 policyId = 1;
 
         quote.coverageLimit += 1;
 
@@ -319,40 +344,42 @@ contract CoverPoolTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(ICoverPool.PolicyCommitMismatch.selector, _structHash(quote), validCommit)
         );
-        coverPool.bindPolicy(policyId, validCommit, quote);
+        coverPool.recordBoundPolicy(policyId, validCommit, quote);
     }
 
-    function test_bindPolicy_WhenCallerNotPolicyManager_Reverts() public {
+    function test_recordBoundPolicy_WhenCallerNotPolicyManager_Reverts() public {
+        uint256 policyId = _createDraft();
         ICoverPool.Quote memory quote = _defaultQuote();
+        quote.committeeId = uint96(policyId);
         bytes memory signature = _signQuote(quote);
         bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
-        uint256 policyId = 1;
 
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), coverPool.POLICY_MANAGER_ROLE()
             )
         );
-        coverPool.bindPolicy(policyId, policyCommit, quote);
+        coverPool.recordBoundPolicy(policyId, policyCommit, quote);
     }
 
-    function test_bindPolicy_WhenPolicyIdZero_Reverts() public {
+    function test_recordBoundPolicy_WhenPolicyIdZero_Reverts() public {
         ICoverPool.Quote memory quote = _defaultQuote();
         bytes memory signature = _signQuote(quote);
         bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
 
         vm.prank(policyManager);
-        vm.expectRevert(ICoverPool.InvalidPolicyId.selector);
-        coverPool.bindPolicy(0, policyCommit, quote);
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyDraftNotFound.selector, 0));
+        coverPool.recordBoundPolicy(0, policyCommit, quote);
     }
 
-    function test_bindPolicy_WhenPolicyCommitZero_Reverts() public {
+    function test_recordBoundPolicy_WhenPolicyCommitZero_Reverts() public {
+        uint256 policyId = _createDraft();
         ICoverPool.Quote memory quote = _defaultQuote();
-        uint256 policyId = 1;
+        quote.committeeId = uint96(policyId);
 
         vm.prank(policyManager);
         vm.expectRevert(ICoverPool.InvalidPolicyCommit.selector);
-        coverPool.bindPolicy(policyId, bytes32(0), quote);
+        coverPool.recordBoundPolicy(policyId, bytes32(0), quote);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -406,7 +433,7 @@ contract CoverPoolTest is Test {
         uint256 otherKey = uint256(keccak256("invalid-key"));
         bytes memory signature = _signQuoteWithKey(quote, otherKey);
 
-        vm.expectRevert(ICoverPool.QuoteSignatureInvalid.selector);
+        vm.expectRevert(ICoverPool.InvalidQuoteSignature.selector);
         coverPool.verifyQuote(quote, signature);
     }
 
@@ -695,6 +722,11 @@ contract CoverPoolTest is Test {
     /*//////////////////////////////////////////////////////////////
                                 HELPERS
     //////////////////////////////////////////////////////////////*/
+    function _createDraft() private returns (uint256 policyId) {
+        vm.prank(buyer);
+        policyId = coverPool.requestCoverage(payoutRecipient, premiumToken, payoutToken, 1_000_000e8);
+    }
+
     function _defaultQuote() private view returns (ICoverPool.Quote memory quote) {
         quote = ICoverPool.Quote({
             pool: address(coverPool),
@@ -737,5 +769,24 @@ contract CoverPoolTest is Test {
             uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );
+    }
+}
+
+contract MockPolicyManager {
+    uint256 public nextPolicyId;
+    uint256 public bindPolicyCallCount;
+    IPolicyManager.BindPolicyRequest private _lastBindRequest;
+
+    function reservePolicyId() external returns (uint256 policyId) {
+        policyId = ++nextPolicyId;
+    }
+
+    function bindPolicy(IPolicyManager.BindPolicyRequest calldata request) external {
+        bindPolicyCallCount++;
+        _lastBindRequest = request;
+    }
+
+    function lastBindRequest() external view returns (IPolicyManager.BindPolicyRequest memory) {
+        return _lastBindRequest;
     }
 }

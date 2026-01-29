@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 /**
  * @title IOwnable2Step
- * @notice Minimal ERC-173 compatible interface for two-step ownership transfers.
+ * @notice Minimal ERC-173 interface for two-step ownership transfers.
  */
 interface IOwnable2Step {
     /**

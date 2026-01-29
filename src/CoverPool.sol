@@ -10,6 +10,7 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
+import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {IStakeManager} from "./interfaces/IStakeManager.sol";
 
 /**
@@ -38,6 +39,11 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
 
     mapping(uint256 policyId => BoundPolicy policy) private boundPolicies;
+    mapping(uint256 policyId => PolicyDraft draft) private policyDrafts;
+
+    address public override policyManager;
+    address public override defaultOperator;
+    uint256 public override defaultMaxStake;
 
     /**
      * @dev Ensures incoming quote matches pool metadata and timing constraints before processing.
@@ -89,6 +95,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
         _grantRole(QUOTE_SIGNER_ROLE, quoteSigner_);
 
+        policyManager = policyManager_;
         stakeManager = stakeManager_;
         poolFeeBps = poolFeeBps_;
     }
@@ -122,21 +129,148 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
-    function bindVaults(uint256 policyId, address[] calldata vaults) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(policyId != 0, InvalidPolicyId());
-        require(vaults.length != 0, ICoverPool.EmptyVaults());
-        require(policyId <= type(uint96).max, InvalidPolicyId());
-
-        uint96 committeeId = uint96(policyId);
-        emit VaultsBound(committeeId, vaults.length);
-
-        IStakeManager(stakeManager).addCommitteeVaults(committeeId, vaults);
+    function setDefaultOperator(address operator_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(operator_ != address(0), InvalidOperator());
+        address previous = defaultOperator;
+        defaultOperator = operator_;
+        emit DefaultOperatorSet(previous, operator_);
     }
 
     /**
      * @inheritdoc ICoverPool
      */
-    function bindPolicy(
+    function setDefaultMaxStake(uint256 maxStake_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 previous = defaultMaxStake;
+        defaultMaxStake = maxStake_;
+        emit DefaultMaxStakeSet(previous, maxStake_);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function requestCoverage(
+        address beneficiary,
+        address premiumToken,
+        address payoutToken,
+        uint256 coverageAmount
+    )
+        external
+        override
+        whenNotPaused
+        returns (uint256 policyId)
+    {
+        require(beneficiary != address(0) && premiumToken != address(0) && payoutToken != address(0), ZeroAddress());
+        require(coverageAmount != 0, InvalidCoverageAmount());
+        require(defaultOperator != address(0), InvalidOperator());
+
+        policyId = IPolicyManager(policyManager).reservePolicyId();
+        require(policyId != 0, InvalidPolicyId());
+        require(policyId <= type(uint96).max, InvalidPolicyId());
+
+        uint96 committeeId = uint96(policyId);
+        uint256 maxStake = defaultMaxStake == 0 ? coverageAmount : defaultMaxStake;
+        require(maxStake != 0, InvalidCoverageAmount());
+
+        IStakeManager(stakeManager).createCommittee(committeeId, maxStake);
+        IStakeManager(stakeManager).addOperatorToCommittee(defaultOperator, committeeId);
+
+        policyDrafts[policyId] = PolicyDraft({
+            buyer: msg.sender,
+            beneficiary: beneficiary,
+            premiumToken: premiumToken,
+            payoutToken: payoutToken,
+            coverageAmount: coverageAmount,
+            operator: defaultOperator,
+            committeeId: committeeId,
+            status: PolicyStatus.Created
+        });
+
+        emit PolicyCreated(policyId, msg.sender, beneficiary, coverageAmount);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function cancelCoverageRequest(uint256 policyId) external override whenNotPaused {
+        PolicyDraft storage draft = policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
+        require(draft.buyer == msg.sender, NotPolicyBuyer(msg.sender));
+
+        draft.status = PolicyStatus.Cancelled;
+        emit PolicyCancelled(policyId);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function getCoverageRequest(uint256 policyId) external view override returns (PolicyDraft memory draft) {
+        draft = policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function bindVaults(uint256 policyId, address[] calldata vaults) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        PolicyDraft storage draft = policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
+        require(vaults.length != 0, ICoverPool.EmptyVaults());
+
+        emit VaultsBound(draft.committeeId, vaults.length);
+
+        IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function bindPolicyForRequest(
+        uint256 policyId,
+        Quote calldata quote,
+        bytes calldata signature,
+        address[] calldata vaults
+    )
+        external
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+        whenNotPaused
+    {
+        PolicyDraft storage draft = policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
+        require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
+        require(quote.committeeId == draft.committeeId, CommitteeIdMismatch(draft.committeeId, quote.committeeId));
+        require(quote.operator == draft.operator, OperatorMismatch(draft.operator, quote.operator));
+        require(
+            quote.payoutReceiver == draft.beneficiary, PayoutReceiverMismatch(draft.beneficiary, quote.payoutReceiver)
+        );
+
+        if (vaults.length != 0) {
+            emit VaultsBound(draft.committeeId, vaults.length);
+            IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
+        }
+
+        IPolicyManager(policyManager)
+            .bindPolicy(
+                IPolicyManager.BindPolicyRequest({
+                    policyId: policyId,
+                    buyer: draft.buyer,
+                    beneficiary: draft.beneficiary,
+                    premiumToken: draft.premiumToken,
+                    payoutToken: draft.payoutToken,
+                    coverageAmount: draft.coverageAmount,
+                    quote: quote,
+                    signature: signature
+                })
+            );
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function recordBoundPolicy(
         uint256 policyId,
         bytes32 policyCommit,
         Quote calldata quote
@@ -147,7 +281,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         whenNotPaused
         returns (BoundPolicy memory boundPolicy)
     {
-        require(policyId != 0, InvalidPolicyId());
+        PolicyDraft storage draft = policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
         bytes32 calculatedPolicyCommit = _hashQuote(quote);
@@ -169,6 +305,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         });
 
         boundPolicies[policyId] = boundPolicy;
+        draft.status = PolicyStatus.Bound;
 
         emit PolicyBound(policyCommit, policyId, quote.coverageLimit);
     }
@@ -206,7 +343,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         bytes32 digest = _hashTypedDataV4(policyCommit);
 
         address signer = ECDSA.recover(digest, signature);
-        require(hasRole(QUOTE_SIGNER_ROLE, signer), QuoteSignatureInvalid());
+        require(hasRole(QUOTE_SIGNER_ROLE, signer), InvalidQuoteSignature());
     }
 
     /**
