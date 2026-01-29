@@ -331,6 +331,7 @@ abstract contract Deploy is Script {
                     contracts.policyProxy,
                     external_.stakeManager,
                     contracts.claimManagerProxy,
+                    roles.deployer, // Temporary placeholder for coverPoolFactory, will be set after factory deployment
                     roles.platformFeeBps
                 )
             ),
@@ -353,6 +354,8 @@ abstract contract Deploy is Script {
             opts
         );
         contracts.coverPoolFactoryImpl = Upgrades.getImplementationAddress(contracts.coverPoolFactoryProxy);
+
+        PolicyManager(contracts.policyManagerProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
     }
 
     /**

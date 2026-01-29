@@ -7,6 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
+import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
 import {IPolicy} from "./interfaces/IPolicy.sol";
 import {IStakeManager} from "./interfaces/IStakeManager.sol";
@@ -33,6 +34,7 @@ contract PolicyManager is
     address public override policy;
     address public override stakeManager;
     address public override claimManager;
+    address public override coverPoolFactory;
     uint16 public override platformFeeBps;
 
     uint256 private _nextPolicyId;
@@ -51,6 +53,7 @@ contract PolicyManager is
      * @param policy_ Address of the Policy contract.
      * @param stakeManager_ Address of the StakeManager contract.
      * @param claimManager_ Address of the ClaimManager contract.
+     * @param coverPoolFactory_ Address of the CoverPoolFactory contract.
      * @param platformFeeBps_ Initial platform fee in basis points.
      */
     function initialize(
@@ -59,6 +62,7 @@ contract PolicyManager is
         address policy_,
         address stakeManager_,
         address claimManager_,
+        address coverPoolFactory_,
         uint16 platformFeeBps_
     )
         external
@@ -66,7 +70,7 @@ contract PolicyManager is
     {
         require(
             admin_ != address(0) && premiumManager_ != address(0) && policy_ != address(0)
-                && stakeManager_ != address(0) && claimManager_ != address(0),
+                && stakeManager_ != address(0) && claimManager_ != address(0) && coverPoolFactory_ != address(0),
             ZeroAddress()
         );
         require(platformFeeBps_ <= _MAX_TOTAL_FEE_BPS, InvalidPlatformFee(platformFeeBps_));
@@ -80,6 +84,7 @@ contract PolicyManager is
         policy = policy_;
         stakeManager = stakeManager_;
         claimManager = claimManager_;
+        coverPoolFactory = coverPoolFactory_;
         platformFeeBps = platformFeeBps_;
     }
 
@@ -145,10 +150,22 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
+    function setCoverPoolFactory(address coverPoolFactory_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(coverPoolFactory_ != address(0), ZeroAddress());
+        coverPoolFactory = coverPoolFactory_;
+        emit CoverPoolFactorySet(coverPoolFactory_);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
     function prepareCommittee(PrepareCommitteeRequest calldata request) external override nonReentrant whenNotPaused {
         require(request.maxStake > 0, InvalidCoverageAmount());
 
         ICoverPool.Quote calldata quote = request.quote;
+
+        require(quote.pool != address(0), InvalidQuotePool(quote.pool));
+        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(quote.pool), InvalidQuotePool(quote.pool));
 
         bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
@@ -274,7 +291,11 @@ contract PolicyManager is
                 && request.payoutToken != address(0),
             ZeroAddress()
         );
-        require(request.quote.pool != address(0), InvalidQuotePool());
+        require(request.quote.pool != address(0), InvalidQuotePool(request.quote.pool));
+        require(
+            ICoverPoolFactory(coverPoolFactory).coverPoolExists(request.quote.pool),
+            InvalidQuotePool(request.quote.pool)
+        );
         require(request.quote.coverageLimit != 0, InvalidCoverageLimit());
         require(request.quote.basePremium != 0, InvalidBasePremium());
         require(request.coverageAmount != 0, InvalidCoverageAmount());

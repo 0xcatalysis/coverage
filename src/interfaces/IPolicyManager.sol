@@ -105,6 +105,12 @@ interface IPolicyManager is IAccessControl {
     event ClaimManagerSet(address indexed claimManager_);
 
     /**
+     * @notice Emitted when the CoverPoolFactory dependency is set or updated.
+     * @param coverPoolFactory_ Address of the cover pool factory contract.
+     */
+    event CoverPoolFactorySet(address indexed coverPoolFactory_);
+
+    /**
      * @notice Reverts when a zero address is provided where not allowed.
      */
     error ZeroAddress();
@@ -138,9 +144,10 @@ interface IPolicyManager is IAccessControl {
     error InvalidCoverageAmount();
 
     /**
-     * @notice Reverts when the quote pool address does not match expected pool.
+     * @notice Reverts when the quote pool address is not registered in the factory.
+     * @param pool Pool address that failed validation.
      */
-    error InvalidQuotePool();
+    error InvalidQuotePool(address pool);
 
     /**
      * @notice Reverts when required policy commit hash is empty.
@@ -242,6 +249,13 @@ interface IPolicyManager is IAccessControl {
     function setClaimManager(address claimManager_) external;
 
     /**
+     * @notice Sets the CoverPoolFactory contract reference.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param coverPoolFactory_ Address of the CoverPoolFactory implementation.
+     */
+    function setCoverPoolFactory(address coverPoolFactory_) external;
+
+    /**
      * @notice Sets the platform fee charged on policy premiums.
      * @dev Requires DEFAULT_ADMIN_ROLE. Must not exceed 25% (2500 bps).
      * @param platformFeeBps_ Platform fee in basis points (1 bps = 0.01%).
@@ -288,6 +302,11 @@ interface IPolicyManager is IAccessControl {
      * @notice Returns the configured ClaimManager address.
      */
     function claimManager() external view returns (address);
+
+    /**
+     * @notice Returns the configured CoverPoolFactory address.
+     */
+    function coverPoolFactory() external view returns (address);
 
     /**
      * @notice Returns the platform fee in basis points.
