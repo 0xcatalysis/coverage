@@ -164,8 +164,8 @@ contract PolicyManager is
 
         ICoverPool.Quote calldata quote = request.quote;
 
-        require(quote.pool != address(0), InvalidQuotePool(quote.pool));
-        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(quote.pool), InvalidQuotePool(quote.pool));
+        require(quote.pool != address(0), InvalidCoverPool(quote.pool));
+        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(quote.pool), InvalidCoverPool(quote.pool));
 
         bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
@@ -291,10 +291,10 @@ contract PolicyManager is
                 && request.payoutToken != address(0),
             ZeroAddress()
         );
-        require(request.quote.pool != address(0), InvalidQuotePool(request.quote.pool));
+        require(request.quote.pool != address(0), InvalidCoverPool(request.quote.pool));
         require(
             ICoverPoolFactory(coverPoolFactory).coverPoolExists(request.quote.pool),
-            InvalidQuotePool(request.quote.pool)
+            InvalidCoverPool(request.quote.pool)
         );
         require(request.quote.coverageLimit != 0, InvalidCoverageLimit());
         require(request.quote.basePremium != 0, InvalidBasePremium());

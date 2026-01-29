@@ -144,10 +144,10 @@ interface IPolicyManager is IAccessControl {
     error InvalidCoverageAmount();
 
     /**
-     * @notice Reverts when the quote pool address is not registered in the factory.
+     * @notice Reverts when the cover pool address is not registered in the factory.
      * @param pool Pool address that failed validation.
      */
-    error InvalidQuotePool(address pool);
+    error InvalidCoverPool(address pool);
 
     /**
      * @notice Reverts when required policy commit hash is empty.

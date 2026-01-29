@@ -447,7 +447,7 @@ contract PolicyManagerTest is Test {
             quote: request.quote, signature: request.signature, maxStake: 1_000_000e8
         });
 
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidQuotePool.selector, address(0)));
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidCoverPool.selector, address(0)));
         vm.prank(curator);
         policyManager.prepareCommittee(prepareRequest);
     }
@@ -463,7 +463,7 @@ contract PolicyManagerTest is Test {
             quote: request.quote, signature: request.signature, maxStake: 1_000_000e8
         });
 
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidQuotePool.selector, address(unregisteredPool)));
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidCoverPool.selector, address(unregisteredPool)));
         vm.prank(curator);
         policyManager.prepareCommittee(prepareRequest);
     }
@@ -657,7 +657,7 @@ contract PolicyManagerTest is Test {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         request.quote.pool = address(0);
 
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidQuotePool.selector, address(0)));
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidCoverPool.selector, address(0)));
         vm.prank(buyer);
         policyManager.bindPolicy(request);
     }
@@ -668,7 +668,7 @@ contract PolicyManagerTest is Test {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         request.quote.pool = address(unregisteredPool);
 
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidQuotePool.selector, address(unregisteredPool)));
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidCoverPool.selector, address(unregisteredPool)));
         vm.prank(buyer);
         policyManager.bindPolicy(request);
     }
