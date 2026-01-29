@@ -518,9 +518,10 @@ contract PolicyManagerTest is Test {
         vm.prank(curator);
         policyManager.prepareCommittee(request);
 
-        assertTrue(
-            mockStakeManager.isOperatorInCommittee(bindRequest.quote.operator, committeeId),
-            "Operator should be in committee"
+        assertEq(
+            mockStakeManager.getOperatorCommittee(bindRequest.quote.operator),
+            committeeId,
+            "Operator should be assigned to committee"
         );
     }
 
@@ -1256,17 +1257,9 @@ contract MockStakeManager {
         return _committeeVaults[committeeId];
     }
 
-    function getOperatorInfo(address operator)
-        external
-        view
-        returns (uint96 committeeId, address[] memory delegatedVaults)
-    {
-        committeeId = _operatorCommittees[operator];
-        delegatedVaults = new address[](0);
-    }
-
-    function isOperatorInCommittee(address operator, uint96 committeeId) external view returns (bool) {
-        return _operatorCommittees[operator] == committeeId;
+    // Test helper to verify operator committee assignment
+    function getOperatorCommittee(address operator) external view returns (uint96) {
+        return _operatorCommittees[operator];
     }
 
     function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external {
