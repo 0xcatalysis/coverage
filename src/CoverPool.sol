@@ -142,6 +142,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
+    // slither-disable-next-line reentrancy-benign,reentrancy-events
     function requestCoverage(
         address beneficiary,
         address claimer,
@@ -167,9 +168,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
 
         uint96 committeeId = uint96(policyId);
 
-        IStakeManager(stakeManager).createCommittee(committeeId, coverageAmount);
-        IStakeManager(stakeManager).addOperatorToCommittee(poolOperator, committeeId);
-
         policyDrafts[policyId] = PolicyDraft({
             buyer: msg.sender,
             beneficiary: beneficiary,
@@ -183,6 +181,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         });
 
         emit CoverageRequested(policyId, msg.sender, beneficiary, claimer, coverageAmount);
+
+        IStakeManager(stakeManager).createCommittee(committeeId, coverageAmount);
+        IStakeManager(stakeManager).addOperatorToCommittee(poolOperator, committeeId);
     }
 
     /**
@@ -223,9 +224,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         );
         require(vaults.length != 0, ICoverPool.EmptyVaults());
 
-        IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
-
         emit PolicyForRequestBound(policyId, draft.committeeId, vaults.length);
+
+        IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
 
         IPolicyManager(policyManager)
             .bindPolicy(
