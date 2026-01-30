@@ -564,6 +564,7 @@ contract ClaimManagerTest is Test {
             IPolicy.PolicyMetadata({
                 buyer: address(0),
                 beneficiary: address(0),
+                claimer: address(0),
                 premiumToken: address(0),
                 basePremium: 0,
                 payoutToken: address(0),
@@ -1836,6 +1837,7 @@ contract ClaimManagerTest is Test {
             IPolicy.PolicyMetadata({
                 buyer: address(0),
                 beneficiary: address(0),
+                claimer: address(0),
                 premiumToken: address(0),
                 basePremium: 0,
                 payoutToken: address(0),
@@ -2242,6 +2244,7 @@ contract ClaimManagerTest is Test {
         metadata = IPolicy.PolicyMetadata({
             buyer: buyer,
             beneficiary: buyer,
+            claimer: buyer,
             premiumToken: premiumToken,
             basePremium: BASE_PREMIUM,
             payoutToken: payoutToken,

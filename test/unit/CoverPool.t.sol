@@ -667,7 +667,7 @@ contract CoverPoolTest is Test {
         vm.mockCall(stakeManager, abi.encodeWithSignature("createCommittee(uint96,uint256)"), "");
         vm.mockCall(stakeManager, abi.encodeWithSignature("addOperatorToCommittee(address,uint96)"), "");
         vm.prank(buyer);
-        policyId = coverPool.requestCoverage(payoutRecipient, premiumToken, payoutToken, 1_000_000e8);
+        policyId = coverPool.requestCoverage(payoutRecipient, payoutRecipient, premiumToken, payoutToken, 1_000_000e8);
     }
 
     function _defaultQuote() private view returns (ICoverPool.Quote memory quote) {

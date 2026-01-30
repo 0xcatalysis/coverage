@@ -20,6 +20,8 @@ interface IPolicyManager is IAccessControl {
         address buyer;
         /// @notice Beneficiary receiving payouts upon approved claims.
         address beneficiary;
+        /// @notice Account authorized to trigger claims for the policy.
+        address claimer;
         /// @notice ERC20 token used for premium payments.
         address premiumToken;
         /// @notice ERC20 token used for claim payouts.

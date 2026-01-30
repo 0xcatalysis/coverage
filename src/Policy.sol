@@ -62,9 +62,9 @@ contract Policy is UUPSUpgradeable, AccessControlUpgradeable, ERC721Upgradeable,
     {
         require(
             to != address(0) && metadata.buyer != address(0) && metadata.beneficiary != address(0)
-                && metadata.premiumToken != address(0) && metadata.payoutToken != address(0)
-                && metadata.pool != address(0) && metadata.payoutReceiver != address(0)
-                && metadata.operator != address(0),
+                && metadata.claimer != address(0) && metadata.premiumToken != address(0)
+                && metadata.payoutToken != address(0) && metadata.pool != address(0)
+                && metadata.payoutReceiver != address(0) && metadata.operator != address(0),
             ZeroAddress()
         );
         require(metadata.policyCommit != bytes32(0), InvalidPolicyCommit());

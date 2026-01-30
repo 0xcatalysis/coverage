@@ -21,6 +21,8 @@ interface IPolicy is IAccessControl, IERC721Metadata {
         uint96 committeeId;
         /// @notice Beneficiary receiving payouts upon approved claims.
         address beneficiary;
+        /// @notice Account authorized to trigger claims for the policy.
+        address claimer;
         /// @notice Policy coverage start timestamp.
         uint64 startTime;
         /// @notice ERC20 token used for premium payments.

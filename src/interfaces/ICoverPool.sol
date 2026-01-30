@@ -62,6 +62,8 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         address buyer;
         /// @notice Beneficiary receiving payouts upon approved claims.
         address beneficiary;
+        /// @notice Account authorized to trigger claims for the policy.
+        address claimer;
         /// @notice ERC20 token used for premium payments.
         address premiumToken;
         /// @notice ERC20 token used for claim payouts.
@@ -114,10 +116,15 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param policyId Pool-assigned identifier reserved for binding.
      * @param buyer Buyer address requesting coverage.
      * @param beneficiary Beneficiary address for claims.
+     * @param claimer Account authorized to trigger claims.
      * @param coverageAmount Requested coverage amount (stake requirement).
      */
     event CoverageRequested(
-        uint256 indexed policyId, address indexed buyer, address indexed beneficiary, uint256 coverageAmount
+        uint256 indexed policyId,
+        address indexed buyer,
+        address indexed beneficiary,
+        address claimer,
+        uint256 coverageAmount
     );
 
     /**
@@ -343,6 +350,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Creates a policy draft and prepares the committee for coverage.
      * @dev Returns a policyId that will be minted upon binding. No NFT is minted here.
      * @param beneficiary Address receiving payouts upon approved claims.
+     * @param claimer Account authorized to trigger claims for the policy.
      * @param premiumToken ERC20 token used for premium payments.
      * @param payoutToken ERC20 token used for claim payouts.
      * @param coverageAmount Requested coverage amount (stake requirement in USD with 8 decimals).
@@ -350,6 +358,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      */
     function requestCoverage(
         address beneficiary,
+        address claimer,
         address premiumToken,
         address payoutToken,
         uint256 coverageAmount

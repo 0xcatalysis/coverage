@@ -941,6 +941,7 @@ contract PolicyManagerTest is Test {
             policyId: policyId,
             buyer: buyer,
             beneficiary: beneficiary,
+            claimer: beneficiary,
             premiumToken: premiumToken,
             payoutToken: payoutToken,
             coverageAmount: COVERAGE_AMOUNT,

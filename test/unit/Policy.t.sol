@@ -305,6 +305,7 @@ contract PolicyTest is Test {
         metadata = IPolicy.PolicyMetadata({
             buyer: buyer,
             beneficiary: beneficiary,
+            claimer: beneficiary,
             premiumToken: premiumToken,
             basePremium: 100e18,
             payoutToken: payoutToken,

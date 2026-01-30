@@ -225,6 +225,7 @@ contract PolicyManager is
             buyer: request.buyer,
             committeeId: committeeId,
             beneficiary: request.beneficiary,
+            claimer: request.claimer,
             startTime: boundPolicy.startTime,
             premiumToken: request.premiumToken,
             maturityTime: boundPolicy.maturityTime,
@@ -271,8 +272,8 @@ contract PolicyManager is
      */
     function _validateRequest(BindPolicyRequest calldata request) private view {
         require(
-            request.buyer != address(0) && request.beneficiary != address(0) && request.premiumToken != address(0)
-                && request.payoutToken != address(0),
+            request.buyer != address(0) && request.beneficiary != address(0) && request.claimer != address(0)
+                && request.premiumToken != address(0) && request.payoutToken != address(0),
             ZeroAddress()
         );
         require(request.policyId != 0, PolicyIdNotReserved(request.policyId));

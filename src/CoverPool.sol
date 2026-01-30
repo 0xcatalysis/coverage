@@ -144,6 +144,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
      */
     function requestCoverage(
         address beneficiary,
+        address claimer,
         address premiumToken,
         address payoutToken,
         uint256 coverageAmount
@@ -153,7 +154,11 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         whenNotPaused
         returns (uint256 policyId)
     {
-        require(beneficiary != address(0) && premiumToken != address(0) && payoutToken != address(0), ZeroAddress());
+        require(
+            beneficiary != address(0) && claimer != address(0) && premiumToken != address(0)
+                && payoutToken != address(0),
+            ZeroAddress()
+        );
         require(coverageAmount != 0, InvalidCoverageAmount());
         require(poolOperator != address(0), InvalidPoolOperator());
 
@@ -168,6 +173,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         policyDrafts[policyId] = PolicyDraft({
             buyer: msg.sender,
             beneficiary: beneficiary,
+            claimer: claimer,
             premiumToken: premiumToken,
             payoutToken: payoutToken,
             coverageAmount: coverageAmount,
@@ -176,7 +182,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             status: PolicyStatus.Created
         });
 
-        emit CoverageRequested(policyId, msg.sender, beneficiary, coverageAmount);
+        emit CoverageRequested(policyId, msg.sender, beneficiary, claimer, coverageAmount);
     }
 
     /**
@@ -227,6 +233,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
                     policyId: policyId,
                     buyer: draft.buyer,
                     beneficiary: draft.beneficiary,
+                    claimer: draft.claimer,
                     premiumToken: draft.premiumToken,
                     payoutToken: draft.payoutToken,
                     coverageAmount: draft.coverageAmount,
