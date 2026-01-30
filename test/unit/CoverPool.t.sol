@@ -78,10 +78,7 @@ contract CoverPoolTest is Test {
         implementation = new CoverPool();
         address clone = Clones.clone(address(implementation));
         coverPool = CoverPool(clone);
-        coverPool.initialize(curator, policyManager, quoteSigner, stakeManager, poolFeeBps);
-
-        vm.prank(curator);
-        coverPool.setDefaultOperator(operator);
+        coverPool.initialize(curator, policyManager, quoteSigner, stakeManager, poolFeeBps, operator);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -90,31 +87,37 @@ contract CoverPoolTest is Test {
     function test_initialize_WhenCuratorZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(address(0), policyManager, quoteSigner, stakeManager, poolFeeBps);
+        pool.initialize(address(0), policyManager, quoteSigner, stakeManager, poolFeeBps, operator);
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, address(0), quoteSigner, stakeManager, poolFeeBps);
+        pool.initialize(curator, address(0), quoteSigner, stakeManager, poolFeeBps, operator);
     }
 
     function test_initialize_WhenQuoteSignerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, policyManager, address(0), stakeManager, poolFeeBps);
+        pool.initialize(curator, policyManager, address(0), stakeManager, poolFeeBps, operator);
     }
 
     function test_initialize_WhenStakeManagerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, policyManager, quoteSigner, address(0), poolFeeBps);
+        pool.initialize(curator, policyManager, quoteSigner, address(0), poolFeeBps, operator);
     }
 
     function test_initialize_WhenFeeTooHigh_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
-        pool.initialize(curator, policyManager, quoteSigner, stakeManager, 2100);
+        pool.initialize(curator, policyManager, quoteSigner, stakeManager, 2100, operator);
+    }
+
+    function test_initialize_WhenPoolOperatorZero_Reverts() public {
+        CoverPool pool = CoverPool(Clones.clone(address(implementation)));
+        vm.expectRevert(ICoverPool.ZeroAddress.selector);
+        pool.initialize(curator, policyManager, quoteSigner, stakeManager, poolFeeBps, address(0));
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -129,6 +132,7 @@ contract CoverPoolTest is Test {
             "AccessControlDefaultAdminRules interface missing"
         );
         assertEq(coverPool.poolFeeBps(), poolFeeBps, "Pool fee mismatch");
+        assertEq(coverPool.poolOperator(), operator, "Pool operator mismatch");
         assertFalse(coverPool.paused(), "Pool unexpectedly paused");
         assertEq(coverPool.defaultAdminDelay(), 0, "Default admin delay mismatch");
     }

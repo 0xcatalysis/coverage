@@ -25,6 +25,7 @@ contract CoverPoolFactoryTest is Test {
     address internal stakeManager;
     address internal curator;
     address internal quoteSigner;
+    address internal operator;
 
     CoverPoolFactory internal factory;
     CoverPool internal implementation;
@@ -39,11 +40,13 @@ contract CoverPoolFactoryTest is Test {
         creator = makeAddr("creator");
         curator = makeAddr("curator");
         quoteSigner = makeAddr("quoteSigner");
+        operator = makeAddr("operator");
 
         vm.label(admin, "Admin");
         vm.label(creator, "Creator");
         vm.label(curator, "Curator");
         vm.label(quoteSigner, "QuoteSigner");
+        vm.label(operator, "Operator");
 
         opts.unsafeSkipAllChecks = true;
 
@@ -207,7 +210,7 @@ contract CoverPoolFactoryTest is Test {
 
         vm.expectEmit(false, true, true, true, address(factory));
         emit ICoverPoolFactory.CoverPoolCreated(
-            address(0), params.curator, params.quoteSigner, policyManager, params.poolFeeBps
+            address(0), params.curator, params.quoteSigner, policyManager, params.poolFeeBps, params.poolOperator
         );
 
         vm.prank(creator);
@@ -660,6 +663,7 @@ contract CoverPoolFactoryTest is Test {
             curator: curator,
             quoteSigner: quoteSigner,
             poolFeeBps: DEFAULT_POOL_FEE,
+            poolOperator: operator,
             deadline: uint48(block.timestamp + 1 days),
             signature: hex"1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef00"
         });

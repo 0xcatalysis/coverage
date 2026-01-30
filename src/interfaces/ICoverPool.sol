@@ -138,7 +138,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param previousOperator Operator before the update.
      * @param newOperator Operator after the update.
      */
-    event DefaultOperatorSet(address indexed previousOperator, address indexed newOperator);
+    event PoolOperatorSet(address indexed previousOperator, address indexed newOperator);
 
     /**
      * @notice Emitted when the curator binds vaults to a committee.
@@ -291,13 +291,15 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
      * @param stakeManager_ Address of the StakeManager contract for vault binding operations.
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
+     * @param poolOperator_ Default operator address used for new policy drafts.
      */
     function initialize(
         address curator_,
         address policyManager_,
         address quoteSigner_,
         address stakeManager_,
-        uint16 poolFeeBps_
+        uint16 poolFeeBps_,
+        address poolOperator_
     )
         external;
 
@@ -322,7 +324,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @dev Requires DEFAULT_ADMIN_ROLE.
      * @param operator_ Operator address to set.
      */
-    function setDefaultOperator(address operator_) external;
+    function setPoolOperator(address operator_) external;
 
     /**
      * @notice Creates a policy draft and prepares the committee for coverage.
@@ -447,7 +449,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Returns the default operator address used for new policy drafts.
      */
-    function defaultOperator() external view returns (address);
+    function poolOperator() external view returns (address);
 
     /**
      * @notice Returns the PolicyManager address used for binding.

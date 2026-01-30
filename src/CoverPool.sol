@@ -42,7 +42,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     mapping(uint256 policyId => PolicyDraft draft) private policyDrafts;
 
     address public override policyManager;
-    address public override defaultOperator;
+    address public override poolOperator;
 
     /**
      * @dev Ensures incoming quote matches pool metadata and timing constraints before processing.
@@ -75,14 +75,15 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         address policyManager_,
         address quoteSigner_,
         address stakeManager_,
-        uint16 poolFeeBps_
+        uint16 poolFeeBps_,
+        address poolOperator_
     )
         external
         initializer
     {
         require(
             curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0)
-                && stakeManager_ != address(0),
+                && stakeManager_ != address(0) && poolOperator_ != address(0),
             ZeroAddress()
         );
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
@@ -97,6 +98,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         policyManager = policyManager_;
         stakeManager = stakeManager_;
         poolFeeBps = poolFeeBps_;
+        poolOperator = poolOperator_;
     }
 
     /**
@@ -128,11 +130,13 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
-    function setDefaultOperator(address operator_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setPoolOperator(address operator_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(operator_ != address(0), InvalidOperator());
-        address previous = defaultOperator;
-        defaultOperator = operator_;
-        emit DefaultOperatorSet(previous, operator_);
+
+        address previousPoolOperator = poolOperator;
+        poolOperator = operator_;
+
+        emit PoolOperatorSet(previousPoolOperator, operator_);
     }
 
     /**
@@ -151,7 +155,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     {
         require(beneficiary != address(0) && premiumToken != address(0) && payoutToken != address(0), ZeroAddress());
         require(coverageAmount != 0, InvalidCoverageAmount());
-        require(defaultOperator != address(0), InvalidOperator());
+        require(poolOperator != address(0), InvalidOperator());
 
         policyId = IPolicyManager(policyManager).reservePolicyId();
         require(policyId != 0, InvalidPolicyId());
@@ -160,7 +164,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         uint96 committeeId = uint96(policyId);
 
         IStakeManager(stakeManager).createCommittee(committeeId, coverageAmount);
-        IStakeManager(stakeManager).addOperatorToCommittee(defaultOperator, committeeId);
+        IStakeManager(stakeManager).addOperatorToCommittee(poolOperator, committeeId);
 
         policyDrafts[policyId] = PolicyDraft({
             buyer: msg.sender,
@@ -168,7 +172,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             premiumToken: premiumToken,
             payoutToken: payoutToken,
             coverageAmount: coverageAmount,
-            operator: defaultOperator,
+            operator: poolOperator,
             committeeId: committeeId,
             status: PolicyStatus.Created
         });

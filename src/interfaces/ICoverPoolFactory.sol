@@ -18,6 +18,8 @@ interface ICoverPoolFactory is IAccessControl {
         address quoteSigner;
         /// @notice Basis points routed to the curator on premium settlement.
         uint16 poolFeeBps;
+        /// @notice Default operator address used for new policy drafts.
+        address poolOperator;
         /// @notice Deadline for the operator registration signature.
         uint48 deadline;
         /// @notice Operator's signature for network registration.
@@ -31,13 +33,15 @@ interface ICoverPoolFactory is IAccessControl {
      * @param quoteSigner Initial quote signer configured on the pool.
      * @param policyManager PolicyManager address assigned on initialization.
      * @param poolFeeBps Default pool fee configured for the pool.
+     * @param poolOperator Default operator address for new policy drafts.
      */
     event CoverPoolCreated(
         address indexed coverPool,
         address indexed curator,
         address quoteSigner,
         address policyManager,
-        uint16 poolFeeBps
+        uint16 poolFeeBps,
+        address poolOperator
     );
 
     /**
