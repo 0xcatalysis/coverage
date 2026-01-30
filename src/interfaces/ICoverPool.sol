@@ -200,6 +200,11 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidOperator();
 
     /**
+     * @notice Reverts when the pool operator address is zero.
+     */
+    error InvalidPoolOperator();
+
+    /**
      * @notice Reverts when a required spec identifier is empty.
      */
     error InvalidSpecId();

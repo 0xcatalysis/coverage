@@ -155,11 +155,10 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     {
         require(beneficiary != address(0) && premiumToken != address(0) && payoutToken != address(0), ZeroAddress());
         require(coverageAmount != 0, InvalidCoverageAmount());
-        require(poolOperator != address(0), InvalidOperator());
+        require(poolOperator != address(0), InvalidPoolOperator());
 
         policyId = IPolicyManager(policyManager).generatePolicyId();
-        require(policyId != 0, InvalidPolicyId());
-        require(policyId <= type(uint96).max, InvalidPolicyId());
+        require(policyId != 0 && policyId <= type(uint96).max, InvalidPolicyId());
 
         uint96 committeeId = uint96(policyId);
 
