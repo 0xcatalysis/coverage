@@ -148,6 +148,14 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     event VaultsBound(uint96 indexed committeeId, uint256 vaultCount);
 
     /**
+     * @notice Emitted when a policy is bound through bindPolicyForRequest.
+     * @param policyId The policy identifier.
+     * @param committeeId The committee identifier.
+     * @param vaultCount The number of vaults bound to the committee.
+     */
+    event PolicyForRequestBound(uint256 indexed policyId, uint96 indexed committeeId, uint256 vaultCount);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -352,22 +360,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function cancelCoverageRequest(uint256 policyId) external;
 
     /**
-     * @notice Returns draft request data for a policyId.
-     * @param policyId Identifier of the draft to fetch.
-     * @return PolicyDraft request snapshot.
-     */
-    function getCoverageRequest(uint256 policyId) external view returns (PolicyDraft memory);
-
-    /**
-     * @notice Binds vaults to a committee through the StakeManager.
-     * @dev Can only be called by the curator (DEFAULT_ADMIN_ROLE).
-     *      Must be called after requestCoverage() and before bindPolicyForRequest().
-     * @param policyId The policy identifier, must fit in uint96 for StakeManager limits.
-     * @param vaults The array of vault addresses to bind.
-     */
-    function bindVaults(uint256 policyId, address[] calldata vaults) external;
-
-    /**
      * @notice Curator entrypoint to bind a policy draft via PolicyManager.
      * @dev Binds vaults, assembles BindPolicyRequest, and forwards to PolicyManager.
      * @param policyId Policy draft identifier returned during requestCoverage.
@@ -412,6 +404,13 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @return The EIP-712 domain separator hash.
      */
     function quoteDomainSeparator() external view returns (bytes32);
+
+    /**
+     * @notice Returns draft request data for a policyId.
+     * @param policyId Identifier of the draft to fetch.
+     * @return PolicyDraft request snapshot.
+     */
+    function getCoverageRequest(uint256 policyId) external view returns (PolicyDraft memory);
 
     /**
      * @notice Fetches bound policy metadata by pool-specific identifier.

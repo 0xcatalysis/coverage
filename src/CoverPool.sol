@@ -196,28 +196,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
-    function getCoverageRequest(uint256 policyId) external view override returns (PolicyDraft memory draft) {
-        draft = policyDrafts[policyId];
-        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
-    function bindVaults(uint256 policyId, address[] calldata vaults) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        PolicyDraft storage draft = policyDrafts[policyId];
-        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
-        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
-        require(vaults.length != 0, ICoverPool.EmptyVaults());
-
-        emit VaultsBound(draft.committeeId, vaults.length);
-
-        IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
     function bindPolicyForRequest(
         uint256 policyId,
         Quote calldata quote,
@@ -238,11 +216,11 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(
             quote.payoutReceiver == draft.beneficiary, PayoutReceiverMismatch(draft.beneficiary, quote.payoutReceiver)
         );
+        require(vaults.length != 0, ICoverPool.EmptyVaults());
 
-        if (vaults.length != 0) {
-            emit VaultsBound(draft.committeeId, vaults.length);
-            IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
-        }
+        IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
+
+        emit PolicyForRequestBound(policyId, draft.committeeId, vaults.length);
 
         IPolicyManager(policyManager)
             .bindPolicy(
@@ -307,6 +285,14 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
      */
     function quoteDomainSeparator() external view override returns (bytes32) {
         return _domainSeparatorV4();
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function getCoverageRequest(uint256 policyId) external view override returns (PolicyDraft memory draft) {
+        draft = policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
     }
 
     /**

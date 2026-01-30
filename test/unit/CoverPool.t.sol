@@ -214,69 +214,6 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           BIND VAULTS
-    //////////////////////////////////////////////////////////////*/
-    function test_bindVaults_WhenCallerNotCurator_Reverts() public {
-        address[] memory vaults = new address[](1);
-        vaults[0] = makeAddr("vault");
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        vm.prank(policyManager);
-        coverPool.bindVaults(1, vaults);
-    }
-
-    function test_bindVaults_WhenPolicyIdZero_Reverts() public {
-        address[] memory vaults = new address[](1);
-        vaults[0] = makeAddr("vault");
-
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyDraftNotFound.selector, 0));
-        vm.prank(curator);
-        coverPool.bindVaults(0, vaults);
-    }
-
-    function test_bindVaults_WhenPolicyIdOverflows_Reverts() public {
-        address[] memory vaults = new address[](1);
-        vaults[0] = makeAddr("vault");
-
-        uint256 overflowPolicyId = uint256(type(uint96).max) + 1;
-
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyDraftNotFound.selector, overflowPolicyId));
-        vm.prank(curator);
-        coverPool.bindVaults(overflowPolicyId, vaults);
-    }
-
-    function test_bindVaults_WhenVaultsEmpty_Reverts() public {
-        address[] memory vaults = new address[](0);
-
-        uint256 policyId = _createDraft();
-
-        vm.expectRevert(ICoverPool.EmptyVaults.selector);
-        vm.prank(curator);
-        coverPool.bindVaults(policyId, vaults);
-    }
-
-    function test_bindVaults_WhenValid_EmitsVaultsBound() public {
-        address[] memory vaults = new address[](3);
-        vaults[0] = makeAddr("vault1");
-        vaults[1] = makeAddr("vault2");
-        vaults[2] = makeAddr("vault3");
-
-        uint256 policyId = _createDraft();
-
-        vm.mockCall(stakeManager, abi.encodeWithSignature("addCommitteeVaults(uint96,address[])"), "");
-
-        vm.expectEmit(true, true, true, true, address(coverPool));
-        emit ICoverPool.VaultsBound(uint96(policyId), 3);
-
-        vm.prank(curator);
-        coverPool.bindVaults(policyId, vaults);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                            BIND POLICY
     //////////////////////////////////////////////////////////////*/
     function test_recordBoundPolicy_WhenPaused_Reverts() public {
@@ -331,7 +268,7 @@ contract CoverPoolTest is Test {
         coverPool.recordBoundPolicy(policyId, policyCommit, quote);
 
         vm.prank(policyManager);
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyAlreadyBound.selector, policyCommit));
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.InvalidPolicyStatus.selector, ICoverPool.PolicyStatus.Bound));
         coverPool.recordBoundPolicy(policyId, policyCommit, quote);
     }
 
@@ -727,6 +664,8 @@ contract CoverPoolTest is Test {
                                 HELPERS
     //////////////////////////////////////////////////////////////*/
     function _createDraft() private returns (uint256 policyId) {
+        vm.mockCall(stakeManager, abi.encodeWithSignature("createCommittee(uint96,uint256)"), "");
+        vm.mockCall(stakeManager, abi.encodeWithSignature("addOperatorToCommittee(address,uint96)"), "");
         vm.prank(buyer);
         policyId = coverPool.requestCoverage(payoutRecipient, premiumToken, payoutToken, 1_000_000e8);
     }
