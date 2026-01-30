@@ -141,13 +141,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     event DefaultOperatorSet(address indexed previousOperator, address indexed newOperator);
 
     /**
-     * @notice Emitted when the default max stake is updated.
-     * @param previousMaxStake Max stake before the update.
-     * @param newMaxStake Max stake after the update.
-     */
-    event DefaultMaxStakeSet(uint256 previousMaxStake, uint256 newMaxStake);
-
-    /**
      * @notice Emitted when the curator binds vaults to a committee.
      * @param committeeId The committee identifier.
      * @param vaultCount The number of vaults bound to the committee.
@@ -332,13 +325,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function setDefaultOperator(address operator_) external;
 
     /**
-     * @notice Sets the default max stake used for committee creation.
-     * @dev Requires DEFAULT_ADMIN_ROLE. If set to zero, coverageAmount is used.
-     * @param maxStake_ Max stake limit in USD with 8 decimals.
-     */
-    function setDefaultMaxStake(uint256 maxStake_) external;
-
-    /**
      * @notice Creates a policy draft and prepares the committee for coverage.
      * @dev Returns a policyId that will be minted upon binding. No NFT is minted here.
      * @param beneficiary Address receiving payouts upon approved claims.
@@ -462,11 +448,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Returns the default operator address used for new policy drafts.
      */
     function defaultOperator() external view returns (address);
-
-    /**
-     * @notice Returns the default max stake used for committee creation.
-     */
-    function defaultMaxStake() external view returns (uint256);
 
     /**
      * @notice Returns the PolicyManager address used for binding.

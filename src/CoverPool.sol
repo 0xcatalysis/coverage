@@ -43,7 +43,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
 
     address public override policyManager;
     address public override defaultOperator;
-    uint256 public override defaultMaxStake;
 
     /**
      * @dev Ensures incoming quote matches pool metadata and timing constraints before processing.
@@ -139,15 +138,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
-    function setDefaultMaxStake(uint256 maxStake_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 previous = defaultMaxStake;
-        defaultMaxStake = maxStake_;
-        emit DefaultMaxStakeSet(previous, maxStake_);
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
     function requestCoverage(
         address beneficiary,
         address premiumToken,
@@ -168,10 +158,8 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(policyId <= type(uint96).max, InvalidPolicyId());
 
         uint96 committeeId = uint96(policyId);
-        uint256 maxStake = defaultMaxStake == 0 ? coverageAmount : defaultMaxStake;
-        require(maxStake != 0, InvalidCoverageAmount());
 
-        IStakeManager(stakeManager).createCommittee(committeeId, maxStake);
+        IStakeManager(stakeManager).createCommittee(committeeId, coverageAmount);
         IStakeManager(stakeManager).addOperatorToCommittee(defaultOperator, committeeId);
 
         policyDrafts[policyId] = PolicyDraft({
