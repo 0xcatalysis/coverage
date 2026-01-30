@@ -177,7 +177,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             status: PolicyStatus.Created
         });
 
-        emit PolicyCreated(policyId, msg.sender, beneficiary, coverageAmount);
+        emit CoverageRequested(policyId, msg.sender, beneficiary, coverageAmount);
     }
 
     /**
@@ -190,7 +190,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(draft.buyer == msg.sender, NotPolicyBuyer(msg.sender));
 
         draft.status = PolicyStatus.Cancelled;
-        emit PolicyCancelled(policyId);
+        emit CoverageRequestCancelled(policyId);
     }
 
     /**
@@ -277,7 +277,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         boundPolicies[policyId] = boundPolicy;
         draft.status = PolicyStatus.Bound;
 
-        emit PolicyBound(policyCommit, policyId, quote.coverageLimit);
+        emit BoundPolicyRecorded(policyCommit, policyId, quote.coverageLimit);
     }
 
     /**

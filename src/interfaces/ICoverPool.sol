@@ -102,29 +102,29 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     }
 
     /**
-     * @notice Emitted after a policy commit binds successfully against the pool.
+     * @notice Emitted when a policy is successfully recorded and bound against the pool.
      * @param policyCommit Deterministic hash representing the policy.
      * @param policyId Pool-provided identifier for the policy.
      * @param coverageLimit Coverage notional locked from the pool.
      */
-    event PolicyBound(bytes32 indexed policyCommit, uint256 indexed policyId, uint256 coverageLimit);
+    event BoundPolicyRecorded(bytes32 indexed policyCommit, uint256 indexed policyId, uint256 coverageLimit);
 
     /**
-     * @notice Emitted when a buyer creates a policy draft.
+     * @notice Emitted when a buyer requests coverage, creating a policy draft.
      * @param policyId Pool-assigned identifier reserved for binding.
      * @param buyer Buyer address requesting coverage.
      * @param beneficiary Beneficiary address for claims.
      * @param coverageAmount Requested coverage amount (stake requirement).
      */
-    event PolicyCreated(
+    event CoverageRequested(
         uint256 indexed policyId, address indexed buyer, address indexed beneficiary, uint256 coverageAmount
     );
 
     /**
-     * @notice Emitted when a buyer cancels a draft policy before binding.
-     * @param policyId Identifier of the cancelled draft.
+     * @notice Emitted when a buyer cancels a draft coverage request before binding.
+     * @param policyId Identifier of the cancelled coverage request.
      */
-    event PolicyCancelled(uint256 indexed policyId);
+    event CoverageRequestCancelled(uint256 indexed policyId);
 
     /**
      * @notice Emitted when the curator updates the pool fee basis points.

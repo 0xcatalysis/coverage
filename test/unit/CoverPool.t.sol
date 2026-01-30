@@ -238,7 +238,7 @@ contract CoverPoolTest is Test {
         bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
 
         vm.expectEmit(true, true, false, true, address(coverPool));
-        emit ICoverPool.PolicyBound(policyCommit, policyId, quote.coverageLimit);
+        emit ICoverPool.BoundPolicyRecorded(policyCommit, policyId, quote.coverageLimit);
 
         vm.prank(policyManager);
         ICoverPool.BoundPolicy memory bound = coverPool.recordBoundPolicy(policyId, policyCommit, quote);
