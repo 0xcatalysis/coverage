@@ -720,7 +720,7 @@ contract MockPolicyManager {
     uint256 public bindPolicyCallCount;
     IPolicyManager.BindPolicyRequest private _lastBindRequest;
 
-    function reservePolicyId() external returns (uint256 policyId) {
+    function generatePolicyId() external returns (uint256 policyId) {
         policyId = ++nextPolicyId;
     }
 

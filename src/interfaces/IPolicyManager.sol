@@ -33,11 +33,11 @@ interface IPolicyManager is IAccessControl {
     }
 
     /**
-     * @notice Emitted when a policyId is reserved for a CoverPool.
-     * @param policyId Identifier reserved for binding and minting.
-     * @param pool CoverPool that reserved the policyId.
+     * @notice Emitted when a policyId is generated for a CoverPool.
+     * @param policyId Identifier generated for binding and minting.
+     * @param pool CoverPool that generated the policyId.
      */
-    event PolicyIdReserved(uint256 indexed policyId, address indexed pool);
+    event PolicyIdGenerated(uint256 indexed policyId, address indexed pool);
 
     /**
      * @notice Emitted when a policy is successfully bound.
@@ -241,11 +241,11 @@ interface IPolicyManager is IAccessControl {
     function setPlatformFee(uint16 platformFeeBps_) external;
 
     /**
-     * @notice Reserves a unique policyId for a CoverPool request.
+     * @notice Generates a unique policyId for a CoverPool request.
      * @dev Only registered CoverPools may call this function.
-     * @return policyId Reserved identifier for future binding and minting.
+     * @return policyId Generated identifier for future binding and minting.
      */
-    function reservePolicyId() external returns (uint256 policyId);
+    function generatePolicyId() external returns (uint256 policyId);
 
     /**
      * @notice Binds a single-pool coverage policy by validating the quote, collecting premium,

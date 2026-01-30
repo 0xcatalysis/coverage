@@ -157,7 +157,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(coverageAmount != 0, InvalidCoverageAmount());
         require(poolOperator != address(0), InvalidOperator());
 
-        policyId = IPolicyManager(policyManager).reservePolicyId();
+        policyId = IPolicyManager(policyManager).generatePolicyId();
         require(policyId != 0, InvalidPolicyId());
         require(policyId <= type(uint96).max, InvalidPolicyId());
 

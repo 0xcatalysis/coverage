@@ -794,11 +794,11 @@ contract PolicyManagerTest is Test {
         assertEq(allocation.platformFeeBps, newPlatformFee, "Should use updated platform fee");
     }
 
-    function test_reservePolicyId_IncrementsCorrectly() public {
+    function test_generatePolicyId_IncrementsCorrectly() public {
         vm.prank(address(coverPool));
-        uint256 first = policyManager.reservePolicyId();
+        uint256 first = policyManager.generatePolicyId();
         vm.prank(address(coverPool));
-        uint256 second = policyManager.reservePolicyId();
+        uint256 second = policyManager.generatePolicyId();
 
         assertEq(first, 1, "First policy ID should be 1");
         assertEq(second, 2, "Second policy ID should be 2");
@@ -912,13 +912,13 @@ contract PolicyManagerTest is Test {
                                  HELPERS
     //////////////////////////////////////////////////////////////*/
 
-    function _reservePolicyId() internal returns (uint256 policyId) {
+    function _generatePolicyId() internal returns (uint256 policyId) {
         vm.prank(address(coverPool));
-        policyId = policyManager.reservePolicyId();
+        policyId = policyManager.generatePolicyId();
     }
 
     function _defaultRequest() internal returns (IPolicyManager.BindPolicyRequest memory) {
-        uint256 policyId = _reservePolicyId();
+        uint256 policyId = _generatePolicyId();
         return _buildRequest(policyId);
     }
 

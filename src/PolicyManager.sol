@@ -160,7 +160,7 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
-    function reservePolicyId() external override nonReentrant whenNotPaused returns (uint256 policyId) {
+    function generatePolicyId() external override nonReentrant whenNotPaused returns (uint256 policyId) {
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(msg.sender), InvalidCoverPool(msg.sender));
 
         policyId = ++_nextPolicyId;
@@ -168,7 +168,7 @@ contract PolicyManager is
 
         _policyIdPool[policyId] = msg.sender;
 
-        emit PolicyIdReserved(policyId, msg.sender);
+        emit PolicyIdGenerated(policyId, msg.sender);
     }
 
     /**
