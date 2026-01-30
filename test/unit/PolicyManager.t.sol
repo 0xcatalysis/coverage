@@ -587,6 +587,25 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request);
     }
 
+    function test_bindPolicy_WhenStakeExceedsCoverage_Succeeds() public {
+        uint96 committeeId = uint96(999);
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.quote.committeeId = committeeId;
+
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault1");
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8);
+        mockStakeManager.addOperatorToCommittee(request.quote.operator, committeeId);
+        mockStakeManager.addCommitteeVaults(committeeId, vaults);
+
+        // Set stake higher than coverage amount (e.g., due to price oracle fluctuation)
+        request.coverageAmount = 500_000e8;
+        mockStakeManager.setOperatorCommitteeStake(request.quote.operator, committeeId, 550_000e8);
+
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request);
+    }
+
     function test_bindPolicy_WhenNoVaultsBound_Reverts() public {
         uint96 committeeId = uint96(555);
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();

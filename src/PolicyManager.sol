@@ -189,7 +189,7 @@ contract PolicyManager is
 
         uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(quote.operator, committeeId);
         require(
-            totalStake == request.coverageAmount, InsufficientStake(committeeId, request.coverageAmount, totalStake)
+            totalStake >= request.coverageAmount, InsufficientStake(committeeId, request.coverageAmount, totalStake)
         );
 
         require(IStakeManager(stakeManager).getCommitteeVaults(committeeId).length > 0, NoVaultsBound(committeeId));
