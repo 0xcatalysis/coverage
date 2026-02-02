@@ -146,13 +146,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     event PoolOperatorSet(address indexed previousOperator, address indexed newOperator);
 
     /**
-     * @notice Emitted when the curator binds vaults to a committee.
-     * @param committeeId The committee identifier.
-     * @param vaultCount The number of vaults bound to the committee.
-     */
-    event VaultsBound(uint96 indexed committeeId, uint256 vaultCount);
-
-    /**
      * @notice Emitted when a policy is bound through bindPolicyForRequest.
      * @param policyId The policy identifier.
      * @param committeeId The committee identifier.
