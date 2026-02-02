@@ -736,6 +736,7 @@ contract MockPolicyManager {
             claimer: address(0),
             premiumToken: address(0),
             payoutToken: address(0),
+            operator: address(0),
             coverageAmount: 1_000_000e8,
             committeeId: uint96(policyId),
             status: IPolicyManager.PolicyStatus.Created

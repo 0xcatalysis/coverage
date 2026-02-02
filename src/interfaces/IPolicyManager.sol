@@ -35,6 +35,8 @@ interface IPolicyManager is IAccessControl {
         address premiumToken;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
+        /// @notice Operator address captured at draft creation and added to the committee.
+        address operator;
         /// @notice Coverage amount requested (stake requirement in USD with 8 decimals).
         uint256 coverageAmount;
         /// @notice Restaking committee identifier created for this policy.

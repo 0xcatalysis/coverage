@@ -195,6 +195,7 @@ contract PolicyManager is
             claimer: claimer,
             premiumToken: premiumToken,
             payoutToken: payoutToken,
+            operator: poolOperator,
             coverageAmount: coverageAmount,
             committeeId: committeeId,
             status: PolicyStatus.Created
