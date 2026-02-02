@@ -565,9 +565,8 @@ contract PolicyManagerTest is Test {
     }
 
     function test_bindPolicy_WhenInsufficientStake_Reverts() public {
-        uint96 committeeId = uint96(888);
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        request.quote.committeeId = committeeId;
+        uint96 committeeId = request.quote.committeeId;
         request.quote.operator = makeAddr("lowStakeOperator");
 
         address[] memory vaults = new address[](1);
@@ -588,9 +587,8 @@ contract PolicyManagerTest is Test {
     }
 
     function test_bindPolicy_WhenStakeExceedsCoverage_Succeeds() public {
-        uint96 committeeId = uint96(999);
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        request.quote.committeeId = committeeId;
+        uint96 committeeId = request.quote.committeeId;
 
         address[] memory vaults = new address[](1);
         vaults[0] = makeAddr("vault1");
@@ -607,9 +605,8 @@ contract PolicyManagerTest is Test {
     }
 
     function test_bindPolicy_WhenNoVaultsBound_Reverts() public {
-        uint96 committeeId = uint96(555);
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        request.quote.committeeId = committeeId;
+        uint96 committeeId = request.quote.committeeId;
         mockStakeManager.createCommittee(committeeId, 1_000_000e8);
         mockStakeManager.addOperatorToCommittee(request.quote.operator, committeeId);
         mockStakeManager.setOperatorCommitteeStake(request.quote.operator, committeeId, request.coverageAmount);
@@ -619,25 +616,16 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request);
     }
 
-    function test_bindPolicy_WhenCommitteeAlreadyUsed_Reverts() public {
-        uint96 committeeId = uint96(666);
-        _seedCommitteeForTesting(committeeId, operator, COVERAGE_AMOUNT, true);
+    function test_bindPolicy_WhenCommitteeIdMismatchesPolicyId_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        uint96 wrongCommitteeId = uint96(request.policyId) + 1;
+        request.quote.committeeId = wrongCommitteeId;
 
-        IPolicyManager.BindPolicyRequest memory request1 = _defaultRequest();
-        request1.quote.committeeId = committeeId;
+        _seedCommitteeForTesting(wrongCommitteeId, operator, COVERAGE_AMOUNT, true);
 
+        vm.expectRevert(IPolicyManager.InvalidCommitteeId.selector);
         vm.prank(address(coverPool));
-        policyManager.bindPolicy(request1);
-
-        IPolicyManager.BindPolicyRequest memory request2 = _defaultRequest();
-        request2.quote.committeeId = committeeId;
-        request2.quote.expirationTime = uint64(block.timestamp + 2 hours);
-
-        coverPool.setReturnPolicyCommit(keccak256("policy-commit-2"));
-
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.CommitteeAlreadyUsed.selector, committeeId));
-        vm.prank(address(coverPool));
-        policyManager.bindPolicy(request2);
+        policyManager.bindPolicy(request);
     }
 
     function test_bindPolicy_WhenPolicyCommitEmpty_Reverts() public {
@@ -766,7 +754,6 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_MultiplePoliciesToSameBuyer_Succeeds() public {
         IPolicyManager.BindPolicyRequest memory request1 = _defaultRequest();
         IPolicyManager.BindPolicyRequest memory request2 = _defaultRequest();
-        request2.quote.committeeId = uint96(456);
 
         coverPool.setReturnPolicyCommit(keccak256("policy-commit-1"));
         _seedCommitteeForTesting(request1.quote.committeeId, request1.quote.operator, request1.coverageAmount, true);
@@ -784,7 +771,6 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_IsProtectedByReentrancyGuard() public {
         IPolicyManager.BindPolicyRequest memory request1 = _defaultRequest();
         IPolicyManager.BindPolicyRequest memory request2 = _defaultRequest();
-        request2.quote.committeeId = uint96(456);
 
         coverPool.setReturnPolicyCommit(keccak256("policy-commit-1"));
         _seedCommitteeForTesting(request1.quote.committeeId, request1.quote.operator, request1.coverageAmount, true);
@@ -949,7 +935,7 @@ contract PolicyManagerTest is Test {
             specId: specId,
             termsHash: termsHash,
             payoutReceiver: beneficiary,
-            committeeId: uint96(123),
+            committeeId: uint96(policyId),
             operator: operator,
             startTime: uint64(block.timestamp),
             maturityTime: uint64(block.timestamp + COVERAGE_DURATION),

@@ -183,12 +183,6 @@ interface IPolicyManager is IAccessControl {
     error NoVaultsBound(uint96 committeeId);
 
     /**
-     * @notice Reverts when attempting to reuse a committee.
-     * @param committeeId Committee identifier already used.
-     */
-    error CommitteeAlreadyUsed(uint96 committeeId);
-
-    /**
      * @notice Pauses policy binding operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */

@@ -38,7 +38,6 @@ contract PolicyManager is
     uint16 public override platformFeeBps;
 
     uint256 private _nextPolicyId;
-    mapping(uint96 committeeId => uint256 boundPolicyId) private _committeeUsedByPolicy;
     mapping(uint256 policyId => address pool) private _policyIdPool;
     mapping(uint256 policyId => bool bound) private _policyIdBound;
 
@@ -183,8 +182,7 @@ contract PolicyManager is
 
         ICoverPool.Quote calldata quote = request.quote;
         uint96 committeeId = quote.committeeId;
-        require(_committeeUsedByPolicy[committeeId] == 0, CommitteeAlreadyUsed(committeeId));
-        _committeeUsedByPolicy[committeeId] = policyId;
+        require(uint96(policyId) == committeeId, InvalidCommitteeId());
         _policyIdBound[policyId] = true;
 
         uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(quote.operator, committeeId);
