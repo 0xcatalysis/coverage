@@ -175,7 +175,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             premiumToken: premiumToken,
             payoutToken: payoutToken,
             coverageAmount: coverageAmount,
-            operator: poolOperator,
             committeeId: committeeId,
             status: PolicyStatus.Created
         });
@@ -218,7 +217,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
         require(quote.committeeId == draft.committeeId, CommitteeIdMismatch(draft.committeeId, quote.committeeId));
-        require(quote.operator == draft.operator, OperatorMismatch(draft.operator, quote.operator));
+        require(quote.operator == poolOperator, OperatorMismatch(poolOperator, quote.operator));
         require(
             quote.payoutReceiver == draft.beneficiary, PayoutReceiverMismatch(draft.beneficiary, quote.payoutReceiver)
         );

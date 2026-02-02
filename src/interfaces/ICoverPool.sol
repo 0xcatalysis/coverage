@@ -70,8 +70,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         address payoutToken;
         /// @notice Coverage amount requested (stake requirement in USD with 8 decimals).
         uint256 coverageAmount;
-        /// @notice Operator address selected for this policy.
-        address operator;
         /// @notice Restaking committee identifier created for this policy.
         uint96 committeeId;
         /// @notice Draft lifecycle status.
