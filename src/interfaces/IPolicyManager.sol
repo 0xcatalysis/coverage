@@ -69,13 +69,6 @@ interface IPolicyManager is IAccessControl {
     }
 
     /**
-     * @notice Emitted when a policyId is generated for a CoverPool.
-     * @param policyId Identifier generated for binding and minting.
-     * @param pool CoverPool that generated the policyId.
-     */
-    event PolicyIdGenerated(uint256 indexed policyId, address indexed pool);
-
-    /**
      * @notice Emitted when a policy draft is created.
      * @param policyId Identifier reserved for binding.
      * @param pool CoverPool where the draft was created.
@@ -317,13 +310,6 @@ interface IPolicyManager is IAccessControl {
      * @param platformFeeBps_ Platform fee in basis points (1 bps = 0.01%).
      */
     function setPlatformFee(uint16 platformFeeBps_) external;
-
-    /**
-     * @notice Generates a unique policyId for a CoverPool request.
-     * @dev Only registered CoverPools may call this function.
-     * @return policyId Generated identifier for future binding and minting.
-     */
-    function generatePolicyId() external returns (uint256 policyId);
 
     /**
      * @notice Creates a policy draft for a specified pool (user-facing entrypoint).

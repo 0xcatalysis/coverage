@@ -160,33 +160,6 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
-    function generatePolicyId() external override nonReentrant whenNotPaused returns (uint256 policyId) {
-        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(msg.sender), InvalidCoverPool(msg.sender));
-
-        policyId = ++_nextPolicyId;
-        require(policyId <= type(uint96).max, PolicyIdOverflow());
-
-        _policyIdPool[policyId] = msg.sender;
-
-        // Create minimal draft entry to enable future binding via bindPolicyForRequest()
-        _policyDrafts[policyId] = PolicyDraft({
-            pool: msg.sender,
-            buyer: address(0), // Will be set during bindPolicyForRequest
-            beneficiary: address(0), // Will be set during bindPolicyForRequest
-            claimer: address(0), // Will be set during bindPolicyForRequest
-            premiumToken: address(0), // Will be set during bindPolicyForRequest
-            payoutToken: address(0), // Will be set during bindPolicyForRequest
-            coverageAmount: 0, // Will be set during bindPolicyForRequest
-            committeeId: uint96(policyId),
-            status: PolicyStatus.Created
-        });
-
-        emit PolicyIdGenerated(policyId, msg.sender);
-    }
-
-    /**
-     * @inheritdoc IPolicyManager
-     */
     function createPolicyDraft(
         address pool,
         address beneficiary,

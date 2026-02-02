@@ -15,7 +15,7 @@ contract PolicyManagerTest is Test {
     uint256 internal constant POLICY_ID = 1;
     uint256 internal constant COVERAGE_LIMIT = 1_000_000e18;
     uint256 internal constant BASE_PREMIUM = 10_000e18;
-    uint256 internal constant COVERAGE_AMOUNT = 500_000e8; // USD with 8 decimals
+    uint256 internal constant COVERAGE_AMOUNT = 500_000e8;
     uint16 internal constant PLATFORM_FEE_BPS = 50;
     uint16 internal constant POOL_FEE_BPS = 150;
     uint64 internal constant COVERAGE_DURATION = 30 days;
@@ -596,7 +596,6 @@ contract PolicyManagerTest is Test {
         mockStakeManager.addOperatorToCommittee(request.quote.operator, committeeId);
         mockStakeManager.addCommitteeVaults(committeeId, vaults);
 
-        // Set stake higher than coverage amount (e.g., due to price oracle fluctuation)
         request.coverageAmount = 500_000e8;
         mockStakeManager.setOperatorCommitteeStake(request.quote.operator, committeeId, 550_000e8);
 
@@ -799,30 +798,6 @@ contract PolicyManagerTest is Test {
         assertEq(allocation.platformFeeBps, newPlatformFee, "Should use updated platform fee");
     }
 
-    function test_generatePolicyId_IncrementsCorrectly() public {
-        vm.prank(address(coverPool));
-        uint256 first = policyManager.generatePolicyId();
-        vm.prank(address(coverPool));
-        uint256 second = policyManager.generatePolicyId();
-
-        assertEq(first, 1, "First policy ID should be 1");
-        assertEq(second, 2, "Second policy ID should be 2");
-    }
-
-    function test_generatePolicyId_CreatesDraftForFutureBinding() public {
-        // Generate a policy ID
-        vm.prank(address(coverPool));
-        uint256 policyId = policyManager.generatePolicyId();
-
-        // Verify draft exists and can be retrieved (previously this would fail with PolicyDraftNotFound)
-        IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
-
-        // Verify draft has expected structure
-        assertEq(draft.pool, address(coverPool), "Pool should match");
-        assertEq(uint8(draft.status), uint8(IPolicyManager.PolicyStatus.Created), "Status should be Created");
-        assertEq(draft.committeeId, uint96(policyId), "Committee ID should equal policy ID");
-    }
-
     function test_bindPolicy_PassesCustomCoverageAmount() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint256 customAmount = 999_999e8;
@@ -980,7 +955,7 @@ contract PolicyManagerTest is Test {
 
     function test_createPolicyDraft_WhenPoolOperatorZero_Reverts() public {
         MockCoverPool poolWithoutOperator = new MockCoverPool();
-        poolWithoutOperator.setPoolOperator(address(0)); // Set operator to zero
+        poolWithoutOperator.setPoolOperator(address(0));
         mockCoverPoolFactory.registerPool(address(poolWithoutOperator));
 
         vm.expectRevert(IPolicyManager.InvalidPoolOperator.selector);
@@ -1136,7 +1111,6 @@ contract PolicyManagerTest is Test {
         assertTrue(draft.status == IPolicyManager.PolicyStatus.Created, "Status should be Created");
     }
 
-    // External function to test view function reverts
     function externalGetPolicyDraft(uint256 policyId) external view returns (IPolicyManager.PolicyDraft memory) {
         return policyManager.getPolicyDraft(policyId);
     }
@@ -1145,13 +1119,7 @@ contract PolicyManagerTest is Test {
                                  HELPERS
     //////////////////////////////////////////////////////////////*/
 
-    function _generatePolicyId() internal returns (uint256 policyId) {
-        vm.prank(address(coverPool));
-        policyId = policyManager.generatePolicyId();
-    }
-
     function _defaultRequest() internal returns (IPolicyManager.BindPolicyRequest memory) {
-        // Create a draft first (required in refactored architecture)
         vm.prank(buyer);
         uint256 policyId = policyManager.createPolicyDraft(
             address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
@@ -1218,7 +1186,7 @@ contract MockCoverPool {
     bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00;
 
     constructor() {
-        poolOperator = address(0xDEADBEEF); // Default pool operator
+        poolOperator = address(0xDEADBEEF);
         _returnPolicyCommit = keccak256("policy-commit");
         _boundPolicy = ICoverPool.BoundPolicy({
             policyId: 1,
@@ -1269,7 +1237,7 @@ contract MockCoverPool {
             _boundPolicy.maturityTime = quote.maturityTime;
             _boundPolicy.termsHash = quote.termsHash;
         } else {
-            _useOverriddenPolicy = false; // Reset after use
+            _useOverriddenPolicy = false;
         }
 
         return _boundPolicy;
@@ -1360,7 +1328,6 @@ contract MockStakeManager {
         return _committeeVaults[committeeId];
     }
 
-    // Test helper to verify operator committee assignment
     function getOperatorCommittee(address operator) external view returns (uint96) {
         return _operatorCommittees[operator];
     }

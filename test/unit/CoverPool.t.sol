@@ -664,11 +664,7 @@ contract CoverPoolTest is Test {
             abi.encode(makeAddr("factory"))
         );
 
-        // Create draft through MockPolicyManager
-        vm.prank(address(coverPool));
-        policyId = mockPolicyManager.generatePolicyId();
-
-        // Mock the draft in PolicyManager
+        policyId = mockPolicyManager.nextPolicyId() + 1;
         mockPolicyManager.mockPolicyDraft(policyId, address(coverPool), buyer);
     }
 
@@ -722,10 +718,6 @@ contract MockPolicyManager {
     uint256 public bindPolicyCallCount;
     IPolicyManager.BindPolicyRequest private _lastBindRequest;
     mapping(uint256 => IPolicyManager.PolicyDraft) private _drafts;
-
-    function generatePolicyId() external returns (uint256 policyId) {
-        policyId = ++nextPolicyId;
-    }
 
     function bindPolicy(IPolicyManager.BindPolicyRequest calldata request) external {
         bindPolicyCallCount++;
