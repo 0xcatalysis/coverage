@@ -45,38 +45,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     }
 
     /**
-     * @notice Status of a policy draft within the CoverPool.
-     */
-    enum PolicyStatus {
-        None,
-        Created,
-        Cancelled,
-        Bound
-    }
-
-    /**
-     * @notice Buyer request data stored before a policy is bound.
-     */
-    struct PolicyDraft {
-        /// @notice Buyer wallet responsible for paying premiums.
-        address buyer;
-        /// @notice Beneficiary receiving payouts upon approved claims.
-        address beneficiary;
-        /// @notice Account authorized to trigger claims for the policy.
-        address claimer;
-        /// @notice ERC20 token used for premium payments.
-        address premiumToken;
-        /// @notice ERC20 token used for claim payouts.
-        address payoutToken;
-        /// @notice Coverage amount requested (stake requirement in USD with 8 decimals).
-        uint256 coverageAmount;
-        /// @notice Restaking committee identifier created for this policy.
-        uint96 committeeId;
-        /// @notice Draft lifecycle status.
-        PolicyStatus status;
-    }
-
-    /**
      * @notice Binding metadata returned after a successful policy bind.
      * @dev Contains the confirmed terms and coverage details for the bound policy.
      */
@@ -110,28 +78,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     event BoundPolicyRecorded(bytes32 indexed policyCommit, uint256 indexed policyId, uint256 coverageLimit);
 
     /**
-     * @notice Emitted when a buyer requests coverage, creating a policy draft.
-     * @param policyId Pool-assigned identifier reserved for binding.
-     * @param buyer Buyer address requesting coverage.
-     * @param beneficiary Beneficiary address for claims.
-     * @param claimer Account authorized to trigger claims.
-     * @param coverageAmount Requested coverage amount (stake requirement).
-     */
-    event CoverageRequested(
-        uint256 indexed policyId,
-        address indexed buyer,
-        address indexed beneficiary,
-        address claimer,
-        uint256 coverageAmount
-    );
-
-    /**
-     * @notice Emitted when a buyer cancels a draft coverage request before binding.
-     * @param policyId Identifier of the cancelled coverage request.
-     */
-    event CoverageRequestCancelled(uint256 indexed policyId);
-
-    /**
      * @notice Emitted when the curator updates the pool fee basis points.
      * @param previousPoolFeeBps Pool fee basis points before the update.
      * @param newPoolFeeBps Pool fee basis points after the update.
@@ -157,11 +103,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
-
-    /**
-     * @notice Reverts when a requested coverage amount is zero.
-     */
-    error InvalidCoverageAmount();
 
     /**
      * @notice Reverts when the provided pool address does not match contract storage.
@@ -196,11 +137,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Reverts when the operator address is zero.
      */
     error InvalidOperator();
-
-    /**
-     * @notice Reverts when the pool operator address is zero.
-     */
-    error InvalidPoolOperator();
 
     /**
      * @notice Reverts when a required spec identifier is empty.
@@ -252,48 +188,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error EmptyVaults();
 
     /**
-     * @notice Reverts when an invalid policy identifier is supplied.
+     * @notice Reverts when committee identifier is invalid or mismatched.
      */
-    error InvalidPolicyId();
-
-    /**
-     * @notice Reverts when a policy is not in the expected draft status.
-     * @param status Current status of the policy draft.
-     */
-    error InvalidPolicyStatus(PolicyStatus status);
-
-    /**
-     * @notice Reverts when a policy draft has not been created.
-     * @param policyId Identifier that failed lookup.
-     */
-    error PolicyDraftNotFound(uint256 policyId);
-
-    /**
-     * @notice Reverts when a quote committeeId does not match the draft committeeId.
-     * @param expected Committee identifier stored on the draft.
-     * @param actual Committee identifier supplied in the quote.
-     */
-    error CommitteeIdMismatch(uint96 expected, uint96 actual);
-
-    /**
-     * @notice Reverts when a quote operator does not match the draft operator.
-     * @param expected Operator stored on the draft.
-     * @param actual Operator supplied in the quote.
-     */
-    error OperatorMismatch(address expected, address actual);
-
-    /**
-     * @notice Reverts when a non-buyer attempts to cancel a draft.
-     * @param caller Address that attempted cancellation.
-     */
-    error NotPolicyBuyer(address caller);
-
-    /**
-     * @notice Reverts when payout receiver does not match the draft beneficiary.
-     * @param expected Beneficiary stored on the draft.
-     * @param actual Payout receiver supplied in the quote.
-     */
-    error PayoutReceiverMismatch(address expected, address actual);
+    error InvalidCommitteeId();
 
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
@@ -338,36 +235,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function setPoolOperator(address operator_) external;
 
     /**
-     * @notice Creates a policy draft and prepares the committee for coverage.
-     * @dev Returns a policyId that will be minted upon binding. No NFT is minted here.
-     * @param beneficiary Address receiving payouts upon approved claims.
-     * @param claimer Account authorized to trigger claims for the policy.
-     * @param premiumToken ERC20 token used for premium payments.
-     * @param payoutToken ERC20 token used for claim payouts.
-     * @param coverageAmount Requested coverage amount (stake requirement in USD with 8 decimals).
-     * @return policyId Identifier reserved for binding and minting.
-     */
-    function requestCoverage(
-        address beneficiary,
-        address claimer,
-        address premiumToken,
-        address payoutToken,
-        uint256 coverageAmount
-    )
-        external
-        returns (uint256 policyId);
-
-    /**
-     * @notice Cancels a previously created policy draft.
-     * @dev Only the original buyer can cancel, and only before binding.
-     * @param policyId Identifier of the draft to cancel.
-     */
-    function cancelCoverageRequest(uint256 policyId) external;
-
-    /**
      * @notice Curator entrypoint to bind a policy draft via PolicyManager.
-     * @dev Binds vaults, assembles BindPolicyRequest, and forwards to PolicyManager.
-     * @param policyId Policy draft identifier returned during requestCoverage.
+     * @dev Binds vaults, fetches draft from PolicyManager, and forwards binding request.
+     * @param policyId Policy draft identifier from PolicyManager.
      * @param quote Quote struct signed by an authorized quote signer.
      * @param signature EIP-712 signature authorizing the quote.
      * @param vaults Vault addresses to bind to the committee.
@@ -409,13 +279,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @return The EIP-712 domain separator hash.
      */
     function quoteDomainSeparator() external view returns (bytes32);
-
-    /**
-     * @notice Returns draft request data for a policyId.
-     * @param policyId Identifier of the draft to fetch.
-     * @return PolicyDraft request snapshot.
-     */
-    function getCoverageRequest(uint256 policyId) external view returns (PolicyDraft memory);
 
     /**
      * @notice Fetches bound policy metadata by pool-specific identifier.

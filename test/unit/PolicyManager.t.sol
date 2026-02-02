@@ -914,6 +914,220 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                         CREATE POLICY DRAFT
+    //////////////////////////////////////////////////////////////*/
+
+    function test_createPolicyDraft_WhenPoolNotRegistered_Reverts() public {
+        address invalidPool = makeAddr("invalidPool");
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidCoverPool.selector, invalidPool));
+        vm.prank(buyer);
+        policyManager.createPolicyDraft(
+            invalidPool, beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+    }
+
+    function test_createPolicyDraft_WhenBeneficiaryZero_Reverts() public {
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(buyer);
+        policyManager.createPolicyDraft(
+            address(coverPool), address(0), beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+    }
+
+    function test_createPolicyDraft_WhenClaimerZero_Reverts() public {
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(buyer);
+        policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, address(0), premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+    }
+
+    function test_createPolicyDraft_WhenPremiumTokenZero_Reverts() public {
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(buyer);
+        policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, address(0), payoutToken, COVERAGE_AMOUNT
+        );
+    }
+
+    function test_createPolicyDraft_WhenPayoutTokenZero_Reverts() public {
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(buyer);
+        policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, premiumToken, address(0), COVERAGE_AMOUNT
+        );
+    }
+
+    function test_createPolicyDraft_WhenCoverageAmountZero_Reverts() public {
+        vm.expectRevert(IPolicyManager.InvalidCoverageAmount.selector);
+        vm.prank(buyer);
+        policyManager.createPolicyDraft(address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, 0);
+    }
+
+    function test_createPolicyDraft_WhenPoolOperatorZero_Reverts() public {
+        MockCoverPool poolWithoutOperator = new MockCoverPool();
+        poolWithoutOperator.setPoolOperator(address(0)); // Set operator to zero
+        mockCoverPoolFactory.registerPool(address(poolWithoutOperator));
+
+        vm.expectRevert(IPolicyManager.InvalidPoolOperator.selector);
+        vm.prank(buyer);
+        policyManager.createPolicyDraft(
+            address(poolWithoutOperator), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+    }
+
+    function test_createPolicyDraft_WhenPaused_Reverts() public {
+        vm.prank(admin);
+        policyManager.pause();
+
+        vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
+        vm.prank(buyer);
+        policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+    }
+
+    function test_createPolicyDraft_CreatesDraftSuccessfully() public {
+        vm.expectEmit(true, true, true, true, address(policyManager));
+        emit IPolicyManager.PolicyDraftCreated(1, address(coverPool), buyer, beneficiary, beneficiary, COVERAGE_AMOUNT);
+
+        vm.prank(buyer);
+        uint256 policyId = policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+
+        assertEq(policyId, 1, "Policy ID should be 1");
+        assertEq(mockStakeManager.createCommitteeCallCount(), 1, "Should create committee");
+        assertEq(mockStakeManager.lastCommitteeId(), uint96(policyId), "Committee ID should match policy ID");
+
+        IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
+        assertEq(draft.pool, address(coverPool), "Pool mismatch");
+        assertEq(draft.buyer, buyer, "Buyer mismatch");
+        assertEq(draft.beneficiary, beneficiary, "Beneficiary mismatch");
+        assertEq(draft.claimer, beneficiary, "Claimer mismatch");
+        assertEq(draft.premiumToken, premiumToken, "Premium token mismatch");
+        assertEq(draft.payoutToken, payoutToken, "Payout token mismatch");
+        assertEq(draft.coverageAmount, COVERAGE_AMOUNT, "Coverage amount mismatch");
+        assertEq(draft.committeeId, uint96(policyId), "Committee ID mismatch");
+        assertTrue(draft.status == IPolicyManager.PolicyStatus.Created, "Status should be Created");
+    }
+
+    function test_createPolicyDraft_IncrementsPolicyIdCorrectly() public {
+        vm.startPrank(buyer);
+        uint256 policyId1 = policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+        uint256 policyId2 = policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+        vm.stopPrank();
+
+        assertEq(policyId1, 1, "First policy ID should be 1");
+        assertEq(policyId2, 2, "Second policy ID should be 2");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                         CANCEL POLICY DRAFT
+    //////////////////////////////////////////////////////////////*/
+
+    function test_cancelPolicyDraft_WhenDraftNotFound_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.PolicyDraftNotFound.selector, 999));
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(999);
+    }
+
+    function test_cancelPolicyDraft_WhenNotBuyer_Reverts() public {
+        vm.prank(buyer);
+        uint256 policyId = policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+
+        address notBuyer = makeAddr("notBuyer");
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.NotPolicyBuyer.selector, notBuyer));
+        vm.prank(notBuyer);
+        policyManager.cancelPolicyDraft(policyId);
+    }
+
+    function test_cancelPolicyDraft_WhenAlreadyCancelled_Reverts() public {
+        vm.prank(buyer);
+        uint256 policyId = policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.InvalidPolicyStatus.selector, IPolicyManager.PolicyStatus.Cancelled)
+        );
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId);
+    }
+
+    function test_cancelPolicyDraft_WhenPaused_Reverts() public {
+        vm.prank(buyer);
+        uint256 policyId = policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+
+        vm.prank(admin);
+        policyManager.pause();
+
+        vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId);
+    }
+
+    function test_cancelPolicyDraft_CancelsSuccessfully() public {
+        vm.prank(buyer);
+        uint256 policyId = policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+
+        vm.expectEmit(true, true, false, true, address(policyManager));
+        emit IPolicyManager.PolicyDraftCancelled(policyId, address(coverPool));
+
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId);
+
+        IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
+        assertTrue(draft.status == IPolicyManager.PolicyStatus.Cancelled, "Status should be Cancelled");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          GET POLICY DRAFT
+    //////////////////////////////////////////////////////////////*/
+
+    function test_getPolicyDraft_WhenDraftNotFound_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.PolicyDraftNotFound.selector, 999));
+        this.externalGetPolicyDraft(999);
+    }
+
+    function test_getPolicyDraft_ReturnsCorrectDraft() public {
+        vm.prank(buyer);
+        uint256 policyId = policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
+
+        IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
+
+        assertEq(draft.pool, address(coverPool), "Pool mismatch");
+        assertEq(draft.buyer, buyer, "Buyer mismatch");
+        assertEq(draft.beneficiary, beneficiary, "Beneficiary mismatch");
+        assertEq(draft.claimer, beneficiary, "Claimer mismatch");
+        assertEq(draft.premiumToken, premiumToken, "Premium token mismatch");
+        assertEq(draft.payoutToken, payoutToken, "Payout token mismatch");
+        assertEq(draft.coverageAmount, COVERAGE_AMOUNT, "Coverage amount mismatch");
+        assertEq(draft.committeeId, uint96(policyId), "Committee ID mismatch");
+        assertTrue(draft.status == IPolicyManager.PolicyStatus.Created, "Status should be Created");
+    }
+
+    // External function to test view function reverts
+    function externalGetPolicyDraft(uint256 policyId) external view returns (IPolicyManager.PolicyDraft memory) {
+        return policyManager.getPolicyDraft(policyId);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                                  HELPERS
     //////////////////////////////////////////////////////////////*/
 
@@ -923,7 +1137,11 @@ contract PolicyManagerTest is Test {
     }
 
     function _defaultRequest() internal returns (IPolicyManager.BindPolicyRequest memory) {
-        uint256 policyId = _generatePolicyId();
+        // Create a draft first (required in refactored architecture)
+        vm.prank(buyer);
+        uint256 policyId = policyManager.createPolicyDraft(
+            address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+        );
         return _buildRequest(policyId);
     }
 
@@ -982,9 +1200,11 @@ contract MockCoverPool {
     ICoverPool.BoundPolicy private _boundPolicy;
     bool private _useOverriddenPolicy;
     address public curator;
+    address public poolOperator;
     bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00;
 
     constructor() {
+        poolOperator = address(0xDEADBEEF); // Default pool operator
         _returnPolicyCommit = keccak256("policy-commit");
         _boundPolicy = ICoverPool.BoundPolicy({
             policyId: 1,
@@ -1060,6 +1280,10 @@ contract MockCoverPool {
 
     function lastBoundPolicy() external view returns (ICoverPool.BoundPolicy memory) {
         return _boundPolicy;
+    }
+
+    function setPoolOperator(address operator_) external {
+        poolOperator = operator_;
     }
 }
 

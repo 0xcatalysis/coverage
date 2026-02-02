@@ -39,7 +39,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
 
     mapping(uint256 policyId => BoundPolicy policy) private boundPolicies;
-    mapping(uint256 policyId => PolicyDraft draft) private policyDrafts;
 
     address public override policyManager;
     address public override poolOperator;
@@ -142,65 +141,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
-    // slither-disable-next-line reentrancy-benign,reentrancy-events
-    function requestCoverage(
-        address beneficiary,
-        address claimer,
-        address premiumToken,
-        address payoutToken,
-        uint256 coverageAmount
-    )
-        external
-        override
-        whenNotPaused
-        returns (uint256 policyId)
-    {
-        require(
-            beneficiary != address(0) && claimer != address(0) && premiumToken != address(0)
-                && payoutToken != address(0),
-            ZeroAddress()
-        );
-        require(coverageAmount != 0, InvalidCoverageAmount());
-        require(poolOperator != address(0), InvalidPoolOperator());
-
-        policyId = IPolicyManager(policyManager).generatePolicyId();
-        require(policyId != 0 && policyId <= type(uint96).max, InvalidPolicyId());
-
-        uint96 committeeId = uint96(policyId);
-
-        policyDrafts[policyId] = PolicyDraft({
-            buyer: msg.sender,
-            beneficiary: beneficiary,
-            claimer: claimer,
-            premiumToken: premiumToken,
-            payoutToken: payoutToken,
-            coverageAmount: coverageAmount,
-            committeeId: committeeId,
-            status: PolicyStatus.Created
-        });
-
-        emit CoverageRequested(policyId, msg.sender, beneficiary, claimer, coverageAmount);
-
-        IStakeManager(stakeManager).createCommittee(committeeId, coverageAmount);
-        IStakeManager(stakeManager).addOperatorToCommittee(poolOperator, committeeId);
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
-    function cancelCoverageRequest(uint256 policyId) external override whenNotPaused {
-        PolicyDraft storage draft = policyDrafts[policyId];
-        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
-        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
-        require(draft.buyer == msg.sender, NotPolicyBuyer(msg.sender));
-
-        draft.status = PolicyStatus.Cancelled;
-        emit CoverageRequestCancelled(policyId);
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
     function bindPolicyForRequest(
         uint256 policyId,
         Quote calldata quote,
@@ -212,15 +152,13 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         onlyRole(DEFAULT_ADMIN_ROLE)
         whenNotPaused
     {
-        PolicyDraft storage draft = policyDrafts[policyId];
-        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
-        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
+        IPolicyManager.PolicyDraft memory draft = IPolicyManager(policyManager).getPolicyDraft(policyId);
+        require(draft.pool == address(this), PoolAddressMismatch(address(this), draft.pool));
+        require(draft.status == IPolicyManager.PolicyStatus.Created, IPolicyManager.InvalidPolicyStatus(draft.status));
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
-        require(quote.committeeId == draft.committeeId, CommitteeIdMismatch(draft.committeeId, quote.committeeId));
-        require(quote.operator == poolOperator, OperatorMismatch(poolOperator, quote.operator));
-        require(
-            quote.payoutReceiver == draft.beneficiary, PayoutReceiverMismatch(draft.beneficiary, quote.payoutReceiver)
-        );
+        require(quote.committeeId == draft.committeeId, InvalidCommitteeId());
+        require(quote.operator == poolOperator, InvalidOperator());
+        require(quote.payoutReceiver == draft.beneficiary, InvalidPayoutReceiver());
         require(vaults.length != 0, ICoverPool.EmptyVaults());
 
         emit PolicyForRequestBound(policyId, draft.committeeId, vaults.length);
@@ -257,9 +195,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         whenNotPaused
         returns (BoundPolicy memory boundPolicy)
     {
-        PolicyDraft storage draft = policyDrafts[policyId];
-        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
-        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
         bytes32 calculatedPolicyCommit = _hashQuote(quote);
@@ -281,7 +216,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         });
 
         boundPolicies[policyId] = boundPolicy;
-        draft.status = PolicyStatus.Bound;
 
         emit BoundPolicyRecorded(policyCommit, policyId, quote.coverageLimit);
     }
@@ -291,14 +225,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
      */
     function quoteDomainSeparator() external view override returns (bytes32) {
         return _domainSeparatorV4();
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
-    function getCoverageRequest(uint256 policyId) external view override returns (PolicyDraft memory draft) {
-        draft = policyDrafts[policyId];
-        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
     }
 
     /**

@@ -40,6 +40,7 @@ contract PolicyManager is
     uint256 private _nextPolicyId;
     mapping(uint256 policyId => address pool) private _policyIdPool;
     mapping(uint256 policyId => bool bound) private _policyIdBound;
+    mapping(uint256 policyId => PolicyDraft draft) private _policyDrafts;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -173,6 +174,72 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
+    function createPolicyDraft(
+        address pool,
+        address beneficiary,
+        address claimer,
+        address premiumToken,
+        address payoutToken,
+        uint256 coverageAmount
+    )
+        external
+        override
+        nonReentrant
+        whenNotPaused
+        returns (uint256 policyId)
+    {
+        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
+        require(
+            beneficiary != address(0) && claimer != address(0) && premiumToken != address(0)
+                && payoutToken != address(0),
+            ZeroAddress()
+        );
+        require(coverageAmount != 0, InvalidCoverageAmount());
+
+        address poolOperator = ICoverPool(pool).poolOperator();
+        require(poolOperator != address(0), InvalidPoolOperator());
+
+        policyId = ++_nextPolicyId;
+        require(policyId <= type(uint96).max, PolicyIdOverflow());
+
+        uint96 committeeId = uint96(policyId);
+
+        _policyIdPool[policyId] = pool;
+
+        _policyDrafts[policyId] = PolicyDraft({
+            pool: pool,
+            buyer: msg.sender,
+            beneficiary: beneficiary,
+            claimer: claimer,
+            premiumToken: premiumToken,
+            payoutToken: payoutToken,
+            coverageAmount: coverageAmount,
+            committeeId: committeeId,
+            status: PolicyStatus.Created
+        });
+
+        emit PolicyDraftCreated(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount);
+
+        IStakeManager(stakeManager).createCommittee(committeeId, coverageAmount);
+        IStakeManager(stakeManager).addOperatorToCommittee(poolOperator, committeeId);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
+    function cancelPolicyDraft(uint256 policyId) external override nonReentrant whenNotPaused {
+        PolicyDraft storage draft = _policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
+        require(draft.buyer == msg.sender, NotPolicyBuyer(msg.sender));
+
+        draft.status = PolicyStatus.Cancelled;
+        emit PolicyDraftCancelled(policyId, draft.pool);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
     function bindPolicy(BindPolicyRequest calldata request) external override nonReentrant whenNotPaused {
         _validateRequest(request);
 
@@ -180,10 +247,16 @@ contract PolicyManager is
         require(_policyIdPool[policyId] == msg.sender, PolicyIdNotReserved(policyId));
         require(!_policyIdBound[policyId], PolicyIdAlreadyBound(policyId));
 
+        PolicyDraft storage draft = _policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
+
         ICoverPool.Quote calldata quote = request.quote;
         uint96 committeeId = quote.committeeId;
         require(uint96(policyId) == committeeId, InvalidCommitteeId());
+
         _policyIdBound[policyId] = true;
+        draft.status = PolicyStatus.Bound;
 
         uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(quote.operator, committeeId);
         require(
@@ -250,6 +323,14 @@ contract PolicyManager is
             quote.basePremium,
             policyCommit
         );
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
+    function getPolicyDraft(uint256 policyId) external view override returns (PolicyDraft memory draft) {
+        draft = _policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
     }
 
     /**

@@ -268,7 +268,7 @@ contract CoverPoolTest is Test {
         coverPool.recordBoundPolicy(policyId, policyCommit, quote);
 
         vm.prank(policyManager);
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.InvalidPolicyStatus.selector, ICoverPool.PolicyStatus.Bound));
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyAlreadyBound.selector, policyCommit));
         coverPool.recordBoundPolicy(policyId, policyCommit, quote);
     }
 
@@ -301,16 +301,6 @@ contract CoverPoolTest is Test {
             )
         );
         coverPool.recordBoundPolicy(policyId, policyCommit, quote);
-    }
-
-    function test_recordBoundPolicy_WhenPolicyIdZero_Reverts() public {
-        ICoverPool.Quote memory quote = _defaultQuote();
-        bytes memory signature = _signQuote(quote);
-        bytes32 policyCommit = coverPool.verifyQuote(quote, signature);
-
-        vm.prank(policyManager);
-        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyDraftNotFound.selector, 0));
-        coverPool.recordBoundPolicy(0, policyCommit, quote);
     }
 
     function test_recordBoundPolicy_WhenPolicyCommitZero_Reverts() public {
@@ -666,8 +656,20 @@ contract CoverPoolTest is Test {
     function _createDraft() private returns (uint256 policyId) {
         vm.mockCall(stakeManager, abi.encodeWithSignature("createCommittee(uint96,uint256)"), "");
         vm.mockCall(stakeManager, abi.encodeWithSignature("addOperatorToCommittee(address,uint96)"), "");
-        vm.prank(buyer);
-        policyId = coverPool.requestCoverage(payoutRecipient, payoutRecipient, premiumToken, payoutToken, 1_000_000e8);
+
+        // Mock that coverPool exists in factory
+        vm.mockCall(
+            address(mockPolicyManager),
+            abi.encodeWithSignature("getCoverPoolFactory()"),
+            abi.encode(makeAddr("factory"))
+        );
+
+        // Create draft through MockPolicyManager
+        vm.prank(address(coverPool));
+        policyId = mockPolicyManager.generatePolicyId();
+
+        // Mock the draft in PolicyManager
+        mockPolicyManager.mockPolicyDraft(policyId, address(coverPool), buyer);
     }
 
     function _defaultQuote() private view returns (ICoverPool.Quote memory quote) {
@@ -719,6 +721,7 @@ contract MockPolicyManager {
     uint256 public nextPolicyId;
     uint256 public bindPolicyCallCount;
     IPolicyManager.BindPolicyRequest private _lastBindRequest;
+    mapping(uint256 => IPolicyManager.PolicyDraft) private _drafts;
 
     function generatePolicyId() external returns (uint256 policyId) {
         policyId = ++nextPolicyId;
@@ -731,5 +734,25 @@ contract MockPolicyManager {
 
     function lastBindRequest() external view returns (IPolicyManager.BindPolicyRequest memory) {
         return _lastBindRequest;
+    }
+
+    function mockPolicyDraft(uint256 policyId, address pool, address buyer) external {
+        _drafts[policyId] = IPolicyManager.PolicyDraft({
+            pool: pool,
+            buyer: buyer,
+            beneficiary: address(0),
+            claimer: address(0),
+            premiumToken: address(0),
+            payoutToken: address(0),
+            coverageAmount: 1_000_000e8,
+            committeeId: uint96(policyId),
+            status: IPolicyManager.PolicyStatus.Created
+        });
+    }
+
+    function getPolicyDraft(uint256 policyId) external view returns (IPolicyManager.PolicyDraft memory) {
+        IPolicyManager.PolicyDraft memory draft = _drafts[policyId];
+        require(draft.status != IPolicyManager.PolicyStatus.None, "PolicyDraftNotFound");
+        return draft;
     }
 }
