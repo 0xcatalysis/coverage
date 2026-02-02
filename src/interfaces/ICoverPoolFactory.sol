@@ -12,14 +12,12 @@ interface ICoverPoolFactory is IAccessControl {
      * @notice Creation parameters required to deploy a CoverPool clone.
      */
     struct CreateCoverPoolParams {
-        /// @notice Curator that will own and administer the pool.
+        /// @notice Curator that will own and administer the pool and act as the operator.
         address curator;
         /// @notice Initial EIP-712 quote signer authorized on the pool.
         address quoteSigner;
         /// @notice Basis points routed to the curator on premium settlement.
         uint16 poolFeeBps;
-        /// @notice Default operator address used for new policy drafts.
-        address poolOperator;
         /// @notice Deadline for the operator registration signature.
         uint48 deadline;
         /// @notice Operator's signature for network registration.
@@ -29,19 +27,17 @@ interface ICoverPoolFactory is IAccessControl {
     /**
      * @notice Emitted when a new CoverPool clone is deployed.
      * @param coverPool Address of the deployed CoverPool clone.
-     * @param curator Curator that owns the pool.
+     * @param curator Curator that owns the pool and acts as the operator.
      * @param quoteSigner Initial quote signer configured on the pool.
      * @param policyManager PolicyManager address assigned on initialization.
      * @param poolFeeBps Default pool fee configured for the pool.
-     * @param poolOperator Default operator address for new policy drafts.
      */
     event CoverPoolCreated(
         address indexed coverPool,
         address indexed curator,
         address quoteSigner,
         address policyManager,
-        uint16 poolFeeBps,
-        address poolOperator
+        uint16 poolFeeBps
     );
 
     /**
@@ -113,45 +109,6 @@ interface ICoverPoolFactory is IAccessControl {
     function setStakeManager(address stakeManager_) external;
 
     /**
-     * @notice Returns the CoverPool implementation address.
-     * @return The address of the CoverPool implementation contract.
-     */
-    function coverPoolImplementation() external view returns (address);
-
-    /**
-     * @notice Returns the PolicyManager address.
-     * @return The address of the PolicyManager contract.
-     */
-    function policyManager() external view returns (address);
-
-    /**
-     * @notice Role identifier allowed to create cover pools.
-     * @return The role identifier hash.
-     */
-    function CREATOR_ROLE() external view returns (bytes32);
-
-    /**
-     * @notice Address of the StakeManager contract from Catalysis Core.
-     * @dev Used to register operators to restaking networks.
-     * @return The address of the StakeManager contract.
-     */
-    function stakeManager() external view returns (address);
-
-    /**
-     * @notice Returns the deterministic address that would be used for a cover pool deployment.
-     * @param params Struct containing cover pool parameters.
-     * @return The deterministic address for the cover pool.
-     */
-    function computeCoverPoolAddress(CreateCoverPoolParams calldata params) external view returns (address);
-
-    /**
-     * @notice Returns true when the pool has been registered.
-     * @param pool Address of the CoverPool to check.
-     * @return True if the pool exists, false otherwise.
-     */
-    function coverPoolExists(address pool) external view returns (bool);
-
-    /**
      * @notice Returns the pool address stored at the given index.
      * @param index Position in the pool array.
      * @return The address of the CoverPool at the specified index.
@@ -171,4 +128,43 @@ interface ICoverPoolFactory is IAccessControl {
      * @return pools Array of CoverPool addresses.
      */
     function getCoverPools(uint256 offset, uint256 limit) external view returns (address[] memory pools);
+
+    /**
+     * @notice Returns the deterministic address that would be used for a cover pool deployment.
+     * @param params Struct containing cover pool parameters.
+     * @return The deterministic address for the cover pool.
+     */
+    function computeCoverPoolAddress(CreateCoverPoolParams calldata params) external view returns (address);
+
+    /**
+     * @notice Returns true when the pool has been registered.
+     * @param pool Address of the CoverPool to check.
+     * @return True if the pool exists, false otherwise.
+     */
+    function coverPoolExists(address pool) external view returns (bool);
+
+    /**
+     * @notice Address of the StakeManager contract from Catalysis Core.
+     * @dev Used to register operators to restaking networks.
+     * @return The address of the StakeManager contract.
+     */
+    function stakeManager() external view returns (address);
+
+    /**
+     * @notice Returns the CoverPool implementation address.
+     * @return The address of the CoverPool implementation contract.
+     */
+    function coverPoolImplementation() external view returns (address);
+
+    /**
+     * @notice Returns the PolicyManager address.
+     * @return The address of the PolicyManager contract.
+     */
+    function policyManager() external view returns (address);
+
+    /**
+     * @notice Role identifier allowed to create cover pools.
+     * @return The role identifier hash.
+     */
+    function CREATOR_ROLE() external view returns (bytes32);
 }

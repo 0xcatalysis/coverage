@@ -340,6 +340,13 @@ interface IPolicyManager is IAccessControl {
     function bindPolicy(BindPolicyRequest calldata request) external;
 
     /**
+     * @notice Returns draft data for a policyId.
+     * @param policyId Identifier of the draft to fetch.
+     * @return PolicyDraft request snapshot.
+     */
+    function getPolicyDraft(uint256 policyId) external view returns (PolicyDraft memory);
+
+    /**
      * @notice Returns true when the contract is paused.
      */
     function paused() external view returns (bool);
@@ -373,11 +380,4 @@ interface IPolicyManager is IAccessControl {
      * @notice Returns the platform fee in basis points.
      */
     function platformFeeBps() external view returns (uint16);
-
-    /**
-     * @notice Returns draft data for a policyId.
-     * @param policyId Identifier of the draft to fetch.
-     * @return PolicyDraft request snapshot.
-     */
-    function getPolicyDraft(uint256 policyId) external view returns (PolicyDraft memory);
 }

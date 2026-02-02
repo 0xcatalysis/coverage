@@ -210,7 +210,7 @@ contract CoverPoolFactoryTest is Test {
 
         vm.expectEmit(false, true, true, true, address(factory));
         emit ICoverPoolFactory.CoverPoolCreated(
-            address(0), params.curator, params.quoteSigner, policyManager, params.poolFeeBps, params.poolOperator
+            address(0), params.curator, params.quoteSigner, policyManager, params.poolFeeBps
         );
 
         vm.prank(creator);
@@ -663,7 +663,6 @@ contract CoverPoolFactoryTest is Test {
             curator: curator,
             quoteSigner: quoteSigner,
             poolFeeBps: DEFAULT_POOL_FEE,
-            poolOperator: operator,
             deadline: uint48(block.timestamp + 1 days),
             signature: hex"1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef00"
         });

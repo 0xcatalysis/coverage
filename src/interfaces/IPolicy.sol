@@ -41,8 +41,8 @@ interface IPolicy is IAccessControl, IERC721Metadata {
         address payoutReceiver;
         /// @notice Operator address delegated for this policy.
         address operator;
-        /// @notice Pool-provided identifier for the policy.
-        uint256 poolPolicyId;
+        /// @notice Incremental identifier for the policy.
+        uint96 poolPolicyId;
         /// @notice Spec identifier for parametric claim evaluation (e.g., MorphoSpec, MapleSpec).
         bytes32 specId;
         /// @notice Hash of referenced terms governing this policy.

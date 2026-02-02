@@ -41,7 +41,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     mapping(uint256 policyId => BoundPolicy policy) private boundPolicies;
 
     address public override policyManager;
-    address public override poolOperator;
 
     /**
      * @dev Ensures incoming quote matches pool metadata and timing constraints before processing.
@@ -74,15 +73,14 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         address policyManager_,
         address quoteSigner_,
         address stakeManager_,
-        uint16 poolFeeBps_,
-        address poolOperator_
+        uint16 poolFeeBps_
     )
         external
         initializer
     {
         require(
             curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0)
-                && stakeManager_ != address(0) && poolOperator_ != address(0),
+                && stakeManager_ != address(0),
             ZeroAddress()
         );
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
@@ -97,7 +95,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         policyManager = policyManager_;
         stakeManager = stakeManager_;
         poolFeeBps = poolFeeBps_;
-        poolOperator = poolOperator_;
     }
 
     /**
@@ -129,18 +126,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
-    function setPoolOperator(address operator_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(operator_ != address(0), InvalidOperator());
-
-        address previousPoolOperator = poolOperator;
-        poolOperator = operator_;
-
-        emit PoolOperatorSet(previousPoolOperator, operator_);
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
     function bindPolicyForRequest(
         uint256 policyId,
         Quote calldata quote,
@@ -158,7 +143,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
         require(quote.committeeId == draft.committeeId, InvalidCommitteeId());
         require(quote.payoutReceiver == draft.beneficiary, InvalidPayoutReceiver());
-        require(quote.operator == draft.operator, InvalidOperator());
+        require(quote.operator == owner(), InvalidOperator());
         require(vaults.length != 0, ICoverPool.EmptyVaults());
 
         emit PolicyForRequestBound(policyId, draft.committeeId, vaults.length);

@@ -146,16 +146,6 @@ interface IPremiumManager is IAccessControl {
     function collectPremium(PremiumAllocation calldata allocation) external;
 
     /**
-     * @notice Returns true when the contract is paused.
-     */
-    function paused() external view returns (bool);
-
-    /**
-     * @notice AccessControl identifier for the PolicyManager role.
-     */
-    function POLICY_MANAGER_ROLE() external view returns (bytes32);
-
-    /**
      * @notice Returns the configured PremiumReserve address.
      */
     function premiumReserve() external view returns (address);
@@ -164,6 +154,16 @@ interface IPremiumManager is IAccessControl {
      * @notice Returns the configured platform treasury address.
      */
     function platformTreasury() external view returns (address);
+
+    /**
+     * @notice Returns true when the contract is paused.
+     */
+    function paused() external view returns (bool);
+
+    /**
+     * @notice AccessControl identifier for the PolicyManager role.
+     */
+    function POLICY_MANAGER_ROLE() external view returns (bytes32);
 
     /**
      * @notice Calculates the platform, pool, and restaker premium splits for a given gross premium.

@@ -180,8 +180,8 @@ contract PolicyManager is
         );
         require(coverageAmount != 0, InvalidCoverageAmount());
 
-        address poolOperator = ICoverPool(pool).poolOperator();
-        require(poolOperator != address(0), InvalidPoolOperator());
+        address curator = ICoverPool(pool).owner();
+        require(curator != address(0), InvalidPoolOperator());
 
         policyId = ++_nextPolicyId;
         require(policyId <= type(uint96).max, PolicyIdOverflow());
@@ -195,7 +195,7 @@ contract PolicyManager is
             claimer: claimer,
             premiumToken: premiumToken,
             payoutToken: payoutToken,
-            operator: poolOperator,
+            operator: curator,
             coverageAmount: coverageAmount,
             committeeId: committeeId,
             status: PolicyStatus.Created
@@ -204,7 +204,7 @@ contract PolicyManager is
         emit PolicyDraftCreated(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount);
 
         IStakeManager(stakeManager).createCommittee(committeeId, coverageAmount);
-        IStakeManager(stakeManager).addOperatorToCommittee(poolOperator, committeeId);
+        IStakeManager(stakeManager).addOperatorToCommittee(curator, committeeId);
     }
 
     /**
@@ -238,12 +238,12 @@ contract PolicyManager is
 
         draft.status = PolicyStatus.Bound;
 
+        require(IStakeManager(stakeManager).getCommitteeVaults(committeeId).length > 0, NoVaultsBound(committeeId));
+
         uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(quote.operator, committeeId);
         require(
             totalStake >= request.coverageAmount, InsufficientStake(committeeId, request.coverageAmount, totalStake)
         );
-
-        require(IStakeManager(stakeManager).getCommitteeVaults(committeeId).length > 0, NoVaultsBound(committeeId));
 
         bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
@@ -286,7 +286,7 @@ contract PolicyManager is
             coverageLimit: boundPolicy.coverageLimit,
             payoutReceiver: boundPolicy.payoutReceiver,
             operator: boundPolicy.operator,
-            poolPolicyId: boundPolicy.policyId,
+            poolPolicyId: uint96(boundPolicy.policyId),
             specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
             policyCommit: policyCommit

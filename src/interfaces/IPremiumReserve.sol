@@ -231,26 +231,6 @@ interface IPremiumReserve is IAccessControl {
     function releaseEscrow(uint256 policyId, address rewardsManager) external;
 
     /**
-     * @notice Returns true when the contract is paused.
-     */
-    function paused() external view returns (bool);
-
-    /**
-     * @notice AccessControl identifier for the PremiumManager role.
-     */
-    function PREMIUM_MANAGER_ROLE() external view returns (bytes32);
-
-    /**
-     * @notice AccessControl identifier for the ClaimManager role.
-     */
-    function CLAIM_MANAGER_ROLE() external view returns (bytes32);
-
-    /**
-     * @notice AccessControl identifier for the PolicyManager role.
-     */
-    function POLICY_MANAGER_ROLE() external view returns (bytes32);
-
-    /**
      * @notice Returns the escrow position for a policy.
      * @param policyId Identifier to query.
      * @return EscrowPosition snapshot describing the escrow state.
@@ -284,4 +264,24 @@ interface IPremiumReserve is IAccessControl {
      * @return The pool address backing the policy.
      */
     function getPool(uint256 policyId) external view returns (address);
+
+    /**
+     * @notice Returns true when the contract is paused.
+     */
+    function paused() external view returns (bool);
+
+    /**
+     * @notice AccessControl identifier for the PremiumManager role.
+     */
+    function PREMIUM_MANAGER_ROLE() external view returns (bytes32);
+
+    /**
+     * @notice AccessControl identifier for the ClaimManager role.
+     */
+    function CLAIM_MANAGER_ROLE() external view returns (bytes32);
+
+    /**
+     * @notice AccessControl identifier for the PolicyManager role.
+     */
+    function POLICY_MANAGER_ROLE() external view returns (bytes32);
 }

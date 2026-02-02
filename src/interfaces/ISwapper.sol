@@ -254,15 +254,6 @@ interface ISwapper is IAccessControl {
     function SWAP_EXECUTOR_ROLE() external view returns (bytes32);
 
     /**
-     * @notice Canonical address representing native ETH in swap operations.
-     * @dev Use this constant as tokenIn or tokenOut in executeSwap to swap native ETH.
-     *      Always returns 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE.
-     *      Routes must be configured using the nativeWrapper address (WETH), not this constant.
-     * @return Address used to denote native ETH in executeSwap calls.
-     */
-    function NATIVE_ETH() external pure returns (address);
-
-    /**
      * @notice Address of the native token wrapper contract (e.g., WETH).
      * @return Address of the native token wrapper.
      */
@@ -287,4 +278,13 @@ interface ISwapper is IAccessControl {
      * @notice Returns true when the contract is paused.
      */
     function paused() external view returns (bool);
+
+    /**
+     * @notice Canonical address representing native ETH in swap operations.
+     * @dev Use this constant as tokenIn or tokenOut in executeSwap to swap native ETH.
+     *      Always returns 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE.
+     *      Routes must be configured using the nativeWrapper address (WETH), not this constant.
+     * @return Address used to denote native ETH in executeSwap calls.
+     */
+    function NATIVE_ETH() external pure returns (address);
 }

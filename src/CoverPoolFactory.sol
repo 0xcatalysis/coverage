@@ -98,16 +98,12 @@ contract CoverPoolFactory is
 
         address coverPool = coverPoolImplementation.cloneDeterministic(salt);
         ICoverPool(coverPool)
-            .initialize(
-                params.curator, policyManager, params.quoteSigner, stakeManager, params.poolFeeBps, params.poolOperator
-            );
+            .initialize(params.curator, policyManager, params.quoteSigner, stakeManager, params.poolFeeBps);
 
         // slither-disable-next-line unused-return
         _pools.add(coverPool);
 
-        emit CoverPoolCreated(
-            coverPool, params.curator, params.quoteSigner, policyManager, params.poolFeeBps, params.poolOperator
-        );
+        emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager, params.poolFeeBps);
 
         IStakeManager(stakeManager).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
     }

@@ -24,15 +24,6 @@ interface IStakeManager {
     function createCommittee(uint96 committeeId, uint256 maxStakeForCommittee) external;
 
     /**
-     * @notice Returns the total stake of an operator in a specific committee across all vaults (in USD with 8
-     * decimals).
-     * @param operator The address of the operator.
-     * @param committeeId The ID of the committee.
-     * @return The total stake of the operator in the committee in USD.
-     */
-    function getOperatorCommitteeStake(address operator, uint96 committeeId) external view returns (uint256);
-
-    /**
      * @notice Associates vaults with a committee.
      * @dev Can only be called by a registered cover pool.
      * @param committeeId The ID of the committee.
@@ -47,6 +38,15 @@ interface IStakeManager {
      * @param committeeId The ID of the committee to add the operator to.
      */
     function addOperatorToCommittee(address operator, uint96 committeeId) external;
+
+    /**
+     * @notice Returns the total stake of an operator in a specific committee across all vaults (in USD with 8
+     * decimals).
+     * @param operator The address of the operator.
+     * @param committeeId The ID of the committee.
+     * @return The total stake of the operator in the committee in USD.
+     */
+    function getOperatorCommitteeStake(address operator, uint96 committeeId) external view returns (uint256);
 
     /**
      * @notice Returns all the vault addresses associated with a committee.

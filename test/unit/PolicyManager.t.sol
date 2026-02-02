@@ -967,15 +967,15 @@ contract PolicyManagerTest is Test {
         policyManager.createPolicyDraft(address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, 0);
     }
 
-    function test_createPolicyDraft_WhenPoolOperatorZero_Reverts() public {
-        MockCoverPool poolWithoutOperator = new MockCoverPool();
-        poolWithoutOperator.setPoolOperator(address(0));
-        mockCoverPoolFactory.registerPool(address(poolWithoutOperator));
+    function test_createPolicyDraft_WhenCuratorZero_Reverts() public {
+        MockCoverPool poolWithoutCurator = new MockCoverPool();
+        poolWithoutCurator.setCurator(address(0));
+        mockCoverPoolFactory.registerPool(address(poolWithoutCurator));
 
         vm.expectRevert(IPolicyManager.InvalidPoolOperator.selector);
         vm.prank(buyer);
         policyManager.createPolicyDraft(
-            address(poolWithoutOperator), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
+            address(poolWithoutCurator), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
         );
     }
 
@@ -1196,11 +1196,9 @@ contract MockCoverPool {
     ICoverPool.BoundPolicy private _boundPolicy;
     bool private _useOverriddenPolicy;
     address public curator;
-    address public poolOperator;
     bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00;
 
     constructor() {
-        poolOperator = address(0xDEADBEEF);
         _returnPolicyCommit = keccak256("policy-commit");
         _boundPolicy = ICoverPool.BoundPolicy({
             policyId: 1,
@@ -1257,8 +1255,8 @@ contract MockCoverPool {
         return _boundPolicy;
     }
 
-    function owner() external pure returns (address) {
-        return address(0xC0000001);
+    function owner() external view returns (address) {
+        return curator;
     }
 
     function poolFeeBps() external pure returns (uint16) {
@@ -1276,10 +1274,6 @@ contract MockCoverPool {
 
     function lastBoundPolicy() external view returns (ICoverPool.BoundPolicy memory) {
         return _boundPolicy;
-    }
-
-    function setPoolOperator(address operator_) external {
-        poolOperator = operator_;
     }
 }
 

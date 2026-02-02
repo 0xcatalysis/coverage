@@ -7,19 +7,6 @@ pragma solidity 0.8.28;
  */
 interface IOwnable2Step {
     /**
-     * @notice Returns the current owner of the contract.
-     * @return owner_ Address that controls privileged operations.
-     */
-    function owner() external view returns (address);
-
-    /**
-     * @notice Returns the address that has been nominated to accept ownership.
-     * @dev Will be the zero address if no transfer is in progress.
-     * @return pendingOwner_ Address that must call `acceptOwnership` to finalize the transfer.
-     */
-    function pendingOwner() external view returns (address);
-
-    /**
      * @notice Initiates a two-step ownership transfer by setting `newOwner` as pending owner.
      * @dev Reverts if called by anyone other than the current owner or if `newOwner` is the zero address.
      * @param newOwner Address that will gain ownership once `acceptOwnership` is executed.
@@ -31,4 +18,17 @@ interface IOwnable2Step {
      * @dev Must be called by the nominated pending owner.
      */
     function acceptOwnership() external;
+
+    /**
+     * @notice Returns the current owner of the contract.
+     * @return owner_ Address that controls privileged operations.
+     */
+    function owner() external view returns (address);
+
+    /**
+     * @notice Returns the address that has been nominated to accept ownership.
+     * @dev Will be the zero address if no transfer is in progress.
+     * @return pendingOwner_ Address that must call `acceptOwnership` to finalize the transfer.
+     */
+    function pendingOwner() external view returns (address);
 }

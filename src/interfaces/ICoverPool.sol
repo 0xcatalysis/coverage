@@ -49,7 +49,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @dev Contains the confirmed terms and coverage details for the bound policy.
      */
     struct BoundPolicy {
-        /// @notice Pool-provided identifier for the policy.
+        /// @notice Incremental identifier for the policy.
         uint256 policyId;
         /// @notice Spec identifier attached to the bound policy.
         bytes32 specId;
@@ -72,7 +72,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Emitted when a policy is successfully recorded and bound against the pool.
      * @param policyCommit Deterministic hash representing the policy.
-     * @param policyId Pool-provided identifier for the policy.
+     * @param policyId Incremental identifier for the policy.
      * @param coverageLimit Coverage notional locked from the pool.
      */
     event BoundPolicyRecorded(bytes32 indexed policyCommit, uint256 indexed policyId, uint256 coverageLimit);
@@ -83,13 +83,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param newPoolFeeBps Pool fee basis points after the update.
      */
     event PoolFeeBpsSet(uint16 previousPoolFeeBps, uint16 newPoolFeeBps);
-
-    /**
-     * @notice Emitted when the default operator is updated.
-     * @param previousOperator Operator before the update.
-     * @param newOperator Operator after the update.
-     */
-    event PoolOperatorSet(address indexed previousOperator, address indexed newOperator);
 
     /**
      * @notice Emitted when a policy is bound through bindPolicyForRequest.
@@ -167,7 +160,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error PolicyCommitMismatch(bytes32 expected, bytes32 actual);
 
     /**
-     * @notice Reverts when querying data for an unknown pool policy identifier.
+     * @notice Reverts when querying data for an unknown policy identifier.
      * @param policyId Identifier that failed the lookup.
      */
     error PolicyNotFound(uint256 policyId);
@@ -194,20 +187,18 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
 
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
-     * @param curator_ Address assigned as the owner (curator).
+     * @param curator_ Address assigned as the owner (curator) and operator.
      * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
      * @param stakeManager_ Address of the StakeManager contract for vault binding operations.
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
-     * @param poolOperator_ Default operator address used for new policy drafts.
      */
     function initialize(
         address curator_,
         address policyManager_,
         address quoteSigner_,
         address stakeManager_,
-        uint16 poolFeeBps_,
-        address poolOperator_
+        uint16 poolFeeBps_
     )
         external;
 
@@ -226,13 +217,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
      */
     function setPoolFeeBps(uint16 poolFeeBps_) external;
-
-    /**
-     * @notice Sets the default operator used for new policy drafts.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param operator_ Operator address to set.
-     */
-    function setPoolOperator(address operator_) external;
 
     /**
      * @notice Curator entrypoint to bind a policy draft via PolicyManager.
@@ -254,7 +238,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Locks coverage for a previously validated policy commit.
      * @dev Requires POLICY_MANAGER_ROLE. Each binding represents a complete policy from this pool.
      *      Signature validation must be performed by the caller via verifyQuote() before calling this function.
-     * @param policyId Pool-provided identifier for the policy.
+     * @param policyId Incremental identifier for the policy.
      * @param policyCommit Deterministic hash representing the policy.
      * @param quote Quote that has been validated for binding.
      * @return BoundPolicy metadata describing the pool's coverage allocation.
@@ -281,7 +265,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function quoteDomainSeparator() external view returns (bytes32);
 
     /**
-     * @notice Fetches bound policy metadata by pool-specific identifier.
+     * @notice Fetches bound policy metadata by incremental identifier.
      * @param policyId Identifier returned during binding.
      * @return BoundPolicy metadata describing the allocation.
      */
@@ -296,27 +280,10 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function verifyQuote(Quote calldata quote, bytes calldata signature) external view returns (bytes32 policyCommit);
 
     /**
-     * @notice AccessControl identifier for the PolicyManager binding role.
-     * @return The role identifier hash.
-     */
-    function POLICY_MANAGER_ROLE() external pure returns (bytes32);
-
-    /**
-     * @notice AccessControl identifier for approved quote signers.
-     * @return The role identifier hash.
-     */
-    function QUOTE_SIGNER_ROLE() external pure returns (bytes32);
-
-    /**
      * @notice Pool fee expressed in basis points that is applied to premiums.
      * @return The pool fee in basis points.
      */
     function poolFeeBps() external view returns (uint16);
-
-    /**
-     * @notice Returns the default operator address used for new policy drafts.
-     */
-    function poolOperator() external view returns (address);
 
     /**
      * @notice Returns the PolicyManager address used for binding.
@@ -327,4 +294,16 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Returns the StakeManager address used for vault binding operations.
      */
     function stakeManager() external view returns (address);
+
+    /**
+     * @notice AccessControl identifier for the PolicyManager binding role.
+     * @return The role identifier hash.
+     */
+    function POLICY_MANAGER_ROLE() external pure returns (bytes32);
+
+    /**
+     * @notice AccessControl identifier for approved quote signers.
+     * @return The role identifier hash.
+     */
+    function QUOTE_SIGNER_ROLE() external pure returns (bytes32);
 }

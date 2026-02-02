@@ -354,41 +354,6 @@ interface IClaimManager is IAccessControl {
     function rejectClaim(uint256 policyId, uint256 claimId, string calldata reason) external;
 
     /**
-     * @notice AccessControl identifier for the claim operator role.
-     */
-    function CLAIM_OPERATOR_ROLE() external view returns (bytes32);
-
-    /**
-     * @notice Returns the SpecRegistry address.
-     */
-    function specRegistry() external view returns (address);
-
-    /**
-     * @notice Returns the SlashingManager address.
-     */
-    function slashingManager() external view returns (address);
-
-    /**
-     * @notice Returns the Swapper address.
-     */
-    function swapper() external view returns (address);
-
-    /**
-     * @notice Returns the Policy address.
-     */
-    function policy() external view returns (address);
-
-    /**
-     * @notice Returns the PremiumReserve address.
-     */
-    function premiumReserve() external view returns (address);
-
-    /**
-     * @notice Returns the ChainlinkPriceFeed address.
-     */
-    function chainlinkPriceFeed() external view returns (address);
-
-    /**
      * @notice Returns the claim record for a specific claim.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
@@ -422,4 +387,39 @@ interface IClaimManager is IAccessControl {
      * @notice Returns true when the contract is paused.
      */
     function paused() external view returns (bool);
+
+    /**
+     * @notice AccessControl identifier for the claim operator role.
+     */
+    function CLAIM_OPERATOR_ROLE() external view returns (bytes32);
+
+    /**
+     * @notice Returns the SpecRegistry address.
+     */
+    function specRegistry() external view returns (address);
+
+    /**
+     * @notice Returns the SlashingManager address.
+     */
+    function slashingManager() external view returns (address);
+
+    /**
+     * @notice Returns the Swapper address.
+     */
+    function swapper() external view returns (address);
+
+    /**
+     * @notice Returns the Policy address.
+     */
+    function policy() external view returns (address);
+
+    /**
+     * @notice Returns the PremiumReserve address.
+     */
+    function premiumReserve() external view returns (address);
+
+    /**
+     * @notice Returns the ChainlinkPriceFeed address.
+     */
+    function chainlinkPriceFeed() external view returns (address);
 }
