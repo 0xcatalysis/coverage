@@ -38,8 +38,6 @@ contract PolicyManager is
     uint16 public override platformFeeBps;
 
     uint256 private _nextPolicyId;
-    mapping(uint256 policyId => address pool) private _policyIdPool;
-    mapping(uint256 policyId => bool bound) private _policyIdBound;
     mapping(uint256 policyId => PolicyDraft draft) private _policyDrafts;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -190,8 +188,6 @@ contract PolicyManager is
 
         uint96 committeeId = uint96(policyId);
 
-        _policyIdPool[policyId] = pool;
-
         _policyDrafts[policyId] = PolicyDraft({
             pool: pool,
             buyer: msg.sender,
@@ -230,18 +226,15 @@ contract PolicyManager is
         _validateRequest(request);
 
         uint256 policyId = request.policyId;
-        require(_policyIdPool[policyId] == msg.sender, PolicyIdNotReserved(policyId));
-        require(!_policyIdBound[policyId], PolicyIdAlreadyBound(policyId));
-
         PolicyDraft storage draft = _policyDrafts[policyId];
         require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+        require(draft.pool == msg.sender, PolicyIdNotReserved(policyId));
         require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
 
         ICoverPool.Quote calldata quote = request.quote;
         uint96 committeeId = quote.committeeId;
         require(uint96(policyId) == committeeId, InvalidCommitteeId());
 
-        _policyIdBound[policyId] = true;
         draft.status = PolicyStatus.Bound;
 
         uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(quote.operator, committeeId);
