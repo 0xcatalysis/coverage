@@ -35,7 +35,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
 
     uint16 public override poolFeeBps;
-    address public stakeManager;
+    address public override stakeManager;
     mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
 
     mapping(uint256 policyId => BoundPolicy policy) private boundPolicies;

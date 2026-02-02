@@ -322,4 +322,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Returns the PolicyManager address used for binding.
      */
     function policyManager() external view returns (address);
+
+    /**
+     * @notice Returns the StakeManager address used for vault binding operations.
+     */
+    function stakeManager() external view returns (address);
 }
