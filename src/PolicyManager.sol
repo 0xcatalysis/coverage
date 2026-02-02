@@ -228,8 +228,8 @@ contract PolicyManager is
 
         uint256 policyId = request.policyId;
         PolicyDraft storage draft = _policyDrafts[policyId];
+        require(draft.pool == msg.sender, UnauthorizedCaller());
         require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
-        require(draft.pool == msg.sender, PolicyIdNotReserved(policyId));
         require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
 
         ICoverPool.Quote calldata quote = request.quote;
@@ -335,7 +335,6 @@ contract PolicyManager is
                 && request.premiumToken != address(0) && request.payoutToken != address(0),
             ZeroAddress()
         );
-        require(request.policyId != 0, PolicyIdNotReserved(request.policyId));
         require(request.quote.pool != address(0), InvalidCoverPool(request.quote.pool));
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(msg.sender), InvalidCoverPool(msg.sender));
         require(request.quote.pool == msg.sender, UnauthorizedCaller());

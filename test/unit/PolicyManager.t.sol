@@ -649,6 +649,20 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request);
     }
 
+    function test_bindPolicy_WhenAlreadyBound_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.committeeId, request.quote.operator, request.coverageAmount, true);
+
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.InvalidPolicyStatus.selector, IPolicyManager.PolicyStatus.Bound)
+        );
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request);
+    }
+
     function test_bindPolicy_WhenValid_CallsValidateQuote() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         _seedCommitteeForTesting(request.quote.committeeId, request.quote.operator, request.coverageAmount, true);

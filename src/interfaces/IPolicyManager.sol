@@ -211,18 +211,6 @@ interface IPolicyManager is IAccessControl {
     error PolicyIdOverflow();
 
     /**
-     * @notice Reverts when a policyId has not been reserved for the caller.
-     * @param policyId Identifier that failed validation.
-     */
-    error PolicyIdNotReserved(uint256 policyId);
-
-    /**
-     * @notice Reverts when a policyId has already been bound.
-     * @param policyId Identifier already bound.
-     */
-    error PolicyIdAlreadyBound(uint256 policyId);
-
-    /**
      * @notice Reverts when committee doesn't have sufficient stake.
      * @param committeeId Committee identifier.
      * @param required Required stake amount.
