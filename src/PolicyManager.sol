@@ -168,6 +168,19 @@ contract PolicyManager is
 
         _policyIdPool[policyId] = msg.sender;
 
+        // Create minimal draft entry to enable future binding via bindPolicyForRequest()
+        _policyDrafts[policyId] = PolicyDraft({
+            pool: msg.sender,
+            buyer: address(0), // Will be set during bindPolicyForRequest
+            beneficiary: address(0), // Will be set during bindPolicyForRequest
+            claimer: address(0), // Will be set during bindPolicyForRequest
+            premiumToken: address(0), // Will be set during bindPolicyForRequest
+            payoutToken: address(0), // Will be set during bindPolicyForRequest
+            coverageAmount: 0, // Will be set during bindPolicyForRequest
+            committeeId: uint96(policyId),
+            status: PolicyStatus.Created
+        });
+
         emit PolicyIdGenerated(policyId, msg.sender);
     }
 

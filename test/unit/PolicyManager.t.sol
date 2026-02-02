@@ -809,6 +809,20 @@ contract PolicyManagerTest is Test {
         assertEq(second, 2, "Second policy ID should be 2");
     }
 
+    function test_generatePolicyId_CreatesDraftForFutureBinding() public {
+        // Generate a policy ID
+        vm.prank(address(coverPool));
+        uint256 policyId = policyManager.generatePolicyId();
+
+        // Verify draft exists and can be retrieved (previously this would fail with PolicyDraftNotFound)
+        IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
+
+        // Verify draft has expected structure
+        assertEq(draft.pool, address(coverPool), "Pool should match");
+        assertEq(uint8(draft.status), uint8(IPolicyManager.PolicyStatus.Created), "Status should be Created");
+        assertEq(draft.committeeId, uint96(policyId), "Committee ID should equal policy ID");
+    }
+
     function test_bindPolicy_PassesCustomCoverageAmount() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint256 customAmount = 999_999e8;
