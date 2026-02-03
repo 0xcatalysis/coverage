@@ -71,15 +71,15 @@ interface IPolicyManager is IAccessControl {
     }
 
     /**
-     * @notice Emitted when a policy draft is created.
+     * @notice Emitted when coverage is requested via a policy draft.
      * @param policyId Identifier reserved for binding.
-     * @param pool CoverPool where the draft was created.
+     * @param pool CoverPool where coverage was requested.
      * @param buyer Buyer address requesting coverage.
      * @param beneficiary Beneficiary address for claims.
      * @param claimer Account authorized to trigger claims.
      * @param coverageAmount Requested coverage amount (stake requirement).
      */
-    event PolicyDraftCreated(
+    event CoverageRequested(
         uint256 indexed policyId,
         address indexed pool,
         address indexed buyer,
@@ -302,10 +302,11 @@ interface IPolicyManager is IAccessControl {
     function setPlatformFee(uint16 platformFeeBps_) external;
 
     /**
-     * @notice Creates a policy draft for a specified pool (user-facing entrypoint).
-     * @dev Allows users to create policy drafts by specifying which pool they want coverage from.
+     * @notice Requests coverage from a specified pool (user-facing entrypoint).
+     * @dev Allows users to request coverage by specifying which pool they want coverage from.
      *      The caller becomes the buyer and is responsible for paying premiums.
-     * @param pool CoverPool address to create the draft with.
+     *      Creates a policy draft that must be bound by the pool curator.
+     * @param pool CoverPool address to request coverage from.
      * @param beneficiary Address receiving payouts upon approved claims.
      * @param claimer Account authorized to trigger claims for the policy.
      * @param premiumToken ERC20 token used for premium payments.
@@ -313,7 +314,7 @@ interface IPolicyManager is IAccessControl {
      * @param coverageAmount Requested coverage amount (stake requirement in USD with 8 decimals).
      * @return policyId Identifier reserved for binding and minting.
      */
-    function createPolicyDraft(
+    function requestCoverage(
         address pool,
         address beneficiary,
         address claimer,

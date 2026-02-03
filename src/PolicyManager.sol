@@ -158,7 +158,7 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
-    function createPolicyDraft(
+    function requestCoverage(
         address pool,
         address beneficiary,
         address claimer,
@@ -201,7 +201,7 @@ contract PolicyManager is
             status: PolicyStatus.Created
         });
 
-        emit PolicyDraftCreated(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount);
+        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount);
 
         IStakeManager(stakeManager).createCommittee(committeeId, coverageAmount);
         IStakeManager(stakeManager).addOperatorToCommittee(curator, committeeId);
