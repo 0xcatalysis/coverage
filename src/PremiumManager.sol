@@ -175,6 +175,13 @@ contract PremiumManager is
     /**
      * @inheritdoc IPremiumManager
      */
+    function paused() public view override (IPremiumManager, PausableUpgradeable) returns (bool) {
+        return super.paused();
+    }
+
+    /**
+     * @inheritdoc IPremiumManager
+     */
     function getFeeSplits(
         uint256 grossPremium,
         uint16 platformFeeBps,
@@ -188,13 +195,6 @@ contract PremiumManager is
         platformSplit = (grossPremium * platformFeeBps) / _BPS_DENOMINATOR;
         poolSplit = (grossPremium * poolFeeBps) / _BPS_DENOMINATOR;
         restakerSplit = grossPremium - platformSplit - poolSplit;
-    }
-
-    /**
-     * @inheritdoc IPremiumManager
-     */
-    function paused() public view override (IPremiumManager, PausableUpgradeable) returns (bool) {
-        return super.paused();
     }
 
     /**

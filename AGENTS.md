@@ -42,11 +42,19 @@ Mock implementations of external dependencies for testnet deployments:
 
 ### Deployment Scripts (`script/`)
 
+**Initial Deployment:**
 - `Deploy.s.sol` – shared base handling all deployment logic
 - `DeployAnvil.s.sol` – local Anvil deployment for rapid iteration
 - `DeploySpecRegistrySepolia.s.sol` – standalone mock SpecRegistry deployment for Sepolia testing
 - `DeploySepolia.s.sol` – Sepolia deployment (requires SPEC_REGISTRY)
 - `DeployEthereum.s.sol` – mainnet deployment
+
+**UUPS Upgrades:**
+- `UpgradeCoverPoolFactory.s.sol` – shared base for CoverPoolFactory UUPS proxy upgrades
+- `UpgradeCoverPoolFactorySepolia.s.sol` – Sepolia CoverPoolFactory upgrade
+- `UpgradeCoverPoolFactoryEthereum.s.sol` – mainnet CoverPoolFactory upgrade
+
+**Inspection:**
 - `Show.s.sol`, `ShowSepolia.s.sol`, `ShowEthereum.s.sol` – inspect deployment metadata
 
 ## Build, Test, and Development Commands

@@ -10,8 +10,8 @@ import {CoverPoolFactory} from "../src/CoverPoolFactory.sol";
  * @notice Shared upgrade logic for CoverPoolFactory UUPS proxy upgrades.
  * @dev Executes an upgrade via OpenZeppelin's Upgrades library.
  *
- *      WARNING: Storage layout checks are skipped. Ensure storage compatibility
- *      is manually verified before upgrading to avoid corrupting proxy state.
+ *      WARNING: Storage layout checks are skipped. Manually verify layout before
+ *      upgrading to avoid corrupting proxy state.
  *
  *      Environment Variables:
  *        - PRIVATE_KEY: Deployer private key with DEFAULT_ADMIN_ROLE on CoverPoolFactory

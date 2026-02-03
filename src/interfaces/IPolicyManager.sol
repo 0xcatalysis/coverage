@@ -10,14 +10,54 @@ import {ICoverPool} from "./ICoverPool.sol";
  */
 interface IPolicyManager is IAccessControl {
     /**
+     * @notice Status of a policy draft.
+     */
+    enum PolicyStatus {
+        None,
+        Created,
+        Cancelled,
+        Bound
+    }
+
+    /**
+     * @notice Policy draft data stored before a policy is bound.
+     */
+    struct PolicyDraft {
+        /// @notice Cover pool where this draft was created.
+        address pool;
+        /// @notice Buyer wallet responsible for paying premiums.
+        address buyer;
+        /// @notice Beneficiary receiving payouts upon approved claims.
+        address beneficiary;
+        /// @notice Account authorized to trigger claims for the policy.
+        address claimer;
+        /// @notice ERC20 token used for premium payments.
+        address premiumToken;
+        /// @notice ERC20 token used for claim payouts.
+        address payoutToken;
+        /// @notice Operator address captured at draft creation and added to the committee.
+        address operator;
+        /// @notice Coverage amount requested (stake requirement in USD with 8 decimals).
+        uint256 coverageAmount;
+        /// @notice Restaking committee identifier created for this policy.
+        uint96 committeeId;
+        /// @notice Draft lifecycle status.
+        PolicyStatus status;
+    }
+
+    /**
      * @notice Request payload for binding a single-pool coverage policy.
      * @dev Phase 1 supports single pool bindings only; multi-pool aggregation is deferred.
      */
     struct BindPolicyRequest {
+        /// @notice Pre-assigned policy identifier reserved at request time.
+        uint256 policyId;
         /// @notice Policy buyer responsible for paying premiums.
         address buyer;
         /// @notice Beneficiary receiving payouts upon approved claims.
         address beneficiary;
+        /// @notice Account authorized to trigger claims for the policy.
+        address claimer;
         /// @notice ERC20 token used for premium payments.
         address premiumToken;
         /// @notice ERC20 token used for claim payouts.
@@ -29,6 +69,31 @@ interface IPolicyManager is IAccessControl {
         /// @notice EIP-712 signature from the pool's authorized quote signer.
         bytes signature;
     }
+
+    /**
+     * @notice Emitted when coverage is requested via a policy draft.
+     * @param policyId Identifier reserved for binding.
+     * @param pool CoverPool where coverage was requested.
+     * @param buyer Buyer address requesting coverage.
+     * @param beneficiary Beneficiary address for claims.
+     * @param claimer Account authorized to trigger claims.
+     * @param coverageAmount Requested coverage amount (stake requirement).
+     */
+    event CoverageRequested(
+        uint256 indexed policyId,
+        address indexed pool,
+        address indexed buyer,
+        address beneficiary,
+        address claimer,
+        uint256 coverageAmount
+    );
+
+    /**
+     * @notice Emitted when a policy draft is cancelled.
+     * @param policyId Identifier of the cancelled draft.
+     * @param pool CoverPool where the draft was created.
+     */
+    event PolicyDraftCancelled(uint256 indexed policyId, address indexed pool);
 
     /**
      * @notice Emitted when a policy is successfully bound.
@@ -81,6 +146,12 @@ interface IPolicyManager is IAccessControl {
     event ClaimManagerSet(address indexed claimManager_);
 
     /**
+     * @notice Emitted when the CoverPoolFactory dependency is set or updated.
+     * @param coverPoolFactory_ Address of the cover pool factory contract.
+     */
+    event CoverPoolFactorySet(address indexed coverPoolFactory_);
+
+    /**
      * @notice Reverts when a zero address is provided where not allowed.
      */
     error ZeroAddress();
@@ -114,14 +185,72 @@ interface IPolicyManager is IAccessControl {
     error InvalidCoverageAmount();
 
     /**
-     * @notice Reverts when the quote pool address does not match expected pool.
+     * @notice Reverts when the cover pool address is not registered in the factory.
+     * @param pool Pool address that failed validation.
      */
-    error InvalidQuotePool();
+    error InvalidCoverPool(address pool);
 
     /**
      * @notice Reverts when required policy commit hash is empty.
      */
     error InvalidPolicyCommit();
+
+    /**
+     * @notice Reverts when caller is not authorized for the operation.
+     */
+    error UnauthorizedCaller();
+
+    /**
+     * @notice Reverts when committee identifier is zero.
+     */
+    error InvalidCommitteeId();
+
+    /**
+     * @notice Reverts when policy ID would overflow uint96 committee ID limit.
+     */
+    error PolicyIdOverflow();
+
+    /**
+     * @notice Reverts when committee doesn't have sufficient stake.
+     * @param committeeId Committee identifier.
+     * @param required Required stake amount.
+     * @param actual Actual stake amount.
+     */
+    error InsufficientStake(uint96 committeeId, uint256 required, uint256 actual);
+
+    /**
+     * @notice Reverts when no vaults are bound to a committee.
+     * @param committeeId Committee identifier without vaults.
+     */
+    error NoVaultsBound(uint96 committeeId);
+
+    /**
+     * @notice Reverts when a policy draft is not found.
+     * @param policyId Identifier that failed lookup.
+     */
+    error PolicyDraftNotFound(uint256 policyId);
+
+    /**
+     * @notice Reverts when a policy is not in the expected status.
+     * @param status Current status of the policy draft.
+     */
+    error InvalidPolicyStatus(PolicyStatus status);
+
+    /**
+     * @notice Reverts when a non-buyer attempts to cancel a draft.
+     * @param caller Address that attempted cancellation.
+     */
+    error NotPolicyBuyer(address caller);
+
+    /**
+     * @notice Reverts when pool operator is invalid or not set.
+     */
+    error InvalidPoolOperator();
+
+    /**
+     * @notice Reverts when request parameters don't match the stored draft.
+     */
+    error RequestDraftMismatch();
 
     /**
      * @notice Pauses policy binding operations.
@@ -164,6 +293,13 @@ interface IPolicyManager is IAccessControl {
     function setClaimManager(address claimManager_) external;
 
     /**
+     * @notice Sets the CoverPoolFactory contract reference.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param coverPoolFactory_ Address of the CoverPoolFactory implementation.
+     */
+    function setCoverPoolFactory(address coverPoolFactory_) external;
+
+    /**
      * @notice Sets the platform fee charged on policy premiums.
      * @dev Requires DEFAULT_ADMIN_ROLE. Must not exceed 25% (2500 bps).
      * @param platformFeeBps_ Platform fee in basis points (1 bps = 0.01%).
@@ -171,11 +307,50 @@ interface IPolicyManager is IAccessControl {
     function setPlatformFee(uint16 platformFeeBps_) external;
 
     /**
+     * @notice Requests coverage from a specified pool (user-facing entrypoint).
+     * @dev Allows users to request coverage by specifying which pool they want coverage from.
+     *      The caller becomes the buyer and is responsible for paying premiums.
+     *      Creates a policy draft that must be bound by the pool curator.
+     * @param pool CoverPool address to request coverage from.
+     * @param beneficiary Address receiving payouts upon approved claims.
+     * @param claimer Account authorized to trigger claims for the policy.
+     * @param premiumToken ERC20 token used for premium payments.
+     * @param payoutToken ERC20 token used for claim payouts.
+     * @param coverageAmount Requested coverage amount (stake requirement in USD with 8 decimals).
+     * @return policyId Identifier reserved for binding and minting.
+     */
+    function requestCoverage(
+        address pool,
+        address beneficiary,
+        address claimer,
+        address premiumToken,
+        address payoutToken,
+        uint256 coverageAmount
+    )
+        external
+        returns (uint256 policyId);
+
+    /**
+     * @notice Cancels a policy draft.
+     * @dev Only the buyer can cancel, and only before binding.
+     * @param policyId Identifier of the draft to cancel.
+     */
+    function cancelPolicyDraft(uint256 policyId) external;
+
+    /**
      * @notice Binds a single-pool coverage policy by validating the quote, collecting premium,
      *         and minting a soulbound policy receipt.
+     * @dev Only registered CoverPools may call this function.
      * @param request Struct containing all binding parameters and signed quote.
      */
     function bindPolicy(BindPolicyRequest calldata request) external;
+
+    /**
+     * @notice Returns draft data for a policyId.
+     * @param policyId Identifier of the draft to fetch.
+     * @return PolicyDraft request snapshot.
+     */
+    function getPolicyDraft(uint256 policyId) external view returns (PolicyDraft memory);
 
     /**
      * @notice Returns true when the contract is paused.
@@ -201,6 +376,11 @@ interface IPolicyManager is IAccessControl {
      * @notice Returns the configured ClaimManager address.
      */
     function claimManager() external view returns (address);
+
+    /**
+     * @notice Returns the configured CoverPoolFactory address.
+     */
+    function coverPoolFactory() external view returns (address);
 
     /**
      * @notice Returns the platform fee in basis points.

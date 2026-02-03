@@ -10,6 +10,8 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
+import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
+import {IStakeManager} from "./interfaces/IStakeManager.sol";
 
 /**
  * @title CoverPool
@@ -33,9 +35,12 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
 
     uint16 public override poolFeeBps;
+    address public override stakeManager;
     mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
 
-    mapping(bytes32 policyId => BoundPolicy policy) private boundPolicies;
+    mapping(uint256 policyId => BoundPolicy policy) private boundPolicies;
+
+    address public override policyManager;
 
     /**
      * @dev Ensures incoming quote matches pool metadata and timing constraints before processing.
@@ -67,12 +72,17 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         address curator_,
         address policyManager_,
         address quoteSigner_,
+        address stakeManager_,
         uint16 poolFeeBps_
     )
         external
         initializer
     {
-        require(curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0), ZeroAddress());
+        require(
+            curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0)
+                && stakeManager_ != address(0),
+            ZeroAddress()
+        );
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
 
         __AccessControlDefaultAdminRules_init(0, curator_);
@@ -82,6 +92,8 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
         _grantRole(QUOTE_SIGNER_ROLE, quoteSigner_);
 
+        policyManager = policyManager_;
+        stakeManager = stakeManager_;
         poolFeeBps = poolFeeBps_;
     }
 
@@ -114,27 +126,67 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
-    function bindPolicy(
-        bytes32 policyCommit,
+    function bindPolicyForRequest(
+        uint256 policyId,
         Quote calldata quote,
-        bytes calldata signature
+        bytes calldata signature,
+        address[] calldata vaults
+    )
+        external
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+        whenNotPaused
+    {
+        IPolicyManager.PolicyDraft memory draft = IPolicyManager(policyManager).getPolicyDraft(policyId);
+        require(draft.pool == address(this), PoolAddressMismatch(address(this), draft.pool));
+        require(draft.status == IPolicyManager.PolicyStatus.Created, IPolicyManager.InvalidPolicyStatus(draft.status));
+        require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
+        require(quote.committeeId == draft.committeeId, InvalidCommitteeId());
+        require(quote.payoutReceiver == draft.beneficiary, InvalidPayoutReceiver());
+        require(quote.operator == owner(), InvalidOperator());
+        require(vaults.length != 0, ICoverPool.EmptyVaults());
+
+        emit PolicyForRequestBound(policyId, draft.committeeId, vaults.length);
+
+        IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
+
+        IPolicyManager(policyManager)
+            .bindPolicy(
+                IPolicyManager.BindPolicyRequest({
+                    policyId: policyId,
+                    buyer: draft.buyer,
+                    beneficiary: draft.beneficiary,
+                    claimer: draft.claimer,
+                    premiumToken: draft.premiumToken,
+                    payoutToken: draft.payoutToken,
+                    coverageAmount: draft.coverageAmount,
+                    quote: quote,
+                    signature: signature
+                })
+            );
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function recordBoundPolicy(
+        uint256 policyId,
+        bytes32 policyCommit,
+        Quote calldata quote
     )
         external
         override
         onlyRole(POLICY_MANAGER_ROLE)
-        validateQuote(quote)
         whenNotPaused
         returns (BoundPolicy memory boundPolicy)
     {
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
-        bytes32 calculatedPolicyCommit = _validateQuote(quote, signature);
+        bytes32 calculatedPolicyCommit = _hashQuote(quote);
         require(calculatedPolicyCommit == policyCommit, PolicyCommitMismatch(calculatedPolicyCommit, policyCommit));
         require(!boundPolicyCommits[policyCommit], PolicyAlreadyBound(policyCommit));
 
         boundPolicyCommits[policyCommit] = true;
-
-        bytes32 policyId = _derivePolicyId(policyCommit);
 
         boundPolicy = BoundPolicy({
             policyId: policyId,
@@ -150,7 +202,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
 
         boundPolicies[policyId] = boundPolicy;
 
-        emit PolicyBound(policyCommit, policyId, quote.coverageLimit);
+        emit BoundPolicyRecorded(policyCommit, policyId, quote.coverageLimit);
     }
 
     /**
@@ -163,9 +215,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
-    function getBoundPolicy(bytes32 policyId) external view override returns (BoundPolicy memory policy) {
+    function getBoundPolicy(uint256 policyId) external view override returns (BoundPolicy memory policy) {
         policy = boundPolicies[policyId];
-        require(policy.policyId != bytes32(0), PolicyNotFound(policyId));
+        require(policy.policyId != 0, PolicyNotFound(policyId));
     }
 
     /**
@@ -180,9 +232,13 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         override
         validateQuote(quote)
         whenNotPaused
-        returns (bytes32)
+        returns (bytes32 policyCommit)
     {
-        return _validateQuote(quote, signature);
+        policyCommit = _hashQuote(quote);
+        bytes32 digest = _hashTypedDataV4(policyCommit);
+
+        address signer = ECDSA.recover(digest, signature);
+        require(hasRole(QUOTE_SIGNER_ROLE, signer), InvalidQuoteSignature());
     }
 
     /**
@@ -211,33 +267,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         super.revokeRole(role, account);
-    }
-
-    /**
-     * @dev Validates a quote signature and returns the policy commit hash.
-     * @param quote Quote payload associated with the signature.
-     * @param signature EIP-712 signature produced by an authorized quote signer.
-     * @return policyCommit Deterministic commit hash derived from the quote.
-     */
-    function _validateQuote(Quote calldata quote, bytes calldata signature)
-        private
-        view
-        returns (bytes32 policyCommit)
-    {
-        policyCommit = _hashQuote(quote);
-        bytes32 digest = _hashTypedDataV4(policyCommit);
-
-        address signer = ECDSA.recover(digest, signature);
-        require(hasRole(QUOTE_SIGNER_ROLE, signer), QuoteSignatureInvalid());
-    }
-
-    /**
-     * @dev Derives a pool-specific identifier for storing bound policy metadata.
-     * @param policyCommit Commit hash associated with the bound policy.
-     * @return policyId Unique identifier produced for the bound policy.
-     */
-    function _derivePolicyId(bytes32 policyCommit) private view returns (bytes32 policyId) {
-        policyId = keccak256(abi.encodePacked(address(this), policyCommit));
     }
 
     /**
