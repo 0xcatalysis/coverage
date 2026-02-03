@@ -232,6 +232,13 @@ contract PolicyManager is
         require(draft.pool == msg.sender, UnauthorizedCaller());
         require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
 
+        require(
+            request.buyer == draft.buyer && request.beneficiary == draft.beneficiary && request.claimer == draft.claimer
+                && request.premiumToken == draft.premiumToken && request.payoutToken == draft.payoutToken
+                && request.coverageAmount == draft.coverageAmount,
+            RequestDraftMismatch()
+        );
+
         ICoverPool.Quote calldata quote = request.quote;
         uint96 committeeId = quote.committeeId;
         require(uint96(policyId) == committeeId, InvalidCommitteeId());

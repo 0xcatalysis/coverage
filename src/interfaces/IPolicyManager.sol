@@ -248,6 +248,11 @@ interface IPolicyManager is IAccessControl {
     error InvalidPoolOperator();
 
     /**
+     * @notice Reverts when request parameters don't match the stored draft.
+     */
+    error RequestDraftMismatch();
+
+    /**
      * @notice Pauses policy binding operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */

@@ -818,6 +818,47 @@ contract PolicyManagerTest is Test {
         request.coverageAmount = customAmount;
         _seedCommitteeForTesting(request.quote.committeeId, request.quote.operator, customAmount, true);
 
+        vm.expectRevert(IPolicyManager.RequestDraftMismatch.selector);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request);
+    }
+
+    function test_bindPolicy_WhenRequestMismatchesDraft_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.committeeId, request.quote.operator, request.coverageAmount, true);
+
+        request.buyer = makeAddr("maliciousBuyer");
+        vm.expectRevert(IPolicyManager.RequestDraftMismatch.selector);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request);
+
+        request = _defaultRequest();
+        request.beneficiary = makeAddr("maliciousBeneficiary");
+        vm.expectRevert(IPolicyManager.RequestDraftMismatch.selector);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request);
+
+        request = _defaultRequest();
+        request.claimer = makeAddr("maliciousClaimer");
+        vm.expectRevert(IPolicyManager.RequestDraftMismatch.selector);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request);
+
+        request = _defaultRequest();
+        request.premiumToken = makeAddr("maliciousPremiumToken");
+        vm.expectRevert(IPolicyManager.RequestDraftMismatch.selector);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request);
+
+        request = _defaultRequest();
+        request.payoutToken = makeAddr("maliciousPayoutToken");
+        vm.expectRevert(IPolicyManager.RequestDraftMismatch.selector);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request);
+
+        request = _defaultRequest();
+        request.coverageAmount = 999_999e8;
+        vm.expectRevert(IPolicyManager.RequestDraftMismatch.selector);
         vm.prank(address(coverPool));
         policyManager.bindPolicy(request);
     }
