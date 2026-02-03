@@ -25,6 +25,7 @@ contract CoverPoolFactoryTest is Test {
     address internal stakeManager;
     address internal curator;
     address internal quoteSigner;
+    address internal operator;
 
     CoverPoolFactory internal factory;
     CoverPool internal implementation;
@@ -39,11 +40,13 @@ contract CoverPoolFactoryTest is Test {
         creator = makeAddr("creator");
         curator = makeAddr("curator");
         quoteSigner = makeAddr("quoteSigner");
+        operator = makeAddr("operator");
 
         vm.label(admin, "Admin");
         vm.label(creator, "Creator");
         vm.label(curator, "Curator");
         vm.label(quoteSigner, "QuoteSigner");
+        vm.label(operator, "Operator");
 
         opts.unsafeSkipAllChecks = true;
 

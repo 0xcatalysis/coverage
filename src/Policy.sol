@@ -62,16 +62,16 @@ contract Policy is UUPSUpgradeable, AccessControlUpgradeable, ERC721Upgradeable,
     {
         require(
             to != address(0) && metadata.buyer != address(0) && metadata.beneficiary != address(0)
-                && metadata.premiumToken != address(0) && metadata.payoutToken != address(0)
-                && metadata.pool != address(0) && metadata.payoutReceiver != address(0)
-                && metadata.operator != address(0),
+                && metadata.claimer != address(0) && metadata.premiumToken != address(0)
+                && metadata.payoutToken != address(0) && metadata.pool != address(0)
+                && metadata.payoutReceiver != address(0) && metadata.operator != address(0),
             ZeroAddress()
         );
         require(metadata.policyCommit != bytes32(0), InvalidPolicyCommit());
         require(metadata.coverageLimit != 0, InvalidCoverageLimit());
         require(metadata.basePremium != 0, InvalidBasePremium());
         require(metadata.specId != bytes32(0), InvalidSpecId());
-        require(metadata.poolPolicyId != bytes32(0) && metadata.termsHash != bytes32(0), InvalidPolicyMetadata());
+        require(metadata.poolPolicyId != 0 && metadata.termsHash != bytes32(0), InvalidPolicyMetadata());
         require(
             metadata.startTime < metadata.maturityTime, InvalidCoverageWindow(metadata.startTime, metadata.maturityTime)
         );

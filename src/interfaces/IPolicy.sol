@@ -21,6 +21,8 @@ interface IPolicy is IAccessControl, IERC721Metadata {
         uint96 committeeId;
         /// @notice Beneficiary receiving payouts upon approved claims.
         address beneficiary;
+        /// @notice Account authorized to trigger claims for the policy.
+        address claimer;
         /// @notice Policy coverage start timestamp.
         uint64 startTime;
         /// @notice ERC20 token used for premium payments.
@@ -39,8 +41,8 @@ interface IPolicy is IAccessControl, IERC721Metadata {
         address payoutReceiver;
         /// @notice Operator address delegated for this policy.
         address operator;
-        /// @notice Pool-provided identifier for the policy.
-        bytes32 poolPolicyId;
+        /// @notice Incremental identifier for the policy.
+        uint96 poolPolicyId;
         /// @notice Spec identifier for parametric claim evaluation (e.g., MorphoSpec, MapleSpec).
         bytes32 specId;
         /// @notice Hash of referenced terms governing this policy.

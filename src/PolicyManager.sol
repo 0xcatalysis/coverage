@@ -7,6 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
+import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
 import {IPolicy} from "./interfaces/IPolicy.sol";
 import {IStakeManager} from "./interfaces/IStakeManager.sol";
@@ -33,9 +34,11 @@ contract PolicyManager is
     address public override policy;
     address public override stakeManager;
     address public override claimManager;
+    address public override coverPoolFactory;
     uint16 public override platformFeeBps;
 
     uint256 private _nextPolicyId;
+    mapping(uint256 policyId => PolicyDraft draft) private _policyDrafts;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -49,6 +52,7 @@ contract PolicyManager is
      * @param policy_ Address of the Policy contract.
      * @param stakeManager_ Address of the StakeManager contract.
      * @param claimManager_ Address of the ClaimManager contract.
+     * @param coverPoolFactory_ Address of the CoverPoolFactory contract.
      * @param platformFeeBps_ Initial platform fee in basis points.
      */
     function initialize(
@@ -57,6 +61,7 @@ contract PolicyManager is
         address policy_,
         address stakeManager_,
         address claimManager_,
+        address coverPoolFactory_,
         uint16 platformFeeBps_
     )
         external
@@ -64,7 +69,7 @@ contract PolicyManager is
     {
         require(
             admin_ != address(0) && premiumManager_ != address(0) && policy_ != address(0)
-                && stakeManager_ != address(0) && claimManager_ != address(0),
+                && stakeManager_ != address(0) && claimManager_ != address(0) && coverPoolFactory_ != address(0),
             ZeroAddress()
         );
         require(platformFeeBps_ <= _MAX_TOTAL_FEE_BPS, InvalidPlatformFee(platformFeeBps_));
@@ -78,6 +83,7 @@ contract PolicyManager is
         policy = policy_;
         stakeManager = stakeManager_;
         claimManager = claimManager_;
+        coverPoolFactory = coverPoolFactory_;
         platformFeeBps = platformFeeBps_;
     }
 
@@ -143,20 +149,114 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
+    function setCoverPoolFactory(address coverPoolFactory_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(coverPoolFactory_ != address(0), ZeroAddress());
+        coverPoolFactory = coverPoolFactory_;
+        emit CoverPoolFactorySet(coverPoolFactory_);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
+    function requestCoverage(
+        address pool,
+        address beneficiary,
+        address claimer,
+        address premiumToken,
+        address payoutToken,
+        uint256 coverageAmount
+    )
+        external
+        override
+        nonReentrant
+        whenNotPaused
+        returns (uint256 policyId)
+    {
+        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
+        require(
+            beneficiary != address(0) && claimer != address(0) && premiumToken != address(0)
+                && payoutToken != address(0),
+            ZeroAddress()
+        );
+        require(coverageAmount != 0, InvalidCoverageAmount());
+
+        address curator = ICoverPool(pool).owner();
+        require(curator != address(0), InvalidPoolOperator());
+
+        policyId = ++_nextPolicyId;
+        require(policyId <= type(uint96).max, PolicyIdOverflow());
+
+        uint96 committeeId = uint96(policyId);
+
+        _policyDrafts[policyId] = PolicyDraft({
+            pool: pool,
+            buyer: msg.sender,
+            beneficiary: beneficiary,
+            claimer: claimer,
+            premiumToken: premiumToken,
+            payoutToken: payoutToken,
+            operator: curator,
+            coverageAmount: coverageAmount,
+            committeeId: committeeId,
+            status: PolicyStatus.Created
+        });
+
+        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount);
+
+        IStakeManager(stakeManager).createCommittee(committeeId, coverageAmount);
+        IStakeManager(stakeManager).addOperatorToCommittee(curator, committeeId);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
+    function cancelPolicyDraft(uint256 policyId) external override nonReentrant whenNotPaused {
+        PolicyDraft storage draft = _policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
+        require(draft.buyer == msg.sender, NotPolicyBuyer(msg.sender));
+
+        draft.status = PolicyStatus.Cancelled;
+        emit PolicyDraftCancelled(policyId, draft.pool);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
     function bindPolicy(BindPolicyRequest calldata request) external override nonReentrant whenNotPaused {
         _validateRequest(request);
 
-        uint256 policyId = ++_nextPolicyId;
+        uint256 policyId = request.policyId;
+        PolicyDraft storage draft = _policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+        require(draft.pool == msg.sender, UnauthorizedCaller());
+        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
+
+        require(
+            request.buyer == draft.buyer && request.beneficiary == draft.beneficiary && request.claimer == draft.claimer
+                && request.premiumToken == draft.premiumToken && request.payoutToken == draft.payoutToken
+                && request.coverageAmount == draft.coverageAmount,
+            RequestDraftMismatch()
+        );
 
         ICoverPool.Quote calldata quote = request.quote;
+        uint96 committeeId = quote.committeeId;
+        require(uint96(policyId) == committeeId, InvalidCommitteeId());
+
+        draft.status = PolicyStatus.Bound;
+
+        require(IStakeManager(stakeManager).getCommitteeVaults(committeeId).length > 0, NoVaultsBound(committeeId));
+
+        uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(quote.operator, committeeId);
+        require(
+            totalStake >= request.coverageAmount, InsufficientStake(committeeId, request.coverageAmount, totalStake)
+        );
+
         bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
 
         ICoverPool.BoundPolicy memory boundPolicy =
-            ICoverPool(quote.pool).bindPolicy(policyCommit, quote, request.signature);
-
-        uint96 committeeId = uint96(policyId);
-        IStakeManager(stakeManager).createCommittee(committeeId, request.coverageAmount);
+            ICoverPool(quote.pool).recordBoundPolicy(policyId, policyCommit, quote);
 
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
             policyId: policyId,
@@ -183,6 +283,7 @@ contract PolicyManager is
             buyer: request.buyer,
             committeeId: committeeId,
             beneficiary: request.beneficiary,
+            claimer: request.claimer,
             startTime: boundPolicy.startTime,
             premiumToken: request.premiumToken,
             maturityTime: boundPolicy.maturityTime,
@@ -192,7 +293,7 @@ contract PolicyManager is
             coverageLimit: boundPolicy.coverageLimit,
             payoutReceiver: boundPolicy.payoutReceiver,
             operator: boundPolicy.operator,
-            poolPolicyId: boundPolicy.policyId,
+            poolPolicyId: uint96(boundPolicy.policyId),
             specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
             policyCommit: policyCommit
@@ -214,6 +315,14 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
+    function getPolicyDraft(uint256 policyId) external view override returns (PolicyDraft memory draft) {
+        draft = _policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
     function paused() public view override (IPolicyManager, PausableUpgradeable) returns (bool) {
         return super.paused();
     }
@@ -229,11 +338,14 @@ contract PolicyManager is
      */
     function _validateRequest(BindPolicyRequest calldata request) private view {
         require(
-            request.buyer != address(0) && request.beneficiary != address(0) && request.premiumToken != address(0)
-                && request.payoutToken != address(0),
+            request.buyer != address(0) && request.beneficiary != address(0) && request.claimer != address(0)
+                && request.premiumToken != address(0) && request.payoutToken != address(0),
             ZeroAddress()
         );
-        require(request.quote.pool != address(0), InvalidQuotePool());
+        require(request.quote.pool != address(0), InvalidCoverPool(request.quote.pool));
+        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(msg.sender), InvalidCoverPool(msg.sender));
+        require(request.quote.pool == msg.sender, UnauthorizedCaller());
+        require(request.quote.committeeId != 0, InvalidCommitteeId());
         require(request.quote.coverageLimit != 0, InvalidCoverageLimit());
         require(request.quote.basePremium != 0, InvalidBasePremium());
         require(request.coverageAmount != 0, InvalidCoverageAmount());

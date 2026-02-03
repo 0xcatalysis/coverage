@@ -226,9 +226,9 @@ contract PolicyTest is Test {
         policy.mintPolicy(buyer, newPolicyId, metadata);
     }
 
-    function test_mintPolicy_WhenPoolPolicyIdEmpty_Reverts() public {
+    function test_mintPolicy_WhenPoolPolicyIdZero_Reverts() public {
         IPolicy.PolicyMetadata memory metadata = _defaultMetadata();
-        metadata.poolPolicyId = bytes32(0);
+        metadata.poolPolicyId = 0;
         vm.expectRevert(IPolicy.InvalidPolicyMetadata.selector);
         vm.prank(policyManager);
         policy.mintPolicy(buyer, POLICY_ID, metadata);
@@ -305,13 +305,14 @@ contract PolicyTest is Test {
         metadata = IPolicy.PolicyMetadata({
             buyer: buyer,
             beneficiary: beneficiary,
+            claimer: beneficiary,
             premiumToken: premiumToken,
             basePremium: 100e18,
             payoutToken: payoutToken,
             pool: pool,
             coverageLimit: 1000,
             payoutReceiver: payoutReceiver,
-            poolPolicyId: keccak256("pool-policy-id"),
+            poolPolicyId: 1,
             specId: keccak256("MorphoSpec"),
             termsHash: keccak256("terms-hash"),
             policyCommit: policyCommit,
