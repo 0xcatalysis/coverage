@@ -228,8 +228,8 @@ contract PolicyManager is
 
         uint256 policyId = request.policyId;
         PolicyDraft storage draft = _policyDrafts[policyId];
-        require(draft.pool == msg.sender, UnauthorizedCaller());
         require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+        require(draft.pool == msg.sender, UnauthorizedCaller());
         require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
 
         ICoverPool.Quote calldata quote = request.quote;
