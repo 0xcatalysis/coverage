@@ -173,13 +173,6 @@ interface IClaimManager is IAccessControl {
     error ClaimAlreadyFiled(uint256 policyId, uint256 claimId);
 
     /**
-     * @notice Reverts when attempting to resolve a claim that hasn't been filed.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim.
-     */
-    error ClaimNotFiled(uint256 policyId, uint256 claimId);
-
-    /**
      * @notice Reverts when attempting to resolve a claim that has already been resolved.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
@@ -288,25 +281,6 @@ interface IClaimManager is IAccessControl {
     function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
 
     /**
-     * @notice Files a claim against a policy and locks the escrow.
-     * @dev Anyone can file a claim (spam deterred by off-chain bond and rate limits).
-     *      Locks the escrow to prevent premium release during evaluation.
-     *      Does not automatically evaluate; requires separate approveClaim or rejectClaim call.
-     *      Multiple partial claims can be filed against the same policy up to the coverage limit.
-     * @param policyId Identifier of the policy to claim against.
-     * @param requestedAmount Requested payout amount in payout token terms (must be <= remaining coverage).
-     * @param evidenceHash Hash of evidence supporting the claim (e.g., IPFS CID).
-     * @return claimId Unique identifier for the filed claim.
-     */
-    function fileClaim(
-        uint256 policyId,
-        uint256 requestedAmount,
-        bytes32 evidenceHash
-    )
-        external
-        returns (uint256 claimId);
-
-    /**
      * @notice Atomically files and resolves a claim in a single transaction.
      * @dev Requires CLAIM_OPERATOR_ROLE. Combines filing and resolution into one atomic operation:
      *      1. Validates claim preconditions and locks escrow
@@ -329,29 +303,6 @@ interface IClaimManager is IAccessControl {
     )
         external
         returns (uint256 claimId);
-
-    /**
-     * @notice Approves a filed claim by evaluating the Spec and executing payout if approved.
-     * @dev Requires CLAIM_OPERATOR_ROLE.
-     *      Evaluates the registered Spec for the policy's product.
-     *      If approved: slashes stake, swaps collateral via pre-configured routes, pays beneficiary, unlocks escrow.
-     *      If rejected: unlocks escrow without payout.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim to approve.
-     * @param additionalData Optional ABI-encoded data for Spec evaluation.
-     */
-    function approveClaim(uint256 policyId, uint256 claimId, bytes calldata additionalData) external;
-
-    /**
-     * @notice Manually rejects a claim without Spec evaluation.
-     * @dev Requires CLAIM_OPERATOR_ROLE.
-     *      Used for administrative rejections (e.g., fraud, invalid evidence).
-     *      Unlocks escrow without payout.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim to reject.
-     * @param reason Human-readable rejection reason.
-     */
-    function rejectClaim(uint256 policyId, uint256 claimId, string calldata reason) external;
 
     /**
      * @notice Returns the claim record for a specific claim.

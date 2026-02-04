@@ -29,10 +29,8 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  *      - Swapper: Converts slashed collateral to payout tokens
  *
  *      Claim Flow:
- *      1. fileClaim: Any reporter files claim, escrow locked
- *      2. approveClaim: Operator evaluates Spec, if approved → premium reserve waterfall → slash shortfall → swap
- * → payout
- *      3. rejectClaim: Operator manually rejects, escrow unlocked
+ *      fileAndResolveClaim: Operator atomically files and resolves claim → evaluates Spec → if approved:
+ *      premium reserve waterfall → slash shortfall → swap → payout
  *
  *      Premium Reserve Waterfall:
  *      - First attempts to pay claim from premium reserve collected for the policy
@@ -186,24 +184,6 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function fileClaim(
-        uint256 policyId,
-        uint256 requestedAmount,
-        bytes32 evidenceHash
-    )
-        external
-        override
-        whenNotPaused
-        nonReentrant
-        returns (uint256 claimId)
-    {
-        claimId = _fileClaim(policyId, requestedAmount, evidenceHash);
-        _lockEscrowOnFirstClaim(policyId);
-    }
-
-    /**
-     * @inheritdoc IClaimManager
-     */
     function fileAndResolveClaim(
         uint256 policyId,
         uint256 requestedAmount,
@@ -246,76 +226,6 @@ contract ClaimManager is
         claim.payoutAmount = totalPayout;
 
         emit ClaimApproved(policyId, claimId, metadata.payoutReceiver, totalPayout, block.timestamp);
-        _unlockEscrowIfNoPendingClaims(policyId);
-    }
-
-    /**
-     * @inheritdoc IClaimManager
-     */
-    function approveClaim(
-        uint256 policyId,
-        uint256 claimId,
-        bytes calldata additionalData
-    )
-        external
-        override
-        nonReentrant
-        whenNotPaused
-        onlyRole(CLAIM_OPERATOR_ROLE)
-    {
-        ClaimRecord storage claim = _claims[policyId][claimId];
-        require(claim.status == ClaimStatus.Filed, ClaimNotFiled(policyId, claimId));
-
-        IPolicy.PolicyMetadata memory metadata = IPolicy(policy).policyMetadata(policyId);
-        ISpec.EvaluationResult memory result = _evaluateSpec(policyId, metadata, claim.evidenceHash, additionalData);
-
-        if (!result.isPayable) {
-            claim.evaluationResult = result;
-            claim.resolvedAt = block.timestamp;
-            claim.status = ClaimStatus.Rejected;
-            _pendingClaimCounts[policyId]--;
-            emit ClaimRejected(policyId, claimId, "Spec evaluation failed", block.timestamp);
-            _unlockEscrowIfNoPendingClaims(policyId);
-            return;
-        }
-
-        claim.evaluationResult = result;
-        claim.resolvedAt = block.timestamp;
-        claim.status = ClaimStatus.Approved;
-        _pendingClaimCounts[policyId]--;
-
-        uint256 requestedAmount = claim.requestedAmount;
-        uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
-        require(totalPayout > 0, ZeroPayoutAmount(policyId));
-        // slither-disable-next-line reentrancy-no-eth
-        claim.payoutAmount = totalPayout;
-
-        emit ClaimApproved(policyId, claimId, metadata.payoutReceiver, totalPayout, block.timestamp);
-        _unlockEscrowIfNoPendingClaims(policyId);
-    }
-
-    /**
-     * @inheritdoc IClaimManager
-     */
-    function rejectClaim(
-        uint256 policyId,
-        uint256 claimId,
-        string calldata reason
-    )
-        external
-        override
-        whenNotPaused
-        nonReentrant
-        onlyRole(CLAIM_OPERATOR_ROLE)
-    {
-        ClaimRecord storage claim = _claims[policyId][claimId];
-        require(claim.status == ClaimStatus.Filed, ClaimNotFiled(policyId, claimId));
-
-        claim.status = ClaimStatus.Rejected;
-        claim.resolvedAt = block.timestamp;
-        _pendingClaimCounts[policyId]--;
-
-        emit ClaimRejected(policyId, claimId, reason, block.timestamp);
         _unlockEscrowIfNoPendingClaims(policyId);
     }
 
@@ -381,57 +291,6 @@ contract ClaimManager is
             // slither-disable-next-line calls-loop
             IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
         }
-    }
-
-    /**
-     * @notice Internal helper for filing a claim with all validations.
-     * @param policyId Identifier of the policy to claim against.
-     * @param requestedAmount Requested payout amount in payout token terms.
-     * @param evidenceHash Hash of evidence supporting the claim.
-     * @return claimId Unique identifier for the filed claim.
-     */
-    function _fileClaim(
-        uint256 policyId,
-        uint256 requestedAmount,
-        bytes32 evidenceHash
-    )
-        private
-        returns (uint256 claimId)
-    {
-        require(evidenceHash != bytes32(0), InvalidEvidenceHash());
-        require(requestedAmount > 0, ZeroAmount());
-
-        IPolicy.PolicyMetadata memory metadata = IPolicy(policy).policyMetadata(policyId);
-        require(metadata.buyer != address(0), PolicyNotFound(policyId));
-
-        uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
-        uint256 remaining = totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
-
-        require(
-            requestedAmount <= remaining, RequestedAmountExceedsRemainingCoverage(policyId, requestedAmount, remaining)
-        );
-
-        require(
-            block.timestamp >= metadata.startTime && block.timestamp <= metadata.maturityTime,
-            ClaimOutsideCoverageWindow(policyId, metadata.startTime, metadata.maturityTime, block.timestamp)
-        );
-
-        require(!IPremiumReserve(premiumReserve).isEscrowReleased(policyId), EscrowAlreadyReleased(policyId));
-
-        claimId = _policyClaims[policyId].claimCount;
-        ClaimRecord storage claim = _claims[policyId][claimId];
-        require(claim.status == ClaimStatus.None, ClaimAlreadyFiled(policyId, claimId));
-
-        claim.status = ClaimStatus.Filed;
-        claim.reporter = msg.sender;
-        claim.filedAt = block.timestamp;
-        claim.evidenceHash = evidenceHash;
-        claim.requestedAmount = requestedAmount;
-
-        _policyClaims[policyId].claimCount++;
-        _pendingClaimCounts[policyId]++;
-
-        emit ClaimFiled(policyId, claimId, msg.sender, evidenceHash, requestedAmount, block.timestamp);
     }
 
     /**
