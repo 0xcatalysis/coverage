@@ -11,7 +11,7 @@ import {Policy} from "../../src/Policy.sol";
 import {IPolicy} from "../../src/interfaces/IPolicy.sol";
 
 contract PolicyTest is Test {
-    uint256 internal constant POLICY_ID = 1;
+    uint96 internal constant POLICY_ID = 1;
 
     address internal admin;
     address internal policyManager;
@@ -27,7 +27,7 @@ contract PolicyTest is Test {
     bytes32 internal policyCommit;
 
     event PolicyMinted(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         address indexed to,
         address indexed pool,
         uint64 startTime,
@@ -220,7 +220,7 @@ contract PolicyTest is Test {
     function test_mintPolicy_WhenPolicyCommitRegistered_Reverts() public {
         IPolicy.PolicyMetadata memory metadata = _mintDefaultPolicy();
 
-        uint256 newPolicyId = 77;
+        uint96 newPolicyId = 77;
         vm.expectRevert(abi.encodeWithSelector(IPolicy.PolicyCommitAlreadyRegistered.selector, metadata.policyCommit));
         vm.prank(policyManager);
         policy.mintPolicy(buyer, newPolicyId, metadata);

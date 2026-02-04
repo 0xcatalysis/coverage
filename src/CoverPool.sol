@@ -38,7 +38,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     address public override stakeManager;
     mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
 
-    mapping(uint256 policyId => BoundPolicy policy) private boundPolicies;
+    mapping(uint96 policyId => BoundPolicy policy) private boundPolicies;
 
     address public override policyManager;
 
@@ -127,7 +127,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
      * @inheritdoc ICoverPool
      */
     function bindPolicyForRequest(
-        uint256 policyId,
+        uint96 policyId,
         Quote calldata quote,
         bytes calldata signature,
         address[] calldata vaults
@@ -170,7 +170,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
      * @inheritdoc ICoverPool
      */
     function recordBoundPolicy(
-        uint256 policyId,
+        uint96 policyId,
         bytes32 policyCommit,
         Quote calldata quote
     )
@@ -215,7 +215,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
-    function getBoundPolicy(uint256 policyId) external view override returns (BoundPolicy memory policy) {
+    function getBoundPolicy(uint96 policyId) external view override returns (BoundPolicy memory policy) {
         policy = boundPolicies[policyId];
         require(policy.policyId != 0, PolicyNotFound(policyId));
     }

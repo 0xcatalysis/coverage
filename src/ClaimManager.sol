@@ -59,9 +59,9 @@ contract ClaimManager is
     address public override premiumReserve;
     address public override chainlinkPriceFeed;
 
-    mapping(uint256 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
-    mapping(uint256 policyId => PolicyClaim) private _policyClaims;
-    mapping(uint256 policyId => uint256 pendingClaimCount) private _pendingClaimCounts;
+    mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
+    mapping(uint96 policyId => PolicyClaim) private _policyClaims;
+    mapping(uint96 policyId => uint256 pendingClaimCount) private _pendingClaimCounts;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -185,7 +185,7 @@ contract ClaimManager is
      * @inheritdoc IClaimManager
      */
     function fileClaim(
-        uint256 policyId,
+        uint96 policyId,
         uint256 requestedAmount,
         bytes32 evidenceHash,
         bytes calldata additionalData
@@ -232,21 +232,21 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function claimRecord(uint256 policyId, uint256 claimId) external view override returns (ClaimRecord memory) {
+    function claimRecord(uint96 policyId, uint256 claimId) external view override returns (ClaimRecord memory) {
         return _claims[policyId][claimId];
     }
 
     /**
      * @inheritdoc IClaimManager
      */
-    function policyClaim(uint256 policyId) external view override returns (PolicyClaim memory) {
+    function policyClaim(uint96 policyId) external view override returns (PolicyClaim memory) {
         return _policyClaims[policyId];
     }
 
     /**
      * @inheritdoc IClaimManager
      */
-    function remainingCoverage(uint256 policyId) external view override returns (uint256) {
+    function remainingCoverage(uint96 policyId) external view override returns (uint256) {
         IPolicy.PolicyMetadata memory metadata = IPolicy(policy).policyMetadata(policyId);
         uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
         return totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
@@ -255,7 +255,7 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function pendingClaimCount(uint256 policyId) external view override returns (uint256) {
+    function pendingClaimCount(uint96 policyId) external view override returns (uint256) {
         return _pendingClaimCounts[policyId];
     }
 
@@ -275,7 +275,7 @@ contract ClaimManager is
      * @notice Locks premium reserve escrow if this is the first pending claim.
      * @param policyId Identifier of the policy.
      */
-    function _lockEscrowOnFirstClaim(uint256 policyId) private {
+    function _lockEscrowOnFirstClaim(uint96 policyId) private {
         if (_pendingClaimCounts[policyId] == 1) {
             // slither-disable-next-line calls-loop
             IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
@@ -286,7 +286,7 @@ contract ClaimManager is
      * @notice Unlocks premium reserve escrow if there are no pending claims remaining.
      * @param policyId Identifier of the policy.
      */
-    function _unlockEscrowIfNoPendingClaims(uint256 policyId) private {
+    function _unlockEscrowIfNoPendingClaims(uint96 policyId) private {
         if (_pendingClaimCounts[policyId] == 0) {
             // slither-disable-next-line calls-loop
             IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
@@ -302,7 +302,7 @@ contract ClaimManager is
      * @return metadata Policy metadata for subsequent resolution.
      */
     function _fileClaimWithMetadata(
-        uint256 policyId,
+        uint96 policyId,
         uint256 requestedAmount,
         bytes32 evidenceHash
     )
@@ -354,7 +354,7 @@ contract ClaimManager is
      * @return totalPayout Actual amount paid out (may be less if coverage exhausted).
      */
     function _capAndExecutePayout(
-        uint256 policyId,
+        uint96 policyId,
         uint256 claimId,
         IPolicy.PolicyMetadata memory metadata,
         uint256 requestedAmount
@@ -386,7 +386,7 @@ contract ClaimManager is
      * @return totalPayout Total amount paid out (capped at requestedAmount).
      */
     function _executeSlashingAndPayout(
-        uint256 policyId,
+        uint96 policyId,
         uint256 claimId,
         IPolicy.PolicyMetadata memory metadata,
         uint256 requestedAmount
@@ -441,7 +441,7 @@ contract ClaimManager is
      * @return payoutAmount Amount of payout tokens delivered (capped at maxPayout).
      */
     function _swapPremiumToPayout(
-        uint256 policyId,
+        uint96 policyId,
         uint256 claimId,
         address premiumToken,
         address payoutToken,
@@ -483,7 +483,7 @@ contract ClaimManager is
      * @return payoutFromSlashing Total payout obtained from slashing and swapping.
      */
     function _slashAndSwap(
-        uint256 policyId,
+        uint96 policyId,
         uint256 claimId,
         IPolicy.PolicyMetadata memory metadata,
         uint256 amount
@@ -532,7 +532,7 @@ contract ClaimManager is
      * @return amountOut Amount of payout token delivered (capped at remainingPayout).
      */
     function _processCollateral(
-        uint256 policyId,
+        uint96 policyId,
         uint256 claimId,
         address collateralToken,
         uint256 collateralAmount,
@@ -580,7 +580,7 @@ contract ClaimManager is
      * @return result Evaluation outcome from the Spec.
      */
     function _evaluateSpec(
-        uint256 policyId,
+        uint96 policyId,
         IPolicy.PolicyMetadata memory metadata,
         bytes32 evidenceHash,
         bytes calldata additionalData

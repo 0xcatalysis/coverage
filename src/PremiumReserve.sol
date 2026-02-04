@@ -28,7 +28,7 @@ contract PremiumReserve is
     bytes32 public constant override CLAIM_MANAGER_ROLE = keccak256("CLAIM_MANAGER_ROLE");
     bytes32 public constant override POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
 
-    mapping(uint256 => EscrowAccount) private _escrows;
+    mapping(uint96 => EscrowAccount) private _escrows;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -120,7 +120,7 @@ contract PremiumReserve is
      * @inheritdoc IPremiumReserve
      */
     function setClaimLockStatus(
-        uint256 policyId,
+        uint96 policyId,
         bool locked
     )
         external
@@ -139,7 +139,7 @@ contract PremiumReserve is
      * @inheritdoc IPremiumReserve
      */
     function payClaim(
-        uint256 policyId,
+        uint96 policyId,
         address payoutRecipient,
         uint256 settledAmount
     )
@@ -172,7 +172,7 @@ contract PremiumReserve is
      * @inheritdoc IPremiumReserve
      */
     function releaseEscrow(
-        uint256 policyId,
+        uint96 policyId,
         address rewardsManager
     )
         external
@@ -208,7 +208,7 @@ contract PremiumReserve is
     /**
      * @inheritdoc IPremiumReserve
      */
-    function escrowPosition(uint256 policyId) external view override returns (EscrowPosition memory position) {
+    function escrowPosition(uint96 policyId) external view override returns (EscrowPosition memory position) {
         EscrowAccount storage escrow = _escrow(policyId);
 
         position.policyId = policyId;
@@ -227,7 +227,7 @@ contract PremiumReserve is
     /**
      * @inheritdoc IPremiumReserve
      */
-    function isEscrowReleased(uint256 policyId) external view override returns (bool) {
+    function isEscrowReleased(uint96 policyId) external view override returns (bool) {
         EscrowAccount storage escrow = _escrows[policyId];
         return escrow.released;
     }
@@ -235,7 +235,7 @@ contract PremiumReserve is
     /**
      * @inheritdoc IPremiumReserve
      */
-    function isEscrowLocked(uint256 policyId) external view override returns (bool) {
+    function isEscrowLocked(uint96 policyId) external view override returns (bool) {
         EscrowAccount storage escrow = _escrows[policyId];
         return escrow.claimLocked;
     }
@@ -243,7 +243,7 @@ contract PremiumReserve is
     /**
      * @inheritdoc IPremiumReserve
      */
-    function getRemainingPremium(uint256 policyId) external view override returns (uint256) {
+    function getRemainingPremium(uint96 policyId) external view override returns (uint256) {
         EscrowAccount storage escrow = _escrows[policyId];
         return escrow.restakerPremiumTotal;
     }
@@ -251,7 +251,7 @@ contract PremiumReserve is
     /**
      * @inheritdoc IPremiumReserve
      */
-    function getPool(uint256 policyId) external view override returns (address) {
+    function getPool(uint96 policyId) external view override returns (address) {
         EscrowAccount storage escrow = _escrows[policyId];
         return escrow.pool;
     }
@@ -275,7 +275,7 @@ contract PremiumReserve is
      * @param policyId Identifier of the policy whose escrow should be returned.
      * @return escrow Storage pointer to the located escrow account.
      */
-    function _escrow(uint256 policyId) private view returns (EscrowAccount storage escrow) {
+    function _escrow(uint96 policyId) private view returns (EscrowAccount storage escrow) {
         escrow = _escrows[policyId];
         require(escrow.premiumToken != address(0), EscrowNotFound(policyId));
     }

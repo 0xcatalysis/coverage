@@ -15,7 +15,7 @@ contract PremiumManagerTest is Test {
     uint16 internal constant POOL_FEE_BPS = 150;
     uint16 internal constant MAX_FEE_BPS = 10_000;
     uint256 internal constant GROSS_PREMIUM = 1000 ether;
-    uint256 internal constant POLICY_ID = 1;
+    uint96 internal constant POLICY_ID = 1;
     uint64 internal constant COVERAGE_DURATION = 30 days;
     uint96 internal constant COMMITTEE_ID = 123;
 
@@ -32,7 +32,7 @@ contract PremiumManagerTest is Test {
     MockToken internal premiumToken;
     bytes32 internal policyCommit;
 
-    event PremiumCollected(uint256 indexed policyId, uint256 basePremium);
+    event PremiumCollected(uint96 indexed policyId, uint256 basePremium);
     event PremiumReserveSet(address indexed reserve);
     event PlatformTreasurySet(address indexed treasury);
 

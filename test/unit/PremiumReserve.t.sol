@@ -11,7 +11,7 @@ import {PremiumReserve} from "../../src/PremiumReserve.sol";
 import {IPremiumReserve} from "../../src/interfaces/IPremiumReserve.sol";
 
 contract PremiumReserveTest is Test {
-    uint256 internal constant POLICY_ID = 1;
+    uint96 internal constant POLICY_ID = 1;
     uint256 internal constant RESTAKER_PREMIUM = 1000 ether;
     uint64 internal constant MATURITY_OFFSET = 30 days;
     uint96 internal constant COMMITTEE_ID = 123;
@@ -33,11 +33,11 @@ contract PremiumReserveTest is Test {
     PremiumReserve internal reserve;
     MockToken internal premiumToken;
 
-    event EscrowOpened(uint256 indexed policyId, address premiumToken, uint256 restakerPremiumTotal);
-    event ClaimLockStatusSet(uint256 indexed policyId, bool locked);
-    event PremiumReleased(uint256 indexed policyId, address indexed to, uint256 restakerShare);
-    event ClaimPaid(uint256 indexed policyId, uint256 settledAmount);
-    event EscrowReleased(uint256 indexed policyId, uint256 timestamp);
+    event EscrowOpened(uint96 indexed policyId, address premiumToken, uint256 restakerPremiumTotal);
+    event ClaimLockStatusSet(uint96 indexed policyId, bool locked);
+    event PremiumReleased(uint96 indexed policyId, address indexed to, uint256 restakerShare);
+    event ClaimPaid(uint96 indexed policyId, uint256 settledAmount);
+    event EscrowReleased(uint96 indexed policyId, uint256 timestamp);
 
     function setUp() public {
         vm.warp(1_000_000);

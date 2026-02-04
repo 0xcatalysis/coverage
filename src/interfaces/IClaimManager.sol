@@ -62,7 +62,7 @@ interface IClaimManager is IAccessControl {
      * @param timestamp Block timestamp when filed.
      */
     event ClaimFiled(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         uint256 indexed claimId,
         address indexed reporter,
         bytes32 evidenceHash,
@@ -79,7 +79,7 @@ interface IClaimManager is IAccessControl {
      * @param timestamp Block timestamp when approved.
      */
     event ClaimApproved(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         uint256 indexed claimId,
         address indexed beneficiary,
         uint256 payoutAmount,
@@ -93,7 +93,7 @@ interface IClaimManager is IAccessControl {
      * @param reason Human-readable rejection reason.
      * @param timestamp Block timestamp when rejected.
      */
-    event ClaimRejected(uint256 indexed policyId, uint256 indexed claimId, string reason, uint256 timestamp);
+    event ClaimRejected(uint96 indexed policyId, uint256 indexed claimId, string reason, uint256 timestamp);
 
     /**
      * @notice Emitted when slashed collateral is swapped to payout token.
@@ -105,7 +105,7 @@ interface IClaimManager is IAccessControl {
      * @param payoutAmount Amount received after swap.
      */
     event CollateralSwapped(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         uint256 indexed claimId,
         address indexed collateralToken,
         uint256 collateralAmount,
@@ -163,21 +163,21 @@ interface IClaimManager is IAccessControl {
      * @notice Reverts when attempting to file a claim for a policy that doesn't exist.
      * @param policyId Identifier that failed the lookup.
      */
-    error PolicyNotFound(uint256 policyId);
+    error PolicyNotFound(uint96 policyId);
 
     /**
      * @notice Reverts when attempting to file a claim that has already been filed.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      */
-    error ClaimAlreadyFiled(uint256 policyId, uint256 claimId);
+    error ClaimAlreadyFiled(uint96 policyId, uint256 claimId);
 
     /**
      * @notice Reverts when attempting to resolve a claim that has already been resolved.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      */
-    error ClaimAlreadyResolved(uint256 policyId, uint256 claimId);
+    error ClaimAlreadyResolved(uint96 policyId, uint256 claimId);
 
     /**
      * @notice Reverts when attempting to file a claim outside the coverage window.
@@ -186,32 +186,32 @@ interface IClaimManager is IAccessControl {
      * @param maturityTime Coverage maturity timestamp.
      * @param currentTime Current block timestamp.
      */
-    error ClaimOutsideCoverageWindow(uint256 policyId, uint64 startTime, uint64 maturityTime, uint256 currentTime);
+    error ClaimOutsideCoverageWindow(uint96 policyId, uint64 startTime, uint64 maturityTime, uint256 currentTime);
 
     /**
      * @notice Reverts when the escrow is already released.
      * @param policyId Identifier of the policy.
      */
-    error EscrowAlreadyReleased(uint256 policyId);
+    error EscrowAlreadyReleased(uint96 policyId);
 
     /**
      * @notice Reverts when spec evaluation returns non-payable result.
      * @param policyId Identifier of the policy.
      * @param notesHash Hash of evaluation notes.
      */
-    error ClaimNotPayable(uint256 policyId, bytes32 notesHash);
+    error ClaimNotPayable(uint96 policyId, bytes32 notesHash);
 
     /**
      * @notice Reverts when slashing returns no collateral.
      * @param policyId Identifier of the policy.
      */
-    error NoCollateralSlashed(uint256 policyId);
+    error NoCollateralSlashed(uint96 policyId);
 
     /**
      * @notice Reverts when slashing or swaps result in zero payout amount.
      * @param policyId Identifier of the policy.
      */
-    error ZeroPayoutAmount(uint256 policyId);
+    error ZeroPayoutAmount(uint96 policyId);
 
     /**
      * @notice Reverts when a required evidence hash is empty.
@@ -224,7 +224,7 @@ interface IClaimManager is IAccessControl {
      * @param requestedAmount Amount requested by the claimant.
      * @param remainingCoverage Remaining coverage amount after previous claims.
      */
-    error RequestedAmountExceedsRemainingCoverage(uint256 policyId, uint256 requestedAmount, uint256 remainingCoverage);
+    error RequestedAmountExceedsRemainingCoverage(uint96 policyId, uint256 requestedAmount, uint256 remainingCoverage);
 
     /**
      * @notice Pauses claim operations.
@@ -296,7 +296,7 @@ interface IClaimManager is IAccessControl {
      * @return claimId Unique identifier for the filed claim.
      */
     function fileClaim(
-        uint256 policyId,
+        uint96 policyId,
         uint256 requestedAmount,
         bytes32 evidenceHash,
         bytes calldata additionalData
@@ -310,21 +310,21 @@ interface IClaimManager is IAccessControl {
      * @param claimId Identifier of the claim.
      * @return ClaimRecord snapshot describing the claim state.
      */
-    function claimRecord(uint256 policyId, uint256 claimId) external view returns (ClaimRecord memory);
+    function claimRecord(uint96 policyId, uint256 claimId) external view returns (ClaimRecord memory);
 
     /**
      * @notice Returns the policy claim state tracking total payouts.
      * @param policyId Identifier of the policy.
      * @return PolicyClaim snapshot with total paid out and claim count.
      */
-    function policyClaim(uint256 policyId) external view returns (PolicyClaim memory);
+    function policyClaim(uint96 policyId) external view returns (PolicyClaim memory);
 
     /**
      * @notice Returns the remaining coverage available for a policy.
      * @param policyId Identifier of the policy.
      * @return remaining Amount of coverage remaining after all approved claims.
      */
-    function remainingCoverage(uint256 policyId) external view returns (uint256 remaining);
+    function remainingCoverage(uint96 policyId) external view returns (uint256 remaining);
 
     /**
      * @notice Returns the number of pending (filed but not resolved) claims for a policy.
@@ -332,7 +332,7 @@ interface IClaimManager is IAccessControl {
      * @param policyId Identifier of the policy.
      * @return count Number of pending claims.
      */
-    function pendingClaimCount(uint256 policyId) external view returns (uint256 count);
+    function pendingClaimCount(uint96 policyId) external view returns (uint256 count);
 
     /**
      * @notice Returns true when the contract is paused.

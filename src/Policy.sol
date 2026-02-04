@@ -18,7 +18,7 @@ contract Policy is UUPSUpgradeable, AccessControlUpgradeable, ERC721Upgradeable,
     string private constant _NAME = "Catalysis Policy";
     string private constant _SYMBOL = "POLICY";
 
-    mapping(uint256 policyId => PolicyMetadata) private _policies;
+    mapping(uint96 policyId => PolicyMetadata) private _policies;
     mapping(bytes32 policyCommit => bool registered) private _registeredPolicyCommits;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -53,7 +53,7 @@ contract Policy is UUPSUpgradeable, AccessControlUpgradeable, ERC721Upgradeable,
      */
     function mintPolicy(
         address to,
-        uint256 policyId,
+        uint96 policyId,
         PolicyMetadata calldata metadata
     )
         external
@@ -100,7 +100,7 @@ contract Policy is UUPSUpgradeable, AccessControlUpgradeable, ERC721Upgradeable,
      * @param policyId Identifier of the policy to read.
      * @return metadata Fully populated PolicyMetadata struct.
      */
-    function policyMetadata(uint256 policyId) external view override returns (PolicyMetadata memory metadata) {
+    function policyMetadata(uint96 policyId) external view override returns (PolicyMetadata memory metadata) {
         metadata = _policies[policyId];
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
     }
@@ -129,7 +129,7 @@ contract Policy is UUPSUpgradeable, AccessControlUpgradeable, ERC721Upgradeable,
         returns (address)
     {
         address from = _ownerOf(tokenId);
-        require(from == address(0) || to == address(0), TransfersLocked(tokenId));
+        require(from == address(0) || to == address(0), TransfersLocked(uint96(tokenId)));
 
         return super._update(to, tokenId, auth);
     }

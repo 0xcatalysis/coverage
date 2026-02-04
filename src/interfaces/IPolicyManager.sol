@@ -51,7 +51,7 @@ interface IPolicyManager is IAccessControl {
      */
     struct BindPolicyRequest {
         /// @notice Pre-assigned policy identifier reserved at request time.
-        uint256 policyId;
+        uint96 policyId;
         /// @notice Policy buyer responsible for paying premiums.
         address buyer;
         /// @notice Beneficiary receiving payouts upon approved claims.
@@ -80,7 +80,7 @@ interface IPolicyManager is IAccessControl {
      * @param coverageAmount Requested coverage amount (stake requirement).
      */
     event CoverageRequested(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         address indexed pool,
         address indexed buyer,
         address beneficiary,
@@ -93,7 +93,7 @@ interface IPolicyManager is IAccessControl {
      * @param policyId Identifier of the cancelled draft.
      * @param pool CoverPool where the draft was created.
      */
-    event PolicyDraftCancelled(uint256 indexed policyId, address indexed pool);
+    event PolicyDraftCancelled(uint96 indexed policyId, address indexed pool);
 
     /**
      * @notice Emitted when a policy is successfully bound.
@@ -106,7 +106,7 @@ interface IPolicyManager is IAccessControl {
      * @param policyCommit Deterministic hash representing the policy schedule.
      */
     event PolicyBound(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         address indexed buyer,
         address indexed beneficiary,
         address pool,
@@ -228,7 +228,7 @@ interface IPolicyManager is IAccessControl {
      * @notice Reverts when a policy draft is not found.
      * @param policyId Identifier that failed lookup.
      */
-    error PolicyDraftNotFound(uint256 policyId);
+    error PolicyDraftNotFound(uint96 policyId);
 
     /**
      * @notice Reverts when a policy is not in the expected status.
@@ -328,14 +328,14 @@ interface IPolicyManager is IAccessControl {
         uint256 coverageAmount
     )
         external
-        returns (uint256 policyId);
+        returns (uint96 policyId);
 
     /**
      * @notice Cancels a policy draft.
      * @dev Only the buyer can cancel, and only before binding.
      * @param policyId Identifier of the draft to cancel.
      */
-    function cancelPolicyDraft(uint256 policyId) external;
+    function cancelPolicyDraft(uint96 policyId) external;
 
     /**
      * @notice Binds a single-pool coverage policy by validating the quote, collecting premium,
@@ -350,7 +350,7 @@ interface IPolicyManager is IAccessControl {
      * @param policyId Identifier of the draft to fetch.
      * @return PolicyDraft request snapshot.
      */
-    function getPolicyDraft(uint256 policyId) external view returns (PolicyDraft memory);
+    function getPolicyDraft(uint96 policyId) external view returns (PolicyDraft memory);
 
     /**
      * @notice Returns true when the contract is paused.

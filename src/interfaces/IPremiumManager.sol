@@ -30,7 +30,7 @@ interface IPremiumManager is IAccessControl {
      */
     struct PremiumAllocation {
         /// @notice Identifier of the policy associated with the payment.
-        uint256 policyId;
+        uint96 policyId;
         /// @notice Deterministic hash representing the policy schedule.
         bytes32 policyCommit;
         /// @notice Base premium amount for the single pool.
@@ -56,7 +56,7 @@ interface IPremiumManager is IAccessControl {
      * @param policyId Identifier of the policy receiving coverage.
      * @param basePremium Base premium collected for the single pool.
      */
-    event PremiumCollected(uint256 indexed policyId, uint256 basePremium);
+    event PremiumCollected(uint96 indexed policyId, uint256 basePremium);
 
     /**
      * @notice Emitted when the PremiumReserve dependency is set or updated.

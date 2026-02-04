@@ -37,8 +37,8 @@ contract PolicyManager is
     address public override coverPoolFactory;
     uint16 public override platformFeeBps;
 
-    uint256 private _nextPolicyId;
-    mapping(uint256 policyId => PolicyDraft draft) private _policyDrafts;
+    uint96 private _nextPolicyId;
+    mapping(uint96 policyId => PolicyDraft draft) private _policyDrafts;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -170,7 +170,7 @@ contract PolicyManager is
         override
         nonReentrant
         whenNotPaused
-        returns (uint256 policyId)
+        returns (uint96 policyId)
     {
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
         require(
@@ -184,9 +184,8 @@ contract PolicyManager is
         require(curator != address(0), InvalidPoolOperator());
 
         policyId = ++_nextPolicyId;
-        require(policyId <= type(uint96).max, PolicyIdOverflow());
 
-        uint96 committeeId = uint96(policyId);
+        uint96 committeeId = policyId;
 
         _policyDrafts[policyId] = PolicyDraft({
             pool: pool,
@@ -210,7 +209,7 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
-    function cancelPolicyDraft(uint256 policyId) external override nonReentrant whenNotPaused {
+    function cancelPolicyDraft(uint96 policyId) external override nonReentrant whenNotPaused {
         PolicyDraft storage draft = _policyDrafts[policyId];
         require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
         require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
@@ -226,7 +225,7 @@ contract PolicyManager is
     function bindPolicy(BindPolicyRequest calldata request) external override nonReentrant whenNotPaused {
         _validateRequest(request);
 
-        uint256 policyId = request.policyId;
+        uint96 policyId = request.policyId;
         PolicyDraft storage draft = _policyDrafts[policyId];
         require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
         require(draft.pool == msg.sender, UnauthorizedCaller());
@@ -241,7 +240,7 @@ contract PolicyManager is
 
         ICoverPool.Quote calldata quote = request.quote;
         uint96 committeeId = quote.committeeId;
-        require(uint96(policyId) == committeeId, InvalidCommitteeId());
+        require(policyId == committeeId, InvalidCommitteeId());
 
         draft.status = PolicyStatus.Bound;
 
@@ -293,7 +292,7 @@ contract PolicyManager is
             coverageLimit: boundPolicy.coverageLimit,
             payoutReceiver: boundPolicy.payoutReceiver,
             operator: boundPolicy.operator,
-            poolPolicyId: uint96(boundPolicy.policyId),
+            poolPolicyId: boundPolicy.policyId,
             specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
             policyCommit: policyCommit
@@ -315,7 +314,7 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
-    function getPolicyDraft(uint256 policyId) external view override returns (PolicyDraft memory draft) {
+    function getPolicyDraft(uint96 policyId) external view override returns (PolicyDraft memory draft) {
         draft = _policyDrafts[policyId];
         require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
     }

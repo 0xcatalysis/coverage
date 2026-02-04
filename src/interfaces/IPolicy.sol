@@ -62,7 +62,7 @@ interface IPolicy is IAccessControl, IERC721Metadata {
      * @param policyCommit Schedule commit hash associated with the policy.
      */
     event PolicyMinted(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         address indexed to,
         address indexed pool,
         uint64 startTime,
@@ -80,7 +80,7 @@ interface IPolicy is IAccessControl, IERC721Metadata {
      * @notice Reverts when attempting to mint a policy that already exists.
      * @param policyId Identifier that conflicted with existing state.
      */
-    error PolicyAlreadyMinted(uint256 policyId);
+    error PolicyAlreadyMinted(uint96 policyId);
 
     /**
      * @notice Reverts when supplied policy metadata specifies an invalid coverage window.
@@ -124,13 +124,13 @@ interface IPolicy is IAccessControl, IERC721Metadata {
      * @notice Reverts when attempting to reference a policy that has not been minted.
      * @param policyId Identifier that failed the lookup.
      */
-    error PolicyNotFound(uint256 policyId);
+    error PolicyNotFound(uint96 policyId);
 
     /**
      * @notice Reverts when attempting to transfer a soulbound policy while locked.
      * @param policyId Identifier of the policy token.
      */
-    error TransfersLocked(uint256 policyId);
+    error TransfersLocked(uint96 policyId);
 
     /**
      * @notice Mints a new policy SBT and stores associated metadata.
@@ -139,14 +139,14 @@ interface IPolicy is IAccessControl, IERC721Metadata {
      * @param policyId Identifier to mint.
      * @param metadata Full policy metadata snapshot.
      */
-    function mintPolicy(address to, uint256 policyId, PolicyMetadata calldata metadata) external;
+    function mintPolicy(address to, uint96 policyId, PolicyMetadata calldata metadata) external;
 
     /**
      * @notice Fetches stored metadata for a policy token.
      * @param policyId Identifier to query.
      * @return PolicyMetadata snapshot for the policy.
      */
-    function policyMetadata(uint256 policyId) external view returns (PolicyMetadata memory);
+    function policyMetadata(uint96 policyId) external view returns (PolicyMetadata memory);
 
     /**
      * @notice AccessControl identifier that allows minting new policy receipts.

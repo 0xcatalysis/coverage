@@ -12,7 +12,7 @@ import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
 import {IPolicy} from "../../src/interfaces/IPolicy.sol";
 
 contract PolicyManagerTest is Test {
-    uint256 internal constant POLICY_ID = 1;
+    uint96 internal constant POLICY_ID = 1;
     uint256 internal constant COVERAGE_LIMIT = 1_000_000e18;
     uint256 internal constant BASE_PREMIUM = 10_000e18;
     uint256 internal constant COVERAGE_AMOUNT = 500_000e8;
@@ -41,7 +41,7 @@ contract PolicyManagerTest is Test {
     bytes32 internal termsHash;
 
     event PolicyBound(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         address indexed buyer,
         address indexed beneficiary,
         address pool,
@@ -617,7 +617,7 @@ contract PolicyManagerTest is Test {
 
     function test_bindPolicy_WhenCommitteeIdMismatchesPolicyId_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        uint96 wrongCommitteeId = uint96(request.policyId) + 1;
+        uint96 wrongCommitteeId = request.policyId + 1;
         request.quote.committeeId = wrongCommitteeId;
 
         _seedCommitteeForTesting(wrongCommitteeId, operator, COVERAGE_AMOUNT, true);
@@ -1034,13 +1034,13 @@ contract PolicyManagerTest is Test {
         emit IPolicyManager.CoverageRequested(1, address(coverPool), buyer, beneficiary, beneficiary, COVERAGE_AMOUNT);
 
         vm.prank(buyer);
-        uint256 policyId = policyManager.requestCoverage(
+        uint96 policyId = policyManager.requestCoverage(
             address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
         );
 
         assertEq(policyId, 1, "Policy ID should be 1");
         assertEq(mockStakeManager.createCommitteeCallCount(), 1, "Should create committee");
-        assertEq(mockStakeManager.lastCommitteeId(), uint96(policyId), "Committee ID should match policy ID");
+        assertEq(mockStakeManager.lastCommitteeId(), policyId, "Committee ID should match policy ID");
 
         IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
         assertEq(draft.pool, address(coverPool), "Pool mismatch");
@@ -1050,16 +1050,16 @@ contract PolicyManagerTest is Test {
         assertEq(draft.premiumToken, premiumToken, "Premium token mismatch");
         assertEq(draft.payoutToken, payoutToken, "Payout token mismatch");
         assertEq(draft.coverageAmount, COVERAGE_AMOUNT, "Coverage amount mismatch");
-        assertEq(draft.committeeId, uint96(policyId), "Committee ID mismatch");
+        assertEq(draft.committeeId, policyId, "Committee ID mismatch");
         assertTrue(draft.status == IPolicyManager.PolicyStatus.Created, "Status should be Created");
     }
 
     function test_requestCoverage_IncrementsPolicyIdCorrectly() public {
         vm.startPrank(buyer);
-        uint256 policyId1 = policyManager.requestCoverage(
+        uint96 policyId1 = policyManager.requestCoverage(
             address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
         );
-        uint256 policyId2 = policyManager.requestCoverage(
+        uint96 policyId2 = policyManager.requestCoverage(
             address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
         );
         vm.stopPrank();
@@ -1080,7 +1080,7 @@ contract PolicyManagerTest is Test {
 
     function test_cancelPolicyDraft_WhenNotBuyer_Reverts() public {
         vm.prank(buyer);
-        uint256 policyId = policyManager.requestCoverage(
+        uint96 policyId = policyManager.requestCoverage(
             address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
         );
 
@@ -1092,7 +1092,7 @@ contract PolicyManagerTest is Test {
 
     function test_cancelPolicyDraft_WhenAlreadyCancelled_Reverts() public {
         vm.prank(buyer);
-        uint256 policyId = policyManager.requestCoverage(
+        uint96 policyId = policyManager.requestCoverage(
             address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
         );
 
@@ -1108,7 +1108,7 @@ contract PolicyManagerTest is Test {
 
     function test_cancelPolicyDraft_WhenPaused_Reverts() public {
         vm.prank(buyer);
-        uint256 policyId = policyManager.requestCoverage(
+        uint96 policyId = policyManager.requestCoverage(
             address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
         );
 
@@ -1122,7 +1122,7 @@ contract PolicyManagerTest is Test {
 
     function test_cancelPolicyDraft_CancelsSuccessfully() public {
         vm.prank(buyer);
-        uint256 policyId = policyManager.requestCoverage(
+        uint96 policyId = policyManager.requestCoverage(
             address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
         );
 
@@ -1147,7 +1147,7 @@ contract PolicyManagerTest is Test {
 
     function test_getPolicyDraft_ReturnsCorrectDraft() public {
         vm.prank(buyer);
-        uint256 policyId = policyManager.requestCoverage(
+        uint96 policyId = policyManager.requestCoverage(
             address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
         );
 
@@ -1160,11 +1160,11 @@ contract PolicyManagerTest is Test {
         assertEq(draft.premiumToken, premiumToken, "Premium token mismatch");
         assertEq(draft.payoutToken, payoutToken, "Payout token mismatch");
         assertEq(draft.coverageAmount, COVERAGE_AMOUNT, "Coverage amount mismatch");
-        assertEq(draft.committeeId, uint96(policyId), "Committee ID mismatch");
+        assertEq(draft.committeeId, policyId, "Committee ID mismatch");
         assertTrue(draft.status == IPolicyManager.PolicyStatus.Created, "Status should be Created");
     }
 
-    function externalGetPolicyDraft(uint256 policyId) external view returns (IPolicyManager.PolicyDraft memory) {
+    function externalGetPolicyDraft(uint96 policyId) external view returns (IPolicyManager.PolicyDraft memory) {
         return policyManager.getPolicyDraft(policyId);
     }
 
@@ -1174,13 +1174,13 @@ contract PolicyManagerTest is Test {
 
     function _defaultRequest() internal returns (IPolicyManager.BindPolicyRequest memory) {
         vm.prank(buyer);
-        uint256 policyId = policyManager.requestCoverage(
+        uint96 policyId = policyManager.requestCoverage(
             address(coverPool), beneficiary, beneficiary, premiumToken, payoutToken, COVERAGE_AMOUNT
         );
         return _buildRequest(policyId);
     }
 
-    function _buildRequest(uint256 policyId) internal view returns (IPolicyManager.BindPolicyRequest memory) {
+    function _buildRequest(uint96 policyId) internal view returns (IPolicyManager.BindPolicyRequest memory) {
         ICoverPool.Quote memory quote = ICoverPool.Quote({
             pool: address(coverPool),
             coverageLimit: COVERAGE_LIMIT,
@@ -1188,7 +1188,7 @@ contract PolicyManagerTest is Test {
             specId: specId,
             termsHash: termsHash,
             payoutReceiver: beneficiary,
-            committeeId: uint96(policyId),
+            committeeId: policyId,
             operator: operator,
             startTime: uint64(block.timestamp),
             maturityTime: uint64(block.timestamp + COVERAGE_DURATION),
@@ -1268,7 +1268,7 @@ contract MockCoverPool {
     }
 
     function recordBoundPolicy(
-        uint256 policyId,
+        uint96 policyId,
         bytes32 policyCommit,
         ICoverPool.Quote calldata quote
     )
@@ -1336,7 +1336,7 @@ contract MockPolicy {
     uint256 private _lastPolicyId;
     IPolicy.PolicyMetadata private _lastMetadata;
 
-    function mintPolicy(address to, uint256 policyId, IPolicy.PolicyMetadata calldata metadata) external {
+    function mintPolicy(address to, uint96 policyId, IPolicy.PolicyMetadata calldata metadata) external {
         mintPolicyCallCount++;
         _lastTo = to;
         _lastPolicyId = policyId;

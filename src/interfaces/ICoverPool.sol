@@ -50,7 +50,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      */
     struct BoundPolicy {
         /// @notice Incremental identifier for the policy.
-        uint256 policyId;
+        uint96 policyId;
         /// @notice Spec identifier attached to the bound policy.
         bytes32 specId;
         /// @notice Terms hash anchored for the bound policy.
@@ -75,7 +75,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param policyId Incremental identifier for the policy.
      * @param coverageLimit Coverage notional locked from the pool.
      */
-    event BoundPolicyRecorded(bytes32 indexed policyCommit, uint256 indexed policyId, uint256 coverageLimit);
+    event BoundPolicyRecorded(bytes32 indexed policyCommit, uint96 indexed policyId, uint256 coverageLimit);
 
     /**
      * @notice Emitted when the curator updates the pool fee basis points.
@@ -90,7 +90,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param committeeId The committee identifier.
      * @param vaultCount The number of vaults bound to the committee.
      */
-    event PolicyForRequestBound(uint256 indexed policyId, uint96 indexed committeeId, uint256 vaultCount);
+    event PolicyForRequestBound(uint96 indexed policyId, uint96 indexed committeeId, uint256 vaultCount);
 
     /**
      * @notice Reverts when a required address argument is zero.
@@ -163,7 +163,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Reverts when querying data for an unknown policy identifier.
      * @param policyId Identifier that failed the lookup.
      */
-    error PolicyNotFound(uint256 policyId);
+    error PolicyNotFound(uint96 policyId);
 
     /**
      * @notice Reverts when attempting to bind using an empty policy commit value.
@@ -227,7 +227,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param vaults Vault addresses to bind to the committee.
      */
     function bindPolicyForRequest(
-        uint256 policyId,
+        uint96 policyId,
         Quote calldata quote,
         bytes calldata signature,
         address[] calldata vaults
@@ -244,7 +244,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @return BoundPolicy metadata describing the pool's coverage allocation.
      */
     function recordBoundPolicy(
-        uint256 policyId,
+        uint96 policyId,
         bytes32 policyCommit,
         Quote calldata quote
     )
@@ -269,7 +269,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param policyId Identifier returned during binding.
      * @return BoundPolicy metadata describing the allocation.
      */
-    function getBoundPolicy(uint256 policyId) external view returns (BoundPolicy memory);
+    function getBoundPolicy(uint96 policyId) external view returns (BoundPolicy memory);
 
     /**
      * @notice Verifies a coverage quote and returns the resulting policy commit hash.

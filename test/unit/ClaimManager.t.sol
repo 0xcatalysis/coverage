@@ -14,7 +14,7 @@ import {ISpec} from "../../src/interfaces/ISpec.sol";
 import {ISwapper} from "../../src/interfaces/ISwapper.sol";
 
 contract ClaimManagerTest is Test {
-    uint256 internal constant POLICY_ID = 1;
+    uint96 internal constant POLICY_ID = 1;
     uint256 internal constant COVERAGE_LIMIT = 1000 ether;
     uint256 internal constant BASE_PREMIUM = 100 ether;
     uint64 internal constant COVERAGE_DURATION = 30 days;
@@ -52,7 +52,7 @@ contract ClaimManagerTest is Test {
     bytes32 internal policyCommit;
 
     event ClaimFiled(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         uint256 indexed claimId,
         address indexed reporter,
         bytes32 evidenceHash,
@@ -60,15 +60,15 @@ contract ClaimManagerTest is Test {
         uint256 timestamp
     );
     event ClaimApproved(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         uint256 indexed claimId,
         address indexed beneficiary,
         uint256 payoutAmount,
         uint256 timestamp
     );
-    event ClaimRejected(uint256 indexed policyId, uint256 indexed claimId, string reason, uint256 timestamp);
+    event ClaimRejected(uint96 indexed policyId, uint256 indexed claimId, string reason, uint256 timestamp);
     event CollateralSwapped(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         uint256 indexed claimId,
         address indexed collateralToken,
         uint256 collateralAmount,
@@ -740,7 +740,7 @@ contract ClaimManagerTest is Test {
     }
 
     function test_fileClaim_WhenPolicyNotFound_Reverts() public {
-        uint256 invalidPolicyId = 999;
+        uint96 invalidPolicyId = 999;
         policyMock.setPolicyMetadata(
             invalidPolicyId,
             IPolicy.PolicyMetadata({
@@ -1049,11 +1049,11 @@ contract MockSwapper {
 contract MockPolicy {
     mapping(uint256 => IPolicy.PolicyMetadata) private _metadata;
 
-    function setPolicyMetadata(uint256 policyId, IPolicy.PolicyMetadata memory metadata) external {
+    function setPolicyMetadata(uint96 policyId, IPolicy.PolicyMetadata memory metadata) external {
         _metadata[policyId] = metadata;
     }
 
-    function policyMetadata(uint256 policyId) external view returns (IPolicy.PolicyMetadata memory) {
+    function policyMetadata(uint96 policyId) external view returns (IPolicy.PolicyMetadata memory) {
         return _metadata[policyId];
     }
 }
@@ -1064,25 +1064,25 @@ contract MockPremiumReserve {
     mapping(uint256 => uint256) private _premiumAvailable;
     address private _premiumToken;
 
-    error EscrowNotLocked(uint256 policyId);
+    error EscrowNotLocked(uint96 policyId);
 
-    function setEscrowReleased(uint256 policyId, bool released) external {
+    function setEscrowReleased(uint96 policyId, bool released) external {
         _escrowReleased[policyId] = released;
     }
 
-    function isEscrowReleased(uint256 policyId) external view returns (bool) {
+    function isEscrowReleased(uint96 policyId) external view returns (bool) {
         return _escrowReleased[policyId];
     }
 
-    function setClaimLockStatus(uint256 policyId, bool locked) external {
+    function setClaimLockStatus(uint96 policyId, bool locked) external {
         _claimLocked[policyId] = locked;
     }
 
-    function isClaimLockSet(uint256 policyId) external view returns (bool) {
+    function isClaimLockSet(uint96 policyId) external view returns (bool) {
         return _claimLocked[policyId];
     }
 
-    function setPremiumAvailable(uint256 policyId, uint256 amount) external {
+    function setPremiumAvailable(uint96 policyId, uint256 amount) external {
         _premiumAvailable[policyId] = amount;
     }
 
@@ -1091,7 +1091,7 @@ contract MockPremiumReserve {
     }
 
     function payClaim(
-        uint256 policyId,
+        uint96 policyId,
         address payoutRecipient,
         uint256 settledAmount
     )
