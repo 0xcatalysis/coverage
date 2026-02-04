@@ -29,7 +29,7 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  *      - Swapper: Converts slashed collateral to payout tokens
  *
  *      Claim Flow:
- *      fileAndResolveClaim: Operator atomically files and resolves claim → evaluates Spec → if approved:
+ *      fileClaim: Operator atomically files and resolves claim → evaluates Spec → if approved:
  *      premium reserve waterfall → slash shortfall → swap → payout
  *
  *      Premium Reserve Waterfall:
@@ -184,7 +184,7 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function fileAndResolveClaim(
+    function fileClaim(
         uint256 policyId,
         uint256 requestedAmount,
         bytes32 evidenceHash,

@@ -281,7 +281,7 @@ interface IClaimManager is IAccessControl {
     function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
 
     /**
-     * @notice Atomically files and resolves a claim in a single transaction.
+     * @notice Files and resolves a claim atomically in a single transaction.
      * @dev Requires CLAIM_OPERATOR_ROLE. Combines filing and resolution into one atomic operation:
      *      1. Validates claim preconditions and locks escrow
      *      2. Evaluates the registered Spec for the policy's product
@@ -295,7 +295,7 @@ interface IClaimManager is IAccessControl {
      * @param additionalData Optional ABI-encoded data for Spec evaluation.
      * @return claimId Unique identifier for the filed claim.
      */
-    function fileAndResolveClaim(
+    function fileClaim(
         uint256 policyId,
         uint256 requestedAmount,
         bytes32 evidenceHash,
