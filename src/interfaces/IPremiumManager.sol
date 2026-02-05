@@ -5,7 +5,8 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 
 /**
  * @title IPremiumManager
- * @notice Interface for collecting premiums, routing fees, and depositing restaker shares into escrow.
+ * @notice Interface for collecting premiums, routing fees, and immediately distributing restaker shares to
+ * RewardsManager.
  */
 interface IPremiumManager is IAccessControl {
     /**
@@ -59,10 +60,10 @@ interface IPremiumManager is IAccessControl {
     event PremiumCollected(uint96 indexed policyId, uint256 basePremium);
 
     /**
-     * @notice Emitted when the PremiumReserve dependency is set or updated.
-     * @param premiumReserve_ Address of the premium reserve contract.
+     * @notice Emitted when the RewardsManager dependency is set or updated.
+     * @param rewardsManager_ Address of the rewards manager contract.
      */
-    event PremiumReserveSet(address indexed premiumReserve_);
+    event RewardsManagerSet(address indexed rewardsManager_);
 
     /**
      * @notice Emitted when the platform treasury is set or updated.
@@ -125,11 +126,11 @@ interface IPremiumManager is IAccessControl {
     function unpause() external;
 
     /**
-     * @notice Sets the PremiumReserve contract used for escrowed balances.
+     * @notice Sets the RewardsManager contract used for immediate reward distribution.
      * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param reserve Address of the PremiumReserve implementation.
+     * @param rewardsManager_ Address of the RewardsManager implementation.
      */
-    function setPremiumReserve(address reserve) external;
+    function setRewardsManager(address rewardsManager_) external;
 
     /**
      * @notice Sets the platform treasury address.
@@ -139,16 +140,16 @@ interface IPremiumManager is IAccessControl {
     function setPlatformTreasury(address treasury) external;
 
     /**
-     * @notice Collects premium funds, routes fees, and deposits restaker shares into PremiumReserve.
+     * @notice Collects premium funds, routes fees, and immediately distributes restaker shares to RewardsManager.
      * @dev Requires POLICY_MANAGER_ROLE.
      * @param allocation Struct describing the policy payment parameters.
      */
     function collectPremium(PremiumAllocation calldata allocation) external;
 
     /**
-     * @notice Returns the configured PremiumReserve address.
+     * @notice Returns the configured RewardsManager address.
      */
-    function premiumReserve() external view returns (address);
+    function rewardsManager() external view returns (address);
 
     /**
      * @notice Returns the configured platform treasury address.

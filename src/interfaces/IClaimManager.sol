@@ -132,16 +132,10 @@ interface IClaimManager is IAccessControl {
     event SwapperSet(address indexed swapper);
 
     /**
-     * @notice Emitted when the Policy address is updated.
-     * @param policy New Policy address.
+     * @notice Emitted when the PolicyManager address is updated.
+     * @param policyManager New PolicyManager address.
      */
-    event PolicySet(address indexed policy);
-
-    /**
-     * @notice Emitted when the PremiumReserve address is updated.
-     * @param premiumReserve New PremiumReserve address.
-     */
-    event PremiumReserveSet(address indexed premiumReserve);
+    event PolicyManagerSet(address indexed policyManager);
 
     /**
      * @notice Emitted when the ChainlinkPriceFeed address is updated.
@@ -189,10 +183,11 @@ interface IClaimManager is IAccessControl {
     error ClaimOutsideCoverageWindow(uint96 policyId, uint64 startTime, uint64 maturityTime, uint256 currentTime);
 
     /**
-     * @notice Reverts when the escrow is already released.
-     * @param policyId Identifier of the policy.
+     * @notice Reverts when the caller is not authorized to file a claim for this policy.
+     * @param caller Address that attempted to file the claim.
+     * @param expectedClaimer Address authorized to file claims for this policy.
      */
-    error EscrowAlreadyReleased(uint96 policyId);
+    error UnauthorizedClaimer(address caller, address expectedClaimer);
 
     /**
      * @notice Reverts when spec evaluation returns non-payable result.
@@ -260,18 +255,11 @@ interface IClaimManager is IAccessControl {
     function setSwapper(address swapper_) external;
 
     /**
-     * @notice Sets the Policy address.
+     * @notice Sets the PolicyManager address.
      * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param policy_ Address of the Policy contract.
+     * @param policyManager_ Address of the PolicyManager contract.
      */
-    function setPolicy(address policy_) external;
-
-    /**
-     * @notice Sets the PremiumReserve address.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param premiumReserve_ Address of the PremiumReserve contract.
-     */
-    function setPremiumReserve(address premiumReserve_) external;
+    function setPolicyManager(address policyManager_) external;
 
     /**
      * @notice Sets the ChainlinkPriceFeed address.
@@ -282,11 +270,11 @@ interface IClaimManager is IAccessControl {
 
     /**
      * @notice Files and resolves a claim atomically in a single transaction.
-     * @dev Requires CLAIM_OPERATOR_ROLE. Combines filing and resolution into one atomic operation:
-     *      1. Validates claim preconditions and locks escrow
+     * @dev Caller must be the policy's designated claimer address. Combines filing and resolution into one atomic
+     * operation:
+     *      1. Validates claim preconditions and verifies claimer authorization
      *      2. Evaluates the registered Spec for the policy's product
-     *      3. If approved: executes premium waterfall → slashes shortfall → swaps → pays beneficiary
-     *      4. Unlocks escrow regardless of outcome
+     *      3. If approved: slashes stake → swaps collateral → pays beneficiary
      *      Multiple partial claims can be filed against the same policy up to the coverage limit.
      *
      * @param policyId Identifier of the policy to claim against.
@@ -328,7 +316,6 @@ interface IClaimManager is IAccessControl {
 
     /**
      * @notice Returns the number of pending (filed but not resolved) claims for a policy.
-     * @dev Escrow is locked when pendingClaimCount > 0 and unlocked when it reaches 0.
      * @param policyId Identifier of the policy.
      * @return count Number of pending claims.
      */
@@ -338,11 +325,6 @@ interface IClaimManager is IAccessControl {
      * @notice Returns true when the contract is paused.
      */
     function paused() external view returns (bool);
-
-    /**
-     * @notice AccessControl identifier for the claim operator role.
-     */
-    function CLAIM_OPERATOR_ROLE() external view returns (bytes32);
 
     /**
      * @notice Returns the SpecRegistry address.
@@ -360,14 +342,9 @@ interface IClaimManager is IAccessControl {
     function swapper() external view returns (address);
 
     /**
-     * @notice Returns the Policy address.
+     * @notice Returns the PolicyManager address.
      */
-    function policy() external view returns (address);
-
-    /**
-     * @notice Returns the PremiumReserve address.
-     */
-    function premiumReserve() external view returns (address);
+    function policyManager() external view returns (address);
 
     /**
      * @notice Returns the ChainlinkPriceFeed address.

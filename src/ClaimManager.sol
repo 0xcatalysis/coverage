@@ -10,8 +10,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
-import {IPremiumReserve} from "./interfaces/IPremiumReserve.sol";
-import {IPolicy} from "./interfaces/IPolicy.sol";
+import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {ISpec} from "./interfaces/ISpec.sol";
 import {ISpecRegistry} from "./interfaces/ISpecRegistry.sol";
 import {ISlashingManager} from "./interfaces/ISlashingManager.sol";
@@ -22,22 +21,14 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  * @notice Orchestrates parametric claim processing by evaluating product specs, coordinating slashing,
  *         swapping collateral, and settling payouts to beneficiaries.
  * @dev Integrates with:
- *      - Policy: Fetches policy metadata and coverage parameters
- *      - PremiumReserve: Locks escrow during evaluation, pays claims from reserve
+ *      - PolicyManager: Fetches policy metadata and coverage parameters
  *      - SpecRegistry: Resolves product-specific evaluation logic
  *      - SlashingManager (Core): Executes stake slashing for approved claims
  *      - Swapper: Converts slashed collateral to payout tokens
  *
  *      Claim Flow:
- *      fileClaim: Operator atomically files and resolves claim → evaluates Spec → if approved:
- *      premium reserve waterfall → slash shortfall → swap → payout
- *
- *      Premium Reserve Waterfall:
- *      - First attempts to pay claim from premium reserve collected for the policy
- *      - If premium reserve sufficient, no slashing occurs
- *      - If premium reserve insufficient, only slashes the shortfall amount
- *      Example: 100k in reserve, 2M policy, 70k claim → pay from reserve only
- *      Example: 100k in reserve, 2M policy, 250k claim → 100k from reserve + 150k from slashing
+ *      fileClaim: Authorized claimer atomically files and resolves claim → evaluates Spec → if approved:
+ *      slash stake → swap collateral → payout
  */
 // slither-disable-next-line unimplemented-functions
 contract ClaimManager is
@@ -50,13 +41,10 @@ contract ClaimManager is
 {
     using SafeERC20 for IERC20;
 
-    bytes32 public constant override CLAIM_OPERATOR_ROLE = keccak256("CLAIM_OPERATOR_ROLE");
-
     address public override specRegistry;
     address public override slashingManager;
     address public override swapper;
-    address public override policy;
-    address public override premiumReserve;
+    address public override policyManager;
     address public override chainlinkPriceFeed;
 
     mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
@@ -71,31 +59,26 @@ contract ClaimManager is
     /**
      * @notice Initializes the ClaimManager with role assignments and dependency wiring.
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
-     * @param claimOperator_ Address granted CLAIM_OPERATOR_ROLE for resolving claims.
      * @param specRegistry_ Address of the SpecRegistry contract.
      * @param slashingManager_ Address of the SlashingManager contract.
      * @param swapper_ Address of the Swapper contract.
-     * @param policy_ Address of the Policy contract.
-     * @param premiumReserve_ Address of the PremiumReserve contract.
+     * @param policyManager_ Address of the PolicyManager contract.
      * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
      */
     function initialize(
         address admin_,
-        address claimOperator_,
         address specRegistry_,
         address slashingManager_,
         address swapper_,
-        address policy_,
-        address premiumReserve_,
+        address policyManager_,
         address chainlinkPriceFeed_
     )
         external
         initializer
     {
         require(
-            admin_ != address(0) && claimOperator_ != address(0) && specRegistry_ != address(0)
-                && slashingManager_ != address(0) && swapper_ != address(0) && policy_ != address(0)
-                && premiumReserve_ != address(0) && chainlinkPriceFeed_ != address(0),
+            admin_ != address(0) && specRegistry_ != address(0) && slashingManager_ != address(0)
+                && swapper_ != address(0) && policyManager_ != address(0) && chainlinkPriceFeed_ != address(0),
             ZeroAddress()
         );
 
@@ -103,13 +86,11 @@ contract ClaimManager is
         __Pausable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
-        _grantRole(CLAIM_OPERATOR_ROLE, claimOperator_);
 
         specRegistry = specRegistry_;
         slashingManager = slashingManager_;
         swapper = swapper_;
-        policy = policy_;
-        premiumReserve = premiumReserve_;
+        policyManager = policyManager_;
         chainlinkPriceFeed = chainlinkPriceFeed_;
     }
 
@@ -157,19 +138,10 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function setPolicy(address policy_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(policy_ != address(0), ZeroAddress());
-        policy = policy_;
-        emit PolicySet(policy_);
-    }
-
-    /**
-     * @inheritdoc IClaimManager
-     */
-    function setPremiumReserve(address premiumReserve_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(premiumReserve_ != address(0), ZeroAddress());
-        premiumReserve = premiumReserve_;
-        emit PremiumReserveSet(premiumReserve_);
+    function setPolicyManager(address policyManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(policyManager_ != address(0), ZeroAddress());
+        policyManager = policyManager_;
+        emit PolicyManagerSet(policyManager_);
     }
 
     /**
@@ -194,14 +166,12 @@ contract ClaimManager is
         override
         whenNotPaused
         nonReentrant
-        onlyRole(CLAIM_OPERATOR_ROLE)
         returns (uint256 claimId)
     {
-        IPolicy.PolicyMetadata memory metadata;
+        IPolicyManager.PolicyMetadata memory metadata;
         (claimId, metadata) = _fileClaimWithMetadata(policyId, requestedAmount, evidenceHash);
 
-        // slither-disable-next-line reentrancy-no-eth
-        _lockEscrowOnFirstClaim(policyId);
+        require(msg.sender == metadata.claimer, UnauthorizedClaimer(msg.sender, metadata.claimer));
 
         ClaimRecord storage claim = _claims[policyId][claimId];
         ISpec.EvaluationResult memory result = _evaluateSpec(policyId, metadata, evidenceHash, additionalData);
@@ -213,7 +183,6 @@ contract ClaimManager is
             claim.status = ClaimStatus.Rejected;
             _pendingClaimCounts[policyId]--;
             emit ClaimRejected(policyId, claimId, "Spec evaluation failed", block.timestamp);
-            _unlockEscrowIfNoPendingClaims(policyId);
             return claimId;
         }
 
@@ -226,7 +195,6 @@ contract ClaimManager is
         claim.payoutAmount = totalPayout;
 
         emit ClaimApproved(policyId, claimId, metadata.payoutReceiver, totalPayout, block.timestamp);
-        _unlockEscrowIfNoPendingClaims(policyId);
     }
 
     /**
@@ -247,7 +215,7 @@ contract ClaimManager is
      * @inheritdoc IClaimManager
      */
     function remainingCoverage(uint96 policyId) external view override returns (uint256) {
-        IPolicy.PolicyMetadata memory metadata = IPolicy(policy).policyMetadata(policyId);
+        IPolicyManager.PolicyMetadata memory metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
         return totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
     }
@@ -272,28 +240,6 @@ contract ClaimManager is
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     /**
-     * @notice Locks premium reserve escrow if this is the first pending claim.
-     * @param policyId Identifier of the policy.
-     */
-    function _lockEscrowOnFirstClaim(uint96 policyId) private {
-        if (_pendingClaimCounts[policyId] == 1) {
-            // slither-disable-next-line calls-loop
-            IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, true);
-        }
-    }
-
-    /**
-     * @notice Unlocks premium reserve escrow if there are no pending claims remaining.
-     * @param policyId Identifier of the policy.
-     */
-    function _unlockEscrowIfNoPendingClaims(uint96 policyId) private {
-        if (_pendingClaimCounts[policyId] == 0) {
-            // slither-disable-next-line calls-loop
-            IPremiumReserve(premiumReserve).setClaimLockStatus(policyId, false);
-        }
-    }
-
-    /**
      * @notice Internal helper for filing a claim and returning metadata to avoid double fetch.
      * @param policyId Identifier of the policy to claim against.
      * @param requestedAmount Requested payout amount in payout token terms.
@@ -307,12 +253,12 @@ contract ClaimManager is
         bytes32 evidenceHash
     )
         private
-        returns (uint256 claimId, IPolicy.PolicyMetadata memory metadata)
+        returns (uint256 claimId, IPolicyManager.PolicyMetadata memory metadata)
     {
         require(evidenceHash != bytes32(0), InvalidEvidenceHash());
         require(requestedAmount > 0, ZeroAmount());
 
-        metadata = IPolicy(policy).policyMetadata(policyId);
+        metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
 
         uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
@@ -326,8 +272,6 @@ contract ClaimManager is
             block.timestamp >= metadata.startTime && block.timestamp <= metadata.maturityTime,
             ClaimOutsideCoverageWindow(policyId, metadata.startTime, metadata.maturityTime, block.timestamp)
         );
-
-        require(!IPremiumReserve(premiumReserve).isEscrowReleased(policyId), EscrowAlreadyReleased(policyId));
 
         claimId = _policyClaims[policyId].claimCount;
         ClaimRecord storage claim = _claims[policyId][claimId];
@@ -356,7 +300,7 @@ contract ClaimManager is
     function _capAndExecutePayout(
         uint96 policyId,
         uint256 claimId,
-        IPolicy.PolicyMetadata memory metadata,
+        IPolicyManager.PolicyMetadata memory metadata,
         uint256 requestedAmount
     )
         private
@@ -378,121 +322,25 @@ contract ClaimManager is
     }
 
     /**
-     * @notice Executes premium waterfall, then slashing and collateral swapping for payout.
+     * @notice Executes slashing and collateral swapping for payout directly without.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param metadata Policy metadata containing committeeId, operator, and payout details.
      * @param requestedAmount Maximum amount to disburse (in payout token terms).
-     * @return totalPayout Total amount paid out (capped at requestedAmount).
+     * @return totalPayout Total amount paid out from slashing.
      */
     function _executeSlashingAndPayout(
         uint96 policyId,
         uint256 claimId,
-        IPolicy.PolicyMetadata memory metadata,
+        IPolicyManager.PolicyMetadata memory metadata,
         uint256 requestedAmount
     )
         private
         returns (uint256 totalPayout)
     {
         // slither-disable-next-line calls-loop
-        (uint256 premiumPaid, address premiumToken) =
-            IPremiumReserve(premiumReserve).payClaim(policyId, address(this), requestedAmount);
-
-        if (premiumPaid > 0) {
-            if (premiumToken == metadata.payoutToken) {
-                IERC20(premiumToken).safeTransfer(metadata.payoutReceiver, premiumPaid);
-                totalPayout = premiumPaid;
-            } else {
-                totalPayout = _swapPremiumToPayout(
-                    policyId,
-                    claimId,
-                    premiumToken,
-                    metadata.payoutToken,
-                    premiumPaid,
-                    metadata.payoutReceiver,
-                    requestedAmount
-                );
-            }
-        }
-
-        if (totalPayout >= requestedAmount) {
-            return requestedAmount;
-        }
-
-        uint256 remainingPayout = requestedAmount - totalPayout;
-        // slither-disable-next-line incorrect-equality
-        if (remainingPayout == 0) {
-            return totalPayout;
-        }
-
-        totalPayout += _slashAndSwap(policyId, claimId, metadata, remainingPayout);
-        require(totalPayout > 0, ZeroPayoutAmount(policyId));
-    }
-
-    /**
-     * @notice Converts premium tokens to payout tokens via Swapper with cap.
-     * @param policyId Identifier of the policy (for events).
-     * @param claimId Identifier of the claim (for events).
-     * @param premiumToken Address of the premium token to convert.
-     * @param payoutToken Address of the desired payout token.
-     * @param premiumAmount Amount of premium tokens to convert.
-     * @param payoutReceiver Address to receive the payout tokens.
-     * @param maxPayout Maximum payout amount to transfer (caps swap output).
-     * @return payoutAmount Amount of payout tokens delivered (capped at maxPayout).
-     */
-    function _swapPremiumToPayout(
-        uint96 policyId,
-        uint256 claimId,
-        address premiumToken,
-        address payoutToken,
-        uint256 premiumAmount,
-        address payoutReceiver,
-        uint256 maxPayout
-    )
-        private
-        returns (uint256 payoutAmount)
-    {
-        IERC20(premiumToken).forceApprove(swapper, premiumAmount);
-
-        ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
-            tokenIn: premiumToken,
-            tokenOut: payoutToken,
-            amountIn: premiumAmount,
-            amountOutMin: 1,
-            recipient: address(this),
-            swapCalldata: ""
-        });
-
-        // slither-disable-next-line calls-loop
-        uint256 swapOutput = ISwapper(swapper).executeSwap(swapParams);
-
-        payoutAmount = swapOutput > maxPayout ? maxPayout : swapOutput;
-        IERC20(payoutToken).safeTransfer(payoutReceiver, payoutAmount);
-
-        IERC20(premiumToken).forceApprove(swapper, 0);
-
-        emit CollateralSwapped(policyId, claimId, premiumToken, premiumAmount, payoutToken, payoutAmount);
-    }
-
-    /**
-     * @notice Slashes collateral and swaps to payout token.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim.
-     * @param metadata Policy metadata containing committeeId, operator, and payout details.
-     * @param amount Amount needed after premium reserve depletion.
-     * @return payoutFromSlashing Total payout obtained from slashing and swapping.
-     */
-    function _slashAndSwap(
-        uint96 policyId,
-        uint256 claimId,
-        IPolicy.PolicyMetadata memory metadata,
-        uint256 amount
-    )
-        private
-        returns (uint256 payoutFromSlashing)
-    {
-        // slither-disable-next-line calls-loop
-        uint256 slashAmountUSD = IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(metadata.payoutToken, amount);
+        uint256 slashAmountUSD =
+            IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(metadata.payoutToken, requestedAmount);
 
         // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
@@ -502,7 +350,7 @@ contract ClaimManager is
         // slither-disable-next-line incorrect-equality
         require(assetsLength > 0 && assetsLength == collateralAmounts.length, NoCollateralSlashed(policyId));
 
-        uint256 remainingPayout = amount;
+        uint256 remainingPayout = requestedAmount;
         for (uint256 i = 0; i < assetsLength && remainingPayout > 0; ++i) {
             if (collateralAmounts[i] > 0) {
                 uint256 amountOut = _processCollateral(
@@ -514,10 +362,12 @@ contract ClaimManager is
                     metadata.payoutReceiver,
                     remainingPayout
                 );
-                payoutFromSlashing += amountOut;
+                totalPayout += amountOut;
                 remainingPayout = remainingPayout > amountOut ? remainingPayout - amountOut : 0;
             }
         }
+
+        require(totalPayout > 0, ZeroPayoutAmount(policyId));
     }
 
     /**
@@ -581,7 +431,7 @@ contract ClaimManager is
      */
     function _evaluateSpec(
         uint96 policyId,
-        IPolicy.PolicyMetadata memory metadata,
+        IPolicyManager.PolicyMetadata memory metadata,
         bytes32 evidenceHash,
         bytes calldata additionalData
     )

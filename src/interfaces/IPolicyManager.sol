@@ -46,6 +46,48 @@ interface IPolicyManager is IAccessControl {
     }
 
     /**
+     * @notice Comprehensive metadata persisted alongside each policy.
+     * @dev Serves as canonical storage for policy, buyer, and pool schedule information.
+     *      Each policy represents coverage from a single pool.
+     */
+    struct PolicyMetadata {
+        /// @notice Buyer wallet responsible for paying premiums.
+        address buyer;
+        /// @notice Restaking committee identifier that backs this policy.
+        uint96 committeeId;
+        /// @notice Beneficiary receiving payouts upon approved claims.
+        address beneficiary;
+        /// @notice Account authorized to trigger claims for the policy.
+        address claimer;
+        /// @notice Policy coverage start timestamp.
+        uint64 startTime;
+        /// @notice ERC20 token used for premium payments.
+        address premiumToken;
+        /// @notice Policy coverage end timestamp.
+        uint64 maturityTime;
+        /// @notice Base premium paid by the buyer for coverage (excluding refundable deposits).
+        uint256 basePremium;
+        /// @notice ERC20 token used for claim payouts.
+        address payoutToken;
+        /// @notice Address of the pool providing coverage.
+        address pool;
+        /// @notice Coverage notional allocated from the pool.
+        uint256 coverageLimit;
+        /// @notice Destination address for claim payouts.
+        address payoutReceiver;
+        /// @notice Operator address delegated for this policy.
+        address operator;
+        /// @notice Incremental identifier for the policy.
+        uint96 poolPolicyId;
+        /// @notice Spec identifier for parametric claim evaluation (e.g., MorphoSpec, MapleSpec).
+        bytes32 specId;
+        /// @notice Hash of referenced terms governing this policy.
+        bytes32 termsHash;
+        /// @notice Deterministic hash representing the policy schedule.
+        bytes32 policyCommit;
+    }
+
+    /**
      * @notice Request payload for binding a single-pool coverage policy.
      * @dev Phase 1 supports single pool bindings only; multi-pool aggregation is deferred.
      */
@@ -116,16 +158,30 @@ interface IPolicyManager is IAccessControl {
     );
 
     /**
+     * @notice Emitted when a policy is registered with its metadata.
+     * @param policyId Identifier assigned to the policy.
+     * @param buyer Policy buyer address.
+     * @param pool Address of the CoverPool providing coverage.
+     * @param startTime Coverage start timestamp.
+     * @param maturityTime Coverage end timestamp.
+     * @param coverageLimit Coverage notional allocated from the pool.
+     * @param policyCommit Deterministic hash representing the policy schedule.
+     */
+    event PolicyRegistered(
+        uint96 indexed policyId,
+        address indexed buyer,
+        address indexed pool,
+        uint64 startTime,
+        uint64 maturityTime,
+        uint256 coverageLimit,
+        bytes32 policyCommit
+    );
+
+    /**
      * @notice Emitted when the PremiumManager dependency is set or updated.
      * @param premiumManager_ Address of the premium manager contract.
      */
     event PremiumManagerSet(address indexed premiumManager_);
-
-    /**
-     * @notice Emitted when the Policy contract dependency is set or updated.
-     * @param policy_ Address of the policy contract.
-     */
-    event PolicyContractSet(address indexed policy_);
 
     /**
      * @notice Emitted when the platform fee is updated.
@@ -253,6 +309,18 @@ interface IPolicyManager is IAccessControl {
     error RequestDraftMismatch();
 
     /**
+     * @notice Reverts when attempting to register a policy with a commit that's already been used.
+     * @param policyCommit The duplicate policy commit hash.
+     */
+    error PolicyCommitAlreadyRegistered(bytes32 policyCommit);
+
+    /**
+     * @notice Reverts when attempting to access a policy that doesn't exist.
+     * @param policyId The policy identifier that wasn't found.
+     */
+    error PolicyNotFound(uint96 policyId);
+
+    /**
      * @notice Pauses policy binding operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
@@ -270,13 +338,6 @@ interface IPolicyManager is IAccessControl {
      * @param premiumManager_ Address of the PremiumManager implementation.
      */
     function setPremiumManager(address premiumManager_) external;
-
-    /**
-     * @notice Sets the Policy contract used for minting policy NFTs.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param policy_ Address of the Policy implementation.
-     */
-    function setPolicy(address policy_) external;
 
     /**
      * @notice Sets the StakeManager contract used for committee creation.
@@ -363,11 +424,6 @@ interface IPolicyManager is IAccessControl {
     function premiumManager() external view returns (address);
 
     /**
-     * @notice Returns the configured Policy contract address.
-     */
-    function policy() external view returns (address);
-
-    /**
      * @notice Returns the configured StakeManager address.
      */
     function stakeManager() external view returns (address);
@@ -386,4 +442,11 @@ interface IPolicyManager is IAccessControl {
      * @notice Returns the platform fee in basis points.
      */
     function platformFeeBps() external view returns (uint16);
+
+    /**
+     * @notice Returns policy metadata for a given policy ID.
+     * @param policyId The policy identifier.
+     * @return metadata The policy metadata struct.
+     */
+    function policyMetadata(uint96 policyId) external view returns (PolicyMetadata memory metadata);
 }

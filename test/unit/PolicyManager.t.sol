@@ -9,7 +9,6 @@ import {PolicyManager} from "../../src/PolicyManager.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
-import {IPolicy} from "../../src/interfaces/IPolicy.sol";
 
 contract PolicyManagerTest is Test {
     uint96 internal constant POLICY_ID = 1;
@@ -31,7 +30,6 @@ contract PolicyManagerTest is Test {
     PolicyManager internal policyManager;
     MockCoverPool internal coverPool;
     MockPremiumManager internal mockPremiumManager;
-    MockPolicy internal mockPolicy;
     MockStakeManager internal mockStakeManager;
     MockClaimManager internal mockClaimManager;
     MockCoverPoolFactory internal mockCoverPoolFactory;
@@ -51,7 +49,6 @@ contract PolicyManagerTest is Test {
     );
 
     event PremiumManagerSet(address indexed premiumManager_);
-    event PolicyContractSet(address indexed policy_);
     event PlatformFeeSet(uint16 indexed platformFeeBps_);
 
     function setUp() public {
@@ -76,7 +73,6 @@ contract PolicyManagerTest is Test {
         coverPool = new MockCoverPool();
         coverPool.setCurator(curator);
         mockPremiumManager = new MockPremiumManager();
-        mockPolicy = new MockPolicy();
         mockStakeManager = new MockStakeManager();
         mockClaimManager = new MockClaimManager();
         mockCoverPoolFactory = new MockCoverPoolFactory();
@@ -95,7 +91,6 @@ contract PolicyManagerTest is Test {
                 (
                     admin,
                     address(mockPremiumManager),
-                    address(mockPolicy),
                     address(mockStakeManager),
                     address(mockClaimManager),
                     address(mockCoverPoolFactory),
@@ -109,7 +104,6 @@ contract PolicyManagerTest is Test {
         vm.label(address(policyManager), "PolicyManager");
         vm.label(address(coverPool), "CoverPool");
         vm.label(address(mockPremiumManager), "MockPremiumManager");
-        vm.label(address(mockPolicy), "MockPolicy");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -123,7 +117,6 @@ contract PolicyManagerTest is Test {
         freshManager.initialize(
             address(0),
             address(mockPremiumManager),
-            address(mockPolicy),
             address(mockStakeManager),
             address(mockClaimManager),
             address(mockCoverPoolFactory),
@@ -137,22 +130,6 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
         freshManager.initialize(
             admin,
-            address(0),
-            address(mockPolicy),
-            address(mockStakeManager),
-            address(mockClaimManager),
-            address(mockCoverPoolFactory),
-            PLATFORM_FEE_BPS
-        );
-    }
-
-    function test_initialize_WhenPolicyZero_Reverts() public {
-        PolicyManager implementation = new PolicyManager();
-        PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
-        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(
-            admin,
-            address(mockPremiumManager),
             address(0),
             address(mockStakeManager),
             address(mockClaimManager),
@@ -168,7 +145,6 @@ contract PolicyManagerTest is Test {
         freshManager.initialize(
             admin,
             address(mockPremiumManager),
-            address(mockPolicy),
             address(mockStakeManager),
             address(mockClaimManager),
             address(0),
@@ -183,7 +159,6 @@ contract PolicyManagerTest is Test {
         freshManager.initialize(
             admin,
             address(mockPremiumManager),
-            address(mockPolicy),
             address(mockStakeManager),
             address(mockClaimManager),
             address(mockCoverPoolFactory),
@@ -194,7 +169,6 @@ contract PolicyManagerTest is Test {
     function test_initialize_SetsRolesAndConfiguration() public view {
         assertTrue(policyManager.hasRole(policyManager.DEFAULT_ADMIN_ROLE(), admin), "Admin role missing");
         assertEq(policyManager.premiumManager(), address(mockPremiumManager), "Premium manager mismatch");
-        assertEq(policyManager.policy(), address(mockPolicy), "Policy mismatch");
         assertEq(policyManager.platformFeeBps(), PLATFORM_FEE_BPS, "Platform fee mismatch");
         assertFalse(policyManager.paused(), "Manager unexpectedly paused");
     }
@@ -394,35 +368,6 @@ contract PolicyManagerTest is Test {
     /*//////////////////////////////////////////////////////////////
                              SET POLICY
     //////////////////////////////////////////////////////////////*/
-
-    function test_setPolicy_WhenCallerNotAdmin_Reverts() public {
-        MockPolicy newPolicy = new MockPolicy();
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        vm.prank(buyer);
-        policyManager.setPolicy(address(newPolicy));
-    }
-
-    function test_setPolicy_WhenAddressZero_Reverts() public {
-        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        vm.prank(admin);
-        policyManager.setPolicy(address(0));
-    }
-
-    function test_setPolicy_WhenValid_UpdatesStateAndEmits() public {
-        MockPolicy newPolicy = new MockPolicy();
-
-        vm.expectEmit(true, true, true, true, address(policyManager));
-        emit PolicyContractSet(address(newPolicy));
-
-        vm.prank(admin);
-        policyManager.setPolicy(address(newPolicy));
-
-        assertEq(policyManager.policy(), address(newPolicy), "Policy not updated");
-    }
 
     /*//////////////////////////////////////////////////////////////
                             BIND POLICY
@@ -710,18 +655,15 @@ contract PolicyManagerTest is Test {
         assertEq(allocation.poolShare.poolFeeBps, POOL_FEE_BPS, "Pool fee BPS mismatch");
     }
 
-    function test_bindPolicy_WhenValid_MintsPolicy() public {
+    function test_bindPolicy_WhenValid_RegistersPolicy() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         _seedCommitteeForTesting(request.quote.committeeId, request.quote.operator, request.coverageAmount, true);
 
         vm.prank(address(coverPool));
         policyManager.bindPolicy(request);
 
-        assertEq(mockPolicy.mintPolicyCallCount(), 1, "MintPolicy not called");
-
-        (address mintedTo, uint256 mintedPolicyId, IPolicy.PolicyMetadata memory metadata) = mockPolicy.lastMint();
-        assertEq(mintedTo, buyer, "Minted to wrong address");
-        assertEq(mintedPolicyId, request.policyId, "Policy ID mismatch");
+        // Verify policy metadata is stored directly in PolicyManager
+        IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
         assertEq(metadata.buyer, buyer, "Metadata buyer mismatch");
         assertEq(metadata.beneficiary, beneficiary, "Metadata beneficiary mismatch");
         assertEq(metadata.premiumToken, premiumToken, "Metadata premium token mismatch");
@@ -761,7 +703,6 @@ contract PolicyManagerTest is Test {
 
         assertEq(coverPool.recordBoundPolicyCallCount(), 1, "RecordBoundPolicy should be called");
         assertEq(mockPremiumManager.collectPremiumCallCount(), 1, "CollectPremium should be called");
-        assertEq(mockPolicy.mintPolicyCallCount(), 1, "MintPolicy should be called");
     }
 
     function test_bindPolicy_MultiplePoliciesToSameBuyer_Succeeds() public {
@@ -778,7 +719,11 @@ contract PolicyManagerTest is Test {
         vm.prank(address(coverPool));
         policyManager.bindPolicy(request2);
 
-        assertEq(mockPolicy.mintPolicyCallCount(), 2, "Should mint two policies");
+        // Verify both policies are registered
+        IPolicyManager.PolicyMetadata memory metadata1 = policyManager.policyMetadata(request1.policyId);
+        IPolicyManager.PolicyMetadata memory metadata2 = policyManager.policyMetadata(request2.policyId);
+        assertEq(metadata1.buyer, buyer, "First policy buyer mismatch");
+        assertEq(metadata2.buyer, buyer, "Second policy buyer mismatch");
     }
 
     function test_bindPolicy_IsProtectedByReentrancyGuard() public {
@@ -919,7 +864,6 @@ contract PolicyManagerTest is Test {
         policyManager.upgradeToAndCall(newImplementation, "");
 
         assertEq(policyManager.premiumManager(), address(mockPremiumManager), "Premium manager should persist");
-        assertEq(policyManager.policy(), address(mockPolicy), "Policy should persist");
         assertEq(policyManager.platformFeeBps(), PLATFORM_FEE_BPS, "Platform fee should persist");
     }
 
@@ -941,10 +885,6 @@ contract PolicyManagerTest is Test {
 
     function test_premiumManager_ReturnsCorrectAddress() public view {
         assertEq(policyManager.premiumManager(), address(mockPremiumManager), "Should return premium manager");
-    }
-
-    function test_policy_ReturnsCorrectAddress() public view {
-        assertEq(policyManager.policy(), address(mockPolicy), "Should return policy address");
     }
 
     function test_platformFeeBps_ReturnsCorrectValue() public {
@@ -1327,24 +1267,6 @@ contract MockPremiumManager {
 
     function lastAllocation() external view returns (IPremiumManager.PremiumAllocation memory) {
         return _lastAllocation;
-    }
-}
-
-contract MockPolicy {
-    uint256 public mintPolicyCallCount;
-    address private _lastTo;
-    uint256 private _lastPolicyId;
-    IPolicy.PolicyMetadata private _lastMetadata;
-
-    function mintPolicy(address to, uint96 policyId, IPolicy.PolicyMetadata calldata metadata) external {
-        mintPolicyCallCount++;
-        _lastTo = to;
-        _lastPolicyId = policyId;
-        _lastMetadata = metadata;
-    }
-
-    function lastMint() external view returns (address, uint256, IPolicy.PolicyMetadata memory) {
-        return (_lastTo, _lastPolicyId, _lastMetadata);
     }
 }
 
