@@ -211,6 +211,7 @@ contract PolicyManager is
      * @inheritdoc IPolicyManager
      */
     function bindPolicy(BindPolicyRequest calldata request) external override nonReentrant whenNotPaused {
+        //slither-disable-start reentrancy-benign
         _validateRequest(request);
 
         uint96 policyId = request.policyId;
@@ -309,6 +310,7 @@ contract PolicyManager is
             boundPolicy.coverageLimit,
             policyCommit
         );
+        //slither-disable-end reentrancy-benign
     }
 
     /**
