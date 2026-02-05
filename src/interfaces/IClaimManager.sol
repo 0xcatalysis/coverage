@@ -315,13 +315,6 @@ interface IClaimManager is IAccessControl {
     function remainingCoverage(uint96 policyId) external view returns (uint256 remaining);
 
     /**
-     * @notice Returns the number of pending (filed but not resolved) claims for a policy.
-     * @param policyId Identifier of the policy.
-     * @return count Number of pending claims.
-     */
-    function pendingClaimCount(uint96 policyId) external view returns (uint256 count);
-
-    /**
      * @notice Returns true when the contract is paused.
      */
     function paused() external view returns (bool);

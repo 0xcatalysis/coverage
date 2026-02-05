@@ -463,15 +463,6 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                       PENDING CLAIM COUNT
-    //////////////////////////////////////////////////////////////*/
-
-    function test_pendingClaimCount_WhenNoClaims_ReturnsZero() public view {
-        uint256 pending = claimManager.pendingClaimCount(POLICY_ID);
-        assertEq(pending, 0, "Should have no pending claims");
-    }
-
-    /*//////////////////////////////////////////////////////////////
                             FILE CLAIM
     //////////////////////////////////////////////////////////////*/
 

@@ -49,7 +49,6 @@ contract ClaimManager is
 
     mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
     mapping(uint96 policyId => PolicyClaim) private _policyClaims;
-    mapping(uint96 policyId => uint256 pendingClaimCount) private _pendingClaimCounts;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -181,13 +180,11 @@ contract ClaimManager is
 
         if (!result.isPayable) {
             claim.status = ClaimStatus.Rejected;
-            _pendingClaimCounts[policyId]--;
             emit ClaimRejected(policyId, claimId, "Spec evaluation failed", block.timestamp);
             return claimId;
         }
 
         claim.status = ClaimStatus.Approved;
-        _pendingClaimCounts[policyId]--;
 
         uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
         require(totalPayout > 0, ZeroPayoutAmount(policyId));
@@ -218,13 +215,6 @@ contract ClaimManager is
         IPolicyManager.PolicyMetadata memory metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
         return totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
-    }
-
-    /**
-     * @inheritdoc IClaimManager
-     */
-    function pendingClaimCount(uint96 policyId) external view override returns (uint256) {
-        return _pendingClaimCounts[policyId];
     }
 
     /**
@@ -284,7 +274,6 @@ contract ClaimManager is
         claim.requestedAmount = requestedAmount;
 
         _policyClaims[policyId].claimCount++;
-        _pendingClaimCounts[policyId]++;
 
         emit ClaimFiled(policyId, claimId, msg.sender, evidenceHash, requestedAmount, block.timestamp);
     }
