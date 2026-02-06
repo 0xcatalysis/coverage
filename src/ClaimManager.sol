@@ -168,8 +168,8 @@ contract ClaimManager is
         returns (uint256 claimId)
     {
         IPolicyManager.PolicyMetadata memory metadata;
-        (claimId, metadata) = _fileClaimWithMetadata(policyId, requestedAmount, evidenceHash);
 
+        (claimId, metadata) = _fileClaimWithMetadata(policyId, requestedAmount, evidenceHash);
         require(msg.sender == metadata.claimer, UnauthorizedClaimer(msg.sender, metadata.claimer));
 
         ClaimRecord storage claim = _claims[policyId][claimId];
@@ -335,12 +335,12 @@ contract ClaimManager is
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
             ISlashingManager(slashingManager).executeSlashing(metadata.committeeId, metadata.operator, slashAmountUSD);
 
-        uint256 assetsLength = collateralTokens.length;
+        uint256 tokensLength = collateralTokens.length;
         // slither-disable-next-line incorrect-equality
-        require(assetsLength > 0 && assetsLength == collateralAmounts.length, NoCollateralSlashed(policyId));
+        require(tokensLength > 0 && tokensLength == collateralAmounts.length, NoCollateralSlashed(policyId));
 
         uint256 remainingPayout = requestedAmount;
-        for (uint256 i = 0; i < assetsLength && remainingPayout > 0; ++i) {
+        for (uint256 i = 0; i < tokensLength && remainingPayout > 0; ++i) {
             if (collateralAmounts[i] > 0) {
                 uint256 amountOut = _processCollateral(
                     policyId,
