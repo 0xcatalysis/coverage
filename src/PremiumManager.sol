@@ -8,13 +8,13 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
-import {IPremiumReserve} from "./interfaces/IPremiumReserve.sol";
+import {IRewardsManager} from "./interfaces/IRewardsManager.sol";
 
 /**
  * @title PremiumManager
- * @notice Collects upfront base premiums, carves protocol/curator fees, and forwards restaker shares into escrow.
+ * @notice Collects upfront base premiums, carves protocol/curator fees, and distributes restaker shares.
  * @dev Normalizes premium flows across pools and provides pause hooks for emergency halts.
- *      Integrates with PremiumReserve to open escrow positions for newly bound policies.
+ *      Integrates with RewardsManager to distribute premiums to restakers at bind time.
  */
 // slither-disable-next-line unimplemented-functions
 contract PremiumManager is
@@ -31,7 +31,7 @@ contract PremiumManager is
     uint16 private constant _BPS_DENOMINATOR = 10_000;
     uint16 private constant _MAX_FEE_BPS = 10_000;
 
-    address public override premiumReserve;
+    address public override rewardsManager;
     address public override platformTreasury;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -40,23 +40,23 @@ contract PremiumManager is
     }
 
     /**
-     * @notice Initializes the PremiumManager with role assignments and reserve wiring.
+     * @notice Initializes the PremiumManager with role assignments and rewards manager wiring.
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
      * @param policyManager_ Address granted POLICY_MANAGER_ROLE for triggering premium collection.
-     * @param premiumReserve_ Address of the PremiumReserve contract for escrow operations.
+     * @param rewardsManager_ Address of the RewardsManager contract for immediate reward distribution.
      * @param platformTreasury_ Address of the platform treasury.
      */
     function initialize(
         address admin_,
         address policyManager_,
-        address premiumReserve_,
+        address rewardsManager_,
         address platformTreasury_
     )
         external
         initializer
     {
         require(
-            admin_ != address(0) && policyManager_ != address(0) && premiumReserve_ != address(0)
+            admin_ != address(0) && policyManager_ != address(0) && rewardsManager_ != address(0)
                 && platformTreasury_ != address(0),
             ZeroAddress()
         );
@@ -67,7 +67,7 @@ contract PremiumManager is
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
         _grantRole(POLICY_MANAGER_ROLE, policyManager_);
 
-        premiumReserve = premiumReserve_;
+        rewardsManager = rewardsManager_;
         platformTreasury = platformTreasury_;
     }
 
@@ -88,10 +88,10 @@ contract PremiumManager is
     /**
      * @inheritdoc IPremiumManager
      */
-    function setPremiumReserve(address premiumReserve_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(premiumReserve_ != address(0), ZeroAddress());
-        premiumReserve = premiumReserve_;
-        emit PremiumReserveSet(premiumReserve_);
+    function setRewardsManager(address rewardsManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(rewardsManager_ != address(0), ZeroAddress());
+        rewardsManager = rewardsManager_;
+        emit RewardsManagerSet(rewardsManager_);
     }
 
     /**
@@ -150,23 +150,10 @@ contract PremiumManager is
 
         if (restakerPremium > 0) {
             // slither-disable-next-line arbitrary-send-erc20
-            token.safeTransferFrom(allocation.buyer, premiumReserve, restakerPremium);
+            token.safeTransferFrom(allocation.buyer, rewardsManager, restakerPremium);
 
-            IPremiumReserve.EscrowPosition memory escrowPosition = IPremiumReserve.EscrowPosition({
-                policyId: allocation.policyId,
-                policyCommit: allocation.policyCommit,
-                restakerPremiumTotal: restakerPremium,
-                premiumToken: allocation.premiumToken,
-                committeeId: allocation.committeeId,
-                buyer: allocation.buyer,
-                startTime: allocation.startTime,
-                pool: poolShare.coverPool,
-                maturityTime: allocation.maturityTime,
-                claimLocked: false,
-                operator: poolShare.operator
-            });
-
-            IPremiumReserve(premiumReserve).openEscrow(escrowPosition);
+            IRewardsManager(rewardsManager)
+                .distributeRewards(allocation.committeeId, poolShare.operator, restakerPremium, token);
         }
 
         emit PremiumCollected(allocation.policyId, allocation.basePremium);

@@ -33,7 +33,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         /// @notice Hash of the pool's policy terms document anchoring off-chain clauses.
         bytes32 termsHash;
         /// @notice Address that will receive claim payouts for this policy.
-        address payoutReceiver;
+        address beneficiary;
         /// @notice Policy coverage start timestamp proposed in the quote.
         uint64 startTime;
         /// @notice Restaking operator whose delegation is being covered.
@@ -50,7 +50,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      */
     struct BoundPolicy {
         /// @notice Incremental identifier for the policy.
-        uint256 policyId;
+        uint96 policyId;
+        /// @notice Deterministic hash representing the policy schedule.
+        bytes32 policyCommit;
         /// @notice Spec identifier attached to the bound policy.
         bytes32 specId;
         /// @notice Terms hash anchored for the bound policy.
@@ -58,7 +60,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         /// @notice Coverage notional allocated from this pool.
         uint256 coverageLimit;
         /// @notice Destination address for potential claim payouts (the policy holder).
-        address payoutReceiver;
+        address beneficiary;
         /// @notice Restaking committee identifier for the bound policy.
         uint96 committeeId;
         /// @notice Restaking operator whose delegation the coverage protects.
@@ -68,14 +70,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         /// @notice Policy coverage maturity timestamp confirmed at bind.
         uint64 maturityTime;
     }
-
-    /**
-     * @notice Emitted when a policy is successfully recorded and bound against the pool.
-     * @param policyCommit Deterministic hash representing the policy.
-     * @param policyId Incremental identifier for the policy.
-     * @param coverageLimit Coverage notional locked from the pool.
-     */
-    event BoundPolicyRecorded(bytes32 indexed policyCommit, uint256 indexed policyId, uint256 coverageLimit);
 
     /**
      * @notice Emitted when the curator updates the pool fee basis points.
@@ -90,7 +84,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param committeeId The committee identifier.
      * @param vaultCount The number of vaults bound to the committee.
      */
-    event PolicyForRequestBound(uint256 indexed policyId, uint96 indexed committeeId, uint256 vaultCount);
+    event PolicyForRequestBound(uint96 indexed policyId, uint96 indexed committeeId, uint256 vaultCount);
 
     /**
      * @notice Reverts when a required address argument is zero.
@@ -122,9 +116,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidCoverageLimit();
 
     /**
-     * @notice Reverts when the payout receiver address is zero.
+     * @notice Reverts when the beneficiary address is zero.
      */
-    error InvalidPayoutReceiver();
+    error InvalidBeneficiary();
 
     /**
      * @notice Reverts when the operator address is zero.
@@ -163,7 +157,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Reverts when querying data for an unknown policy identifier.
      * @param policyId Identifier that failed the lookup.
      */
-    error PolicyNotFound(uint256 policyId);
+    error PolicyNotFound(uint96 policyId);
 
     /**
      * @notice Reverts when attempting to bind using an empty policy commit value.
@@ -188,7 +182,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param curator_ Address assigned as the owner (curator) and operator.
-     * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
+     * @param policyManager_ Address of the PolicyManager contract for policy binding operations.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
      * @param stakeManager_ Address of the StakeManager contract for vault binding operations.
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
@@ -227,29 +221,12 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param vaults Vault addresses to bind to the committee.
      */
     function bindPolicyForRequest(
-        uint256 policyId,
+        uint96 policyId,
         Quote calldata quote,
         bytes calldata signature,
         address[] calldata vaults
     )
         external;
-
-    /**
-     * @notice Locks coverage for a previously validated policy commit.
-     * @dev Requires POLICY_MANAGER_ROLE. Each binding represents a complete policy from this pool.
-     *      Signature validation must be performed by the caller via verifyQuote() before calling this function.
-     * @param policyId Incremental identifier for the policy.
-     * @param policyCommit Deterministic hash representing the policy.
-     * @param quote Quote that has been validated for binding.
-     * @return BoundPolicy metadata describing the pool's coverage allocation.
-     */
-    function recordBoundPolicy(
-        uint256 policyId,
-        bytes32 policyCommit,
-        Quote calldata quote
-    )
-        external
-        returns (BoundPolicy memory);
 
     /**
      * @notice Returns whether a policy commit has already been bound.
@@ -269,15 +246,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param policyId Identifier returned during binding.
      * @return BoundPolicy metadata describing the allocation.
      */
-    function getBoundPolicy(uint256 policyId) external view returns (BoundPolicy memory);
-
-    /**
-     * @notice Verifies a coverage quote and returns the resulting policy commit hash.
-     * @param quote Quote struct signed by an authorized quote signer.
-     * @param signature EIP-712 signature authorizing the quote.
-     * @return policyCommit Deterministic hash representing the policy.
-     */
-    function verifyQuote(Quote calldata quote, bytes calldata signature) external view returns (bytes32 policyCommit);
+    function getBoundPolicy(uint96 policyId) external view returns (BoundPolicy memory);
 
     /**
      * @notice Pool fee expressed in basis points that is applied to premiums.
@@ -294,12 +263,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Returns the StakeManager address used for vault binding operations.
      */
     function stakeManager() external view returns (address);
-
-    /**
-     * @notice AccessControl identifier for the PolicyManager binding role.
-     * @return The role identifier hash.
-     */
-    function POLICY_MANAGER_ROLE() external pure returns (bytes32);
 
     /**
      * @notice AccessControl identifier for approved quote signers.

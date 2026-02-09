@@ -11,7 +11,7 @@ import {ISpec} from "../interfaces/ISpec.sol";
  *      Custom behavior: map specific evidence hashes to specific outcomes.
  */
 contract MockSpec is ISpec {
-    address public immutable owner;
+    address public immutable OWNER;
     bool private _defaultIsPayable;
     uint256 private _defaultAmountUsd;
     bytes32 private _defaultNotesHash;
@@ -51,7 +51,7 @@ contract MockSpec is ISpec {
      * @dev Restricts function access to the contract owner.
      */
     modifier onlyOwner() {
-        if (msg.sender != owner) revert NotOwner();
+        if (msg.sender != OWNER) revert NotOwner();
         _;
     }
 
@@ -60,7 +60,7 @@ contract MockSpec is ISpec {
      * @dev Initializes with default payable result and zero amount (full claim approval).
      */
     constructor() {
-        owner = msg.sender;
+        OWNER = msg.sender;
         _defaultIsPayable = true;
         _defaultAmountUsd = 0;
         _defaultNotesHash = keccak256("mock-spec-auto-approve");

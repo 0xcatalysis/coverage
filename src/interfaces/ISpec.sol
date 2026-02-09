@@ -26,7 +26,7 @@ interface ISpec {
      */
     struct EvaluationContext {
         /// @notice Policy identifier being evaluated.
-        uint256 policyId;
+        uint96 policyId;
         /// @notice Address of the pool providing coverage.
         address pool;
         /// @notice Maximum coverage limit from the policy.

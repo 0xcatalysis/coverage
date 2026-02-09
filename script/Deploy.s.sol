@@ -8,10 +8,8 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 import {ClaimManager} from "../src/ClaimManager.sol";
 import {CoverPool} from "../src/CoverPool.sol";
 import {CoverPoolFactory} from "../src/CoverPoolFactory.sol";
-import {Policy} from "../src/Policy.sol";
 import {PolicyManager} from "../src/PolicyManager.sol";
 import {PremiumManager} from "../src/PremiumManager.sol";
-import {PremiumReserve} from "../src/PremiumReserve.sol";
 import {Swapper} from "../src/Swapper.sol";
 
 /**
@@ -24,12 +22,10 @@ import {Swapper} from "../src/Swapper.sol";
  *        2. Swapper proxy (requires only WETH address)
  *
  *      Phase 2 - Contracts with circular dependencies (deployed with deployer as placeholder):
- *        3. Policy proxy (soulbound ERC-721 for policy receipts)
- *        4. PremiumReserve proxy (escrow management for restaker premiums)
- *        5. PremiumManager proxy (premium collection and fee distribution)
- *        6. ClaimManager proxy (claim processing and payout orchestration)
- *        7. PolicyManager proxy (policy binding entrypoint)
- *        8. CoverPoolFactory proxy (pool creation and registry)
+ *        3. PremiumManager proxy (premium collection and immediate distribution to RewardsManager)
+ *        4. ClaimManager proxy (claim processing and payout orchestration)
+ *        5. PolicyManager proxy (policy binding entrypoint and policy storage)
+ *        6. CoverPoolFactory proxy (pool creation and registry)
  *
  *      Phase 3 - Role configuration:
  *        - Grant actual roles to deployed contracts
@@ -46,7 +42,6 @@ import {Swapper} from "../src/Swapper.sol";
  *        - PLATFORM_TREASURY: Platform fee recipient (defaults to admin)
  *        - PLATFORM_FEE_BPS: Platform fee in basis points (defaults to 500 = 5%)
  *        - COVER_POOL_FACTORY_CREATOR: Factory creator role (defaults to admin)
- *        - CLAIM_OPERATOR: Claim resolution operator (defaults to admin)
  *        - SWAP_MANAGER: Swap route configuration manager (defaults to admin)
  */
 abstract contract Deploy is Script {
@@ -90,7 +85,6 @@ abstract contract Deploy is Script {
      * @param deployer Address derived from PRIVATE_KEY, used for broadcasting.
      * @param admin DEFAULT_ADMIN_ROLE holder for all deployed contracts.
      * @param coverPoolFactoryCreator CREATOR_ROLE holder on CoverPoolFactory.
-     * @param claimOperator CLAIM_OPERATOR_ROLE holder on ClaimManager.
      * @param swapManager SWAP_MANAGER_ROLE holder on Swapper.
      * @param platformTreasury Recipient address for platform fees.
      * @param platformFeeBps Platform fee in basis points.
@@ -99,7 +93,6 @@ abstract contract Deploy is Script {
         address deployer;
         address admin;
         address coverPoolFactoryCreator;
-        address claimOperator;
         address swapManager;
         address platformTreasury;
         uint16 platformFeeBps;
@@ -112,10 +105,6 @@ abstract contract Deploy is Script {
      * @param coverPoolFactoryImpl CoverPoolFactory implementation address.
      * @param swapperProxy Swapper UUPS proxy address.
      * @param swapperImpl Swapper implementation address.
-     * @param policyProxy Policy UUPS proxy address.
-     * @param policyImpl Policy implementation address.
-     * @param premiumReserveProxy PremiumReserve UUPS proxy address.
-     * @param premiumReserveImpl PremiumReserve implementation address.
      * @param premiumManagerProxy PremiumManager UUPS proxy address.
      * @param premiumManagerImpl PremiumManager implementation address.
      * @param claimManagerProxy ClaimManager UUPS proxy address.
@@ -129,10 +118,6 @@ abstract contract Deploy is Script {
         address coverPoolFactoryImpl;
         address swapperProxy;
         address swapperImpl;
-        address policyProxy;
-        address policyImpl;
-        address premiumReserveProxy;
-        address premiumReserveImpl;
         address premiumManagerProxy;
         address premiumManagerImpl;
         address claimManagerProxy;
@@ -223,59 +208,32 @@ abstract contract Deploy is Script {
         );
         contracts.swapperImpl = Upgrades.getImplementationAddress(contracts.swapperProxy);
 
-        _deployPolicyContracts(contracts, roles, opts);
-        _deployPremiumContracts(contracts, roles, opts);
+        _deployPremiumContracts(contracts, roles, external_, opts);
         _deployClaimAndFactoryContracts(contracts, roles, external_, opts);
     }
 
     /**
-     * @notice Deploys the Policy soulbound ERC-721 contract.
-     * @dev Policy stores canonical metadata for coverage policies. Uses deployer as temporary
-     *      admin and POLICY_MANAGER_ROLE holder until PolicyManager is deployed.
-     * @param contracts DeployedContracts struct to populate with Policy addresses.
-     * @param roles Role configuration containing admin and deployer addresses.
-     * @param opts Upgrade options to skip constructor validation for OZ 5.5 ReentrancyGuard.
-     */
-    function _deployPolicyContracts(
-        DeployedContracts memory contracts,
-        RoleConfig memory roles,
-        Options memory opts
-    )
-        private
-    {
-        contracts.policyProxy = Upgrades.deployUUPSProxy(
-            "Policy.sol:Policy", abi.encodeCall(Policy.initialize, (roles.deployer, roles.deployer)), opts
-        );
-        contracts.policyImpl = Upgrades.getImplementationAddress(contracts.policyProxy);
-    }
-
-    /**
-     * @notice Deploys PremiumReserve and PremiumManager contracts.
-     * @dev PremiumReserve holds restaker premiums in escrow; PremiumManager handles collection
-     *      and fee distribution. Both use deployer as temporary admin and placeholder for manager roles.
+     * @notice Deploys PremiumManager contract.
+     * @dev PremiumManager handles premium collection, fee distribution, and immediate reward distribution
+     *      to RewardsManager. Uses deployer as temporary admin and placeholder for manager roles.
      * @param contracts DeployedContracts struct to populate with premium contract addresses.
      * @param roles Role configuration containing admin, deployer, and platformTreasury addresses.
+     * @param external_ External configuration containing RewardsManager address.
      * @param opts Upgrade options to skip constructor validation for OZ 5.5 ReentrancyGuard.
      */
     function _deployPremiumContracts(
         DeployedContracts memory contracts,
         RoleConfig memory roles,
+        ExternalConfig memory external_,
         Options memory opts
     )
         private
     {
-        contracts.premiumReserveProxy = Upgrades.deployUUPSProxy(
-            "PremiumReserve.sol:PremiumReserve",
-            abi.encodeCall(PremiumReserve.initialize, (roles.deployer, roles.deployer, roles.deployer, roles.deployer)),
-            opts
-        );
-        contracts.premiumReserveImpl = Upgrades.getImplementationAddress(contracts.premiumReserveProxy);
-
         contracts.premiumManagerProxy = Upgrades.deployUUPSProxy(
             "PremiumManager.sol:PremiumManager",
             abi.encodeCall(
                 PremiumManager.initialize,
-                (roles.deployer, roles.deployer, contracts.premiumReserveProxy, roles.platformTreasury)
+                (roles.deployer, roles.deployer, external_.rewardsManager, roles.platformTreasury)
             ),
             opts
         );
@@ -285,8 +243,8 @@ abstract contract Deploy is Script {
     /**
      * @notice Deploys ClaimManager, PolicyManager, and CoverPoolFactory contracts.
      * @dev These contracts have dependencies on previously deployed contracts:
-     *      - ClaimManager requires Swapper, Policy, and PremiumReserve
-     *      - PolicyManager requires PremiumManager and Policy
+     *      - ClaimManager requires Swapper and PolicyManager
+     *      - PolicyManager requires PremiumManager and stores policy metadata
      *      - CoverPoolFactory requires CoverPool implementation and PolicyManager
      *      All use deployer as temporary admin for role configuration phase.
      * @param contracts DeployedContracts struct to populate with remaining contract addresses.
@@ -302,25 +260,6 @@ abstract contract Deploy is Script {
     )
         private
     {
-        contracts.claimManagerProxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol:ClaimManager",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    roles.deployer,
-                    roles.claimOperator,
-                    external_.specRegistry,
-                    external_.slashingManager,
-                    contracts.swapperProxy,
-                    contracts.policyProxy,
-                    contracts.premiumReserveProxy,
-                    external_.chainlinkPriceFeed
-                )
-            ),
-            opts
-        );
-        contracts.claimManagerImpl = Upgrades.getImplementationAddress(contracts.claimManagerProxy);
-
         contracts.policyManagerProxy = Upgrades.deployUUPSProxy(
             "PolicyManager.sol:PolicyManager",
             abi.encodeCall(
@@ -328,9 +267,8 @@ abstract contract Deploy is Script {
                 (
                     roles.deployer,
                     contracts.premiumManagerProxy,
-                    contracts.policyProxy,
                     external_.stakeManager,
-                    contracts.claimManagerProxy,
+                    roles.deployer, // Temporary placeholder for claimManager, will be set after ClaimManager deployment
                     roles.deployer, // Temporary placeholder for coverPoolFactory, will be set after factory deployment
                     roles.platformFeeBps
                 )
@@ -338,6 +276,25 @@ abstract contract Deploy is Script {
             opts
         );
         contracts.policyManagerImpl = Upgrades.getImplementationAddress(contracts.policyManagerProxy);
+
+        contracts.claimManagerProxy = Upgrades.deployUUPSProxy(
+            "ClaimManager.sol:ClaimManager",
+            abi.encodeCall(
+                ClaimManager.initialize,
+                (
+                    roles.deployer,
+                    external_.specRegistry,
+                    external_.slashingManager,
+                    contracts.swapperProxy,
+                    contracts.policyManagerProxy,
+                    external_.chainlinkPriceFeed
+                )
+            ),
+            opts
+        );
+        contracts.claimManagerImpl = Upgrades.getImplementationAddress(contracts.claimManagerProxy);
+
+        PolicyManager(contracts.policyManagerProxy).setClaimManager(contracts.claimManagerProxy);
 
         contracts.coverPoolFactoryProxy = Upgrades.deployUUPSProxy(
             "CoverPoolFactory.sol:CoverPoolFactory",
@@ -377,10 +334,6 @@ abstract contract Deploy is Script {
      * @dev Role assignments:
      *      - All contracts: DEFAULT_ADMIN_ROLE → roles.admin (when deployer != admin)
      *      - Swapper: SWAP_EXECUTOR_ROLE → ClaimManager (for collateral conversion)
-     *      - Policy: POLICY_MANAGER_ROLE → PolicyManager (for minting policy NFTs)
-     *      - PremiumReserve: PREMIUM_MANAGER_ROLE → PremiumManager (for opening escrows)
-     *      - PremiumReserve: CLAIM_MANAGER_ROLE → ClaimManager (for claim lock/payout)
-     *      - PremiumReserve: POLICY_MANAGER_ROLE → PolicyManager (for escrow release)
      *      - PremiumManager: POLICY_MANAGER_ROLE → PolicyManager (for premium collection)
      * @param contracts DeployedContracts containing all proxy addresses.
      * @param roles RoleConfig containing admin address for DEFAULT_ADMIN_ROLE grant.
@@ -390,8 +343,6 @@ abstract contract Deploy is Script {
 
         if (roles.deployer != roles.admin) {
             IAccessControl(contracts.swapperProxy).grantRole(defaultAdminRole, roles.admin);
-            IAccessControl(contracts.policyProxy).grantRole(defaultAdminRole, roles.admin);
-            IAccessControl(contracts.premiumReserveProxy).grantRole(defaultAdminRole, roles.admin);
             IAccessControl(contracts.premiumManagerProxy).grantRole(defaultAdminRole, roles.admin);
             IAccessControl(contracts.claimManagerProxy).grantRole(defaultAdminRole, roles.admin);
             IAccessControl(contracts.policyManagerProxy).grantRole(defaultAdminRole, roles.admin);
@@ -400,20 +351,6 @@ abstract contract Deploy is Script {
 
         IAccessControl(contracts.swapperProxy)
             .grantRole(Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), contracts.claimManagerProxy);
-
-        IAccessControl(contracts.policyProxy)
-            .grantRole(Policy(contracts.policyProxy).POLICY_MANAGER_ROLE(), contracts.policyManagerProxy);
-
-        IAccessControl(contracts.premiumReserveProxy)
-            .grantRole(
-                PremiumReserve(contracts.premiumReserveProxy).PREMIUM_MANAGER_ROLE(), contracts.premiumManagerProxy
-            );
-        IAccessControl(contracts.premiumReserveProxy)
-            .grantRole(PremiumReserve(contracts.premiumReserveProxy).CLAIM_MANAGER_ROLE(), contracts.claimManagerProxy);
-        IAccessControl(contracts.premiumReserveProxy)
-            .grantRole(
-                PremiumReserve(contracts.premiumReserveProxy).POLICY_MANAGER_ROLE(), contracts.policyManagerProxy
-            );
 
         IAccessControl(contracts.premiumManagerProxy)
             .grantRole(
@@ -440,23 +377,10 @@ abstract contract Deploy is Script {
         IAccessControl(contracts.swapperProxy)
             .revokeRole(Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), roles.deployer);
 
-        IAccessControl(contracts.policyProxy)
-            .revokeRole(Policy(contracts.policyProxy).POLICY_MANAGER_ROLE(), roles.deployer);
-
-        IAccessControl(contracts.premiumReserveProxy)
-            .revokeRole(PremiumReserve(contracts.premiumReserveProxy).PREMIUM_MANAGER_ROLE(), roles.deployer);
-        IAccessControl(contracts.premiumReserveProxy)
-            .revokeRole(PremiumReserve(contracts.premiumReserveProxy).CLAIM_MANAGER_ROLE(), roles.deployer);
-        IAccessControl(contracts.premiumReserveProxy)
-            .revokeRole(PremiumReserve(contracts.premiumReserveProxy).POLICY_MANAGER_ROLE(), roles.deployer);
-
         IAccessControl(contracts.premiumManagerProxy)
             .revokeRole(PremiumManager(contracts.premiumManagerProxy).POLICY_MANAGER_ROLE(), roles.deployer);
 
-        // Note: Once revoked, deployer cannot manage roles on these contracts.
         IAccessControl(contracts.swapperProxy).revokeRole(defaultAdminRole, roles.deployer);
-        IAccessControl(contracts.policyProxy).revokeRole(defaultAdminRole, roles.deployer);
-        IAccessControl(contracts.premiumReserveProxy).revokeRole(defaultAdminRole, roles.deployer);
         IAccessControl(contracts.premiumManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
         IAccessControl(contracts.claimManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
         IAccessControl(contracts.policyManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
@@ -506,12 +430,6 @@ abstract contract Deploy is Script {
         console2.log("Swapper Proxy:", contracts.swapperProxy);
         console2.log("Swapper Implementation:", contracts.swapperImpl);
         console2.log("");
-        console2.log("Policy Proxy:", contracts.policyProxy);
-        console2.log("Policy Implementation:", contracts.policyImpl);
-        console2.log("");
-        console2.log("PremiumReserve Proxy:", contracts.premiumReserveProxy);
-        console2.log("PremiumReserve Implementation:", contracts.premiumReserveImpl);
-        console2.log("");
         console2.log("PremiumManager Proxy:", contracts.premiumManagerProxy);
         console2.log("PremiumManager Implementation:", contracts.premiumManagerImpl);
         console2.log("");
@@ -536,7 +454,6 @@ abstract contract Deploy is Script {
         roles.deployer = vm.addr(deployerPrivateKey);
         roles.admin = vm.envOr("ADMIN", roles.deployer);
         roles.coverPoolFactoryCreator = vm.envOr("COVER_POOL_FACTORY_CREATOR", roles.admin);
-        roles.claimOperator = vm.envOr("CLAIM_OPERATOR", roles.admin);
         roles.swapManager = vm.envOr("SWAP_MANAGER", roles.admin);
         roles.platformTreasury = vm.envOr("PLATFORM_TREASURY", roles.admin);
         roles.platformFeeBps = uint16(vm.envOr("PLATFORM_FEE_BPS", uint256(DEFAULT_PLATFORM_FEE_BPS)));

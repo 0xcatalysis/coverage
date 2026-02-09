@@ -2,20 +2,20 @@
 pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {PremiumManager} from "../../src/PremiumManager.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
-import {IPremiumReserve} from "../../src/interfaces/IPremiumReserve.sol";
 
 contract PremiumManagerTest is Test {
     uint16 internal constant PLATFORM_FEE_BPS = 50;
     uint16 internal constant POOL_FEE_BPS = 150;
     uint16 internal constant MAX_FEE_BPS = 10_000;
     uint256 internal constant GROSS_PREMIUM = 1000 ether;
-    uint256 internal constant POLICY_ID = 1;
+    uint96 internal constant POLICY_ID = 1;
     uint64 internal constant COVERAGE_DURATION = 30 days;
     uint96 internal constant COMMITTEE_ID = 123;
 
@@ -28,12 +28,12 @@ contract PremiumManagerTest is Test {
     address internal operator;
 
     PremiumManager internal premiumManager;
-    MockPremiumReserve internal premiumReserve;
+    MockRewardsManager internal rewardsManager;
     MockToken internal premiumToken;
     bytes32 internal policyCommit;
 
-    event PremiumCollected(uint256 indexed policyId, uint256 basePremium);
-    event PremiumReserveSet(address indexed reserve);
+    event PremiumCollected(uint96 indexed policyId, uint256 basePremium);
+    event RewardsManagerSet(address indexed rewardsManager_);
     event PlatformTreasurySet(address indexed treasury);
 
     function setUp() public {
@@ -55,7 +55,7 @@ contract PremiumManagerTest is Test {
         vm.label(coverPool, "CoverPool");
         vm.label(operator, "Operator");
 
-        premiumReserve = new MockPremiumReserve();
+        rewardsManager = new MockRewardsManager();
         premiumToken = new MockToken();
         policyCommit = keccak256("policy-commit");
 
@@ -64,14 +64,14 @@ contract PremiumManagerTest is Test {
         address proxy = Upgrades.deployUUPSProxy(
             "PremiumManager.sol",
             abi.encodeCall(
-                PremiumManager.initialize, (admin, policyManager, address(premiumReserve), platformTreasury)
+                PremiumManager.initialize, (admin, policyManager, address(rewardsManager), platformTreasury)
             ),
             deployOpts
         );
         premiumManager = PremiumManager(proxy);
 
         vm.label(address(premiumManager), "PremiumManager");
-        vm.label(address(premiumReserve), "PremiumReserve");
+        vm.label(address(rewardsManager), "RewardsManager");
         vm.label(address(premiumToken), "PremiumToken");
     }
 
@@ -83,17 +83,17 @@ contract PremiumManagerTest is Test {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(address(0), policyManager, address(premiumReserve), platformTreasury);
+        freshManager.initialize(address(0), policyManager, address(rewardsManager), platformTreasury);
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(0), address(premiumReserve), platformTreasury);
+        freshManager.initialize(admin, address(0), address(rewardsManager), platformTreasury);
     }
 
-    function test_initialize_WhenPremiumReserveZero_Reverts() public {
+    function test_initialize_WhenRewardsManagerZero_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
@@ -104,7 +104,7 @@ contract PremiumManagerTest is Test {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, policyManager, address(premiumReserve), address(0));
+        freshManager.initialize(admin, policyManager, address(rewardsManager), address(0));
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -112,7 +112,7 @@ contract PremiumManagerTest is Test {
         assertTrue(
             premiumManager.hasRole(premiumManager.POLICY_MANAGER_ROLE(), policyManager), "Policy manager role missing"
         );
-        assertEq(premiumManager.premiumReserve(), address(premiumReserve), "Premium reserve mismatch");
+        assertEq(premiumManager.rewardsManager(), address(rewardsManager), "Rewards manager mismatch");
         assertEq(premiumManager.platformTreasury(), platformTreasury, "Platform treasury mismatch");
         assertFalse(premiumManager.paused(), "Manager unexpectedly paused");
     }
@@ -165,36 +165,36 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        SET PREMIUM RESERVE
+                        SET REWARDS MANAGER
     //////////////////////////////////////////////////////////////*/
 
-    function test_setPremiumReserve_WhenCallerNotAdmin_Reverts() public {
-        MockPremiumReserve newReserve = new MockPremiumReserve();
+    function test_setRewardsManager_WhenCallerNotAdmin_Reverts() public {
+        MockRewardsManager newRewardsManager = new MockRewardsManager();
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, premiumManager.DEFAULT_ADMIN_ROLE()
             )
         );
         vm.prank(buyer);
-        premiumManager.setPremiumReserve(address(newReserve));
+        premiumManager.setRewardsManager(address(newRewardsManager));
     }
 
-    function test_setPremiumReserve_WhenAddressZero_Reverts() public {
+    function test_setRewardsManager_WhenAddressZero_Reverts() public {
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(admin);
-        premiumManager.setPremiumReserve(address(0));
+        premiumManager.setRewardsManager(address(0));
     }
 
-    function test_setPremiumReserve_WhenValid_UpdatesStateAndEmits() public {
-        MockPremiumReserve newReserve = new MockPremiumReserve();
+    function test_setRewardsManager_WhenValid_UpdatesStateAndEmits() public {
+        MockRewardsManager newRewardsManager = new MockRewardsManager();
 
         vm.expectEmit(true, true, true, true, address(premiumManager));
-        emit PremiumReserveSet(address(newReserve));
+        emit RewardsManagerSet(address(newRewardsManager));
 
         vm.prank(admin);
-        premiumManager.setPremiumReserve(address(newReserve));
+        premiumManager.setRewardsManager(address(newRewardsManager));
 
-        assertEq(premiumManager.premiumReserve(), address(newReserve), "Reserve not updated");
+        assertEq(premiumManager.rewardsManager(), address(newRewardsManager), "Rewards manager not updated");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -463,7 +463,7 @@ contract PremiumManagerTest is Test {
         assertGt(restakerSplit, 0, "Should have some escrowed amount");
     }
 
-    function test_collectPremium_WhenValidSinglePool_TransfersFundsAndOpensEscrow() public {
+    function test_collectPremium_WhenValidSinglePool_TransfersFundsAndDistributesRewards() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
 
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
@@ -481,11 +481,11 @@ contract PremiumManagerTest is Test {
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertEq(premiumToken.balanceOf(address(premiumReserve)), restakerSplit, "Escrow amount mismatch");
-        assertEq(premiumReserve.openEscrowCallCount(), 1, "OpenEscrow not called");
+        assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Rewards amount mismatch");
+        assertEq(rewardsManager.distributeRewardsCallCount(), 1, "DistributeRewards not called");
     }
 
-    function test_collectPremium_WhenZeroPlatformFee_OnlyTransfersPoolFeeAndEscrow() public {
+    function test_collectPremium_WhenZeroPlatformFee_OnlyTransfersPoolFeeAndRewards() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
         allocation.platformFeeBps = 0;
 
@@ -500,10 +500,10 @@ contract PremiumManagerTest is Test {
 
         assertEq(premiumToken.balanceOf(platformTreasury), 0, "Platform fee should be zero");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertEq(premiumToken.balanceOf(address(premiumReserve)), restakerSplit, "Escrow amount mismatch");
+        assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Rewards amount mismatch");
     }
 
-    function test_collectPremium_WhenZeroPoolFee_OnlyTransfersPlatformFeeAndEscrow() public {
+    function test_collectPremium_WhenZeroPoolFee_OnlyTransfersPlatformFeeAndRewards() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
         allocation.poolShare.poolFeeBps = 0;
 
@@ -519,7 +519,7 @@ contract PremiumManagerTest is Test {
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), 0, "Pool fee should be zero");
-        assertEq(premiumToken.balanceOf(address(premiumReserve)), restakerSplit, "Escrow amount mismatch");
+        assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Rewards amount mismatch");
     }
 
     function test_collectPremium_WhenZeroRestaker_OnlyTransfersFees() public {
@@ -541,11 +541,11 @@ contract PremiumManagerTest is Test {
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertEq(premiumToken.balanceOf(address(premiumReserve)), 0, "Escrow should be zero");
-        assertEq(premiumReserve.openEscrowCallCount(), 0, "OpenEscrow should not be called");
+        assertEq(premiumToken.balanceOf(address(rewardsManager)), 0, "Rewards should be zero");
+        assertEq(rewardsManager.distributeRewardsCallCount(), 0, "DistributeRewards should not be called");
     }
 
-    function test_collectPremium_OpensEscrowWithCorrectParameters() public {
+    function test_collectPremium_DistributesRewardsWithCorrectParameters() public {
         IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
 
         (,/* poolSplit */, uint256 restakerSplit) =
@@ -558,17 +558,11 @@ contract PremiumManagerTest is Test {
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
 
-        IPremiumReserve.EscrowPosition memory escrow = premiumReserve.lastEscrow();
-        assertEq(escrow.policyId, POLICY_ID, "Policy ID mismatch");
-        assertEq(escrow.policyCommit, policyCommit, "Policy commit mismatch");
-        assertEq(escrow.restakerPremiumTotal, restakerSplit, "Restaker premium total mismatch");
-        assertEq(escrow.premiumToken, address(premiumToken), "Premium token mismatch");
-        assertEq(escrow.buyer, buyer, "Buyer mismatch");
-        assertEq(escrow.startTime, allocation.startTime, "Start time mismatch");
-        assertEq(escrow.maturityTime, allocation.maturityTime, "Maturity time mismatch");
-        assertFalse(escrow.claimLocked, "Claim should not be locked");
-        assertEq(escrow.pool, coverPool, "Pool address mismatch");
-        assertEq(escrow.operator, operator, "Operator address mismatch");
+        MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
+        assertEq(call.committeeId, COMMITTEE_ID, "Committee ID mismatch");
+        assertEq(call.operator, operator, "Operator mismatch");
+        assertEq(call.rewardAmount, restakerSplit, "Reward amount mismatch");
+        assertEq(address(call.rewardToken), address(premiumToken), "Reward token mismatch");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -647,7 +641,7 @@ contract PremiumManagerTest is Test {
         vm.prank(policyManager);
         premiumManager.collectPremium(allocation);
 
-        assertEq(premiumReserve.openEscrowCallCount(), 2, "Should allow sequential calls");
+        assertEq(rewardsManager.distributeRewardsCallCount(), 2, "Should allow sequential calls");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -686,16 +680,33 @@ contract MockToken is ERC20 {
     }
 }
 
-contract MockPremiumReserve {
-    uint256 public openEscrowCallCount;
-    IPremiumReserve.EscrowPosition private _lastEscrow;
+contract MockRewardsManager {
+    uint256 public distributeRewardsCallCount;
 
-    function openEscrow(IPremiumReserve.EscrowPosition calldata position) external {
-        openEscrowCallCount++;
-        _lastEscrow = position;
+    struct DistributeRewardsCall {
+        uint96 committeeId;
+        address operator;
+        uint256 rewardAmount;
+        IERC20 rewardToken;
     }
 
-    function lastEscrow() external view returns (IPremiumReserve.EscrowPosition memory) {
-        return _lastEscrow;
+    DistributeRewardsCall private _lastCall;
+
+    function distributeRewards(
+        uint96 committeeId,
+        address operator,
+        uint256 rewardAmount,
+        IERC20 rewardToken
+    )
+        external
+    {
+        distributeRewardsCallCount++;
+        _lastCall = DistributeRewardsCall({
+            committeeId: committeeId, operator: operator, rewardAmount: rewardAmount, rewardToken: rewardToken
+        });
+    }
+
+    function lastCall() external view returns (DistributeRewardsCall memory) {
+        return _lastCall;
     }
 }
