@@ -252,8 +252,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         });
 
         boundPolicies[policyId] = boundPolicy;
-
-        emit BoundPolicyRecorded(policyCommit, policyId, quote.coverageLimit);
     }
 
     /**

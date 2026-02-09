@@ -72,14 +72,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     }
 
     /**
-     * @notice Emitted when a policy is successfully recorded and bound against the pool.
-     * @param policyCommit Deterministic hash representing the policy.
-     * @param policyId Incremental identifier for the policy.
-     * @param coverageLimit Coverage notional locked from the pool.
-     */
-    event BoundPolicyRecorded(bytes32 indexed policyCommit, uint96 indexed policyId, uint256 coverageLimit);
-
-    /**
      * @notice Emitted when the curator updates the pool fee basis points.
      * @param previousPoolFeeBps Pool fee basis points before the update.
      * @param newPoolFeeBps Pool fee basis points after the update.
