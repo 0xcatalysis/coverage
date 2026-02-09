@@ -5,7 +5,7 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 
 /**
  * @title IPremiumManager
- * @notice Interface for collecting premiums, routing fees, and immediately distributing restaker shares to
+ * @notice Interface for collecting premiums, routing fees, and distributing restaker shares to
  * RewardsManager.
  */
 interface IPremiumManager is IAccessControl {
@@ -140,7 +140,7 @@ interface IPremiumManager is IAccessControl {
     function setPlatformTreasury(address treasury) external;
 
     /**
-     * @notice Collects premium funds, routes fees, and immediately distributes restaker shares to RewardsManager.
+     * @notice Collects premium funds, routes fees, and distributes restaker shares to RewardsManager.
      * @dev Requires POLICY_MANAGER_ROLE.
      * @param allocation Struct describing the policy payment parameters.
      */

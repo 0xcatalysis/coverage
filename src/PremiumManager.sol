@@ -12,9 +12,9 @@ import {IRewardsManager} from "./interfaces/IRewardsManager.sol";
 
 /**
  * @title PremiumManager
- * @notice Collects upfront base premiums, carves protocol/curator fees, and immediately distributes restaker shares.
+ * @notice Collects upfront base premiums, carves protocol/curator fees, and distributes restaker shares.
  * @dev Normalizes premium flows across pools and provides pause hooks for emergency halts.
- *      Integrates with RewardsManager to distribute premiums immediately to restakers at bind time.
+ *      Integrates with RewardsManager to distribute premiums to restakers at bind time.
  */
 // slither-disable-next-line unimplemented-functions
 contract PremiumManager is
