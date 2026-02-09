@@ -33,7 +33,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         /// @notice Hash of the pool's policy terms document anchoring off-chain clauses.
         bytes32 termsHash;
         /// @notice Address that will receive claim payouts for this policy.
-        address payoutReceiver;
+        address beneficiary;
         /// @notice Policy coverage start timestamp proposed in the quote.
         uint64 startTime;
         /// @notice Restaking operator whose delegation is being covered.
@@ -60,7 +60,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         /// @notice Coverage notional allocated from this pool.
         uint256 coverageLimit;
         /// @notice Destination address for potential claim payouts (the policy holder).
-        address payoutReceiver;
+        address beneficiary;
         /// @notice Restaking committee identifier for the bound policy.
         uint96 committeeId;
         /// @notice Restaking operator whose delegation the coverage protects.
@@ -124,9 +124,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidCoverageLimit();
 
     /**
-     * @notice Reverts when the payout receiver address is zero.
+     * @notice Reverts when the beneficiary address is zero.
      */
-    error InvalidPayoutReceiver();
+    error InvalidBeneficiary();
 
     /**
      * @notice Reverts when the operator address is zero.

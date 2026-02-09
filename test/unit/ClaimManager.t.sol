@@ -29,7 +29,7 @@ contract ClaimManagerTest is Test {
     address internal policy;
     address internal chainlinkPriceFeed;
     address internal buyer;
-    address internal payoutReceiver;
+    address internal beneficiary;
     address internal operator;
     address internal pool;
     address internal premiumToken;
@@ -90,7 +90,7 @@ contract ClaimManagerTest is Test {
         claimer = makeAddr("claimer");
         unauthorized = makeAddr("unauthorized");
         buyer = makeAddr("buyer");
-        payoutReceiver = makeAddr("payoutReceiver");
+        beneficiary = makeAddr("beneficiary");
         operator = makeAddr("operator");
         pool = makeAddr("pool");
         premiumToken = makeAddr("premiumToken");
@@ -99,7 +99,7 @@ contract ClaimManagerTest is Test {
         vm.label(claimer, "Claimer");
         vm.label(unauthorized, "Unauthorized");
         vm.label(buyer, "Buyer");
-        vm.label(payoutReceiver, "PayoutReceiver");
+        vm.label(beneficiary, "Beneficiary");
         vm.label(operator, "Operator");
         vm.label(pool, "Pool");
 
@@ -573,7 +573,7 @@ contract ClaimManagerTest is Test {
         emit ClaimFiled(POLICY_ID, 0, claimer, evidenceHash, requestedAmount, block.timestamp);
 
         vm.expectEmit(true, true, true, true, address(claimManager));
-        emit ClaimApproved(POLICY_ID, 0, payoutReceiver, swapOutput, block.timestamp);
+        emit ClaimApproved(POLICY_ID, 0, beneficiary, swapOutput, block.timestamp);
 
         vm.prank(claimer);
         uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -625,7 +625,6 @@ contract ClaimManagerTest is Test {
                 payoutToken: address(0),
                 pool: address(0),
                 coverageLimit: 0,
-                payoutReceiver: address(0),
                 poolPolicyId: 0,
                 specId: bytes32(0),
                 termsHash: bytes32(0),
@@ -704,7 +703,7 @@ contract ClaimManagerTest is Test {
         payoutTokenMock.mint(address(slashingManager), requestedAmount);
         slashingManagerMock.setTokenToTransfer(address(payoutTokenMock));
 
-        uint256 balanceBefore = payoutTokenMock.balanceOf(payoutReceiver);
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
 
         vm.expectEmit(true, true, true, true, address(claimManager));
         emit CollateralSwapped(POLICY_ID, 0, payoutToken, requestedAmount, payoutToken, requestedAmount);
@@ -712,7 +711,7 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        uint256 balanceAfter = payoutTokenMock.balanceOf(payoutReceiver);
+        uint256 balanceAfter = payoutTokenMock.balanceOf(beneficiary);
         assertEq(balanceAfter - balanceBefore, requestedAmount, "Should transfer collateral directly");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
@@ -810,12 +809,12 @@ contract ClaimManagerTest is Test {
         swapperMock.setSwapOutput(excessiveSwapOutput);
         swapperMock.setPayoutToken(payoutToken);
 
-        uint256 balanceBefore = payoutTokenMock.balanceOf(payoutReceiver);
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
 
         vm.prank(claimer);
         uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        uint256 balanceAfter = payoutTokenMock.balanceOf(payoutReceiver);
+        uint256 balanceAfter = payoutTokenMock.balanceOf(beneficiary);
         assertEq(balanceAfter - balanceBefore, requestedAmount, "Should cap transfer at requested amount");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
@@ -837,12 +836,12 @@ contract ClaimManagerTest is Test {
         payoutTokenMock.mint(address(slashingManager), excessiveCollateral);
         slashingManagerMock.setTokenToTransfer(address(payoutTokenMock));
 
-        uint256 balanceBefore = payoutTokenMock.balanceOf(payoutReceiver);
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
 
         vm.prank(claimer);
         uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        uint256 balanceAfter = payoutTokenMock.balanceOf(payoutReceiver);
+        uint256 balanceAfter = payoutTokenMock.balanceOf(beneficiary);
         assertEq(balanceAfter - balanceBefore, requestedAmount, "Should cap direct transfer at requested amount");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
@@ -992,14 +991,13 @@ contract ClaimManagerTest is Test {
     function _defaultMetadata() private view returns (IPolicyManager.PolicyMetadata memory metadata) {
         metadata = IPolicyManager.PolicyMetadata({
             buyer: buyer,
-            beneficiary: buyer,
+            beneficiary: beneficiary,
             claimer: claimer,
             premiumToken: premiumToken,
             basePremium: BASE_PREMIUM,
             payoutToken: payoutToken,
             pool: pool,
             coverageLimit: COVERAGE_LIMIT,
-            payoutReceiver: payoutReceiver,
             poolPolicyId: 1,
             specId: keccak256("MorphoSpec"),
             termsHash: keccak256("terms-hash"),

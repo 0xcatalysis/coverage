@@ -13,7 +13,7 @@ import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
 
 contract PolicyManagerTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
+        "Quote(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
     );
     uint96 internal constant POLICY_ID = 1;
     uint256 internal constant COVERAGE_LIMIT = 1_000_000e18;
@@ -691,7 +691,7 @@ contract PolicyManagerTest is Test {
         assertEq(metadata.payoutToken, payoutToken, "Metadata payout token mismatch");
         assertEq(metadata.pool, address(coverPool), "Metadata pool mismatch");
         assertEq(metadata.coverageLimit, COVERAGE_LIMIT, "Metadata coverage limit mismatch");
-        assertEq(metadata.payoutReceiver, beneficiary, "Metadata payout receiver mismatch");
+        assertEq(metadata.beneficiary, beneficiary, "Metadata beneficiary mismatch");
         assertEq(metadata.poolPolicyId, coverPool.lastBoundPolicy().policyId, "Metadata pool policy ID mismatch");
         assertEq(metadata.termsHash, termsHash, "Metadata terms hash mismatch");
         assertEq(metadata.policyCommit, boundPolicy.policyCommit, "Metadata policy commit mismatch");
@@ -1180,7 +1180,7 @@ contract PolicyManagerTest is Test {
             basePremium: BASE_PREMIUM,
             specId: specId,
             termsHash: termsHash,
-            payoutReceiver: beneficiary,
+            beneficiary: beneficiary,
             committeeId: policyId,
             operator: operator,
             startTime: uint64(block.timestamp),
@@ -1237,7 +1237,7 @@ contract PolicyManagerTest is Test {
             quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
-            uint256(uint160(quote.payoutReceiver)),
+            uint256(uint160(quote.beneficiary)),
             uint256(quote.startTime),
             uint256(uint160(quote.operator)),
             uint256(quote.maturityTime),
@@ -1264,7 +1264,7 @@ contract MockCoverPool {
             specId: keccak256("spec-id"),
             termsHash: keccak256("terms-hash"),
             coverageLimit: 1_000_000e18,
-            payoutReceiver: address(0x1),
+            beneficiary: address(0x1),
             committeeId: uint96(123),
             operator: address(0x2),
             startTime: uint64(block.timestamp),
@@ -1299,7 +1299,7 @@ contract MockCoverPool {
             _boundPolicy.policyId = policyId;
             _boundPolicy.policyCommit = policyCommit;
             _boundPolicy.coverageLimit = quote.coverageLimit;
-            _boundPolicy.payoutReceiver = quote.payoutReceiver;
+            _boundPolicy.beneficiary = quote.beneficiary;
             _boundPolicy.committeeId = quote.committeeId;
             _boundPolicy.operator = quote.operator;
             _boundPolicy.startTime = quote.startTime;

@@ -73,8 +73,6 @@ interface IPolicyManager is IAccessControl {
         address pool;
         /// @notice Coverage notional allocated from the pool.
         uint256 coverageLimit;
-        /// @notice Destination address for claim payouts.
-        address payoutReceiver;
         /// @notice Operator address delegated for this policy.
         address operator;
         /// @notice Incremental identifier for the policy.

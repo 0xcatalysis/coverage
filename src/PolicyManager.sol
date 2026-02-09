@@ -284,7 +284,6 @@ contract PolicyManager is
             payoutToken: request.payoutToken,
             pool: quote.pool,
             coverageLimit: boundPolicy.coverageLimit,
-            payoutReceiver: boundPolicy.payoutReceiver,
             operator: boundPolicy.operator,
             poolPolicyId: boundPolicy.policyId,
             specId: boundPolicy.specId,

@@ -29,7 +29,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address payoutReceiver,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
+        "Quote(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
     );
 
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
@@ -51,7 +51,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.coverageLimit != 0, InvalidCoverageLimit());
         require(quote.specId != bytes32(0), InvalidSpecId());
         require(quote.termsHash != bytes32(0), InvalidTermsHash());
-        require(quote.payoutReceiver != address(0), InvalidPayoutReceiver());
+        require(quote.beneficiary != address(0), InvalidBeneficiary());
         require(quote.operator != address(0), InvalidOperator());
         require(quote.startTime < quote.maturityTime, InvalidCoverageWindow());
 
@@ -142,7 +142,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(draft.status == IPolicyManager.PolicyStatus.Created, IPolicyManager.InvalidPolicyStatus(draft.status));
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
         require(quote.committeeId == draft.committeeId, InvalidCommitteeId());
-        require(quote.payoutReceiver == draft.beneficiary, InvalidPayoutReceiver());
+        require(quote.beneficiary == draft.beneficiary, InvalidBeneficiary());
         require(quote.operator == owner(), InvalidOperator());
         require(vaults.length != 0, ICoverPool.EmptyVaults());
 
@@ -244,7 +244,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             specId: quote.specId,
             termsHash: quote.termsHash,
             coverageLimit: quote.coverageLimit,
-            payoutReceiver: quote.payoutReceiver,
+            beneficiary: quote.beneficiary,
             committeeId: quote.committeeId,
             operator: quote.operator,
             startTime: quote.startTime,
@@ -293,7 +293,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
-            uint256(uint160(quote.payoutReceiver)),
+            uint256(uint160(quote.beneficiary)),
             uint256(quote.startTime),
             uint256(uint160(quote.operator)),
             uint256(quote.maturityTime),

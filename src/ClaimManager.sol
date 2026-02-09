@@ -191,7 +191,7 @@ contract ClaimManager is
         // slither-disable-next-line reentrancy-no-eth
         claim.payoutAmount = totalPayout;
 
-        emit ClaimApproved(policyId, claimId, metadata.payoutReceiver, totalPayout, block.timestamp);
+        emit ClaimApproved(policyId, claimId, metadata.beneficiary, totalPayout, block.timestamp);
     }
 
     /**
@@ -348,7 +348,7 @@ contract ClaimManager is
                     collateralTokens[i],
                     collateralAmounts[i],
                     metadata.payoutToken,
-                    metadata.payoutReceiver,
+                    metadata.beneficiary,
                     remainingPayout
                 );
                 totalPayout += amountOut;
@@ -366,7 +366,7 @@ contract ClaimManager is
      * @param collateralToken Address of the slashed collateral token.
      * @param collateralAmount Amount of collateral to process.
      * @param payoutToken Desired payout token address.
-     * @param payoutReceiver Address to receive the payout.
+     * @param beneficiary Address to receive the payout.
      * @param remainingPayout Maximum payout amount still needed.
      * @return amountOut Amount of payout token delivered (capped at remainingPayout).
      */
@@ -376,7 +376,7 @@ contract ClaimManager is
         address collateralToken,
         uint256 collateralAmount,
         address payoutToken,
-        address payoutReceiver,
+        address beneficiary,
         uint256 remainingPayout
     )
         private
@@ -384,7 +384,7 @@ contract ClaimManager is
     {
         if (collateralToken == payoutToken) {
             uint256 transferAmount = collateralAmount > remainingPayout ? remainingPayout : collateralAmount;
-            IERC20(collateralToken).safeTransfer(payoutReceiver, transferAmount);
+            IERC20(collateralToken).safeTransfer(beneficiary, transferAmount);
             amountOut = transferAmount;
         } else {
             IERC20(collateralToken).forceApprove(swapper, collateralAmount);
@@ -402,7 +402,7 @@ contract ClaimManager is
             uint256 swapOutput = ISwapper(swapper).executeSwap(swapParams);
 
             amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
-            IERC20(payoutToken).safeTransfer(payoutReceiver, amountOut);
+            IERC20(payoutToken).safeTransfer(beneficiary, amountOut);
 
             IERC20(collateralToken).forceApprove(swapper, 0);
         }
