@@ -225,7 +225,6 @@ contract CoverPoolFactoryTest is Test {
 
         CoverPool deployed = CoverPool(pools[0]);
         assertEq(deployed.owner(), params.curator, "Curator not set");
-        assertTrue(deployed.hasRole(deployed.POLICY_MANAGER_ROLE(), policyManager), "Policy manager role missing");
         assertTrue(deployed.hasRole(deployed.QUOTE_SIGNER_ROLE(), params.quoteSigner), "Quote signer role missing");
         assertEq(deployed.poolFeeBps(), params.poolFeeBps, "Pool fee mismatch");
     }
@@ -580,7 +579,7 @@ contract CoverPoolFactoryTest is Test {
 
         assertEq(factory.coverPoolAt(0), updatedPrediction, "Deployment should use updated prediction");
         CoverPool deployed = CoverPool(factory.coverPoolAt(0));
-        assertTrue(deployed.hasRole(deployed.POLICY_MANAGER_ROLE(), newPolicyManager), "Updated policy manager not set");
+        assertEq(deployed.policyManager(), newPolicyManager, "Updated policy manager not set");
     }
 
     function test_createCoverPool_WhenImplementationChanges_AllowsRedeployWithSameParams() public {

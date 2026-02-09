@@ -182,7 +182,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param curator_ Address assigned as the owner (curator) and operator.
-     * @param policyManager_ Address receiving POLICY_MANAGER_ROLE.
+     * @param policyManager_ Address of the PolicyManager contract for policy binding operations.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
      * @param stakeManager_ Address of the StakeManager contract for vault binding operations.
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
@@ -263,12 +263,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Returns the StakeManager address used for vault binding operations.
      */
     function stakeManager() external view returns (address);
-
-    /**
-     * @notice AccessControl identifier for the PolicyManager binding role.
-     * @return The role identifier hash.
-     */
-    function POLICY_MANAGER_ROLE() external pure returns (bytes32);
 
     /**
      * @notice AccessControl identifier for approved quote signers.

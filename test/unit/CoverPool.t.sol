@@ -117,7 +117,6 @@ contract CoverPoolTest is Test {
         assertEq(coverPool.owner(), curator, "Owner mismatch");
         assertEq(coverPool.defaultAdmin(), curator, "Default admin mismatch");
         assertTrue(coverPool.hasRole(coverPool.DEFAULT_ADMIN_ROLE(), curator), "Default admin role missing");
-        assertTrue(coverPool.hasRole(coverPool.POLICY_MANAGER_ROLE(), policyManager), "Policy manager role missing");
         assertTrue(coverPool.hasRole(coverPool.QUOTE_SIGNER_ROLE(), quoteSigner), "Quote signer role missing");
 
         assertTrue(

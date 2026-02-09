@@ -23,7 +23,6 @@ import {IStakeManager} from "./interfaces/IStakeManager.sol";
  */
 // slither-disable-next-line unimplemented-functions
 contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeable, PausableUpgradeable, ICoverPool {
-    bytes32 public constant override POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
     bytes32 public constant override QUOTE_SIGNER_ROLE = keccak256("QUOTE_SIGNER_ROLE");
 
     string private constant _NAME = "Catalysis Cover Pool";
@@ -89,7 +88,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         __EIP712_init(_NAME, _VERSION);
         __Pausable_init();
 
-        _grantRole(POLICY_MANAGER_ROLE, policyManager_);
         _grantRole(QUOTE_SIGNER_ROLE, quoteSigner_);
 
         policyManager = policyManager_;
