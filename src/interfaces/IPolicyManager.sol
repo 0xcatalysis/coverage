@@ -158,26 +158,6 @@ interface IPolicyManager is IAccessControl {
     );
 
     /**
-     * @notice Emitted when a policy is registered with its metadata.
-     * @param policyId Identifier assigned to the policy.
-     * @param buyer Policy buyer address.
-     * @param pool Address of the CoverPool providing coverage.
-     * @param startTime Coverage start timestamp.
-     * @param maturityTime Coverage end timestamp.
-     * @param coverageLimit Coverage notional allocated from the pool.
-     * @param policyCommit Deterministic hash representing the policy schedule.
-     */
-    event PolicyRegistered(
-        uint96 indexed policyId,
-        address indexed buyer,
-        address indexed pool,
-        uint64 startTime,
-        uint64 maturityTime,
-        uint256 coverageLimit,
-        bytes32 policyCommit
-    );
-
-    /**
      * @notice Emitted when the PremiumManager dependency is set or updated.
      * @param premiumManager_ Address of the premium manager contract.
      */

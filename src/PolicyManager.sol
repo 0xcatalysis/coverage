@@ -304,16 +304,6 @@ contract PolicyManager is
             quote.basePremium,
             policyCommit
         );
-
-        emit PolicyRegistered(
-            policyId,
-            request.buyer,
-            quote.pool,
-            boundPolicy.startTime,
-            boundPolicy.maturityTime,
-            boundPolicy.coverageLimit,
-            policyCommit
-        );
         //slither-disable-end reentrancy-benign
     }
 
