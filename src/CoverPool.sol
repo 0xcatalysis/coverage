@@ -146,12 +146,12 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.operator == owner(), InvalidOperator());
         require(vaults.length != 0, ICoverPool.EmptyVaults());
 
-        IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
-
         bytes32 policyCommit = _verifyQuote(quote, signature);
         BoundPolicy memory boundPolicy = _recordBoundPolicy(policyId, policyCommit, quote);
 
         emit PolicyForRequestBound(policyId, draft.committeeId, vaults.length);
+
+        IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
 
         IPolicyManager(policyManager)
             .bindPolicy(
