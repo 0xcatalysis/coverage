@@ -62,7 +62,7 @@ interface IClaimManager is IAccessControl {
      * @param timestamp Block timestamp when filed.
      */
     event ClaimFiled(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         uint256 indexed claimId,
         address indexed reporter,
         bytes32 evidenceHash,
@@ -79,7 +79,7 @@ interface IClaimManager is IAccessControl {
      * @param timestamp Block timestamp when approved.
      */
     event ClaimApproved(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         uint256 indexed claimId,
         address indexed beneficiary,
         uint256 payoutAmount,
@@ -93,7 +93,7 @@ interface IClaimManager is IAccessControl {
      * @param reason Human-readable rejection reason.
      * @param timestamp Block timestamp when rejected.
      */
-    event ClaimRejected(uint256 indexed policyId, uint256 indexed claimId, string reason, uint256 timestamp);
+    event ClaimRejected(uint96 indexed policyId, uint256 indexed claimId, string reason, uint256 timestamp);
 
     /**
      * @notice Emitted when slashed collateral is swapped to payout token.
@@ -105,7 +105,7 @@ interface IClaimManager is IAccessControl {
      * @param payoutAmount Amount received after swap.
      */
     event CollateralSwapped(
-        uint256 indexed policyId,
+        uint96 indexed policyId,
         uint256 indexed claimId,
         address indexed collateralToken,
         uint256 collateralAmount,
@@ -132,16 +132,10 @@ interface IClaimManager is IAccessControl {
     event SwapperSet(address indexed swapper);
 
     /**
-     * @notice Emitted when the Policy address is updated.
-     * @param policy New Policy address.
+     * @notice Emitted when the PolicyManager address is updated.
+     * @param policyManager New PolicyManager address.
      */
-    event PolicySet(address indexed policy);
-
-    /**
-     * @notice Emitted when the PremiumReserve address is updated.
-     * @param premiumReserve New PremiumReserve address.
-     */
-    event PremiumReserveSet(address indexed premiumReserve);
+    event PolicyManagerSet(address indexed policyManager);
 
     /**
      * @notice Emitted when the ChainlinkPriceFeed address is updated.
@@ -163,28 +157,21 @@ interface IClaimManager is IAccessControl {
      * @notice Reverts when attempting to file a claim for a policy that doesn't exist.
      * @param policyId Identifier that failed the lookup.
      */
-    error PolicyNotFound(uint256 policyId);
+    error PolicyNotFound(uint96 policyId);
 
     /**
      * @notice Reverts when attempting to file a claim that has already been filed.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      */
-    error ClaimAlreadyFiled(uint256 policyId, uint256 claimId);
-
-    /**
-     * @notice Reverts when attempting to resolve a claim that hasn't been filed.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim.
-     */
-    error ClaimNotFiled(uint256 policyId, uint256 claimId);
+    error ClaimAlreadyFiled(uint96 policyId, uint256 claimId);
 
     /**
      * @notice Reverts when attempting to resolve a claim that has already been resolved.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      */
-    error ClaimAlreadyResolved(uint256 policyId, uint256 claimId);
+    error ClaimAlreadyResolved(uint96 policyId, uint256 claimId);
 
     /**
      * @notice Reverts when attempting to file a claim outside the coverage window.
@@ -193,32 +180,33 @@ interface IClaimManager is IAccessControl {
      * @param maturityTime Coverage maturity timestamp.
      * @param currentTime Current block timestamp.
      */
-    error ClaimOutsideCoverageWindow(uint256 policyId, uint64 startTime, uint64 maturityTime, uint256 currentTime);
+    error ClaimOutsideCoverageWindow(uint96 policyId, uint64 startTime, uint64 maturityTime, uint256 currentTime);
 
     /**
-     * @notice Reverts when the escrow is already released.
-     * @param policyId Identifier of the policy.
+     * @notice Reverts when the caller is not authorized to file a claim for this policy.
+     * @param caller Address that attempted to file the claim.
+     * @param expectedClaimer Address authorized to file claims for this policy.
      */
-    error EscrowAlreadyReleased(uint256 policyId);
+    error UnauthorizedClaimer(address caller, address expectedClaimer);
 
     /**
      * @notice Reverts when spec evaluation returns non-payable result.
      * @param policyId Identifier of the policy.
      * @param notesHash Hash of evaluation notes.
      */
-    error ClaimNotPayable(uint256 policyId, bytes32 notesHash);
+    error ClaimNotPayable(uint96 policyId, bytes32 notesHash);
 
     /**
      * @notice Reverts when slashing returns no collateral.
      * @param policyId Identifier of the policy.
      */
-    error NoCollateralSlashed(uint256 policyId);
+    error NoCollateralSlashed(uint96 policyId);
 
     /**
      * @notice Reverts when slashing or swaps result in zero payout amount.
      * @param policyId Identifier of the policy.
      */
-    error ZeroPayoutAmount(uint256 policyId);
+    error ZeroPayoutAmount(uint96 policyId);
 
     /**
      * @notice Reverts when a required evidence hash is empty.
@@ -231,7 +219,7 @@ interface IClaimManager is IAccessControl {
      * @param requestedAmount Amount requested by the claimant.
      * @param remainingCoverage Remaining coverage amount after previous claims.
      */
-    error RequestedAmountExceedsRemainingCoverage(uint256 policyId, uint256 requestedAmount, uint256 remainingCoverage);
+    error RequestedAmountExceedsRemainingCoverage(uint96 policyId, uint256 requestedAmount, uint256 remainingCoverage);
 
     /**
      * @notice Pauses claim operations.
@@ -267,18 +255,11 @@ interface IClaimManager is IAccessControl {
     function setSwapper(address swapper_) external;
 
     /**
-     * @notice Sets the Policy address.
+     * @notice Sets the PolicyManager address.
      * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param policy_ Address of the Policy contract.
+     * @param policyManager_ Address of the PolicyManager contract.
      */
-    function setPolicy(address policy_) external;
-
-    /**
-     * @notice Sets the PremiumReserve address.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param premiumReserve_ Address of the PremiumReserve contract.
-     */
-    function setPremiumReserve(address premiumReserve_) external;
+    function setPolicyManager(address policyManager_) external;
 
     /**
      * @notice Sets the ChainlinkPriceFeed address.
@@ -288,31 +269,12 @@ interface IClaimManager is IAccessControl {
     function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
 
     /**
-     * @notice Files a claim against a policy and locks the escrow.
-     * @dev Anyone can file a claim (spam deterred by off-chain bond and rate limits).
-     *      Locks the escrow to prevent premium release during evaluation.
-     *      Does not automatically evaluate; requires separate approveClaim or rejectClaim call.
-     *      Multiple partial claims can be filed against the same policy up to the coverage limit.
-     * @param policyId Identifier of the policy to claim against.
-     * @param requestedAmount Requested payout amount in payout token terms (must be <= remaining coverage).
-     * @param evidenceHash Hash of evidence supporting the claim (e.g., IPFS CID).
-     * @return claimId Unique identifier for the filed claim.
-     */
-    function fileClaim(
-        uint256 policyId,
-        uint256 requestedAmount,
-        bytes32 evidenceHash
-    )
-        external
-        returns (uint256 claimId);
-
-    /**
-     * @notice Atomically files and resolves a claim in a single transaction.
-     * @dev Requires CLAIM_OPERATOR_ROLE. Combines filing and resolution into one atomic operation:
-     *      1. Validates claim preconditions and locks escrow
+     * @notice Files and resolves a claim atomically in a single transaction.
+     * @dev Caller must be the policy's designated claimer address. Combines filing and resolution into one atomic
+     * operation:
+     *      1. Validates claim preconditions and verifies claimer authorization
      *      2. Evaluates the registered Spec for the policy's product
-     *      3. If approved: executes premium waterfall → slashes shortfall → swaps → pays beneficiary
-     *      4. Unlocks escrow regardless of outcome
+     *      3. If approved: slashes stake → swaps collateral → pays beneficiary
      *      Multiple partial claims can be filed against the same policy up to the coverage limit.
      *
      * @param policyId Identifier of the policy to claim against.
@@ -321,8 +283,8 @@ interface IClaimManager is IAccessControl {
      * @param additionalData Optional ABI-encoded data for Spec evaluation.
      * @return claimId Unique identifier for the filed claim.
      */
-    function fileAndResolveClaim(
-        uint256 policyId,
+    function fileClaim(
+        uint96 policyId,
         uint256 requestedAmount,
         bytes32 evidenceHash,
         bytes calldata additionalData
@@ -331,67 +293,31 @@ interface IClaimManager is IAccessControl {
         returns (uint256 claimId);
 
     /**
-     * @notice Approves a filed claim by evaluating the Spec and executing payout if approved.
-     * @dev Requires CLAIM_OPERATOR_ROLE.
-     *      Evaluates the registered Spec for the policy's product.
-     *      If approved: slashes stake, swaps collateral via pre-configured routes, pays beneficiary, unlocks escrow.
-     *      If rejected: unlocks escrow without payout.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim to approve.
-     * @param additionalData Optional ABI-encoded data for Spec evaluation.
-     */
-    function approveClaim(uint256 policyId, uint256 claimId, bytes calldata additionalData) external;
-
-    /**
-     * @notice Manually rejects a claim without Spec evaluation.
-     * @dev Requires CLAIM_OPERATOR_ROLE.
-     *      Used for administrative rejections (e.g., fraud, invalid evidence).
-     *      Unlocks escrow without payout.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim to reject.
-     * @param reason Human-readable rejection reason.
-     */
-    function rejectClaim(uint256 policyId, uint256 claimId, string calldata reason) external;
-
-    /**
      * @notice Returns the claim record for a specific claim.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @return ClaimRecord snapshot describing the claim state.
      */
-    function claimRecord(uint256 policyId, uint256 claimId) external view returns (ClaimRecord memory);
+    function claimRecord(uint96 policyId, uint256 claimId) external view returns (ClaimRecord memory);
 
     /**
      * @notice Returns the policy claim state tracking total payouts.
      * @param policyId Identifier of the policy.
      * @return PolicyClaim snapshot with total paid out and claim count.
      */
-    function policyClaim(uint256 policyId) external view returns (PolicyClaim memory);
+    function policyClaim(uint96 policyId) external view returns (PolicyClaim memory);
 
     /**
      * @notice Returns the remaining coverage available for a policy.
      * @param policyId Identifier of the policy.
      * @return remaining Amount of coverage remaining after all approved claims.
      */
-    function remainingCoverage(uint256 policyId) external view returns (uint256 remaining);
-
-    /**
-     * @notice Returns the number of pending (filed but not resolved) claims for a policy.
-     * @dev Escrow is locked when pendingClaimCount > 0 and unlocked when it reaches 0.
-     * @param policyId Identifier of the policy.
-     * @return count Number of pending claims.
-     */
-    function pendingClaimCount(uint256 policyId) external view returns (uint256 count);
+    function remainingCoverage(uint96 policyId) external view returns (uint256 remaining);
 
     /**
      * @notice Returns true when the contract is paused.
      */
     function paused() external view returns (bool);
-
-    /**
-     * @notice AccessControl identifier for the claim operator role.
-     */
-    function CLAIM_OPERATOR_ROLE() external view returns (bytes32);
 
     /**
      * @notice Returns the SpecRegistry address.
@@ -409,14 +335,9 @@ interface IClaimManager is IAccessControl {
     function swapper() external view returns (address);
 
     /**
-     * @notice Returns the Policy address.
+     * @notice Returns the PolicyManager address.
      */
-    function policy() external view returns (address);
-
-    /**
-     * @notice Returns the PremiumReserve address.
-     */
-    function premiumReserve() external view returns (address);
+    function policyManager() external view returns (address);
 
     /**
      * @notice Returns the ChainlinkPriceFeed address.
