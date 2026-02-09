@@ -240,11 +240,6 @@ interface IPolicyManager is IAccessControl {
     error InvalidCommitteeId();
 
     /**
-     * @notice Reverts when policy ID would overflow uint96 committee ID limit.
-     */
-    error PolicyIdOverflow();
-
-    /**
      * @notice Reverts when committee doesn't have sufficient stake.
      * @param committeeId Committee identifier.
      * @param required Required stake amount.
