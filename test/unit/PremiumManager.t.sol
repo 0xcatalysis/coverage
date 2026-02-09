@@ -9,7 +9,6 @@ import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {PremiumManager} from "../../src/PremiumManager.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
-import {IRewardsManager} from "../../src/interfaces/IRewardsManager.sol";
 
 contract PremiumManagerTest is Test {
     uint16 internal constant PLATFORM_FEE_BPS = 50;

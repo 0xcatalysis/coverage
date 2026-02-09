@@ -51,6 +51,8 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     struct BoundPolicy {
         /// @notice Incremental identifier for the policy.
         uint96 policyId;
+        /// @notice Deterministic hash representing the policy schedule.
+        bytes32 policyCommit;
         /// @notice Spec identifier attached to the bound policy.
         bytes32 specId;
         /// @notice Terms hash anchored for the bound policy.
@@ -235,23 +237,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         external;
 
     /**
-     * @notice Locks coverage for a previously validated policy commit.
-     * @dev Requires POLICY_MANAGER_ROLE. Each binding represents a complete policy from this pool.
-     *      Signature validation must be performed by the caller via verifyQuote() before calling this function.
-     * @param policyId Incremental identifier for the policy.
-     * @param policyCommit Deterministic hash representing the policy.
-     * @param quote Quote that has been validated for binding.
-     * @return BoundPolicy metadata describing the pool's coverage allocation.
-     */
-    function recordBoundPolicy(
-        uint96 policyId,
-        bytes32 policyCommit,
-        Quote calldata quote
-    )
-        external
-        returns (BoundPolicy memory);
-
-    /**
      * @notice Returns whether a policy commit has already been bound.
      * @param policyCommit Deterministic hash representing the policy.
      * @return True if the policy commit has been bound, false otherwise.
@@ -270,14 +255,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @return BoundPolicy metadata describing the allocation.
      */
     function getBoundPolicy(uint96 policyId) external view returns (BoundPolicy memory);
-
-    /**
-     * @notice Verifies a coverage quote and returns the resulting policy commit hash.
-     * @param quote Quote struct signed by an authorized quote signer.
-     * @param signature EIP-712 signature authorizing the quote.
-     * @return policyCommit Deterministic hash representing the policy.
-     */
-    function verifyQuote(Quote calldata quote, bytes calldata signature) external view returns (bytes32 policyCommit);
 
     /**
      * @notice Pool fee expressed in basis points that is applied to premiums.

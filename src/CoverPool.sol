@@ -146,9 +146,12 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.operator == owner(), InvalidOperator());
         require(vaults.length != 0, ICoverPool.EmptyVaults());
 
-        emit PolicyForRequestBound(policyId, draft.committeeId, vaults.length);
-
         IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
+
+        bytes32 policyCommit = _verifyQuote(quote, signature);
+        BoundPolicy memory boundPolicy = _recordBoundPolicy(policyId, policyCommit, quote);
+
+        emit PolicyForRequestBound(policyId, draft.committeeId, vaults.length);
 
         IPolicyManager(policyManager)
             .bindPolicy(
@@ -162,47 +165,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
                     coverageAmount: draft.coverageAmount,
                     quote: quote,
                     signature: signature
-                })
+                }),
+                boundPolicy
             );
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
-    function recordBoundPolicy(
-        uint96 policyId,
-        bytes32 policyCommit,
-        Quote calldata quote
-    )
-        external
-        override
-        onlyRole(POLICY_MANAGER_ROLE)
-        whenNotPaused
-        returns (BoundPolicy memory boundPolicy)
-    {
-        require(policyCommit != bytes32(0), InvalidPolicyCommit());
-
-        bytes32 calculatedPolicyCommit = _hashQuote(quote);
-        require(calculatedPolicyCommit == policyCommit, PolicyCommitMismatch(calculatedPolicyCommit, policyCommit));
-        require(!boundPolicyCommits[policyCommit], PolicyAlreadyBound(policyCommit));
-
-        boundPolicyCommits[policyCommit] = true;
-
-        boundPolicy = BoundPolicy({
-            policyId: policyId,
-            specId: quote.specId,
-            termsHash: quote.termsHash,
-            coverageLimit: quote.coverageLimit,
-            payoutReceiver: quote.payoutReceiver,
-            committeeId: quote.committeeId,
-            operator: quote.operator,
-            startTime: quote.startTime,
-            maturityTime: quote.maturityTime
-        });
-
-        boundPolicies[policyId] = boundPolicy;
-
-        emit BoundPolicyRecorded(policyCommit, policyId, quote.coverageLimit);
     }
 
     /**
@@ -218,27 +183,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     function getBoundPolicy(uint96 policyId) external view override returns (BoundPolicy memory policy) {
         policy = boundPolicies[policyId];
         require(policy.policyId != 0, PolicyNotFound(policyId));
-    }
-
-    /**
-     * @inheritdoc ICoverPool
-     */
-    function verifyQuote(
-        Quote calldata quote,
-        bytes calldata signature
-    )
-        external
-        view
-        override
-        validateQuote(quote)
-        whenNotPaused
-        returns (bytes32 policyCommit)
-    {
-        policyCommit = _hashQuote(quote);
-        bytes32 digest = _hashTypedDataV4(policyCommit);
-
-        address signer = ECDSA.recover(digest, signature);
-        require(hasRole(QUOTE_SIGNER_ROLE, signer), InvalidQuoteSignature());
     }
 
     /**
@@ -267,6 +211,72 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         super.revokeRole(role, account);
+    }
+
+    /**
+     * @notice Locks coverage for a validated policy commit.
+     * @dev Each binding represents a complete policy from this pool.
+     * @param policyId Incremental identifier for the policy.
+     * @param policyCommit Deterministic hash representing the policy.
+     * @param quote Quote that has been validated for binding.
+     * @return boundPolicy BoundPolicy metadata describing the pool's coverage allocation.
+     */
+    function _recordBoundPolicy(
+        uint96 policyId,
+        bytes32 policyCommit,
+        Quote calldata quote
+    )
+        private
+        whenNotPaused
+        returns (BoundPolicy memory boundPolicy)
+    {
+        require(policyCommit != bytes32(0), InvalidPolicyCommit());
+
+        bytes32 calculatedPolicyCommit = _hashQuote(quote);
+        require(calculatedPolicyCommit == policyCommit, PolicyCommitMismatch(calculatedPolicyCommit, policyCommit));
+        require(!boundPolicyCommits[policyCommit], PolicyAlreadyBound(policyCommit));
+
+        boundPolicyCommits[policyCommit] = true;
+
+        boundPolicy = BoundPolicy({
+            policyId: policyId,
+            policyCommit: policyCommit,
+            specId: quote.specId,
+            termsHash: quote.termsHash,
+            coverageLimit: quote.coverageLimit,
+            payoutReceiver: quote.payoutReceiver,
+            committeeId: quote.committeeId,
+            operator: quote.operator,
+            startTime: quote.startTime,
+            maturityTime: quote.maturityTime
+        });
+
+        boundPolicies[policyId] = boundPolicy;
+
+        emit BoundPolicyRecorded(policyCommit, policyId, quote.coverageLimit);
+    }
+
+    /**
+     * @notice Verify the quote with signature validation.
+     * @param quote Quote struct to verify.
+     * @param signature EIP-712 signature to validate.
+     * @return policyCommit Deterministic hash representing the policy.
+     */
+    function _verifyQuote(
+        Quote calldata quote,
+        bytes calldata signature
+    )
+        private
+        view
+        validateQuote(quote)
+        whenNotPaused
+        returns (bytes32 policyCommit)
+    {
+        policyCommit = _hashQuote(quote);
+        bytes32 digest = _hashTypedDataV4(policyCommit);
+
+        address signer = ECDSA.recover(digest, signature);
+        require(hasRole(QUOTE_SIGNER_ROLE, signer), InvalidQuoteSignature());
     }
 
     /**

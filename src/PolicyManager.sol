@@ -210,7 +210,15 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
-    function bindPolicy(BindPolicyRequest calldata request) external override nonReentrant whenNotPaused {
+    function bindPolicy(
+        BindPolicyRequest calldata request,
+        ICoverPool.BoundPolicy calldata boundPolicy
+    )
+        external
+        override
+        nonReentrant
+        whenNotPaused
+    {
         //slither-disable-start reentrancy-benign
         _validateRequest(request);
 
@@ -240,12 +248,8 @@ contract PolicyManager is
             totalStake >= request.coverageAmount, InsufficientStake(committeeId, request.coverageAmount, totalStake)
         );
 
-        bytes32 policyCommit = ICoverPool(quote.pool).verifyQuote(quote, request.signature);
-        require(policyCommit != bytes32(0), InvalidPolicyCommit());
+        bytes32 policyCommit = boundPolicy.policyCommit;
         require(!_registeredPolicyCommits[policyCommit], PolicyCommitAlreadyRegistered(policyCommit));
-
-        ICoverPool.BoundPolicy memory boundPolicy =
-            ICoverPool(quote.pool).recordBoundPolicy(policyId, policyCommit, quote);
 
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
             policyId: policyId,

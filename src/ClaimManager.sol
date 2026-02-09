@@ -311,7 +311,7 @@ contract ClaimManager is
     }
 
     /**
-     * @notice Executes slashing and collateral swapping for payout directly without.
+     * @notice Executes slashing and collateral swapping for payout directly.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param metadata Policy metadata containing committeeId, operator, and payout details.

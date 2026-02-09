@@ -403,8 +403,9 @@ interface IPolicyManager is IAccessControl {
      *         and minting a soulbound policy receipt.
      * @dev Only registered CoverPools may call this function.
      * @param request Struct containing all binding parameters and signed quote.
+     * @param boundPolicy Bound policy metadata from the pool.
      */
-    function bindPolicy(BindPolicyRequest calldata request) external;
+    function bindPolicy(BindPolicyRequest calldata request, ICoverPool.BoundPolicy calldata boundPolicy) external;
 
     /**
      * @notice Returns draft data for a policyId.
