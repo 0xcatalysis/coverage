@@ -469,6 +469,18 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
     }
 
+    function test_bindPolicy_WhenPolicyCommitZero_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.committeeId, request.quote.operator, COVERAGE_AMOUNT, true);
+
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+        boundPolicy.policyCommit = bytes32(0);
+
+        vm.expectRevert(IPolicyManager.InvalidPolicyCommit.selector);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+    }
+
     function test_bindPolicy_WhenInvalidCoverageWindow_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         request.quote.startTime = uint64(block.timestamp + 1 days);

@@ -249,6 +249,7 @@ contract PolicyManager is
         );
 
         bytes32 policyCommit = boundPolicy.policyCommit;
+        require(policyCommit != bytes32(0), InvalidPolicyCommit());
         require(!_registeredPolicyCommits[policyCommit], PolicyCommitAlreadyRegistered(policyCommit));
 
         IPremiumManager.PremiumAllocation memory allocation = IPremiumManager.PremiumAllocation({
