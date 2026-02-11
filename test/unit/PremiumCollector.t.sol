@@ -17,13 +17,13 @@ contract PremiumCollectorTest is Test {
     uint96 internal constant COMMITTEE_ID = 123;
 
     address internal admin;
-    address internal premiumManager;
     address internal pool;
     address internal operator;
     address internal vault1;
     address internal vault2;
 
     PremiumCollector internal premiumCollector;
+    MockPremiumManager internal premiumManager;
     MockERC4626 internal mockVault1;
     MockERC4626 internal mockVault2;
     MockToken internal underlying1;
@@ -42,12 +42,10 @@ contract PremiumCollectorTest is Test {
         vm.warp(1_000_000);
 
         admin = makeAddr("admin");
-        premiumManager = makeAddr("premiumManager");
         pool = makeAddr("pool");
         operator = makeAddr("operator");
 
         vm.label(admin, "Admin");
-        vm.label(premiumManager, "PremiumManager");
         vm.label(pool, "Pool");
         vm.label(operator, "Operator");
 
@@ -55,6 +53,7 @@ contract PremiumCollectorTest is Test {
         underlying2 = new MockToken("Underlying2", "U2");
         mockVault1 = new MockERC4626(underlying1, "Vault1", "V1");
         mockVault2 = new MockERC4626(underlying2, "Vault2", "V2");
+        premiumManager = new MockPremiumManager();
 
         vault1 = address(mockVault1);
         vault2 = address(mockVault2);
@@ -63,12 +62,13 @@ contract PremiumCollectorTest is Test {
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
             "PremiumCollector.sol",
-            abi.encodeCall(PremiumCollector.initialize, (admin, premiumManager, DEFAULT_DISTRIBUTE_INTERVAL)),
+            abi.encodeCall(PremiumCollector.initialize, (admin, address(premiumManager), DEFAULT_DISTRIBUTE_INTERVAL)),
             deployOpts
         );
         premiumCollector = PremiumCollector(proxy);
 
         vm.label(address(premiumCollector), "PremiumCollector");
+        vm.label(address(premiumManager), "PremiumManager");
         vm.label(address(underlying1), "Underlying1");
         vm.label(address(underlying2), "Underlying2");
         vm.label(vault1, "Vault1");
@@ -83,7 +83,7 @@ contract PremiumCollectorTest is Test {
         PremiumCollector implementation = new PremiumCollector();
         PremiumCollector freshCollector = PremiumCollector(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
-        freshCollector.initialize(address(0), premiumManager, DEFAULT_DISTRIBUTE_INTERVAL);
+        freshCollector.initialize(address(0), address(premiumManager), DEFAULT_DISTRIBUTE_INTERVAL);
     }
 
     function test_initialize_WhenPremiumManagerZero_Reverts() public {
@@ -97,11 +97,11 @@ contract PremiumCollectorTest is Test {
         PremiumCollector implementation = new PremiumCollector();
         PremiumCollector freshCollector = PremiumCollector(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.InvalidDistributeInterval.selector, 0));
-        freshCollector.initialize(admin, premiumManager, 0);
+        freshCollector.initialize(admin, address(premiumManager), 0);
     }
 
     function test_initialize_Success() public view {
-        assertEq(premiumCollector.premiumManager(), premiumManager);
+        assertEq(premiumCollector.premiumManager(), address(premiumManager));
         assertEq(premiumCollector.distributeInterval(), DEFAULT_DISTRIBUTE_INTERVAL);
         assertTrue(premiumCollector.hasRole(bytes32(0), admin));
     }
@@ -193,7 +193,6 @@ contract PremiumCollectorTest is Test {
         vm.prank(admin);
         premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
 
-        // Mint some shares to the premium collector
         mockVault1.mint(address(premiumCollector), 100 ether);
 
         vm.prank(admin);
@@ -280,7 +279,6 @@ contract PremiumCollectorTest is Test {
         address[] memory vaults = new address[](1);
         vaults[0] = vault1;
 
-        // Should not revert, just skip
         premiumCollector.distributeBatch(vaults);
     }
 
@@ -288,34 +286,19 @@ contract PremiumCollectorTest is Test {
         vm.prank(admin);
         premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
 
-        // Mint shares
         mockVault1.mint(address(premiumCollector), 100 ether);
+        underlying1.mint(vault1, 100 ether);
 
-        // First distribution
         address[] memory vaults = new address[](1);
         vaults[0] = vault1;
 
-        vm.mockCall(
-            premiumManager,
-            abi.encodeWithSelector(
-                IPremiumManager.distributePremium.selector,
-                pool,
-                COMMITTEE_ID,
-                operator,
-                address(underlying1),
-                100 ether
-            ),
-            ""
-        );
         premiumCollector.distributeBatch(vaults);
 
-        // Mint more shares immediately
         mockVault1.mint(address(premiumCollector), 50 ether);
+        underlying1.mint(vault1, 50 ether);
 
-        // Try to distribute again immediately (should skip)
         premiumCollector.distributeBatch(vaults);
 
-        // Should still have shares
         assertEq(mockVault1.balanceOf(address(premiumCollector)), 50 ether);
     }
 
@@ -326,7 +309,6 @@ contract PremiumCollectorTest is Test {
         address[] memory vaults = new address[](1);
         vaults[0] = vault1;
 
-        // Should not revert, just skip
         premiumCollector.distributeBatch(vaults);
     }
 
@@ -334,7 +316,6 @@ contract PremiumCollectorTest is Test {
         vm.prank(admin);
         premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
 
-        // Mint shares and underlying
         uint256 shares = 100 ether;
         uint256 assets = 100 ether;
         mockVault1.mint(address(premiumCollector), shares);
@@ -343,21 +324,13 @@ contract PremiumCollectorTest is Test {
         address[] memory vaults = new address[](1);
         vaults[0] = vault1;
 
-        vm.expectCall(
-            premiumManager,
-            abi.encodeWithSelector(
-                IPremiumManager.distributePremium.selector, pool, COMMITTEE_ID, operator, address(underlying1), assets
-            )
-        );
         vm.expectEmit(true, false, false, true);
         emit Distributed(vault1, shares, assets);
         premiumCollector.distributeBatch(vaults);
 
-        // Check shares redeemed
         assertEq(mockVault1.balanceOf(address(premiumCollector)), 0);
-        assertEq(underlying1.balanceOf(premiumManager), assets);
+        assertEq(underlying1.balanceOf(address(premiumManager)), assets);
 
-        // Check lastDistributeTime updated
         IPremiumCollector.VaultConfig memory config = premiumCollector.getVaultConfig(vault1);
         assertEq(config.lastDistributeTime, block.timestamp);
     }
@@ -368,7 +341,6 @@ contract PremiumCollectorTest is Test {
         premiumCollector.registerVault(vault2, pool, COMMITTEE_ID, operator);
         vm.stopPrank();
 
-        // Mint shares and underlying for both vaults
         mockVault1.mint(address(premiumCollector), 100 ether);
         underlying1.mint(address(mockVault1), 100 ether);
         mockVault2.mint(address(premiumCollector), 200 ether);
@@ -378,34 +350,12 @@ contract PremiumCollectorTest is Test {
         vaults[0] = vault1;
         vaults[1] = vault2;
 
-        vm.expectCall(
-            premiumManager,
-            abi.encodeWithSelector(
-                IPremiumManager.distributePremium.selector,
-                pool,
-                COMMITTEE_ID,
-                operator,
-                address(underlying1),
-                100 ether
-            )
-        );
-        vm.expectCall(
-            premiumManager,
-            abi.encodeWithSelector(
-                IPremiumManager.distributePremium.selector,
-                pool,
-                COMMITTEE_ID,
-                operator,
-                address(underlying2),
-                200 ether
-            )
-        );
         premiumCollector.distributeBatch(vaults);
 
         assertEq(mockVault1.balanceOf(address(premiumCollector)), 0);
         assertEq(mockVault2.balanceOf(address(premiumCollector)), 0);
-        assertEq(underlying1.balanceOf(premiumManager), 100 ether);
-        assertEq(underlying2.balanceOf(premiumManager), 200 ether);
+        assertEq(underlying1.balanceOf(address(premiumManager)), 100 ether);
+        assertEq(underlying2.balanceOf(address(premiumManager)), 200 ether);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -432,13 +382,10 @@ contract PremiumCollectorTest is Test {
         mockVault1.mint(address(premiumCollector), 100 ether);
         underlying1.mint(address(mockVault1), 100 ether);
 
-        // First distribution
         address[] memory vaults = new address[](1);
         vaults[0] = vault1;
-        vm.mockCall(premiumManager, abi.encodeWithSelector(IPremiumManager.distributePremium.selector), "");
         premiumCollector.distributeBatch(vaults);
 
-        // Add more shares but interval not elapsed
         mockVault1.mint(address(premiumCollector), 50 ether);
 
         address[] memory distributable = premiumCollector.getDistributableVaults();
@@ -451,7 +398,6 @@ contract PremiumCollectorTest is Test {
         premiumCollector.registerVault(vault2, pool, COMMITTEE_ID, operator);
         vm.stopPrank();
 
-        // Only vault1 has shares
         mockVault1.mint(address(premiumCollector), 100 ether);
 
         address[] memory distributable = premiumCollector.getDistributableVaults();
@@ -539,11 +485,11 @@ contract MockERC4626 is IERC4626, ERC20 {
     }
 
     function convertToShares(uint256 assets) external pure override returns (uint256) {
-        return assets; // 1:1 for simplicity
+        return assets;
     }
 
     function convertToAssets(uint256 shares) external pure override returns (uint256) {
-        return shares; // 1:1 for simplicity
+        return shares;
     }
 
     function maxDeposit(address) external pure override returns (uint256) {
@@ -610,8 +556,19 @@ contract MockERC4626 is IERC4626, ERC20 {
         return assets;
     }
 
-    // Helper for testing: mint shares without transferring underlying
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
     }
+}
+
+contract MockPremiumManager {
+    function distributePremium(
+        address, /*pool*/
+        uint96, /*committeeId*/
+        address, /*operator*/
+        address, /*premiumToken*/
+        uint256 /*amount*/
+    )
+        external
+        pure {}
 }

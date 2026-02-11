@@ -528,7 +528,6 @@ contract MockPolicyManager {
             buyer: buyer,
             beneficiary: address(0),
             claimer: address(0),
-            premiumToken: address(0),
             payoutToken: address(0),
             operator: address(0),
             coverageAmount: 1_000_000e8,
