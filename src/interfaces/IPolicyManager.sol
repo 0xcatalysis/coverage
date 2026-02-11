@@ -31,8 +31,6 @@ interface IPolicyManager is IAccessControl {
         address beneficiary;
         /// @notice Account authorized to trigger claims for the policy.
         address claimer;
-        /// @notice ERC20 token used for premium payments.
-        address premiumToken;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
         /// @notice Operator address captured at draft creation and added to the committee.
@@ -61,12 +59,8 @@ interface IPolicyManager is IAccessControl {
         address claimer;
         /// @notice Policy coverage start timestamp.
         uint64 startTime;
-        /// @notice ERC20 token used for premium payments.
-        address premiumToken;
         /// @notice Policy coverage end timestamp.
         uint64 maturityTime;
-        /// @notice Base premium paid by the buyer for coverage (excluding refundable deposits).
-        uint256 basePremium;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
         /// @notice Address of the pool providing coverage.
@@ -98,8 +92,6 @@ interface IPolicyManager is IAccessControl {
         address beneficiary;
         /// @notice Account authorized to trigger claims for the policy.
         address claimer;
-        /// @notice ERC20 token used for premium payments.
-        address premiumToken;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
         /// @notice Coverage amount as the stake requirement for committee creation (in USD with 8 decimals).
@@ -142,7 +134,6 @@ interface IPolicyManager is IAccessControl {
      * @param beneficiary Beneficiary for claim payouts.
      * @param pool Address of the CoverPool providing coverage.
      * @param coverageLimit Coverage notional allocated from the pool.
-     * @param basePremium Base premium paid by the buyer.
      * @param policyCommit Deterministic hash representing the policy schedule.
      */
     event PolicyBound(
@@ -151,21 +142,8 @@ interface IPolicyManager is IAccessControl {
         address indexed beneficiary,
         address pool,
         uint256 coverageLimit,
-        uint256 basePremium,
         bytes32 policyCommit
     );
-
-    /**
-     * @notice Emitted when the PremiumManager dependency is set or updated.
-     * @param premiumManager_ Address of the premium manager contract.
-     */
-    event PremiumManagerSet(address indexed premiumManager_);
-
-    /**
-     * @notice Emitted when the platform fee is updated.
-     * @param platformFeeBps_ New platform fee in basis points.
-     */
-    event PlatformFeeSet(uint16 indexed platformFeeBps_);
 
     /**
      * @notice Emitted when the StakeManager dependency is set or updated.
@@ -191,12 +169,6 @@ interface IPolicyManager is IAccessControl {
     error ZeroAddress();
 
     /**
-     * @notice Reverts when platform fee exceeds maximum allowed.
-     * @param feeBps The invalid fee value.
-     */
-    error InvalidPlatformFee(uint16 feeBps);
-
-    /**
      * @notice Reverts when supplied coverage timestamps are invalid.
      * @param startTime Coverage start timestamp.
      * @param maturityTime Coverage maturity timestamp.
@@ -207,11 +179,6 @@ interface IPolicyManager is IAccessControl {
      * @notice Reverts when coverage limit is zero.
      */
     error InvalidCoverageLimit();
-
-    /**
-     * @notice Reverts when base premium is zero.
-     */
-    error InvalidBasePremium();
 
     /**
      * @notice Reverts when coverage amount is zero.
@@ -306,13 +273,6 @@ interface IPolicyManager is IAccessControl {
     function unpause() external;
 
     /**
-     * @notice Sets the PremiumManager contract used for premium collection.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param premiumManager_ Address of the PremiumManager implementation.
-     */
-    function setPremiumManager(address premiumManager_) external;
-
-    /**
      * @notice Sets the StakeManager contract used for committee creation.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      * @param stakeManager_ Address of the StakeManager implementation.
@@ -334,13 +294,6 @@ interface IPolicyManager is IAccessControl {
     function setCoverPoolFactory(address coverPoolFactory_) external;
 
     /**
-     * @notice Sets the platform fee charged on policy premiums.
-     * @dev Requires DEFAULT_ADMIN_ROLE. Must not exceed 25% (2500 bps).
-     * @param platformFeeBps_ Platform fee in basis points (1 bps = 0.01%).
-     */
-    function setPlatformFee(uint16 platformFeeBps_) external;
-
-    /**
      * @notice Requests coverage from a specified pool (user-facing entrypoint).
      * @dev Allows users to request coverage by specifying which pool they want coverage from.
      *      The caller becomes the buyer and is responsible for paying premiums.
@@ -348,7 +301,6 @@ interface IPolicyManager is IAccessControl {
      * @param pool CoverPool address to request coverage from.
      * @param beneficiary Address receiving payouts upon approved claims.
      * @param claimer Account authorized to trigger claims for the policy.
-     * @param premiumToken ERC20 token used for premium payments.
      * @param payoutToken ERC20 token used for claim payouts.
      * @param coverageAmount Requested coverage amount (stake requirement in USD with 8 decimals).
      * @return policyId Identifier reserved for binding and minting.
@@ -357,7 +309,6 @@ interface IPolicyManager is IAccessControl {
         address pool,
         address beneficiary,
         address claimer,
-        address premiumToken,
         address payoutToken,
         uint256 coverageAmount
     )
@@ -393,11 +344,6 @@ interface IPolicyManager is IAccessControl {
     function paused() external view returns (bool);
 
     /**
-     * @notice Returns the configured PremiumManager address.
-     */
-    function premiumManager() external view returns (address);
-
-    /**
      * @notice Returns the configured StakeManager address.
      */
     function stakeManager() external view returns (address);
@@ -411,11 +357,6 @@ interface IPolicyManager is IAccessControl {
      * @notice Returns the configured CoverPoolFactory address.
      */
     function coverPoolFactory() external view returns (address);
-
-    /**
-     * @notice Returns the platform fee in basis points.
-     */
-    function platformFeeBps() external view returns (uint16);
 
     /**
      * @notice Returns policy metadata for a given policy ID.

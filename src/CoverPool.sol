@@ -158,7 +158,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
                     buyer: draft.buyer,
                     beneficiary: draft.beneficiary,
                     claimer: draft.claimer,
-                    premiumToken: draft.premiumToken,
                     payoutToken: draft.payoutToken,
                     coverageAmount: draft.coverageAmount,
                     quote: quote,
