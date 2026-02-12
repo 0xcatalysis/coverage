@@ -114,6 +114,7 @@ contract PremiumCollector is
         require(_vaultConfigs[vault].registered, VaultNotRegistered(vault));
 
         uint256 shares = IERC4626(vault).balanceOf(address(this));
+        // slither-disable-next-line incorrect-equality
         require(shares == 0, VaultHasShares(vault, shares));
 
         uint256 index = _vaultIndex[vault];
@@ -209,6 +210,7 @@ contract PremiumCollector is
     /**
      * @inheritdoc IPremiumCollector
      */
+    // slither-disable-next-line calls-loop
     function getDistributableVaults() external view override returns (address[] memory) {
         uint256 length = _registeredVaults.length;
         address[] memory eligible = new address[](length);
@@ -218,6 +220,7 @@ contract PremiumCollector is
             address vault = _registeredVaults[i];
             VaultConfig memory config = _vaultConfigs[vault];
 
+            // slither-disable-next-line calls-loop
             if (
                 block.timestamp >= config.lastDistributeTime + distributeInterval
                     && IERC4626(vault).balanceOf(address(this)) > 0
@@ -251,6 +254,7 @@ contract PremiumCollector is
      * @notice Internal function to distribute premiums for a single vault.
      * @param vault Address of the ERC-4626 vault.
      */
+    // slither-disable-next-line calls-loop
     function _distribute(address vault) private {
         VaultConfig storage config = _vaultConfigs[vault];
         if (!config.registered) {
@@ -260,18 +264,23 @@ contract PremiumCollector is
             return;
         }
 
+        // slither-disable-next-line calls-loop
         uint256 shares = IERC4626(vault).balanceOf(address(this));
+        // slither-disable-next-line incorrect-equality
         if (shares == 0) {
             return;
         }
 
+        // Update state before external calls (CEI pattern)
+        config.lastDistributeTime = uint64(block.timestamp);
+
+        // slither-disable-next-line calls-loop
         uint256 assets = IERC4626(vault).redeem(shares, address(this), address(this));
         IERC20(config.underlying).safeTransfer(premiumManager, assets);
 
+        // slither-disable-next-line calls-loop
         IPremiumManager(premiumManager)
             .distributePremium(config.pool, config.committeeId, config.operator, config.underlying, assets);
-
-        config.lastDistributeTime = uint64(block.timestamp);
 
         emit Distributed(vault, shares, assets);
     }

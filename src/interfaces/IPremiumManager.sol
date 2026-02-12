@@ -144,7 +144,7 @@ interface IPremiumManager is IAccessControl {
     /**
      * @notice Calculates the platform, pool, and restaker premium splits for a given gross premium.
      * @param grossPremium Premium value to evaluate.
-     * @param platformFeeBps Platform fee rate in basis points.
+     * @param platformFeeBps_ Platform fee rate in basis points.
      * @param poolFeeBps Pool fee rate in basis points.
      * @return platformSplit Amount allocated to the platform.
      * @return poolSplit Amount allocated to the pool curator.
@@ -152,7 +152,7 @@ interface IPremiumManager is IAccessControl {
      */
     function getFeeSplits(
         uint256 grossPremium,
-        uint16 platformFeeBps,
+        uint16 platformFeeBps_,
         uint16 poolFeeBps
     )
         external
