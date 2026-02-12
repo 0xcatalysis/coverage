@@ -372,8 +372,10 @@ contract PremiumCollectorTest is Test {
         assertEq(mockVault1.balanceOf(address(premiumCollector)), 0);
         assertEq(underlying1.balanceOf(address(premiumManager)), 0);
 
+        // When redeem returns 0 assets, lastDistributeTime should NOT be updated
+        // This allows immediate retry and prevents silent loss of shares
         IPremiumCollector.VaultConfig memory config = premiumCollector.getVaultConfig(vault1);
-        assertEq(config.lastDistributeTime, block.timestamp);
+        assertEq(config.lastDistributeTime, 0);
     }
 
     function test_distributeBatch_ZeroAssetVaultDoesNotBlockOthers() public {
@@ -398,8 +400,10 @@ contract PremiumCollectorTest is Test {
         assertEq(mockVault2.balanceOf(address(premiumCollector)), 0);
         assertEq(underlying2.balanceOf(address(premiumManager)), 200 ether);
 
+        // Vault1 returned 0 assets, so lastDistributeTime should NOT be updated (allows retry)
         IPremiumCollector.VaultConfig memory config1 = premiumCollector.getVaultConfig(vault1);
-        assertEq(config1.lastDistributeTime, block.timestamp);
+        assertEq(config1.lastDistributeTime, 0);
+        // Vault2 succeeded, so lastDistributeTime should be updated
         IPremiumCollector.VaultConfig memory config2 = premiumCollector.getVaultConfig(vault2);
         assertEq(config2.lastDistributeTime, block.timestamp);
     }

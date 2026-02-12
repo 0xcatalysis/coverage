@@ -271,15 +271,14 @@ contract PremiumCollector is
             return;
         }
 
-        // Update state before external calls (CEI pattern)
-        config.lastDistributeTime = uint64(block.timestamp);
-
         // slither-disable-next-line calls-loop
         uint256 assets = IERC4626(vault).redeem(shares, address(this), address(this));
         // slither-disable-next-line incorrect-equality
         if (assets == 0) {
             return;
         }
+
+        config.lastDistributeTime = uint64(block.timestamp);
         IERC20(config.underlying).safeTransfer(premiumManager, assets);
 
         // slither-disable-next-line calls-loop
