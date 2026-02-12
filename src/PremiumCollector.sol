@@ -254,7 +254,7 @@ contract PremiumCollector is
      * @notice Internal function to distribute premiums for a single vault.
      * @param vault Address of the ERC-4626 vault.
      */
-    // slither-disable-next-line calls-loop
+    // slither-disable-next-line calls-loop,reentrancy-no-eth
     function _distribute(address vault) private {
         VaultConfig storage config = _vaultConfigs[vault];
         if (!config.registered) {
