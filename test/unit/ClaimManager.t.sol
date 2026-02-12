@@ -497,7 +497,7 @@ contract ClaimManagerTest is Test {
         uint256 halfCoverage = COVERAGE_LIMIT / 2;
         bytes32 evidenceHash1 = keccak256("evidence-1");
 
-        specMock.setEvaluationResult(true, halfCoverage, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
         address[] memory assets = new address[](1);
         assets[0] = collateralToken;
         uint256[] memory amounts = new uint256[](1);
@@ -534,7 +534,7 @@ contract ClaimManagerTest is Test {
     }
 
     function test_fileClaim_WhenSpecRejects_RejectsAtomically() public {
-        specMock.setEvaluationResult(false, 0, keccak256("rejected"));
+        specMock.setEvaluationResult(false, keccak256("rejected"));
 
         vm.expectEmit(true, true, false, true, address(claimManager));
         emit ClaimFiled(POLICY_ID, 0, claimer, evidenceHash, COVERAGE_LIMIT, block.timestamp);
@@ -556,7 +556,7 @@ contract ClaimManagerTest is Test {
         uint256 requestedAmount = 500 ether;
         uint256 swapOutput = 450 ether;
 
-        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         address[] memory tokens = new address[](1);
         tokens[0] = collateralToken;
@@ -590,7 +590,7 @@ contract ClaimManagerTest is Test {
         uint256 requestedAmount = 500 ether;
         uint256 swapOutput = 450 ether;
 
-        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         address[] memory tokens = new address[](1);
         tokens[0] = collateralToken;
@@ -690,7 +690,7 @@ contract ClaimManagerTest is Test {
     function test_fileClaim_WhenCollateralMatchesPayoutToken_DirectlyTransfers() public {
         uint256 requestedAmount = 500 ether;
 
-        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         address[] memory tokens = new address[](1);
         tokens[0] = payoutToken;
@@ -724,7 +724,7 @@ contract ClaimManagerTest is Test {
         uint256 firstSwapOutput = 350 ether;
         uint256 secondSwapOutput = 550 ether;
 
-        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         MockToken collateralToken2Mock = new MockToken("Collateral2", "COL2");
         address collateralToken2 = address(collateralToken2Mock);
@@ -765,7 +765,7 @@ contract ClaimManagerTest is Test {
     }
 
     function test_fileClaim_WhenSlashingReturnsNoCollateral_Reverts() public {
-        specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         address[] memory tokens = new address[](0);
         uint256[] memory amounts = new uint256[](0);
@@ -777,7 +777,7 @@ contract ClaimManagerTest is Test {
     }
 
     function test_fileClaim_WhenSlashingReturnsEmptyCollateral_Reverts() public {
-        specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         address[] memory tokens = new address[](1);
         tokens[0] = collateralToken;
@@ -794,7 +794,7 @@ contract ClaimManagerTest is Test {
         uint256 requestedAmount = 500 ether;
         uint256 excessiveSwapOutput = 600 ether;
 
-        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         address[] memory tokens = new address[](1);
         tokens[0] = collateralToken;
@@ -823,7 +823,7 @@ contract ClaimManagerTest is Test {
         uint256 requestedAmount = 300 ether;
         uint256 excessiveCollateral = 500 ether;
 
-        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         address[] memory tokens = new address[](1);
         tokens[0] = payoutToken;
@@ -849,7 +849,7 @@ contract ClaimManagerTest is Test {
     function test_remainingCoverage_AfterPartialClaim_ReturnsRemaining() public {
         uint256 firstClaim = 300 ether;
 
-        specMock.setEvaluationResult(true, firstClaim, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         address[] memory tokens = new address[](1);
         tokens[0] = collateralToken;
@@ -870,7 +870,7 @@ contract ClaimManagerTest is Test {
     }
 
     function test_remainingCoverage_AfterFullCoverageExhausted_ReturnsZero() public {
-        specMock.setEvaluationResult(true, COVERAGE_LIMIT, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         address[] memory tokens = new address[](1);
         tokens[0] = collateralToken;
@@ -893,7 +893,7 @@ contract ClaimManagerTest is Test {
     function test_policyClaim_AfterSuccessfulClaim_UpdatesState() public {
         uint256 requestedAmount = 400 ether;
 
-        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         address[] memory tokens = new address[](1);
         tokens[0] = collateralToken;
@@ -918,7 +918,7 @@ contract ClaimManagerTest is Test {
         uint256 requestedAmount = 350 ether;
         uint256 payoutAmount = 330 ether;
 
-        specMock.setEvaluationResult(true, requestedAmount, keccak256("approved"));
+        specMock.setEvaluationResult(true, keccak256("approved"));
 
         address[] memory tokens = new address[](1);
         tokens[0] = collateralToken;
@@ -1021,8 +1021,8 @@ contract MockToken is ERC20 {
 contract MockSpec is ISpec {
     EvaluationResult private _result;
 
-    function setEvaluationResult(bool isPayable, uint256 amountUsd, bytes32 notesHash) external {
-        _result = EvaluationResult({isPayable: isPayable, amountUsd: amountUsd, notesHash: notesHash});
+    function setEvaluationResult(bool isPayable, bytes32 notesHash) external {
+        _result = EvaluationResult({isPayable: isPayable, notesHash: notesHash});
     }
 
     function evaluate(EvaluationContext calldata) external view override returns (EvaluationResult memory) {
