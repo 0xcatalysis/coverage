@@ -9,6 +9,7 @@ import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 import {IStakeManager} from "./interfaces/IStakeManager.sol";
+import {IBindPolicyHook} from "./interfaces/IBindPolicyHook.sol";
 
 /**
  * @title PolicyManager
@@ -121,7 +122,8 @@ contract PolicyManager is
         address beneficiary,
         address claimer,
         address payoutToken,
-        uint256 coverageAmount
+        uint256 coverageAmount,
+        address bindPolicyHook
     )
         external
         override
@@ -132,6 +134,7 @@ contract PolicyManager is
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
         require(beneficiary != address(0) && claimer != address(0) && payoutToken != address(0), ZeroAddress());
         require(coverageAmount != 0, InvalidCoverageAmount());
+        require(bindPolicyHook != address(0), InvalidBindPolicyHook());
 
         address curator = ICoverPool(pool).owner();
         require(curator != address(0), InvalidPoolOperator());
@@ -149,7 +152,8 @@ contract PolicyManager is
             operator: curator,
             coverageAmount: coverageAmount,
             committeeId: committeeId,
-            status: PolicyStatus.Created
+            status: PolicyStatus.Created,
+            bindPolicyHook: bindPolicyHook
         });
 
         emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount);
@@ -235,9 +239,13 @@ contract PolicyManager is
         _registeredPolicyCommits[policyCommit] = true;
         _policies[policyId] = metadata;
 
+        address hook = draft.bindPolicyHook;
+
         emit PolicyBound(
-            policyId, request.buyer, request.beneficiary, quote.pool, boundPolicy.coverageLimit, policyCommit
+            policyId, request.buyer, request.beneficiary, quote.pool, boundPolicy.coverageLimit, policyCommit, hook
         );
+
+        IBindPolicyHook(hook).onPolicyBound(policyId, boundPolicy.coverageLimit);
         //slither-disable-end reentrancy-benign
     }
 

@@ -532,7 +532,8 @@ contract MockPolicyManager {
             operator: address(0),
             coverageAmount: 1_000_000e8,
             committeeId: policyId,
-            status: IPolicyManager.PolicyStatus.Created
+            status: IPolicyManager.PolicyStatus.Created,
+            bindPolicyHook: address(1)
         });
     }
 

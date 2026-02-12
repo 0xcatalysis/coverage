@@ -10,7 +10,6 @@ import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {PremiumCollector} from "../../src/PremiumCollector.sol";
 import {IPremiumCollector} from "../../src/interfaces/IPremiumCollector.sol";
-import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
 
 contract PremiumCollectorTest is Test {
     uint64 internal constant DEFAULT_DISTRIBUTE_INTERVAL = 86_400; // 24 hours
@@ -470,18 +469,18 @@ contract MockToken is ERC20 {
 }
 
 contract MockERC4626 is IERC4626, ERC20 {
-    IERC20 private immutable _asset;
+    IERC20 private immutable _ASSET;
 
     constructor(IERC20 asset_, string memory name_, string memory symbol_) ERC20(name_, symbol_) {
-        _asset = asset_;
+        _ASSET = asset_;
     }
 
     function asset() external view override returns (address) {
-        return address(_asset);
+        return address(_ASSET);
     }
 
     function totalAssets() external view override returns (uint256) {
-        return _asset.balanceOf(address(this));
+        return _ASSET.balanceOf(address(this));
     }
 
     function convertToShares(uint256 assets) external pure override returns (uint256) {
@@ -525,14 +524,14 @@ contract MockERC4626 is IERC4626, ERC20 {
     }
 
     function deposit(uint256 assets, address receiver) external override returns (uint256) {
-        _asset.transferFrom(msg.sender, address(this), assets);
+        require(_ASSET.transferFrom(msg.sender, address(this), assets), "transfer failed");
         _mint(receiver, assets);
         return assets;
     }
 
     function mint(uint256 shares, address receiver) external override returns (uint256) {
         uint256 assets = shares;
-        _asset.transferFrom(msg.sender, address(this), assets);
+        require(_ASSET.transferFrom(msg.sender, address(this), assets), "transfer failed");
         _mint(receiver, shares);
         return assets;
     }
@@ -542,7 +541,7 @@ contract MockERC4626 is IERC4626, ERC20 {
             _spendAllowance(owner, msg.sender, assets);
         }
         _burn(owner, assets);
-        _asset.transfer(receiver, assets);
+        require(_ASSET.transfer(receiver, assets), "transfer failed");
         return assets;
     }
 
@@ -552,7 +551,7 @@ contract MockERC4626 is IERC4626, ERC20 {
         }
         _burn(owner, shares);
         uint256 assets = shares;
-        _asset.transfer(receiver, assets);
+        require(_ASSET.transfer(receiver, assets), "transfer failed");
         return assets;
     }
 

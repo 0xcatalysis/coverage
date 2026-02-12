@@ -41,6 +41,8 @@ interface IPolicyManager is IAccessControl {
         uint96 committeeId;
         /// @notice Draft lifecycle status.
         PolicyStatus status;
+        /// @notice Callback target invoked when policy is bound (required).
+        address bindPolicyHook;
     }
 
     /**
@@ -135,6 +137,7 @@ interface IPolicyManager is IAccessControl {
      * @param pool Address of the CoverPool providing coverage.
      * @param coverageLimit Coverage notional allocated from the pool.
      * @param policyCommit Deterministic hash representing the policy schedule.
+     * @param bindPolicyHook Address of the hook contract that was called.
      */
     event PolicyBound(
         uint96 indexed policyId,
@@ -142,7 +145,8 @@ interface IPolicyManager is IAccessControl {
         address indexed beneficiary,
         address pool,
         uint256 coverageLimit,
-        bytes32 policyCommit
+        bytes32 policyCommit,
+        address bindPolicyHook
     );
 
     /**
@@ -261,6 +265,11 @@ interface IPolicyManager is IAccessControl {
     error PolicyNotFound(uint96 policyId);
 
     /**
+     * @notice Reverts when bindPolicyHook is the zero address.
+     */
+    error InvalidBindPolicyHook();
+
+    /**
      * @notice Pauses policy binding operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
@@ -303,6 +312,7 @@ interface IPolicyManager is IAccessControl {
      * @param claimer Account authorized to trigger claims for the policy.
      * @param payoutToken ERC20 token used for claim payouts.
      * @param coverageAmount Requested coverage amount (stake requirement in USD with 8 decimals).
+     * @param bindPolicyHook Callback target invoked when policy is bound.
      * @return policyId Identifier reserved for binding and minting.
      */
     function requestCoverage(
@@ -310,7 +320,8 @@ interface IPolicyManager is IAccessControl {
         address beneficiary,
         address claimer,
         address payoutToken,
-        uint256 coverageAmount
+        uint256 coverageAmount,
+        address bindPolicyHook
     )
         external
         returns (uint96 policyId);
