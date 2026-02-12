@@ -276,6 +276,10 @@ contract PremiumCollector is
 
         // slither-disable-next-line calls-loop
         uint256 assets = IERC4626(vault).redeem(shares, address(this), address(this));
+        // slither-disable-next-line incorrect-equality
+        if (assets == 0) {
+            return;
+        }
         IERC20(config.underlying).safeTransfer(premiumManager, assets);
 
         // slither-disable-next-line calls-loop

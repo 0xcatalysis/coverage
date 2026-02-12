@@ -357,6 +357,53 @@ contract PremiumCollectorTest is Test {
         assertEq(underlying2.balanceOf(address(premiumManager)), 200 ether);
     }
 
+    function test_distributeBatch_SkipsWhenRedeemReturnsZeroAssets() public {
+        vm.prank(admin);
+        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+
+        uint256 shares = 100 ether;
+        mockVault1.mint(address(premiumCollector), shares);
+
+        address[] memory vaults = new address[](1);
+        vaults[0] = vault1;
+
+        premiumCollector.distributeBatch(vaults);
+
+        assertEq(mockVault1.balanceOf(address(premiumCollector)), 0);
+        assertEq(underlying1.balanceOf(address(premiumManager)), 0);
+
+        IPremiumCollector.VaultConfig memory config = premiumCollector.getVaultConfig(vault1);
+        assertEq(config.lastDistributeTime, block.timestamp);
+    }
+
+    function test_distributeBatch_ZeroAssetVaultDoesNotBlockOthers() public {
+        vm.startPrank(admin);
+        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault2, pool, COMMITTEE_ID, operator);
+        vm.stopPrank();
+
+        mockVault1.mint(address(premiumCollector), 100 ether);
+        mockVault2.mint(address(premiumCollector), 200 ether);
+        underlying2.mint(address(mockVault2), 200 ether);
+
+        address[] memory vaults = new address[](2);
+        vaults[0] = vault1;
+        vaults[1] = vault2;
+
+        premiumCollector.distributeBatch(vaults);
+
+        assertEq(mockVault1.balanceOf(address(premiumCollector)), 0);
+        assertEq(underlying1.balanceOf(address(premiumManager)), 0);
+
+        assertEq(mockVault2.balanceOf(address(premiumCollector)), 0);
+        assertEq(underlying2.balanceOf(address(premiumManager)), 200 ether);
+
+        IPremiumCollector.VaultConfig memory config1 = premiumCollector.getVaultConfig(vault1);
+        assertEq(config1.lastDistributeTime, block.timestamp);
+        IPremiumCollector.VaultConfig memory config2 = premiumCollector.getVaultConfig(vault2);
+        assertEq(config2.lastDistributeTime, block.timestamp);
+    }
+
     /*//////////////////////////////////////////////////////////////
                       GET DISTRIBUTABLE VAULTS
     //////////////////////////////////////////////////////////////*/
@@ -551,7 +598,13 @@ contract MockERC4626 is IERC4626, ERC20 {
         }
         _burn(owner, shares);
         uint256 assets = shares;
-        require(_ASSET.transfer(receiver, assets), "transfer failed");
+        uint256 available = _ASSET.balanceOf(address(this));
+        if (available < assets) {
+            assets = available;
+        }
+        if (assets > 0) {
+            require(_ASSET.transfer(receiver, assets), "transfer failed");
+        }
         return assets;
     }
 
