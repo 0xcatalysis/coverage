@@ -340,8 +340,17 @@ contract PremiumManagerTest is Test {
         premiumManager.distributePremium(pool, 0, operator, address(premiumToken), PREMIUM_AMOUNT);
     }
 
+    function test_distributePremium_WhenPoolFeeRecipientZero_Reverts() public {
+        MockCoverPool zeroOwnerPool = new MockCoverPool(address(0), POOL_FEE_BPS);
+
+        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(
+            address(zeroOwnerPool), COMMITTEE_ID, operator, address(premiumToken), PREMIUM_AMOUNT
+        );
+    }
+
     function test_distributePremium_WhenCombinedFeesExceed100Percent_Reverts() public {
-        // Create a pool with very high fees
         MockCoverPool highFeePool = new MockCoverPool(poolFeeRecipient, 9990);
 
         vm.expectRevert(
@@ -357,7 +366,6 @@ contract PremiumManagerTest is Test {
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        // Setup: transfer premium to PremiumManager (simulating PremiumCollector pushing funds)
         premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
 
         vm.expectEmit(true, true, true, true, address(premiumManager));

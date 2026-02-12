@@ -134,6 +134,7 @@ contract PremiumManager is
 
         uint16 poolFeeBps = ICoverPool(pool).poolFeeBps();
         address poolFeeRecipient = ICoverPool(pool).owner();
+        require(poolFeeRecipient != address(0), ZeroAddress());
 
         uint16 totalFeeBps = platformFeeBps + poolFeeBps;
         require(totalFeeBps <= _MAX_FEE_BPS, ExcessiveCombinedFees(platformFeeBps, poolFeeBps, totalFeeBps));
