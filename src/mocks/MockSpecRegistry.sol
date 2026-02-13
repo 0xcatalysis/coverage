@@ -33,10 +33,23 @@ contract MockSpecRegistry is ISpecRegistry {
     error NoSpecRegistered();
 
     /**
+     * @notice Thrown when attempting to perform an action while paused.
+     */
+    error EnforcedPause();
+
+    /**
      * @dev Restricts function access to the contract owner.
      */
     modifier onlyOwner() {
         require(msg.sender == OWNER, NotOwner());
+        _;
+    }
+
+    /**
+     * @dev Restricts function execution when the contract is paused.
+     */
+    modifier whenNotPaused() {
+        require(!_paused, EnforcedPause());
         _;
     }
 
@@ -54,7 +67,7 @@ contract MockSpecRegistry is ISpecRegistry {
      * @inheritdoc ISpecRegistry
      * @dev In MockSpecRegistry, this uses msg.sender as the pool address.
      */
-    function registerSpec(bytes32 specId, ISpec spec) external override {
+    function registerSpec(bytes32 specId, ISpec spec) external override whenNotPaused {
         require(specId != bytes32(0), InvalidSpecId());
         require(address(spec) != address(0), InvalidSpec());
 
@@ -79,7 +92,7 @@ contract MockSpecRegistry is ISpecRegistry {
      * @param specId Identifier for the spec (e.g., keccak256("MorphoSpec")).
      * @param spec Address of the ISpec implementation.
      */
-    function registerSpecForPool(address pool, bytes32 specId, address spec) external onlyOwner {
+    function registerSpecForPool(address pool, bytes32 specId, address spec) external onlyOwner whenNotPaused {
         _specs[pool][specId] = ISpec(spec);
         emit SpecRegistered(pool, specId, spec);
     }
@@ -96,7 +109,6 @@ contract MockSpecRegistry is ISpecRegistry {
 
     /**
      * @inheritdoc ISpecRegistry
-     * @dev Simple mock implementation that sets paused flag.
      */
     function pause() external override onlyOwner {
         _paused = true;
@@ -104,7 +116,6 @@ contract MockSpecRegistry is ISpecRegistry {
 
     /**
      * @inheritdoc ISpecRegistry
-     * @dev Simple mock implementation that clears paused flag.
      */
     function unpause() external override onlyOwner {
         _paused = false;
@@ -112,7 +123,6 @@ contract MockSpecRegistry is ISpecRegistry {
 
     /**
      * @inheritdoc ISpecRegistry
-     * @dev Returns the current paused state.
      */
     function paused() external view override returns (bool) {
         return _paused;
