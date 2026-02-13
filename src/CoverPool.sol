@@ -144,9 +144,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     function bindPolicyForRequest(
         uint96 policyId,
         Quote calldata quote,
-        bytes calldata signature,
+        address spec,
         address[] calldata vaults,
-        address spec
+        bytes calldata signature
     )
         external
         override

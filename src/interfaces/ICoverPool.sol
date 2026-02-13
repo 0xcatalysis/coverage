@@ -227,9 +227,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function bindPolicyForRequest(
         uint96 policyId,
         Quote calldata quote,
-        bytes calldata signature,
+        address spec,
         address[] calldata vaults,
-        address spec
+        bytes calldata signature
     )
         external;
 
