@@ -14,57 +14,52 @@ contract PremiumManagerTest is Test {
     uint16 internal constant PLATFORM_FEE_BPS = 50;
     uint16 internal constant POOL_FEE_BPS = 150;
     uint16 internal constant MAX_FEE_BPS = 10_000;
-    uint256 internal constant GROSS_PREMIUM = 1000 ether;
-    uint96 internal constant POLICY_ID = 1;
-    uint64 internal constant COVERAGE_DURATION = 30 days;
-    uint96 internal constant COMMITTEE_ID = 123;
+    uint256 internal constant PREMIUM_AMOUNT = 1000 ether;
+    uint96 internal constant POLICY_ID = 123;
 
     address internal admin;
-    address internal policyManager;
-    address internal buyer;
+    address internal premiumCollector;
     address internal platformTreasury;
     address internal poolFeeRecipient;
-    address internal coverPool;
-    address internal operator;
+    address internal pool;
+    address internal curator;
 
     PremiumManager internal premiumManager;
     MockRewardsManager internal rewardsManager;
     MockToken internal premiumToken;
-    bytes32 internal policyCommit;
+    MockCoverPool internal mockPool;
 
-    event PremiumCollected(uint96 indexed policyId, uint256 basePremium);
+    event PremiumDistributed(address indexed pool, uint96 indexed policyId, uint256 amount);
     event RewardsManagerSet(address indexed rewardsManager_);
     event PlatformTreasurySet(address indexed treasury);
+    event PlatformFeeBpsSet(uint16 indexed platformFeeBps_);
 
     function setUp() public {
         vm.warp(1_000_000);
 
         admin = makeAddr("admin");
-        policyManager = makeAddr("policyManager");
-        buyer = makeAddr("buyer");
+        premiumCollector = makeAddr("premiumCollector");
         platformTreasury = makeAddr("platformTreasury");
         poolFeeRecipient = makeAddr("poolFeeRecipient");
-        coverPool = makeAddr("coverPool");
-        operator = makeAddr("operator");
+        curator = makeAddr("curator");
 
         vm.label(admin, "Admin");
-        vm.label(policyManager, "PolicyManager");
-        vm.label(buyer, "Buyer");
+        vm.label(premiumCollector, "PremiumCollector");
         vm.label(platformTreasury, "PlatformTreasury");
         vm.label(poolFeeRecipient, "PoolFeeRecipient");
-        vm.label(coverPool, "CoverPool");
-        vm.label(operator, "Operator");
+        vm.label(curator, "Operator");
 
         rewardsManager = new MockRewardsManager();
         premiumToken = new MockToken();
-        policyCommit = keccak256("policy-commit");
+        mockPool = new MockCoverPool(curator, poolFeeRecipient, POOL_FEE_BPS);
+        pool = address(mockPool);
 
         Options memory deployOpts;
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
             "PremiumManager.sol",
             abi.encodeCall(
-                PremiumManager.initialize, (admin, policyManager, address(rewardsManager), platformTreasury)
+                PremiumManager.initialize, (admin, address(rewardsManager), platformTreasury, PLATFORM_FEE_BPS)
             ),
             deployOpts
         );
@@ -73,6 +68,11 @@ contract PremiumManagerTest is Test {
         vm.label(address(premiumManager), "PremiumManager");
         vm.label(address(rewardsManager), "RewardsManager");
         vm.label(address(premiumToken), "PremiumToken");
+        vm.label(address(mockPool), "MockPool");
+
+        bytes32 collectorRole = premiumManager.PREMIUM_COLLECTOR_ROLE();
+        vm.prank(admin);
+        premiumManager.grantRole(collectorRole, premiumCollector);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -83,37 +83,35 @@ contract PremiumManagerTest is Test {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(address(0), policyManager, address(rewardsManager), platformTreasury);
-    }
-
-    function test_initialize_WhenPolicyManagerZero_Reverts() public {
-        PremiumManager implementation = new PremiumManager();
-        PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
-        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(0), address(rewardsManager), platformTreasury);
+        freshManager.initialize(address(0), address(rewardsManager), platformTreasury, PLATFORM_FEE_BPS);
     }
 
     function test_initialize_WhenRewardsManagerZero_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, policyManager, address(0), platformTreasury);
+        freshManager.initialize(admin, address(0), platformTreasury, PLATFORM_FEE_BPS);
     }
 
     function test_initialize_WhenPlatformTreasuryZero_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, policyManager, address(rewardsManager), address(0));
+        freshManager.initialize(admin, address(rewardsManager), address(0), PLATFORM_FEE_BPS);
+    }
+
+    function test_initialize_WhenPlatformFeeExceedsMax_Reverts() public {
+        PremiumManager implementation = new PremiumManager();
+        PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
+        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.InvalidPlatformFeeBps.selector, 2501));
+        freshManager.initialize(admin, address(rewardsManager), platformTreasury, 2501);
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
         assertTrue(premiumManager.hasRole(premiumManager.DEFAULT_ADMIN_ROLE(), admin), "Admin role missing");
-        assertTrue(
-            premiumManager.hasRole(premiumManager.POLICY_MANAGER_ROLE(), policyManager), "Policy manager role missing"
-        );
         assertEq(premiumManager.rewardsManager(), address(rewardsManager), "Rewards manager mismatch");
         assertEq(premiumManager.platformTreasury(), platformTreasury, "Platform treasury mismatch");
+        assertEq(premiumManager.platformFeeBps(), PLATFORM_FEE_BPS, "Platform fee mismatch");
         assertFalse(premiumManager.paused(), "Manager unexpectedly paused");
     }
 
@@ -124,10 +122,12 @@ contract PremiumManagerTest is Test {
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, premiumManager.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
             )
         );
-        vm.prank(buyer);
+        vm.prank(premiumCollector);
         premiumManager.pause();
     }
 
@@ -148,10 +148,12 @@ contract PremiumManagerTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, premiumManager.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
             )
         );
-        vm.prank(buyer);
+        vm.prank(premiumCollector);
         premiumManager.unpause();
     }
 
@@ -172,10 +174,12 @@ contract PremiumManagerTest is Test {
         MockRewardsManager newRewardsManager = new MockRewardsManager();
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, premiumManager.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
             )
         );
-        vm.prank(buyer);
+        vm.prank(premiumCollector);
         premiumManager.setRewardsManager(address(newRewardsManager));
     }
 
@@ -205,10 +209,12 @@ contract PremiumManagerTest is Test {
         address newTreasury = makeAddr("newTreasury");
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, premiumManager.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
             )
         );
-        vm.prank(buyer);
+        vm.prank(premiumCollector);
         premiumManager.setPlatformTreasury(newTreasury);
     }
 
@@ -231,253 +237,140 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          COLLECT PREMIUM
+                       SET PLATFORM FEE BPS
     //////////////////////////////////////////////////////////////*/
 
-    function test_collectPremium_WhenCallerNotPolicyManager_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
+    function test_setPlatformFeeBps_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, premiumManager.POLICY_MANAGER_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
             )
         );
-        vm.prank(buyer);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.setPlatformFeeBps(100);
     }
 
-    function test_collectPremium_WhenPaused_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
+    function test_setPlatformFeeBps_WhenExceedsMax_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.InvalidPlatformFeeBps.selector, 2501));
+        vm.prank(admin);
+        premiumManager.setPlatformFeeBps(2501);
+    }
 
+    function test_setPlatformFeeBps_WhenValid_UpdatesStateAndEmits() public {
+        uint16 newFee = 100;
+
+        vm.expectEmit(true, false, false, true, address(premiumManager));
+        emit PlatformFeeBpsSet(newFee);
+
+        vm.prank(admin);
+        premiumManager.setPlatformFeeBps(newFee);
+
+        assertEq(premiumManager.platformFeeBps(), newFee, "Platform fee not updated");
+    }
+
+    function test_setPlatformFeeBps_AllowsZeroFee() public {
+        vm.prank(admin);
+        premiumManager.setPlatformFeeBps(0);
+
+        assertEq(premiumManager.platformFeeBps(), 0, "Platform fee should be zero");
+    }
+
+    function test_setPlatformFeeBps_AllowsMaxFee() public {
+        vm.prank(admin);
+        premiumManager.setPlatformFeeBps(2500);
+
+        assertEq(premiumManager.platformFeeBps(), 2500, "Platform fee should be max");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                         DISTRIBUTE PREMIUM
+    //////////////////////////////////////////////////////////////*/
+
+    function test_distributePremium_WhenCallerNotPremiumCollector_Reverts() public {
+        address unauthorized = makeAddr("unauthorized");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                unauthorized,
+                premiumManager.PREMIUM_COLLECTOR_ROLE()
+            )
+        );
+        vm.prank(unauthorized);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+    }
+
+    function test_distributePremium_WhenPaused_Reverts() public {
         vm.prank(admin);
         premiumManager.pause();
 
         vm.expectRevert();
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
-    function test_collectPremium_WhenBuyerZero_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.buyer = address(0);
-
+    function test_distributePremium_WhenPoolZero_Reverts() public {
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(address(0), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
-    function test_collectPremium_WhenPremiumTokenZero_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.premiumToken = address(0);
-
+    function test_distributePremium_WhenPremiumTokenZero_Reverts() public {
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(0), PREMIUM_AMOUNT);
     }
 
-    function test_collectPremium_WhenBasePremiumZero_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.basePremium = 0;
-
+    function test_distributePremium_WhenAmountZero_Reverts() public {
         vm.expectRevert(IPremiumManager.ZeroAmount.selector);
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), 0);
     }
 
-    function test_collectPremium_WhenPolicyCommitZero_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.policyCommit = bytes32(0);
-
-        vm.expectRevert(IPremiumManager.InvalidPolicyCommit.selector);
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+    function test_distributePremium_WhenCommitteeIdZero_Reverts() public {
+        vm.expectRevert(IPremiumManager.InvalidPolicyId.selector);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, 0, address(premiumToken), PREMIUM_AMOUNT);
     }
 
-    function test_collectPremium_WhenInvalidCoverageWindow_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.startTime = uint64(block.timestamp + 1 days);
-        allocation.maturityTime = uint64(block.timestamp);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPremiumManager.InvalidCoverageWindow.selector, allocation.startTime, allocation.maturityTime
-            )
-        );
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-    }
-
-    function test_collectPremium_WhenPremiumTotalsMismatch_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.basePremium = GROSS_PREMIUM + 1 ether;
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPremiumManager.PremiumTotalsMismatch.selector, GROSS_PREMIUM + 1 ether, GROSS_PREMIUM
-            )
-        );
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-    }
-
-    function test_collectPremium_WhenCoverPoolZero_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShare.coverPool = address(0);
+    function test_distributePremium_WhenPoolFeeRecipientZero_Reverts() public {
+        MockCoverPool zeroRecipientPool = new MockCoverPool(curator, address(0), POOL_FEE_BPS);
 
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(address(zeroRecipientPool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
-    function test_collectPremium_WhenPoolFeeRecipientZero_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShare.poolFeeRecipient = address(0);
+    function test_distributePremium_WhenPoolOwnerZero_Reverts() public {
+        MockCoverPool zeroOwnerPool = new MockCoverPool(address(0), poolFeeRecipient, POOL_FEE_BPS);
 
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(address(zeroOwnerPool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
-    function test_collectPremium_WhenOperatorZero_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShare.operator = address(0);
+    function test_distributePremium_WhenCombinedFeesExceed100Percent_Reverts() public {
+        MockCoverPool highFeePool = new MockCoverPool(curator, poolFeeRecipient, 9990);
 
-        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-    }
-
-    function test_collectPremium_WhenGrossPremiumZero_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShare.grossPremium = 0;
-        allocation.basePremium = 0;
-
-        vm.expectRevert(IPremiumManager.ZeroAmount.selector);
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-    }
-
-    function test_collectPremium_WhenPlatformFeeTooHigh_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.platformFeeBps = MAX_FEE_BPS + 1;
-
-        uint16 totalFeeBps = (MAX_FEE_BPS + 1) + POOL_FEE_BPS;
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IPremiumManager.ExcessiveCombinedFees.selector, MAX_FEE_BPS + 1, POOL_FEE_BPS, totalFeeBps
-            )
+            abi.encodeWithSelector(IPremiumManager.ExcessiveCombinedFees.selector, PLATFORM_FEE_BPS, 9990, 10_040)
         );
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(address(highFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
-    function test_collectPremium_WhenPoolFeeTooHigh_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShare.poolFeeBps = MAX_FEE_BPS + 1;
-
-        uint16 totalFeeBps = PLATFORM_FEE_BPS + (MAX_FEE_BPS + 1);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPremiumManager.ExcessiveCombinedFees.selector, PLATFORM_FEE_BPS, MAX_FEE_BPS + 1, totalFeeBps
-            )
-        );
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-    }
-
-    function test_collectPremium_WhenCombinedFeesExceed100Percent_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.platformFeeBps = 6000;
-        allocation.poolShare.poolFeeBps = 5000;
-
-        uint16 totalFeeBps = 11_000;
-        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.ExcessiveCombinedFees.selector, 6000, 5000, totalFeeBps));
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-    }
-
-    function test_collectPremium_WhenCombinedFeesEqual100Percent_Succeeds() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.platformFeeBps = 7000;
-        allocation.poolShare.poolFeeBps = 3000;
-
-        premiumToken.mint(buyer, GROSS_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(premiumManager), GROSS_PREMIUM);
-
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-
+    function test_distributePremium_WhenValid_DistributesFundsCorrectly() public {
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
-            premiumManager.getFeeSplits(GROSS_PREMIUM, 7000, 3000);
+            premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
-        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertEq(restakerSplit, 0, "Escrowed amount should be zero");
-    }
-
-    function test_collectPremium_WhenBothFeesMaxIndividually_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.platformFeeBps = MAX_FEE_BPS;
-        allocation.poolShare.poolFeeBps = MAX_FEE_BPS;
-
-        uint16 totalFeeBps = MAX_FEE_BPS + MAX_FEE_BPS;
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPremiumManager.ExcessiveCombinedFees.selector, MAX_FEE_BPS, MAX_FEE_BPS, totalFeeBps
-            )
-        );
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-    }
-
-    function test_collectPremium_WhenOneFeeZeroOtherExceedsMax_Reverts() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.platformFeeBps = 0;
-        allocation.poolShare.poolFeeBps = MAX_FEE_BPS + 1;
-
-        uint16 totalFeeBps = MAX_FEE_BPS + 1;
-        vm.expectRevert(
-            abi.encodeWithSelector(IPremiumManager.ExcessiveCombinedFees.selector, 0, MAX_FEE_BPS + 1, totalFeeBps)
-        );
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-    }
-
-    function test_collectPremium_WhenFeesJustBelowMax_Succeeds() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.platformFeeBps = 9998;
-        allocation.poolShare.poolFeeBps = 1;
-
-        premiumToken.mint(buyer, GROSS_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(premiumManager), GROSS_PREMIUM);
-
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-
-        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
-            premiumManager.getFeeSplits(GROSS_PREMIUM, 9998, 1);
-
-        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
-        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertGt(restakerSplit, 0, "Should have some escrowed amount");
-    }
-
-    function test_collectPremium_WhenValidSinglePool_TransfersFundsAndDistributesRewards() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-
-        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
-            premiumManager.getFeeSplits(GROSS_PREMIUM, PLATFORM_FEE_BPS, POOL_FEE_BPS);
-
-        premiumToken.mint(buyer, GROSS_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(premiumManager), GROSS_PREMIUM);
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
 
         vm.expectEmit(true, true, true, true, address(premiumManager));
-        emit PremiumCollected(POLICY_ID, GROSS_PREMIUM);
+        emit PremiumDistributed(pool, POLICY_ID, PREMIUM_AMOUNT);
 
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
@@ -485,84 +378,73 @@ contract PremiumManagerTest is Test {
         assertEq(rewardsManager.distributeRewardsCallCount(), 1, "DistributeRewards not called");
     }
 
-    function test_collectPremium_WhenZeroPlatformFee_OnlyTransfersPoolFeeAndRewards() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.platformFeeBps = 0;
+    function test_distributePremium_WhenZeroPlatformFee_OnlyTransfersPoolFeeAndRewards() public {
+        vm.prank(admin);
+        premiumManager.setPlatformFeeBps(0);
 
-        (, uint256 poolSplit, uint256 restakerSplit) = premiumManager.getFeeSplits(GROSS_PREMIUM, 0, POOL_FEE_BPS);
+        (, uint256 poolSplit, uint256 restakerSplit) = premiumManager.getFeeSplits(PREMIUM_AMOUNT, 0, POOL_FEE_BPS);
 
-        premiumToken.mint(buyer, GROSS_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(premiumManager), GROSS_PREMIUM);
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
 
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
         assertEq(premiumToken.balanceOf(platformTreasury), 0, "Platform fee should be zero");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
         assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Rewards amount mismatch");
     }
 
-    function test_collectPremium_WhenZeroPoolFee_OnlyTransfersPlatformFeeAndRewards() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.poolShare.poolFeeBps = 0;
+    function test_distributePremium_WhenZeroPoolFee_OnlyTransfersPlatformFeeAndRewards() public {
+        MockCoverPool zeroFeePool = new MockCoverPool(curator, poolFeeRecipient, 0);
 
-        (uint256 platformSplit,/* poolSplit */, uint256 restakerSplit) =
-            premiumManager.getFeeSplits(GROSS_PREMIUM, PLATFORM_FEE_BPS, 0);
+        (uint256 platformSplit,, uint256 restakerSplit) =
+            premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, 0);
 
-        premiumToken.mint(buyer, GROSS_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(premiumManager), GROSS_PREMIUM);
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
 
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(address(zeroFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), 0, "Pool fee should be zero");
         assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Rewards amount mismatch");
     }
 
-    function test_collectPremium_WhenZeroRestaker_OnlyTransfersFees() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-        allocation.platformFeeBps = 5000;
-        allocation.poolShare.poolFeeBps = 5000;
+    function test_distributePremium_DistributesRewardsWithCorrectParameters() public {
+        (,, uint256 restakerSplit) = premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        (
-            uint256 platformSplit,
-            uint256 poolSplit, /* restakerSplit */
-        ) = premiumManager.getFeeSplits(GROSS_PREMIUM, allocation.platformFeeBps, allocation.poolShare.poolFeeBps);
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
 
-        premiumToken.mint(buyer, GROSS_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(premiumManager), GROSS_PREMIUM);
-
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-
-        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
-        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertEq(premiumToken.balanceOf(address(rewardsManager)), 0, "Rewards should be zero");
-        assertEq(rewardsManager.distributeRewardsCallCount(), 0, "DistributeRewards should not be called");
-    }
-
-    function test_collectPremium_DistributesRewardsWithCorrectParameters() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-
-        (,/* poolSplit */, uint256 restakerSplit) =
-            premiumManager.getFeeSplits(GROSS_PREMIUM, PLATFORM_FEE_BPS, POOL_FEE_BPS);
-
-        premiumToken.mint(buyer, GROSS_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(premiumManager), GROSS_PREMIUM);
-
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
         MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
-        assertEq(call.committeeId, COMMITTEE_ID, "Committee ID mismatch");
-        assertEq(call.operator, operator, "Operator mismatch");
+        assertEq(call.policyId, POLICY_ID, "Policy ID mismatch");
+        assertEq(call.curator, curator, "Operator mismatch");
         assertEq(call.rewardAmount, restakerSplit, "Reward amount mismatch");
         assertEq(address(call.rewardToken), address(premiumToken), "Reward token mismatch");
+    }
+
+    function test_distributePremium_WhenFeeRecipientDiffersFromOwner_SendsFeesToRecipientAndOperatorToOwner() public {
+        address differentFeeRecipient = makeAddr("differentFeeRecipient");
+        address curator = makeAddr("curator");
+        MockCoverPool separateAddressPool = new MockCoverPool(curator, differentFeeRecipient, POOL_FEE_BPS);
+
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
+            premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
+
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(address(separateAddressPool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(differentFeeRecipient), poolSplit, "Pool fee should go to feeRecipient");
+        assertEq(premiumToken.balanceOf(curator), 0, "Curator should not receive pool fee");
+        assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Rewards amount mismatch");
+
+        MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
+        assertEq(call.curator, curator, "Curator should be the pool owner, not feeRecipient");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -618,58 +500,6 @@ contract PremiumManagerTest is Test {
         assertEq(restakerSplit, 99_000, "Restaker split rounding");
         assertEq(platformSplit + poolSplit + restakerSplit, grossPremium, "Total should match");
     }
-
-    /*//////////////////////////////////////////////////////////////
-                     COLLECT PREMIUM - REENTRANCY
-    //////////////////////////////////////////////////////////////*/
-
-    function test_collectPremium_IsProtectedByReentrancyGuard() public {
-        IPremiumManager.PremiumAllocation memory allocation = _defaultAllocation();
-
-        premiumToken.mint(buyer, GROSS_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(premiumManager), GROSS_PREMIUM);
-
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-
-        premiumToken.mint(buyer, GROSS_PREMIUM);
-        vm.prank(buyer);
-        premiumToken.approve(address(premiumManager), GROSS_PREMIUM);
-
-        allocation.policyId = 2;
-        vm.prank(policyManager);
-        premiumManager.collectPremium(allocation);
-
-        assertEq(rewardsManager.distributeRewardsCallCount(), 2, "Should allow sequential calls");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                                 HELPERS
-    //////////////////////////////////////////////////////////////*/
-
-    function _defaultAllocation() internal view returns (IPremiumManager.PremiumAllocation memory) {
-        IPremiumManager.PoolShare memory poolShare = IPremiumManager.PoolShare({
-            coverPool: coverPool,
-            poolFeeRecipient: poolFeeRecipient,
-            operator: operator,
-            grossPremium: GROSS_PREMIUM,
-            poolFeeBps: POOL_FEE_BPS
-        });
-
-        return IPremiumManager.PremiumAllocation({
-            policyId: POLICY_ID,
-            policyCommit: policyCommit,
-            buyer: buyer,
-            premiumToken: address(premiumToken),
-            basePremium: GROSS_PREMIUM,
-            platformFeeBps: PLATFORM_FEE_BPS,
-            startTime: uint64(block.timestamp),
-            maturityTime: uint64(block.timestamp + COVERAGE_DURATION),
-            committeeId: COMMITTEE_ID,
-            poolShare: poolShare
-        });
-    }
 }
 
 contract MockToken is ERC20 {
@@ -684,29 +514,34 @@ contract MockRewardsManager {
     uint256 public distributeRewardsCallCount;
 
     struct DistributeRewardsCall {
-        uint96 committeeId;
-        address operator;
+        uint96 policyId;
+        address curator;
         uint256 rewardAmount;
         IERC20 rewardToken;
     }
 
     DistributeRewardsCall private _lastCall;
 
-    function distributeRewards(
-        uint96 committeeId,
-        address operator,
-        uint256 rewardAmount,
-        IERC20 rewardToken
-    )
-        external
-    {
+    function distributeRewards(uint96 policyId, address curator, uint256 rewardAmount, IERC20 rewardToken) external {
         distributeRewardsCallCount++;
         _lastCall = DistributeRewardsCall({
-            committeeId: committeeId, operator: operator, rewardAmount: rewardAmount, rewardToken: rewardToken
+            policyId: policyId, curator: curator, rewardAmount: rewardAmount, rewardToken: rewardToken
         });
     }
 
     function lastCall() external view returns (DistributeRewardsCall memory) {
         return _lastCall;
+    }
+}
+
+contract MockCoverPool {
+    address public owner;
+    address public feeRecipient;
+    uint16 public poolFeeBps;
+
+    constructor(address owner_, address feeRecipient_, uint16 poolFeeBps_) {
+        owner = owner_;
+        feeRecipient = feeRecipient_;
+        poolFeeBps = poolFeeBps_;
     }
 }

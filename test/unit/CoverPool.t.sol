@@ -14,7 +14,7 @@ import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 
 contract CoverPoolTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,uint64 maturityTime,uint64 expirationTime)"
     );
     string internal constant NAME = "Catalysis Cover Pool";
     string internal constant VERSION = "1";
@@ -77,7 +77,7 @@ contract CoverPoolTest is Test {
         implementation = new CoverPool();
         address clone = Clones.clone(address(implementation));
         coverPool = CoverPool(clone);
-        coverPool.initialize(curator, policyManager, quoteSigner, stakeManager, poolFeeBps);
+        coverPool.initialize(curator, quoteSigner, policyManager, stakeManager, poolFeeBps);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -86,31 +86,31 @@ contract CoverPoolTest is Test {
     function test_initialize_WhenCuratorZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(address(0), policyManager, quoteSigner, stakeManager, poolFeeBps);
+        pool.initialize(address(0), quoteSigner, policyManager, stakeManager, poolFeeBps);
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, address(0), quoteSigner, stakeManager, poolFeeBps);
+        pool.initialize(curator, quoteSigner, address(0), stakeManager, poolFeeBps);
     }
 
     function test_initialize_WhenQuoteSignerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, policyManager, address(0), stakeManager, poolFeeBps);
+        pool.initialize(curator, address(0), policyManager, stakeManager, poolFeeBps);
     }
 
     function test_initialize_WhenStakeManagerZero_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.ZeroAddress.selector);
-        pool.initialize(curator, policyManager, quoteSigner, address(0), poolFeeBps);
+        pool.initialize(curator, quoteSigner, policyManager, address(0), poolFeeBps);
     }
 
     function test_initialize_WhenFeeTooHigh_Reverts() public {
         CoverPool pool = CoverPool(Clones.clone(address(implementation)));
         vm.expectRevert(ICoverPool.InvalidFeeBps.selector);
-        pool.initialize(curator, policyManager, quoteSigner, stakeManager, 2100);
+        pool.initialize(curator, quoteSigner, policyManager, stakeManager, 2100);
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -126,6 +126,7 @@ contract CoverPoolTest is Test {
         assertEq(coverPool.poolFeeBps(), poolFeeBps, "Pool fee mismatch");
         assertFalse(coverPool.paused(), "Pool unexpectedly paused");
         assertEq(coverPool.defaultAdminDelay(), 0, "Default admin delay mismatch");
+        assertEq(coverPool.feeRecipient(), curator, "Fee recipient should default to curator");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -202,6 +203,56 @@ contract CoverPoolTest is Test {
         coverPool.setPoolFeeBps(newFee);
 
         assertEq(coverPool.poolFeeBps(), newFee, "Pool fee not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                         SET FEE RECIPIENT
+    //////////////////////////////////////////////////////////////*/
+    function test_setFeeRecipient_WhenCallerNotCurator_Reverts() public {
+        address newFeeRecipient = makeAddr("newFeeRecipient");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, policyManager, coverPool.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(policyManager);
+        coverPool.setFeeRecipient(newFeeRecipient);
+    }
+
+    function test_setFeeRecipient_WhenAddressZero_Reverts() public {
+        vm.expectRevert(ICoverPool.ZeroAddress.selector);
+        vm.prank(curator);
+        coverPool.setFeeRecipient(address(0));
+    }
+
+    function test_setFeeRecipient_WhenValid_UpdatesStateAndEmits() public {
+        address newFeeRecipient = makeAddr("newFeeRecipient");
+
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.FeeRecipientSet(curator, newFeeRecipient);
+
+        vm.prank(curator);
+        coverPool.setFeeRecipient(newFeeRecipient);
+
+        assertEq(coverPool.feeRecipient(), newFeeRecipient, "Fee recipient not updated");
+    }
+
+    function test_setFeeRecipient_MultipleTimes_UpdatesCorrectly() public {
+        address firstFeeRecipient = makeAddr("firstFeeRecipient");
+        address secondFeeRecipient = makeAddr("secondFeeRecipient");
+
+        vm.startPrank(curator);
+
+        coverPool.setFeeRecipient(firstFeeRecipient);
+        assertEq(coverPool.feeRecipient(), firstFeeRecipient, "First fee recipient not set");
+
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.FeeRecipientSet(firstFeeRecipient, secondFeeRecipient);
+
+        coverPool.setFeeRecipient(secondFeeRecipient);
+        assertEq(coverPool.feeRecipient(), secondFeeRecipient, "Second fee recipient not set");
+
+        vm.stopPrank();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -465,14 +516,13 @@ contract CoverPoolTest is Test {
     function _defaultQuote() private view returns (ICoverPool.Quote memory quote) {
         quote = ICoverPool.Quote({
             pool: address(coverPool),
-            committeeId: uint96(123),
+            policyId: uint96(123),
             coverageLimit: 1000 ether,
             basePremium: 100 ether,
             specId: specId,
             termsHash: termsHash,
             beneficiary: payoutRecipient,
             startTime: uint64(block.timestamp + 1 hours),
-            operator: operator,
             maturityTime: uint64(block.timestamp + 25 hours),
             expirationTime: uint64(block.timestamp + 2 days)
         });
@@ -493,14 +543,13 @@ contract CoverPoolTest is Test {
         return EfficientHashLib.hash(
             uint256(QUOTE_TYPEHASH),
             uint256(uint160(quote.pool)),
-            uint256(quote.committeeId),
+            uint256(quote.policyId),
             quote.coverageLimit,
             quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),
             uint256(quote.startTime),
-            uint256(uint160(quote.operator)),
             uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );
@@ -528,12 +577,11 @@ contract MockPolicyManager {
             buyer: buyer,
             beneficiary: address(0),
             claimer: address(0),
-            premiumToken: address(0),
             payoutToken: address(0),
-            operator: address(0),
             coverageAmount: 1_000_000e8,
-            committeeId: policyId,
-            status: IPolicyManager.PolicyStatus.Created
+            policyId: policyId,
+            status: IPolicyManager.PolicyStatus.Created,
+            bindPolicyHook: address(1)
         });
     }
 
