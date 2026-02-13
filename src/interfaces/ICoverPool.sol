@@ -22,8 +22,8 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     struct Quote {
         /// @notice Address of the CoverPool issuing the quote.
         address pool;
-        /// @notice Restaking committee identifier associated with the policy.
-        uint96 committeeId;
+        /// @notice Policy identifier associated with the coverage.
+        uint96 policyId;
         /// @notice Maximum notional coverage in payout token units supplied by this pool.
         uint256 coverageLimit;
         /// @notice Base premium amount owed to the pool for this coverage.
@@ -36,8 +36,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         address beneficiary;
         /// @notice Policy coverage start timestamp proposed in the quote.
         uint64 startTime;
-        /// @notice Restaking operator whose delegation is being covered.
-        address operator;
         /// @notice Policy coverage maturity timestamp proposed in the quote.
         uint64 maturityTime;
         /// @notice Expiration timestamp for the signed quote.
@@ -49,7 +47,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @dev Contains the confirmed terms and coverage details for the bound policy.
      */
     struct BoundPolicy {
-        /// @notice Incremental identifier for the policy.
+        /// @notice Policy identifier (1:1 with committee).
         uint96 policyId;
         /// @notice Deterministic hash representing the policy schedule.
         bytes32 policyCommit;
@@ -61,10 +59,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         uint256 coverageLimit;
         /// @notice Destination address for potential claim payouts (the policy holder).
         address beneficiary;
-        /// @notice Restaking committee identifier for the bound policy.
-        uint96 committeeId;
-        /// @notice Restaking operator whose delegation the coverage protects.
-        address operator;
         /// @notice Policy coverage start timestamp confirmed at bind.
         uint64 startTime;
         /// @notice Policy coverage maturity timestamp confirmed at bind.
@@ -81,10 +75,16 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Emitted when a policy is bound through bindPolicyForRequest.
      * @param policyId The policy identifier.
-     * @param committeeId The committee identifier.
-     * @param vaultCount The number of vaults bound to the committee.
+     * @param vaultCount The number of vaults bound to the policy.
      */
-    event PolicyForRequestBound(uint96 indexed policyId, uint96 indexed committeeId, uint256 vaultCount);
+    event PolicyForRequestBound(uint96 indexed policyId, uint256 vaultCount);
+
+    /**
+     * @notice Emitted when the fee recipient address is updated.
+     * @param previousFeeRecipient Fee recipient address before the update.
+     * @param newFeeRecipient Fee recipient address after the update.
+     */
+    event FeeRecipientSet(address indexed previousFeeRecipient, address indexed newFeeRecipient);
 
     /**
      * @notice Reverts when a required address argument is zero.
@@ -119,11 +119,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Reverts when the beneficiary address is zero.
      */
     error InvalidBeneficiary();
-
-    /**
-     * @notice Reverts when the operator address is zero.
-     */
-    error InvalidOperator();
 
     /**
      * @notice Reverts when a required spec identifier is empty.
@@ -175,13 +170,13 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error EmptyVaults();
 
     /**
-     * @notice Reverts when committee identifier is invalid or mismatched.
+     * @notice Reverts when policy identifier is invalid or mismatched.
      */
-    error InvalidCommitteeId();
+    error InvalidPolicyId();
 
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
-     * @param curator_ Address assigned as the owner (curator) and operator.
+     * @param curator_ Address assigned as the owner (curator). Serves as the operator for the pool.
      * @param policyManager_ Address of the PolicyManager contract for policy binding operations.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
      * @param stakeManager_ Address of the StakeManager contract for vault binding operations.
@@ -189,8 +184,8 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      */
     function initialize(
         address curator_,
-        address policyManager_,
         address quoteSigner_,
+        address policyManager_,
         address stakeManager_,
         uint16 poolFeeBps_
     )
@@ -211,6 +206,12 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
      */
     function setPoolFeeBps(uint16 poolFeeBps_) external;
+
+    /**
+     * @notice Updates the fee recipient address.
+     * @param feeRecipient_ Address that will receive pool fee payments.
+     */
+    function setFeeRecipient(address feeRecipient_) external;
 
     /**
      * @notice Curator entrypoint to bind a policy draft via PolicyManager.
@@ -253,6 +254,12 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @return The pool fee in basis points.
      */
     function poolFeeBps() external view returns (uint16);
+
+    /**
+     * @notice Returns the address that receives pool fee payments.
+     * @return The fee recipient address.
+     */
+    function feeRecipient() external view returns (address);
 
     /**
      * @notice Returns the PolicyManager address used for binding.

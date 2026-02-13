@@ -9,6 +9,7 @@ import {ClaimManager} from "../src/ClaimManager.sol";
 import {CoverPool} from "../src/CoverPool.sol";
 import {CoverPoolFactory} from "../src/CoverPoolFactory.sol";
 import {PolicyManager} from "../src/PolicyManager.sol";
+import {PremiumCollector} from "../src/PremiumCollector.sol";
 import {PremiumManager} from "../src/PremiumManager.sol";
 import {Swapper} from "../src/Swapper.sol";
 
@@ -22,10 +23,11 @@ import {Swapper} from "../src/Swapper.sol";
  *        2. Swapper proxy (requires only WETH address)
  *
  *      Phase 2 - Contracts with circular dependencies (deployed with deployer as placeholder):
- *        3. PremiumManager proxy (premium collection and immediate distribution to RewardsManager)
- *        4. ClaimManager proxy (claim processing and payout orchestration)
- *        5. PolicyManager proxy (policy binding entrypoint and policy storage)
- *        6. CoverPoolFactory proxy (pool creation and registry)
+ *        3. PremiumManager proxy (premium distribution, fee splitting, and reward routing)
+ *        4. PremiumCollector proxy (ERC-4626 vault share accrual and periodic redemption)
+ *        5. ClaimManager proxy (claim processing and payout orchestration)
+ *        6. PolicyManager proxy (policy binding entrypoint and policy storage)
+ *        7. CoverPoolFactory proxy (pool creation and registry)
  *
  *      Phase 3 - Role configuration:
  *        - Grant actual roles to deployed contracts
@@ -105,6 +107,8 @@ abstract contract Deploy is Script {
      * @param coverPoolFactoryImpl CoverPoolFactory implementation address.
      * @param swapperProxy Swapper UUPS proxy address.
      * @param swapperImpl Swapper implementation address.
+     * @param premiumCollectorProxy PremiumCollector UUPS proxy address.
+     * @param premiumCollectorImpl PremiumCollector implementation address.
      * @param premiumManagerProxy PremiumManager UUPS proxy address.
      * @param premiumManagerImpl PremiumManager implementation address.
      * @param claimManagerProxy ClaimManager UUPS proxy address.
@@ -118,6 +122,8 @@ abstract contract Deploy is Script {
         address coverPoolFactoryImpl;
         address swapperProxy;
         address swapperImpl;
+        address premiumCollectorProxy;
+        address premiumCollectorImpl;
         address premiumManagerProxy;
         address premiumManagerImpl;
         address claimManagerProxy;
@@ -213,9 +219,10 @@ abstract contract Deploy is Script {
     }
 
     /**
-     * @notice Deploys PremiumManager contract.
-     * @dev PremiumManager handles premium collection, fee distribution, and immediate reward distribution
-     *      to RewardsManager. Uses deployer as temporary admin and placeholder for manager roles.
+     * @notice Deploys PremiumManager and PremiumCollector contracts.
+     * @dev PremiumManager handles premium distribution, fee splitting, and reward routing to RewardsManager.
+     *      PremiumCollector accrues ERC-4626 vault shares and redeems them periodically to underlying assets.
+     *      Uses deployer as temporary admin and placeholder for manager roles.
      * @param contracts DeployedContracts struct to populate with premium contract addresses.
      * @param roles Role configuration containing admin, deployer, and platformTreasury addresses.
      * @param external_ External configuration containing RewardsManager address.
@@ -233,11 +240,21 @@ abstract contract Deploy is Script {
             "PremiumManager.sol:PremiumManager",
             abi.encodeCall(
                 PremiumManager.initialize,
-                (roles.deployer, roles.deployer, external_.rewardsManager, roles.platformTreasury)
+                (roles.deployer, external_.rewardsManager, roles.platformTreasury, roles.platformFeeBps)
             ),
             opts
         );
         contracts.premiumManagerImpl = Upgrades.getImplementationAddress(contracts.premiumManagerProxy);
+
+        uint64 distributeInterval = 86_400; // 24 hours default
+        contracts.premiumCollectorProxy = Upgrades.deployUUPSProxy(
+            "PremiumCollector.sol:PremiumCollector",
+            abi.encodeCall(
+                PremiumCollector.initialize, (roles.deployer, contracts.premiumManagerProxy, distributeInterval)
+            ),
+            opts
+        );
+        contracts.premiumCollectorImpl = Upgrades.getImplementationAddress(contracts.premiumCollectorProxy);
     }
 
     /**
@@ -266,11 +283,9 @@ abstract contract Deploy is Script {
                 PolicyManager.initialize,
                 (
                     roles.deployer,
-                    contracts.premiumManagerProxy,
                     external_.stakeManager,
                     roles.deployer, // Temporary placeholder for claimManager, will be set after ClaimManager deployment
-                    roles.deployer, // Temporary placeholder for coverPoolFactory, will be set after factory deployment
-                    roles.platformFeeBps
+                    roles.deployer // Temporary placeholder for coverPoolFactory, will be set after factory deployment
                 )
             ),
             opts
@@ -334,7 +349,7 @@ abstract contract Deploy is Script {
      * @dev Role assignments:
      *      - All contracts: DEFAULT_ADMIN_ROLE → roles.admin (when deployer != admin)
      *      - Swapper: SWAP_EXECUTOR_ROLE → ClaimManager (for collateral conversion)
-     *      - PremiumManager: POLICY_MANAGER_ROLE → PolicyManager (for premium collection)
+     *      - PremiumManager: PREMIUM_COLLECTOR_ROLE → PremiumCollector (for premium distribution)
      * @param contracts DeployedContracts containing all proxy addresses.
      * @param roles RoleConfig containing admin address for DEFAULT_ADMIN_ROLE grant.
      */
@@ -343,6 +358,7 @@ abstract contract Deploy is Script {
 
         if (roles.deployer != roles.admin) {
             IAccessControl(contracts.swapperProxy).grantRole(defaultAdminRole, roles.admin);
+            IAccessControl(contracts.premiumCollectorProxy).grantRole(defaultAdminRole, roles.admin);
             IAccessControl(contracts.premiumManagerProxy).grantRole(defaultAdminRole, roles.admin);
             IAccessControl(contracts.claimManagerProxy).grantRole(defaultAdminRole, roles.admin);
             IAccessControl(contracts.policyManagerProxy).grantRole(defaultAdminRole, roles.admin);
@@ -354,7 +370,7 @@ abstract contract Deploy is Script {
 
         IAccessControl(contracts.premiumManagerProxy)
             .grantRole(
-                PremiumManager(contracts.premiumManagerProxy).POLICY_MANAGER_ROLE(), contracts.policyManagerProxy
+                PremiumManager(contracts.premiumManagerProxy).PREMIUM_COLLECTOR_ROLE(), contracts.premiumCollectorProxy
             );
     }
 
@@ -377,10 +393,8 @@ abstract contract Deploy is Script {
         IAccessControl(contracts.swapperProxy)
             .revokeRole(Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), roles.deployer);
 
-        IAccessControl(contracts.premiumManagerProxy)
-            .revokeRole(PremiumManager(contracts.premiumManagerProxy).POLICY_MANAGER_ROLE(), roles.deployer);
-
         IAccessControl(contracts.swapperProxy).revokeRole(defaultAdminRole, roles.deployer);
+        IAccessControl(contracts.premiumCollectorProxy).revokeRole(defaultAdminRole, roles.deployer);
         IAccessControl(contracts.premiumManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
         IAccessControl(contracts.claimManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
         IAccessControl(contracts.policyManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
@@ -429,6 +443,9 @@ abstract contract Deploy is Script {
         console2.log("");
         console2.log("Swapper Proxy:", contracts.swapperProxy);
         console2.log("Swapper Implementation:", contracts.swapperImpl);
+        console2.log("");
+        console2.log("PremiumCollector Proxy:", contracts.premiumCollectorProxy);
+        console2.log("PremiumCollector Implementation:", contracts.premiumCollectorImpl);
         console2.log("");
         console2.log("PremiumManager Proxy:", contracts.premiumManagerProxy);
         console2.log("PremiumManager Implementation:", contracts.premiumManagerImpl);

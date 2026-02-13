@@ -15,8 +15,6 @@ interface ISpec {
     struct EvaluationResult {
         /// @notice True if the claim should be paid, false if rejected.
         bool isPayable;
-        /// @notice Amount to pay in USD terms (18 decimals).
-        uint256 amountUsd;
         /// @notice Hash of evaluation notes/evidence for auditability.
         bytes32 notesHash;
     }

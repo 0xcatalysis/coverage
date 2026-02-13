@@ -9,12 +9,13 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
 import {IRewardsManager} from "./interfaces/IRewardsManager.sol";
+import {ICoverPool} from "./interfaces/ICoverPool.sol";
 
 /**
  * @title PremiumManager
- * @notice Collects upfront base premiums, carves protocol/curator fees, and distributes restaker shares.
+ * @notice Receives premiums from PremiumCollector, carves protocol/curator fees, and distributes restaker shares.
  * @dev Normalizes premium flows across pools and provides pause hooks for emergency halts.
- *      Integrates with RewardsManager to distribute premiums to restakers at bind time.
+ *      Integrates with RewardsManager to distribute premiums to restakers.
  */
 // slither-disable-next-line unimplemented-functions
 contract PremiumManager is
@@ -26,13 +27,15 @@ contract PremiumManager is
 {
     using SafeERC20 for IERC20;
 
-    bytes32 public constant override POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
+    bytes32 public constant override PREMIUM_COLLECTOR_ROLE = keccak256("PREMIUM_COLLECTOR_ROLE");
 
     uint16 private constant _BPS_DENOMINATOR = 10_000;
     uint16 private constant _MAX_FEE_BPS = 10_000;
+    uint16 private constant _MAX_PLATFORM_FEE_BPS = 2500; // 25%
 
     address public override rewardsManager;
     address public override platformTreasury;
+    uint16 public override platformFeeBps;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -40,35 +43,32 @@ contract PremiumManager is
     }
 
     /**
-     * @notice Initializes the PremiumManager with role assignments and rewards manager wiring.
+     * @notice Initializes the PremiumManager with role assignments and configuration.
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
-     * @param policyManager_ Address granted POLICY_MANAGER_ROLE for triggering premium collection.
-     * @param rewardsManager_ Address of the RewardsManager contract for immediate reward distribution.
+     * @param rewardsManager_ Address of the RewardsManager contract for reward distribution.
      * @param platformTreasury_ Address of the platform treasury.
+     * @param platformFeeBps_ Platform fee in basis points (max 2500 = 25%).
      */
     function initialize(
         address admin_,
-        address policyManager_,
         address rewardsManager_,
-        address platformTreasury_
+        address platformTreasury_,
+        uint16 platformFeeBps_
     )
         external
         initializer
     {
-        require(
-            admin_ != address(0) && policyManager_ != address(0) && rewardsManager_ != address(0)
-                && platformTreasury_ != address(0),
-            ZeroAddress()
-        );
+        require(admin_ != address(0) && rewardsManager_ != address(0) && platformTreasury_ != address(0), ZeroAddress());
+        require(platformFeeBps_ <= _MAX_PLATFORM_FEE_BPS, InvalidPlatformFeeBps(platformFeeBps_));
 
         __AccessControl_init();
         __Pausable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
-        _grantRole(POLICY_MANAGER_ROLE, policyManager_);
 
         rewardsManager = rewardsManager_;
         platformTreasury = platformTreasury_;
+        platformFeeBps = platformFeeBps_;
     }
 
     /**
@@ -106,57 +106,59 @@ contract PremiumManager is
     /**
      * @inheritdoc IPremiumManager
      */
-    function collectPremium(PremiumAllocation calldata allocation)
+    function setPlatformFeeBps(uint16 platformFeeBps_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(platformFeeBps_ <= _MAX_PLATFORM_FEE_BPS, InvalidPlatformFeeBps(platformFeeBps_));
+        platformFeeBps = platformFeeBps_;
+        emit PlatformFeeBpsSet(platformFeeBps_);
+    }
+
+    /**
+     * @inheritdoc IPremiumManager
+     */
+    function distributePremium(
+        address pool,
+        uint96 policyId,
+        address premiumToken,
+        uint256 amount
+    )
         external
         override
         nonReentrant
         whenNotPaused
-        onlyRole(POLICY_MANAGER_ROLE)
+        onlyRole(PREMIUM_COLLECTOR_ROLE)
     {
-        _validateAllocation(allocation);
+        require(pool != address(0) && premiumToken != address(0), ZeroAddress());
+        require(amount != 0, ZeroAmount());
+        require(policyId != 0, InvalidPolicyId());
 
-        PoolShare calldata poolShare = allocation.poolShare;
+        uint16 poolFeeBps = ICoverPool(pool).poolFeeBps();
+        address curator = ICoverPool(pool).owner();
+        address feeRecipient = ICoverPool(pool).feeRecipient();
+        require(curator != address(0) && feeRecipient != address(0), ZeroAddress());
 
-        require(poolShare.coverPool != address(0), ZeroAddress());
-        require(poolShare.poolFeeRecipient != address(0), ZeroAddress());
-        require(poolShare.operator != address(0), ZeroAddress());
-        require(poolShare.grossPremium != 0, ZeroAmount());
-        require(allocation.committeeId != 0, InvalidCommitteeId());
-        require(
-            poolShare.grossPremium == allocation.basePremium,
-            PremiumTotalsMismatch(allocation.basePremium, poolShare.grossPremium)
-        );
+        uint16 totalFeeBps = platformFeeBps + poolFeeBps;
+        require(totalFeeBps <= _MAX_FEE_BPS, ExcessiveCombinedFees(platformFeeBps, poolFeeBps, totalFeeBps));
 
-        uint16 totalFeeBps = allocation.platformFeeBps + poolShare.poolFeeBps;
-        require(
-            totalFeeBps <= _MAX_FEE_BPS,
-            ExcessiveCombinedFees(allocation.platformFeeBps, poolShare.poolFeeBps, totalFeeBps)
-        );
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
+            getFeeSplits(amount, platformFeeBps, poolFeeBps);
 
-        (uint256 platformSplit, uint256 poolSplit, uint256 restakerPremium) =
-            getFeeSplits(poolShare.grossPremium, allocation.platformFeeBps, poolShare.poolFeeBps);
-
-        IERC20 token = IERC20(allocation.premiumToken);
+        IERC20 token = IERC20(premiumToken);
 
         if (platformSplit > 0) {
-            // slither-disable-next-line arbitrary-send-erc20
-            token.safeTransferFrom(allocation.buyer, platformTreasury, platformSplit);
+            token.safeTransfer(platformTreasury, platformSplit);
         }
 
         if (poolSplit > 0) {
-            // slither-disable-next-line arbitrary-send-erc20
-            token.safeTransferFrom(allocation.buyer, poolShare.poolFeeRecipient, poolSplit);
+            token.safeTransfer(feeRecipient, poolSplit);
         }
 
-        if (restakerPremium > 0) {
-            // slither-disable-next-line arbitrary-send-erc20
-            token.safeTransferFrom(allocation.buyer, rewardsManager, restakerPremium);
-
-            IRewardsManager(rewardsManager)
-                .distributeRewards(allocation.committeeId, poolShare.operator, restakerPremium, token);
+        if (restakerSplit > 0) {
+            token.safeTransfer(rewardsManager, restakerSplit);
+            // Distribute rewards to committee in core contracts using policyId as committeeId (1:1 mapping).
+            IRewardsManager(rewardsManager).distributeRewards(policyId, curator, restakerSplit, token);
         }
 
-        emit PremiumCollected(allocation.policyId, allocation.basePremium);
+        emit PremiumDistributed(pool, policyId, amount);
     }
 
     /**
@@ -171,16 +173,16 @@ contract PremiumManager is
      */
     function getFeeSplits(
         uint256 grossPremium,
-        uint16 platformFeeBps,
-        uint16 poolFeeBps
+        uint16 platformFeeBps_,
+        uint16 poolFeeBps_
     )
         public
         pure
         override
         returns (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit)
     {
-        platformSplit = (grossPremium * platformFeeBps) / _BPS_DENOMINATOR;
-        poolSplit = (grossPremium * poolFeeBps) / _BPS_DENOMINATOR;
+        platformSplit = (grossPremium * platformFeeBps_) / _BPS_DENOMINATOR;
+        poolSplit = (grossPremium * poolFeeBps_) / _BPS_DENOMINATOR;
         restakerSplit = grossPremium - platformSplit - poolSplit;
     }
 
@@ -188,18 +190,4 @@ contract PremiumManager is
      * @notice Restricts UUPS upgrade authorization to DEFAULT_ADMIN_ROLE holders.
      */
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
-
-    /**
-     * @notice Validates allocation data before premium collection.
-     * @param allocation Premium allocation details to validate.
-     */
-    function _validateAllocation(PremiumAllocation calldata allocation) private pure {
-        require(allocation.buyer != address(0) && allocation.premiumToken != address(0), ZeroAddress());
-        require(allocation.basePremium != 0, ZeroAmount());
-        require(allocation.policyCommit != bytes32(0), InvalidPolicyCommit());
-        require(
-            allocation.startTime < allocation.maturityTime,
-            InvalidCoverageWindow(allocation.startTime, allocation.maturityTime)
-        );
-    }
 }

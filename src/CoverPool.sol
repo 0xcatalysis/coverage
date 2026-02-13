@@ -28,18 +28,18 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,uint64 maturityTime,uint64 expirationTime)"
     );
 
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
 
-    uint16 public override poolFeeBps;
+    address public override policyManager;
     address public override stakeManager;
+    address public override feeRecipient;
+    uint16 public override poolFeeBps;
     mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
 
     mapping(uint96 policyId => BoundPolicy policy) private boundPolicies;
-
-    address public override policyManager;
 
     /**
      * @dev Ensures incoming quote matches pool metadata and timing constraints before processing.
@@ -51,7 +51,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.specId != bytes32(0), InvalidSpecId());
         require(quote.termsHash != bytes32(0), InvalidTermsHash());
         require(quote.beneficiary != address(0), InvalidBeneficiary());
-        require(quote.operator != address(0), InvalidOperator());
         require(quote.startTime < quote.maturityTime, InvalidCoverageWindow());
 
         uint256 currentTimestamp = block.timestamp;
@@ -69,8 +68,8 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
      */
     function initialize(
         address curator_,
-        address policyManager_,
         address quoteSigner_,
+        address policyManager_,
         address stakeManager_,
         uint16 poolFeeBps_
     )
@@ -93,6 +92,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         policyManager = policyManager_;
         stakeManager = stakeManager_;
         poolFeeBps = poolFeeBps_;
+        feeRecipient = curator_;
     }
 
     /**
@@ -124,6 +124,18 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
+    function setFeeRecipient(address feeRecipient_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(feeRecipient_ != address(0), ZeroAddress());
+
+        address previousFeeRecipient = feeRecipient;
+        feeRecipient = feeRecipient_;
+
+        emit FeeRecipientSet(previousFeeRecipient, feeRecipient_);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
     function bindPolicyForRequest(
         uint96 policyId,
         Quote calldata quote,
@@ -139,17 +151,17 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(draft.pool == address(this), PoolAddressMismatch(address(this), draft.pool));
         require(draft.status == IPolicyManager.PolicyStatus.Created, IPolicyManager.InvalidPolicyStatus(draft.status));
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
-        require(quote.committeeId == draft.committeeId, InvalidCommitteeId());
+        require(quote.policyId == draft.policyId, InvalidPolicyId());
         require(quote.beneficiary == draft.beneficiary, InvalidBeneficiary());
-        require(quote.operator == owner(), InvalidOperator());
         require(vaults.length != 0, ICoverPool.EmptyVaults());
 
         bytes32 policyCommit = _verifyQuote(quote, signature);
         BoundPolicy memory boundPolicy = _recordBoundPolicy(policyId, policyCommit, quote);
 
-        emit PolicyForRequestBound(policyId, draft.committeeId, vaults.length);
+        emit PolicyForRequestBound(policyId, vaults.length);
 
-        IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
+        // Add vaults to committee in core contracts using policyId as committeeId (1:1 mapping).
+        IStakeManager(stakeManager).addCommitteeVaults(draft.policyId, vaults);
 
         IPolicyManager(policyManager)
             .bindPolicy(
@@ -158,7 +170,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
                     buyer: draft.buyer,
                     beneficiary: draft.beneficiary,
                     claimer: draft.claimer,
-                    premiumToken: draft.premiumToken,
                     payoutToken: draft.payoutToken,
                     coverageAmount: draft.coverageAmount,
                     quote: quote,
@@ -243,8 +254,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             termsHash: quote.termsHash,
             coverageLimit: quote.coverageLimit,
             beneficiary: quote.beneficiary,
-            committeeId: quote.committeeId,
-            operator: quote.operator,
             startTime: quote.startTime,
             maturityTime: quote.maturityTime
         });
@@ -284,14 +293,13 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         return EfficientHashLib.hash(
             uint256(_QUOTE_TYPEHASH),
             uint256(uint160(quote.pool)),
-            uint256(quote.committeeId),
+            uint256(quote.policyId),
             quote.coverageLimit,
             quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),
             uint256(quote.startTime),
-            uint256(uint160(quote.operator)),
             uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );

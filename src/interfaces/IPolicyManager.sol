@@ -31,18 +31,16 @@ interface IPolicyManager is IAccessControl {
         address beneficiary;
         /// @notice Account authorized to trigger claims for the policy.
         address claimer;
-        /// @notice ERC20 token used for premium payments.
-        address premiumToken;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
-        /// @notice Operator address captured at draft creation and added to the committee.
-        address operator;
         /// @notice Coverage amount requested (stake requirement in USD with 8 decimals).
         uint256 coverageAmount;
-        /// @notice Restaking committee identifier created for this policy.
-        uint96 committeeId;
+        /// @notice Policy identifier (1:1 with committee).
+        uint96 policyId;
         /// @notice Draft lifecycle status.
         PolicyStatus status;
+        /// @notice Callback target invoked when policy is bound (required).
+        address bindPolicyHook;
     }
 
     /**
@@ -53,30 +51,22 @@ interface IPolicyManager is IAccessControl {
     struct PolicyMetadata {
         /// @notice Buyer wallet responsible for paying premiums.
         address buyer;
-        /// @notice Restaking committee identifier that backs this policy.
-        uint96 committeeId;
+        /// @notice Policy identifier (1:1 with committee).
+        uint96 policyId;
         /// @notice Beneficiary receiving payouts upon approved claims.
         address beneficiary;
         /// @notice Account authorized to trigger claims for the policy.
         address claimer;
         /// @notice Policy coverage start timestamp.
         uint64 startTime;
-        /// @notice ERC20 token used for premium payments.
-        address premiumToken;
         /// @notice Policy coverage end timestamp.
         uint64 maturityTime;
-        /// @notice Base premium paid by the buyer for coverage (excluding refundable deposits).
-        uint256 basePremium;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
         /// @notice Address of the pool providing coverage.
         address pool;
         /// @notice Coverage notional allocated from the pool.
         uint256 coverageLimit;
-        /// @notice Operator address delegated for this policy.
-        address operator;
-        /// @notice Incremental identifier for the policy.
-        uint96 poolPolicyId;
         /// @notice Spec identifier for parametric claim evaluation (e.g., MorphoSpec, MapleSpec).
         bytes32 specId;
         /// @notice Hash of referenced terms governing this policy.
@@ -98,8 +88,6 @@ interface IPolicyManager is IAccessControl {
         address beneficiary;
         /// @notice Account authorized to trigger claims for the policy.
         address claimer;
-        /// @notice ERC20 token used for premium payments.
-        address premiumToken;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
         /// @notice Coverage amount as the stake requirement for committee creation (in USD with 8 decimals).
@@ -142,8 +130,8 @@ interface IPolicyManager is IAccessControl {
      * @param beneficiary Beneficiary for claim payouts.
      * @param pool Address of the CoverPool providing coverage.
      * @param coverageLimit Coverage notional allocated from the pool.
-     * @param basePremium Base premium paid by the buyer.
      * @param policyCommit Deterministic hash representing the policy schedule.
+     * @param bindPolicyHook Address of the hook contract that was called.
      */
     event PolicyBound(
         uint96 indexed policyId,
@@ -151,21 +139,9 @@ interface IPolicyManager is IAccessControl {
         address indexed beneficiary,
         address pool,
         uint256 coverageLimit,
-        uint256 basePremium,
-        bytes32 policyCommit
+        bytes32 policyCommit,
+        address bindPolicyHook
     );
-
-    /**
-     * @notice Emitted when the PremiumManager dependency is set or updated.
-     * @param premiumManager_ Address of the premium manager contract.
-     */
-    event PremiumManagerSet(address indexed premiumManager_);
-
-    /**
-     * @notice Emitted when the platform fee is updated.
-     * @param platformFeeBps_ New platform fee in basis points.
-     */
-    event PlatformFeeSet(uint16 indexed platformFeeBps_);
 
     /**
      * @notice Emitted when the StakeManager dependency is set or updated.
@@ -191,12 +167,6 @@ interface IPolicyManager is IAccessControl {
     error ZeroAddress();
 
     /**
-     * @notice Reverts when platform fee exceeds maximum allowed.
-     * @param feeBps The invalid fee value.
-     */
-    error InvalidPlatformFee(uint16 feeBps);
-
-    /**
      * @notice Reverts when supplied coverage timestamps are invalid.
      * @param startTime Coverage start timestamp.
      * @param maturityTime Coverage maturity timestamp.
@@ -207,11 +177,6 @@ interface IPolicyManager is IAccessControl {
      * @notice Reverts when coverage limit is zero.
      */
     error InvalidCoverageLimit();
-
-    /**
-     * @notice Reverts when base premium is zero.
-     */
-    error InvalidBasePremium();
 
     /**
      * @notice Reverts when coverage amount is zero.
@@ -235,23 +200,23 @@ interface IPolicyManager is IAccessControl {
     error UnauthorizedCaller();
 
     /**
-     * @notice Reverts when committee identifier is zero.
+     * @notice Reverts when policy identifier is zero.
      */
-    error InvalidCommitteeId();
+    error InvalidPolicyId();
 
     /**
-     * @notice Reverts when committee doesn't have sufficient stake.
-     * @param committeeId Committee identifier.
+     * @notice Reverts when policy doesn't have sufficient stake.
+     * @param policyId Policy identifier.
      * @param required Required stake amount.
      * @param actual Actual stake amount.
      */
-    error InsufficientStake(uint96 committeeId, uint256 required, uint256 actual);
+    error InsufficientStake(uint96 policyId, uint256 required, uint256 actual);
 
     /**
-     * @notice Reverts when no vaults are bound to a committee.
-     * @param committeeId Committee identifier without vaults.
+     * @notice Reverts when no vaults are bound to a policy.
+     * @param policyId Policy identifier without vaults.
      */
-    error NoVaultsBound(uint96 committeeId);
+    error NoVaultsBound(uint96 policyId);
 
     /**
      * @notice Reverts when a policy draft is not found.
@@ -294,6 +259,11 @@ interface IPolicyManager is IAccessControl {
     error PolicyNotFound(uint96 policyId);
 
     /**
+     * @notice Reverts when bindPolicyHook is the zero address.
+     */
+    error InvalidBindPolicyHook();
+
+    /**
      * @notice Pauses policy binding operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
@@ -304,13 +274,6 @@ interface IPolicyManager is IAccessControl {
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
     function unpause() external;
-
-    /**
-     * @notice Sets the PremiumManager contract used for premium collection.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param premiumManager_ Address of the PremiumManager implementation.
-     */
-    function setPremiumManager(address premiumManager_) external;
 
     /**
      * @notice Sets the StakeManager contract used for committee creation.
@@ -334,13 +297,6 @@ interface IPolicyManager is IAccessControl {
     function setCoverPoolFactory(address coverPoolFactory_) external;
 
     /**
-     * @notice Sets the platform fee charged on policy premiums.
-     * @dev Requires DEFAULT_ADMIN_ROLE. Must not exceed 25% (2500 bps).
-     * @param platformFeeBps_ Platform fee in basis points (1 bps = 0.01%).
-     */
-    function setPlatformFee(uint16 platformFeeBps_) external;
-
-    /**
      * @notice Requests coverage from a specified pool (user-facing entrypoint).
      * @dev Allows users to request coverage by specifying which pool they want coverage from.
      *      The caller becomes the buyer and is responsible for paying premiums.
@@ -348,18 +304,18 @@ interface IPolicyManager is IAccessControl {
      * @param pool CoverPool address to request coverage from.
      * @param beneficiary Address receiving payouts upon approved claims.
      * @param claimer Account authorized to trigger claims for the policy.
-     * @param premiumToken ERC20 token used for premium payments.
      * @param payoutToken ERC20 token used for claim payouts.
      * @param coverageAmount Requested coverage amount (stake requirement in USD with 8 decimals).
+     * @param bindPolicyHook Callback target invoked when policy is bound.
      * @return policyId Identifier reserved for binding and minting.
      */
     function requestCoverage(
         address pool,
         address beneficiary,
         address claimer,
-        address premiumToken,
         address payoutToken,
-        uint256 coverageAmount
+        uint256 coverageAmount,
+        address bindPolicyHook
     )
         external
         returns (uint96 policyId);
@@ -393,11 +349,6 @@ interface IPolicyManager is IAccessControl {
     function paused() external view returns (bool);
 
     /**
-     * @notice Returns the configured PremiumManager address.
-     */
-    function premiumManager() external view returns (address);
-
-    /**
      * @notice Returns the configured StakeManager address.
      */
     function stakeManager() external view returns (address);
@@ -411,11 +362,6 @@ interface IPolicyManager is IAccessControl {
      * @notice Returns the configured CoverPoolFactory address.
      */
     function coverPoolFactory() external view returns (address);
-
-    /**
-     * @notice Returns the platform fee in basis points.
-     */
-    function platformFeeBps() external view returns (uint16);
 
     /**
      * @notice Returns policy metadata for a given policy ID.

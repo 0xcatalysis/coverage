@@ -98,7 +98,7 @@ contract CoverPoolFactory is
 
         address coverPool = coverPoolImplementation.cloneDeterministic(salt);
         ICoverPool(coverPool)
-            .initialize(params.curator, policyManager, params.quoteSigner, stakeManager, params.poolFeeBps);
+            .initialize(params.curator, params.quoteSigner, policyManager, stakeManager, params.poolFeeBps);
 
         // slither-disable-next-line unused-return
         _pools.add(coverPool);
