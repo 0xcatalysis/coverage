@@ -331,6 +331,7 @@ contract ClaimManager is
         uint256 slashAmountUSD =
             IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(metadata.payoutToken, requestedAmount);
 
+        // Slash committee in core contracts using policyId as committeeId (1:1 mapping).
         // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
             ISlashingManager(slashingManager).executeSlashing(metadata.policyId, metadata.operator, slashAmountUSD);

@@ -149,6 +149,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
 
         emit PolicyForRequestBound(policyId, vaults.length);
 
+        // Add vaults to committee in core contracts using policyId as committeeId (1:1 mapping).
         IStakeManager(stakeManager).addCommitteeVaults(draft.policyId, vaults);
 
         IPolicyManager(policyManager)

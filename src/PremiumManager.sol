@@ -154,6 +154,7 @@ contract PremiumManager is
 
         if (restakerSplit > 0) {
             token.safeTransfer(rewardsManager, restakerSplit);
+            // Distribute rewards to committee in core contracts using policyId as committeeId (1:1 mapping).
             IRewardsManager(rewardsManager).distributeRewards(policyId, operator, restakerSplit, token);
         }
 
