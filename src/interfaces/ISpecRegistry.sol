@@ -28,6 +28,11 @@ interface ISpecRegistry {
     error InvalidSpec();
 
     /**
+     * @notice Reverts when a zero address is provided where a valid address is required.
+     */
+    error ZeroAddress();
+
+    /**
      * @notice Reverts when attempting to register a different spec for an already registered (pool, specId) pair.
      * @param pool Address of the CoverPool.
      * @param specId Identifier referencing the parametric product.
@@ -42,6 +47,18 @@ interface ISpecRegistry {
      * @param specId Identifier referencing the parametric product.
      */
     error SpecNotRegistered(address pool, bytes32 specId);
+
+    /**
+     * @notice Pauses all spec registration operations.
+     * @dev Can only be called by accounts with DEFAULT_ADMIN_ROLE.
+     */
+    function pause() external;
+
+    /**
+     * @notice Unpauses all spec registration operations.
+     * @dev Can only be called by accounts with DEFAULT_ADMIN_ROLE.
+     */
+    function unpause() external;
 
     /**
      * @notice Registers a Spec implementation for the caller pool.
@@ -60,4 +77,10 @@ interface ISpecRegistry {
      * @return spec Address of the authorized ISpec implementation contract.
      */
     function resolveSpec(address pool, bytes32 specId) external view returns (ISpec spec);
+
+    /**
+     * @notice Returns whether the contract is paused.
+     * @return True if the contract is paused, false otherwise.
+     */
+    function paused() external view returns (bool);
 }

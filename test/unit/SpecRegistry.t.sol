@@ -1,20 +1,27 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {ISpec} from "../../src/interfaces/ISpec.sol";
 import {ISpecRegistry} from "../../src/interfaces/ISpecRegistry.sol";
 import {SpecRegistry} from "../../src/SpecRegistry.sol";
 
 contract SpecRegistryTest is Test {
-    SpecRegistry internal registry;
+    bytes32 internal constant ADMIN_ROLE = 0x00;
 
+    SpecRegistry internal registry;
+    address internal admin;
     address internal pool1;
     address internal pool2;
     address internal spec1;
     address internal spec2;
     bytes32 internal specId1;
     bytes32 internal specId2;
+    Options internal opts;
 
     event SpecRegistered(address indexed pool, bytes32 indexed specId, address indexed spec);
 
@@ -23,20 +30,107 @@ contract SpecRegistryTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function setUp() public {
-        registry = new SpecRegistry();
-
+        admin = makeAddr("admin");
         pool1 = makeAddr("pool1");
         pool2 = makeAddr("pool2");
         spec1 = makeAddr("spec1");
         spec2 = makeAddr("spec2");
+
+        vm.label(admin, "Admin");
+        vm.label(pool1, "Pool1");
+        vm.label(pool2, "Pool2");
+        vm.label(spec1, "Spec1");
+        vm.label(spec2, "Spec2");
+
+        opts.unsafeSkipAllChecks = true;
+
+        address proxy = Upgrades.deployUUPSProxy(
+            "SpecRegistry.sol:SpecRegistry", abi.encodeCall(SpecRegistry.initialize, (admin)), opts
+        );
+        registry = SpecRegistry(proxy);
 
         specId1 = keccak256("MorphoSpec");
         specId2 = keccak256("MapleSpec");
     }
 
     /*//////////////////////////////////////////////////////////////
+                               INITIALIZE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_initialize_WhenAdminZero_Reverts() public {
+        SpecRegistry registryImpl = new SpecRegistry();
+        vm.expectRevert(ISpecRegistry.ZeroAddress.selector);
+        new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (address(0))));
+    }
+
+    function test_initialize_WhenValid_GrantsAdminRole() public {
+        SpecRegistry registryImpl = new SpecRegistry();
+        address testAdmin = makeAddr("testAdmin");
+
+        address proxy =
+            address(new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (testAdmin))));
+        SpecRegistry testRegistry = SpecRegistry(proxy);
+
+        assertTrue(testRegistry.hasRole(ADMIN_ROLE, testAdmin), "Admin role not granted");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                  PAUSE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_pause_WhenCallerNotAdmin_Reverts() public {
+        address notAdmin = makeAddr("notAdmin");
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, notAdmin, ADMIN_ROLE)
+        );
+        vm.prank(notAdmin);
+        registry.pause();
+    }
+
+    function test_pause_WhenCalledByAdmin_PausesRegistry() public {
+        vm.prank(admin);
+        registry.pause();
+        assertTrue(registry.paused(), "Registry not paused");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                 UNPAUSE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_unpause_WhenCallerNotAdmin_Reverts() public {
+        vm.prank(admin);
+        registry.pause();
+
+        address notAdmin = makeAddr("notAdmin");
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, notAdmin, ADMIN_ROLE)
+        );
+        vm.prank(notAdmin);
+        registry.unpause();
+    }
+
+    function test_unpause_WhenCalledByAdmin_ClearsPause() public {
+        vm.prank(admin);
+        registry.pause();
+        assertTrue(registry.paused(), "Registry not paused");
+
+        vm.prank(admin);
+        registry.unpause();
+        assertFalse(registry.paused(), "Registry still paused");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                            REGISTER SPEC
     //////////////////////////////////////////////////////////////*/
+
+    function test_registerSpec_WhenPaused_Reverts() public {
+        vm.prank(admin);
+        registry.pause();
+
+        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        vm.prank(pool1);
+        registry.registerSpec(specId1, ISpec(spec1));
+    }
 
     function test_registerSpec_WhenZeroSpecId_Reverts() public {
         vm.expectRevert(ISpecRegistry.InvalidSpecId.selector);
@@ -141,5 +235,60 @@ contract SpecRegistryTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(ISpecRegistry.SpecNotRegistered.selector, pool1, specId2));
         registry.resolveSpec(pool1, specId2);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                UPGRADE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
+        address newImplementation = address(new SpecRegistry());
+        address notAdmin = makeAddr("notAdmin");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, notAdmin, ADMIN_ROLE)
+        );
+        vm.prank(notAdmin);
+        registry.upgradeToAndCall(newImplementation, "");
+    }
+
+    function test_authorizeUpgrade_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(ISpecRegistry.ZeroAddress.selector);
+        vm.prank(admin);
+        registry.upgradeToAndCall(address(0), "");
+    }
+
+    function test_authorizeUpgrade_WhenCalledByAdmin_Succeeds() public {
+        vm.prank(pool1);
+        registry.registerSpec(specId1, ISpec(spec1));
+
+        SpecRegistry newImplementation = new SpecRegistry();
+
+        vm.prank(admin);
+        registry.upgradeToAndCall(address(newImplementation), "");
+
+        ISpec resolved = registry.resolveSpec(pool1, specId1);
+        assertEq(address(resolved), spec1, "Spec data should persist after upgrade");
+        assertTrue(registry.hasRole(ADMIN_ROLE, admin), "Admin role should persist after upgrade");
+    }
+
+    function test_authorizeUpgrade_WhenCalledByAdmin_PreservesAllData() public {
+        vm.prank(pool1);
+        registry.registerSpec(specId1, ISpec(spec1));
+
+        vm.prank(pool1);
+        registry.registerSpec(specId2, ISpec(spec2));
+
+        vm.prank(pool2);
+        registry.registerSpec(specId1, ISpec(spec2));
+
+        SpecRegistry newImplementation = new SpecRegistry();
+
+        vm.prank(admin);
+        registry.upgradeToAndCall(address(newImplementation), "");
+
+        assertEq(address(registry.resolveSpec(pool1, specId1)), spec1, "Pool1-SpecId1 mismatch");
+        assertEq(address(registry.resolveSpec(pool1, specId2)), spec2, "Pool1-SpecId2 mismatch");
+        assertEq(address(registry.resolveSpec(pool2, specId1)), spec2, "Pool2-SpecId1 mismatch");
     }
 }

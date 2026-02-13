@@ -14,6 +14,7 @@ contract MockSpecRegistry is ISpecRegistry {
     mapping(address pool => mapping(bytes32 specId => ISpec spec)) private _specs;
     address private _defaultSpec;
     address public immutable OWNER;
+    bool private _paused;
 
     /**
      * @notice Emitted when the default spec is updated.
@@ -30,11 +31,6 @@ contract MockSpecRegistry is ISpecRegistry {
      * @notice Thrown when no spec is registered for the requested pool and specId combination.
      */
     error NoSpecRegistered();
-
-    /**
-     * @notice Thrown when a zero address is provided where it's not allowed.
-     */
-    error ZeroAddress();
 
     /**
      * @dev Restricts function access to the contract owner.
@@ -96,6 +92,30 @@ contract MockSpecRegistry is ISpecRegistry {
         require(spec != address(0), ZeroAddress());
         _defaultSpec = spec;
         emit DefaultSpecSet(spec);
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
+     * @dev Simple mock implementation that sets paused flag.
+     */
+    function pause() external override onlyOwner {
+        _paused = true;
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
+     * @dev Simple mock implementation that clears paused flag.
+     */
+    function unpause() external override onlyOwner {
+        _paused = false;
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
+     * @dev Returns the current paused state.
+     */
+    function paused() external view override returns (bool) {
+        return _paused;
     }
 
     /**
