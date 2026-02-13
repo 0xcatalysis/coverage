@@ -463,7 +463,7 @@ contract PolicyManagerTest is Test {
         _seedCommitteeForTesting(wrongCommitteeId, operator, COVERAGE_AMOUNT, true);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
-        vm.expectRevert(IPolicyManager.InvalidCommitteeId.selector);
+        vm.expectRevert(IPolicyManager.InvalidPolicyId.selector);
         vm.prank(address(coverPool));
         policyManager.bindPolicy(request, boundPolicy);
     }

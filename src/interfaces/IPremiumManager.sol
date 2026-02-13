@@ -46,9 +46,9 @@ interface IPremiumManager is IAccessControl {
     error ZeroAmount();
 
     /**
-     * @notice Reverts when provided committee identifier is invalid.
+     * @notice Reverts when provided policy identifier is invalid.
      */
-    error InvalidCommitteeId();
+    error InvalidPolicyId();
 
     /**
      * @notice Reverts when combined platform and pool fees exceed 100%.

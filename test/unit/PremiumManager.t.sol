@@ -335,7 +335,7 @@ contract PremiumManagerTest is Test {
     }
 
     function test_distributePremium_WhenCommitteeIdZero_Reverts() public {
-        vm.expectRevert(IPremiumManager.InvalidCommitteeId.selector);
+        vm.expectRevert(IPremiumManager.InvalidPolicyId.selector);
         vm.prank(premiumCollector);
         premiumManager.distributePremium(pool, 0, operator, address(premiumToken), PREMIUM_AMOUNT);
     }

@@ -204,7 +204,7 @@ contract PolicyManager is
 
         ICoverPool.Quote calldata quote = request.quote;
         uint96 committeeId = quote.committeeId;
-        require(policyId == committeeId, InvalidCommitteeId());
+        require(policyId == committeeId, InvalidPolicyId());
 
         draft.status = PolicyStatus.Bound;
 
@@ -295,7 +295,7 @@ contract PolicyManager is
         require(request.quote.pool != address(0), InvalidCoverPool(request.quote.pool));
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(msg.sender), InvalidCoverPool(msg.sender));
         require(request.quote.pool == msg.sender, UnauthorizedCaller());
-        require(request.quote.committeeId != 0, InvalidCommitteeId());
+        require(request.quote.committeeId != 0, InvalidPolicyId());
         require(request.quote.coverageLimit != 0, InvalidCoverageLimit());
         require(request.coverageAmount != 0, InvalidCoverageAmount());
         require(

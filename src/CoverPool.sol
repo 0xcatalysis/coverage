@@ -139,7 +139,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(draft.pool == address(this), PoolAddressMismatch(address(this), draft.pool));
         require(draft.status == IPolicyManager.PolicyStatus.Created, IPolicyManager.InvalidPolicyStatus(draft.status));
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
-        require(quote.committeeId == draft.committeeId, InvalidCommitteeId());
+        require(quote.committeeId == draft.committeeId, InvalidPolicyId());
         require(quote.beneficiary == draft.beneficiary, InvalidBeneficiary());
         require(quote.operator == owner(), InvalidOperator());
         require(vaults.length != 0, ICoverPool.EmptyVaults());

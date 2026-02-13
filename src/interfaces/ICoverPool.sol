@@ -175,9 +175,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error EmptyVaults();
 
     /**
-     * @notice Reverts when committee identifier is invalid or mismatched.
+     * @notice Reverts when policy identifier is invalid or mismatched.
      */
-    error InvalidCommitteeId();
+    error InvalidPolicyId();
 
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.

@@ -206,9 +206,9 @@ interface IPolicyManager is IAccessControl {
     error UnauthorizedCaller();
 
     /**
-     * @notice Reverts when committee identifier is zero.
+     * @notice Reverts when policy identifier is zero.
      */
-    error InvalidCommitteeId();
+    error InvalidPolicyId();
 
     /**
      * @notice Reverts when committee doesn't have sufficient stake.
