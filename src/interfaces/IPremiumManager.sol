@@ -12,10 +12,10 @@ interface IPremiumManager is IAccessControl {
     /**
      * @notice Emitted when premiums are successfully distributed.
      * @param pool CoverPool associated with the distribution.
-     * @param committeeId Committee identifier receiving restaker premiums.
+     * @param policyId Policy identifier receiving restaker premiums.
      * @param amount Total premium amount distributed.
      */
-    event PremiumDistributed(address indexed pool, uint96 indexed committeeId, uint256 amount);
+    event PremiumDistributed(address indexed pool, uint96 indexed policyId, uint256 amount);
 
     /**
      * @notice Emitted when the RewardsManager dependency is set or updated.
@@ -102,14 +102,14 @@ interface IPremiumManager is IAccessControl {
      * @dev Requires PREMIUM_COLLECTOR_ROLE.
      *      Tokens must already be in PremiumManager's balance before calling.
      * @param pool CoverPool address for fee routing.
-     * @param committeeId Committee identifier for rewards routing.
+     * @param policyId Policy identifier for rewards routing.
      * @param operator Operator address for rewards routing.
      * @param premiumToken ERC20 token to distribute.
      * @param amount Total premium amount to distribute.
      */
     function distributePremium(
         address pool,
-        uint96 committeeId,
+        uint96 policyId,
         address operator,
         address premiumToken,
         uint256 amount

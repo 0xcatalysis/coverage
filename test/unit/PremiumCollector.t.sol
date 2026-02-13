@@ -13,7 +13,7 @@ import {IPremiumCollector} from "../../src/interfaces/IPremiumCollector.sol";
 
 contract PremiumCollectorTest is Test {
     uint64 internal constant DEFAULT_DISTRIBUTE_INTERVAL = 86_400; // 24 hours
-    uint96 internal constant COMMITTEE_ID = 123;
+    uint96 internal constant POLICY_ID = 123;
 
     address internal admin;
     address internal pool;
@@ -29,10 +29,10 @@ contract PremiumCollectorTest is Test {
     MockToken internal underlying2;
 
     event VaultRegistered(
-        address indexed vault, address indexed underlying, address pool, uint96 committeeId, address operator
+        address indexed vault, address indexed underlying, address pool, uint96 policyId, address operator
     );
     event VaultRemoved(address indexed vault);
-    event VaultUpdated(address indexed vault, address pool, uint96 committeeId, address operator);
+    event VaultUpdated(address indexed vault, address pool, uint96 policyId, address operator);
     event Distributed(address indexed vault, uint256 shares, uint256 assets);
     event DistributeIntervalSet(uint64 interval);
     event PremiumManagerSet(address indexed premiumManager_);
@@ -113,25 +113,25 @@ contract PremiumCollectorTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), bytes32(0))
         );
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
     }
 
     function test_registerVault_WhenVaultZero_Reverts() public {
         vm.prank(admin);
         vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
-        premiumCollector.registerVault(address(0), pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(address(0), pool, POLICY_ID, operator);
     }
 
     function test_registerVault_WhenPoolZero_Reverts() public {
         vm.prank(admin);
         vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
-        premiumCollector.registerVault(vault1, address(0), COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, address(0), POLICY_ID, operator);
     }
 
     function test_registerVault_WhenOperatorZero_Reverts() public {
         vm.prank(admin);
         vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, address(0));
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, address(0));
     }
 
     function test_registerVault_WhenCommitteeIdZero_Reverts() public {
@@ -142,23 +142,23 @@ contract PremiumCollectorTest is Test {
 
     function test_registerVault_WhenAlreadyRegistered_Reverts() public {
         vm.startPrank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.VaultAlreadyRegistered.selector, vault1));
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
         vm.stopPrank();
     }
 
     function test_registerVault_Success() public {
         vm.prank(admin);
         vm.expectEmit(true, true, false, true);
-        emit VaultRegistered(vault1, address(underlying1), pool, COMMITTEE_ID, operator);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        emit VaultRegistered(vault1, address(underlying1), pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         IPremiumCollector.VaultConfig memory config = premiumCollector.getVaultConfig(vault1);
         assertEq(config.underlying, address(underlying1));
         assertEq(config.pool, pool);
-        assertEq(config.committeeId, COMMITTEE_ID);
+        assertEq(config.policyId, POLICY_ID);
         assertEq(config.operator, operator);
         assertEq(config.lastDistributeTime, 0);
         assertTrue(config.registered);
@@ -174,7 +174,7 @@ contract PremiumCollectorTest is Test {
 
     function test_removeVault_WhenNotAdmin_Reverts() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), bytes32(0))
@@ -190,7 +190,7 @@ contract PremiumCollectorTest is Test {
 
     function test_removeVault_WhenHasShares_Reverts() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         mockVault1.mint(address(premiumCollector), 100 ether);
 
@@ -201,8 +201,8 @@ contract PremiumCollectorTest is Test {
 
     function test_removeVault_Success() public {
         vm.startPrank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
-        premiumCollector.registerVault(vault2, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault2, pool, POLICY_ID, operator);
 
         vm.expectEmit(true, false, false, false);
         emit VaultRemoved(vault1);
@@ -223,40 +223,40 @@ contract PremiumCollectorTest is Test {
 
     function test_updateVault_WhenNotAdmin_Reverts() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         address newPool = makeAddr("newPool");
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), bytes32(0))
         );
-        premiumCollector.updateVault(vault1, newPool, COMMITTEE_ID + 1, operator);
+        premiumCollector.updateVault(vault1, newPool, POLICY_ID + 1, operator);
     }
 
     function test_updateVault_WhenNotRegistered_Reverts() public {
         address newPool = makeAddr("newPool");
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.VaultNotRegistered.selector, vault1));
-        premiumCollector.updateVault(vault1, newPool, COMMITTEE_ID + 1, operator);
+        premiumCollector.updateVault(vault1, newPool, POLICY_ID + 1, operator);
     }
 
     function test_updateVault_Success() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         address newPool = makeAddr("newPool");
         address newOperator = makeAddr("newOperator");
-        uint96 newCommitteeId = COMMITTEE_ID + 1;
+        uint96 newPolicyId = POLICY_ID + 1;
 
         vm.prank(admin);
         vm.expectEmit(true, false, false, true);
-        emit VaultUpdated(vault1, newPool, newCommitteeId, newOperator);
-        premiumCollector.updateVault(vault1, newPool, newCommitteeId, newOperator);
+        emit VaultUpdated(vault1, newPool, newPolicyId, newOperator);
+        premiumCollector.updateVault(vault1, newPool, newPolicyId, newOperator);
 
         IPremiumCollector.VaultConfig memory config = premiumCollector.getVaultConfig(vault1);
         assertEq(config.pool, newPool);
-        assertEq(config.committeeId, newCommitteeId);
+        assertEq(config.policyId, newPolicyId);
         assertEq(config.operator, newOperator);
-        assertEq(config.underlying, address(underlying1)); // Unchanged
+        assertEq(config.underlying, address(underlying1));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -283,7 +283,7 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_SkipsWhenIntervalNotElapsed() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         mockVault1.mint(address(premiumCollector), 100 ether);
         underlying1.mint(vault1, 100 ether);
@@ -303,7 +303,7 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_SkipsWhenNoShares() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         address[] memory vaults = new address[](1);
         vaults[0] = vault1;
@@ -313,7 +313,7 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_SingleVaultSuccess() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         uint256 shares = 100 ether;
         uint256 assets = 100 ether;
@@ -336,8 +336,8 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_MultipleVaultsSuccess() public {
         vm.startPrank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
-        premiumCollector.registerVault(vault2, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault2, pool, POLICY_ID, operator);
         vm.stopPrank();
 
         mockVault1.mint(address(premiumCollector), 100 ether);
@@ -359,7 +359,7 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_SkipsWhenRedeemReturnsZeroAssets() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         uint256 shares = 100 ether;
         mockVault1.mint(address(premiumCollector), shares);
@@ -380,8 +380,8 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_ZeroAssetVaultDoesNotBlockOthers() public {
         vm.startPrank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
-        premiumCollector.registerVault(vault2, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault2, pool, POLICY_ID, operator);
         vm.stopPrank();
 
         mockVault1.mint(address(premiumCollector), 100 ether);
@@ -400,10 +400,9 @@ contract PremiumCollectorTest is Test {
         assertEq(mockVault2.balanceOf(address(premiumCollector)), 0);
         assertEq(underlying2.balanceOf(address(premiumManager)), 200 ether);
 
-        // Vault1 returned 0 assets, so lastDistributeTime should NOT be updated (allows retry)
         IPremiumCollector.VaultConfig memory config1 = premiumCollector.getVaultConfig(vault1);
         assertEq(config1.lastDistributeTime, 0);
-        // Vault2 succeeded, so lastDistributeTime should be updated
+
         IPremiumCollector.VaultConfig memory config2 = premiumCollector.getVaultConfig(vault2);
         assertEq(config2.lastDistributeTime, block.timestamp);
     }
@@ -419,7 +418,7 @@ contract PremiumCollectorTest is Test {
 
     function test_getDistributableVaults_ExcludesNoShares() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         address[] memory distributable = premiumCollector.getDistributableVaults();
         assertEq(distributable.length, 0);
@@ -427,7 +426,7 @@ contract PremiumCollectorTest is Test {
 
     function test_getDistributableVaults_ExcludesIntervalNotElapsed() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
 
         mockVault1.mint(address(premiumCollector), 100 ether);
         underlying1.mint(address(mockVault1), 100 ether);
@@ -444,8 +443,8 @@ contract PremiumCollectorTest is Test {
 
     function test_getDistributableVaults_IncludesEligible() public {
         vm.startPrank(admin);
-        premiumCollector.registerVault(vault1, pool, COMMITTEE_ID, operator);
-        premiumCollector.registerVault(vault2, pool, COMMITTEE_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault2, pool, POLICY_ID, operator);
         vm.stopPrank();
 
         mockVault1.mint(address(premiumCollector), 100 ether);
@@ -620,7 +619,7 @@ contract MockERC4626 is IERC4626, ERC20 {
 contract MockPremiumManager {
     function distributePremium(
         address, /*pool*/
-        uint96, /*committeeId*/
+        uint96, /*policyId*/
         address, /*operator*/
         address, /*premiumToken*/
         uint256 /*amount*/

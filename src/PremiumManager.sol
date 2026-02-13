@@ -117,7 +117,7 @@ contract PremiumManager is
      */
     function distributePremium(
         address pool,
-        uint96 committeeId,
+        uint96 policyId,
         address operator,
         address premiumToken,
         uint256 amount
@@ -130,7 +130,7 @@ contract PremiumManager is
     {
         require(pool != address(0) && operator != address(0) && premiumToken != address(0), ZeroAddress());
         require(amount != 0, ZeroAmount());
-        require(committeeId != 0, InvalidCommitteeId());
+        require(policyId != 0, InvalidCommitteeId());
 
         uint16 poolFeeBps = ICoverPool(pool).poolFeeBps();
         address poolFeeRecipient = ICoverPool(pool).owner();
@@ -154,10 +154,10 @@ contract PremiumManager is
 
         if (restakerSplit > 0) {
             token.safeTransfer(rewardsManager, restakerSplit);
-            IRewardsManager(rewardsManager).distributeRewards(committeeId, operator, restakerSplit, token);
+            IRewardsManager(rewardsManager).distributeRewards(policyId, operator, restakerSplit, token);
         }
 
-        emit PremiumDistributed(pool, committeeId, amount);
+        emit PremiumDistributed(pool, policyId, amount);
     }
 
     /**

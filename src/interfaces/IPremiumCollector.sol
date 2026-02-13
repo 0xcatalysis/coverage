@@ -17,8 +17,8 @@ interface IPremiumCollector is IAccessControl {
         address underlying;
         /// @notice CoverPool for fee routing (poolFeeBps, poolFeeRecipient).
         address pool;
-        /// @notice RewardsManager routing committee identifier.
-        uint96 committeeId;
+        /// @notice RewardsManager routing policy identifier.
+        uint96 policyId;
         /// @notice RewardsManager routing operator address.
         address operator;
         /// @notice Timestamp of most recent distribute for this vault.
@@ -32,11 +32,11 @@ interface IPremiumCollector is IAccessControl {
      * @param vault Address of the ERC-4626 vault.
      * @param underlying Address of the underlying asset.
      * @param pool Address of the CoverPool.
-     * @param committeeId Committee identifier for rewards routing.
+     * @param policyId Policy identifier for rewards routing.
      * @param operator Operator address for rewards routing.
      */
     event VaultRegistered(
-        address indexed vault, address indexed underlying, address pool, uint96 committeeId, address operator
+        address indexed vault, address indexed underlying, address pool, uint96 policyId, address operator
     );
 
     /**
@@ -49,10 +49,10 @@ interface IPremiumCollector is IAccessControl {
      * @notice Emitted when a vault configuration is updated.
      * @param vault Address of the ERC-4626 vault.
      * @param pool New CoverPool address.
-     * @param committeeId New committee identifier.
+     * @param policyId New policy identifier.
      * @param operator New operator address.
      */
-    event VaultUpdated(address indexed vault, address pool, uint96 committeeId, address operator);
+    event VaultUpdated(address indexed vault, address pool, uint96 policyId, address operator);
 
     /**
      * @notice Emitted when shares are redeemed and distributed.
@@ -127,10 +127,10 @@ interface IPremiumCollector is IAccessControl {
      *      Automatically reads the underlying asset from the vault's asset() method.
      * @param vault Address of the ERC-4626 vault.
      * @param pool Address of the CoverPool for fee routing.
-     * @param committeeId Committee identifier for rewards routing.
+     * @param policyId Policy identifier for rewards routing.
      * @param operator Operator address for rewards routing.
      */
-    function registerVault(address vault, address pool, uint96 committeeId, address operator) external;
+    function registerVault(address vault, address pool, uint96 policyId, address operator) external;
 
     /**
      * @notice Removes a vault from the registry.
@@ -145,10 +145,10 @@ interface IPremiumCollector is IAccessControl {
      * @dev Requires DEFAULT_ADMIN_ROLE.
      * @param vault Address of the ERC-4626 vault.
      * @param pool New CoverPool address.
-     * @param committeeId New committee identifier.
+     * @param policyId New policy identifier.
      * @param operator New operator address.
      */
-    function updateVault(address vault, address pool, uint96 committeeId, address operator) external;
+    function updateVault(address vault, address pool, uint96 policyId, address operator) external;
 
     /**
      * @notice Distributes premiums for multiple vaults in a single transaction.

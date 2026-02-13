@@ -78,7 +78,7 @@ contract PremiumCollector is
     function registerVault(
         address vault,
         address pool,
-        uint96 committeeId,
+        uint96 policyId,
         address operator
     )
         external
@@ -86,7 +86,7 @@ contract PremiumCollector is
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         require(vault != address(0) && pool != address(0) && operator != address(0), ZeroAddress());
-        require(committeeId != 0, ZeroAmount());
+        require(policyId != 0, ZeroAmount());
         require(!_vaultConfigs[vault].registered, VaultAlreadyRegistered(vault));
 
         address underlying = IERC4626(vault).asset();
@@ -95,7 +95,7 @@ contract PremiumCollector is
         _vaultConfigs[vault] = VaultConfig({
             underlying: underlying,
             pool: pool,
-            committeeId: committeeId,
+            policyId: policyId,
             operator: operator,
             lastDistributeTime: 0,
             registered: true
@@ -104,7 +104,7 @@ contract PremiumCollector is
         _vaultIndex[vault] = _registeredVaults.length;
         _registeredVaults.push(vault);
 
-        emit VaultRegistered(vault, underlying, pool, committeeId, operator);
+        emit VaultRegistered(vault, underlying, pool, policyId, operator);
     }
 
     /**
@@ -139,7 +139,7 @@ contract PremiumCollector is
     function updateVault(
         address vault,
         address pool,
-        uint96 committeeId,
+        uint96 policyId,
         address operator
     )
         external
@@ -148,14 +148,14 @@ contract PremiumCollector is
     {
         require(_vaultConfigs[vault].registered, VaultNotRegistered(vault));
         require(pool != address(0) && operator != address(0), ZeroAddress());
-        require(committeeId != 0, ZeroAmount());
+        require(policyId != 0, ZeroAmount());
 
         VaultConfig storage config = _vaultConfigs[vault];
         config.pool = pool;
-        config.committeeId = committeeId;
+        config.policyId = policyId;
         config.operator = operator;
 
-        emit VaultUpdated(vault, pool, committeeId, operator);
+        emit VaultUpdated(vault, pool, policyId, operator);
     }
 
     /**
@@ -283,7 +283,7 @@ contract PremiumCollector is
 
         // slither-disable-next-line calls-loop
         IPremiumManager(premiumManager)
-            .distributePremium(config.pool, config.committeeId, config.operator, config.underlying, assets);
+            .distributePremium(config.pool, config.policyId, config.operator, config.underlying, assets);
 
         emit Distributed(vault, shares, assets);
     }
