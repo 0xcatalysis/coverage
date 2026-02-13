@@ -22,7 +22,7 @@ contract PremiumManagerTest is Test {
     address internal platformTreasury;
     address internal poolFeeRecipient;
     address internal pool;
-    address internal operator;
+    address internal curator;
 
     PremiumManager internal premiumManager;
     MockRewardsManager internal rewardsManager;
@@ -41,17 +41,17 @@ contract PremiumManagerTest is Test {
         premiumCollector = makeAddr("premiumCollector");
         platformTreasury = makeAddr("platformTreasury");
         poolFeeRecipient = makeAddr("poolFeeRecipient");
-        operator = makeAddr("operator");
+        curator = makeAddr("curator");
 
         vm.label(admin, "Admin");
         vm.label(premiumCollector, "PremiumCollector");
         vm.label(platformTreasury, "PlatformTreasury");
         vm.label(poolFeeRecipient, "PoolFeeRecipient");
-        vm.label(operator, "Operator");
+        vm.label(curator, "Operator");
 
         rewardsManager = new MockRewardsManager();
         premiumToken = new MockToken();
-        mockPool = new MockCoverPool(poolFeeRecipient, POOL_FEE_BPS);
+        mockPool = new MockCoverPool(curator, poolFeeRecipient, POOL_FEE_BPS);
         pool = address(mockPool);
 
         Options memory deployOpts;
@@ -335,7 +335,15 @@ contract PremiumManagerTest is Test {
     }
 
     function test_distributePremium_WhenPoolFeeRecipientZero_Reverts() public {
-        MockCoverPool zeroOwnerPool = new MockCoverPool(address(0), POOL_FEE_BPS);
+        MockCoverPool zeroRecipientPool = new MockCoverPool(curator, address(0), POOL_FEE_BPS);
+
+        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(address(zeroRecipientPool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+    }
+
+    function test_distributePremium_WhenPoolOwnerZero_Reverts() public {
+        MockCoverPool zeroOwnerPool = new MockCoverPool(address(0), poolFeeRecipient, POOL_FEE_BPS);
 
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(premiumCollector);
@@ -343,7 +351,7 @@ contract PremiumManagerTest is Test {
     }
 
     function test_distributePremium_WhenCombinedFeesExceed100Percent_Reverts() public {
-        MockCoverPool highFeePool = new MockCoverPool(poolFeeRecipient, 9990);
+        MockCoverPool highFeePool = new MockCoverPool(curator, poolFeeRecipient, 9990);
 
         vm.expectRevert(
             abi.encodeWithSelector(IPremiumManager.ExcessiveCombinedFees.selector, PLATFORM_FEE_BPS, 9990, 10_040)
@@ -387,7 +395,7 @@ contract PremiumManagerTest is Test {
     }
 
     function test_distributePremium_WhenZeroPoolFee_OnlyTransfersPlatformFeeAndRewards() public {
-        MockCoverPool zeroFeePool = new MockCoverPool(poolFeeRecipient, 0);
+        MockCoverPool zeroFeePool = new MockCoverPool(curator, poolFeeRecipient, 0);
 
         (uint256 platformSplit,, uint256 restakerSplit) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, 0);
@@ -412,9 +420,31 @@ contract PremiumManagerTest is Test {
 
         MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
         assertEq(call.policyId, POLICY_ID, "Policy ID mismatch");
-        assertEq(call.operator, poolFeeRecipient, "Operator mismatch");
+        assertEq(call.curator, curator, "Operator mismatch");
         assertEq(call.rewardAmount, restakerSplit, "Reward amount mismatch");
         assertEq(address(call.rewardToken), address(premiumToken), "Reward token mismatch");
+    }
+
+    function test_distributePremium_WhenFeeRecipientDiffersFromOwner_SendsFeesToRecipientAndOperatorToOwner() public {
+        address differentFeeRecipient = makeAddr("differentFeeRecipient");
+        address curator = makeAddr("curator");
+        MockCoverPool separateAddressPool = new MockCoverPool(curator, differentFeeRecipient, POOL_FEE_BPS);
+
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
+            premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
+
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(address(separateAddressPool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(differentFeeRecipient), poolSplit, "Pool fee should go to feeRecipient");
+        assertEq(premiumToken.balanceOf(curator), 0, "Curator should not receive pool fee");
+        assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Rewards amount mismatch");
+
+        MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
+        assertEq(call.curator, curator, "Curator should be the pool owner, not feeRecipient");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -485,17 +515,17 @@ contract MockRewardsManager {
 
     struct DistributeRewardsCall {
         uint96 policyId;
-        address operator;
+        address curator;
         uint256 rewardAmount;
         IERC20 rewardToken;
     }
 
     DistributeRewardsCall private _lastCall;
 
-    function distributeRewards(uint96 policyId, address operator, uint256 rewardAmount, IERC20 rewardToken) external {
+    function distributeRewards(uint96 policyId, address curator, uint256 rewardAmount, IERC20 rewardToken) external {
         distributeRewardsCallCount++;
         _lastCall = DistributeRewardsCall({
-            policyId: policyId, operator: operator, rewardAmount: rewardAmount, rewardToken: rewardToken
+            policyId: policyId, curator: curator, rewardAmount: rewardAmount, rewardToken: rewardToken
         });
     }
 
@@ -506,10 +536,12 @@ contract MockRewardsManager {
 
 contract MockCoverPool {
     address public owner;
+    address public feeRecipient;
     uint16 public poolFeeBps;
 
-    constructor(address owner_, uint16 poolFeeBps_) {
+    constructor(address owner_, address feeRecipient_, uint16 poolFeeBps_) {
         owner = owner_;
+        feeRecipient = feeRecipient_;
         poolFeeBps = poolFeeBps_;
     }
 }

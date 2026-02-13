@@ -80,6 +80,13 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     event PolicyForRequestBound(uint96 indexed policyId, uint256 vaultCount);
 
     /**
+     * @notice Emitted when the fee recipient address is updated.
+     * @param previousFeeRecipient Fee recipient address before the update.
+     * @param newFeeRecipient Fee recipient address after the update.
+     */
+    event FeeRecipientSet(address indexed previousFeeRecipient, address indexed newFeeRecipient);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -177,8 +184,8 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      */
     function initialize(
         address curator_,
-        address policyManager_,
         address quoteSigner_,
+        address policyManager_,
         address stakeManager_,
         uint16 poolFeeBps_
     )
@@ -199,6 +206,12 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
      */
     function setPoolFeeBps(uint16 poolFeeBps_) external;
+
+    /**
+     * @notice Updates the fee recipient address.
+     * @param feeRecipient_ Address that will receive pool fee payments.
+     */
+    function setFeeRecipient(address feeRecipient_) external;
 
     /**
      * @notice Curator entrypoint to bind a policy draft via PolicyManager.
@@ -241,6 +254,12 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @return The pool fee in basis points.
      */
     function poolFeeBps() external view returns (uint16);
+
+    /**
+     * @notice Returns the address that receives pool fee payments.
+     * @return The fee recipient address.
+     */
+    function feeRecipient() external view returns (address);
 
     /**
      * @notice Returns the PolicyManager address used for binding.

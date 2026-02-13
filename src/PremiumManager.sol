@@ -133,7 +133,8 @@ contract PremiumManager is
 
         uint16 poolFeeBps = ICoverPool(pool).poolFeeBps();
         address curator = ICoverPool(pool).owner();
-        require(curator != address(0), ZeroAddress());
+        address feeRecipient = ICoverPool(pool).feeRecipient();
+        require(curator != address(0) && feeRecipient != address(0), ZeroAddress());
 
         uint16 totalFeeBps = platformFeeBps + poolFeeBps;
         require(totalFeeBps <= _MAX_FEE_BPS, ExcessiveCombinedFees(platformFeeBps, poolFeeBps, totalFeeBps));
@@ -148,7 +149,7 @@ contract PremiumManager is
         }
 
         if (poolSplit > 0) {
-            token.safeTransfer(curator, poolSplit);
+            token.safeTransfer(feeRecipient, poolSplit);
         }
 
         if (restakerSplit > 0) {

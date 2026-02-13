@@ -33,13 +33,13 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
 
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
 
-    uint16 public override poolFeeBps;
+    address public override policyManager;
     address public override stakeManager;
+    address public override feeRecipient;
+    uint16 public override poolFeeBps;
     mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
 
     mapping(uint96 policyId => BoundPolicy policy) private boundPolicies;
-
-    address public override policyManager;
 
     /**
      * @dev Ensures incoming quote matches pool metadata and timing constraints before processing.
@@ -68,8 +68,8 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
      */
     function initialize(
         address curator_,
-        address policyManager_,
         address quoteSigner_,
+        address policyManager_,
         address stakeManager_,
         uint16 poolFeeBps_
     )
@@ -92,6 +92,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         policyManager = policyManager_;
         stakeManager = stakeManager_;
         poolFeeBps = poolFeeBps_;
+        feeRecipient = curator_;
     }
 
     /**
@@ -118,6 +119,18 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         poolFeeBps = poolFeeBps_;
 
         emit PoolFeeBpsSet(previousPoolFeeBps, poolFeeBps_);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function setFeeRecipient(address feeRecipient_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(feeRecipient_ != address(0), ZeroAddress());
+
+        address previousFeeRecipient = feeRecipient;
+        feeRecipient = feeRecipient_;
+
+        emit FeeRecipientSet(previousFeeRecipient, feeRecipient_);
     }
 
     /**
