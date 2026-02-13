@@ -16,14 +16,6 @@ contract MockSpecRegistry is ISpecRegistry {
     address public immutable OWNER;
 
     /**
-     * @notice Emitted when a spec is registered for a specific pool and specId combination.
-     * @param pool Address of the CoverPool.
-     * @param specId Identifier for the spec (e.g., keccak256("MorphoSpec")).
-     * @param spec Address of the ISpec implementation.
-     */
-    event SpecRegistered(address indexed pool, bytes32 indexed specId, address indexed spec);
-
-    /**
      * @notice Emitted when the default spec is updated.
      * @param spec Address of the new default ISpec implementation.
      */
@@ -63,12 +55,35 @@ contract MockSpecRegistry is ISpecRegistry {
     }
 
     /**
-     * @notice Register a spec for a specific pool and specId combination.
+     * @inheritdoc ISpecRegistry
+     * @dev In MockSpecRegistry, this uses msg.sender as the pool address.
+     */
+    function registerSpec(bytes32 specId, ISpec spec) external override {
+        require(specId != bytes32(0), InvalidSpecId());
+        require(address(spec) != address(0), InvalidSpec());
+
+        address pool = msg.sender;
+        ISpec existingSpec = _specs[pool][specId];
+
+        if (address(existingSpec) != address(0)) {
+            require(
+                address(existingSpec) == address(spec),
+                SpecAlreadyRegistered(pool, specId, address(existingSpec), address(spec))
+            );
+            return;
+        }
+
+        _specs[pool][specId] = spec;
+        emit SpecRegistered(pool, specId, address(spec));
+    }
+
+    /**
+     * @notice Register a spec for a specific pool and specId combination (admin function).
      * @param pool Address of the CoverPool.
      * @param specId Identifier for the spec (e.g., keccak256("MorphoSpec")).
      * @param spec Address of the ISpec implementation.
      */
-    function registerSpec(address pool, bytes32 specId, address spec) external onlyOwner {
+    function registerSpecForPool(address pool, bytes32 specId, address spec) external onlyOwner {
         _specs[pool][specId] = ISpec(spec);
         emit SpecRegistered(pool, specId, spec);
     }

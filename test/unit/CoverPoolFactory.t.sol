@@ -23,6 +23,7 @@ contract CoverPoolFactoryTest is Test {
     address internal creator;
     address internal policyManager;
     address internal stakeManager;
+    address internal specRegistry;
     address internal curator;
     address internal quoteSigner;
     address internal operator;
@@ -55,14 +56,17 @@ contract CoverPoolFactoryTest is Test {
         // Deploy mock contracts with code for external dependencies
         policyManager = address(new CoverPool());
         stakeManager = address(new CoverPool());
+        specRegistry = address(new CoverPool());
 
         vm.label(policyManager, "PolicyManager");
         vm.label(stakeManager, "StakeManager");
+        vm.label(specRegistry, "SpecRegistry");
 
         address proxy = Upgrades.deployUUPSProxy(
             "CoverPoolFactory.sol:CoverPoolFactory",
             abi.encodeCall(
-                CoverPoolFactory.initialize, (admin, creator, address(implementation), policyManager, stakeManager)
+                CoverPoolFactory.initialize,
+                (admin, creator, address(implementation), policyManager, stakeManager, specRegistry)
             ),
             opts
         );
@@ -79,7 +83,9 @@ contract CoverPoolFactoryTest is Test {
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
         new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, address(0), policyManager, stakeManager))
+            abi.encodeCall(
+                CoverPoolFactory.initialize, (admin, creator, address(0), policyManager, stakeManager, specRegistry)
+            )
         );
     }
 
@@ -89,7 +95,8 @@ contract CoverPoolFactoryTest is Test {
         new ERC1967Proxy(
             address(factoryImpl),
             abi.encodeCall(
-                CoverPoolFactory.initialize, (admin, creator, address(implementation), address(0), stakeManager)
+                CoverPoolFactory.initialize,
+                (admin, creator, address(implementation), address(0), stakeManager, specRegistry)
             )
         );
     }
@@ -100,7 +107,20 @@ contract CoverPoolFactoryTest is Test {
         new ERC1967Proxy(
             address(factoryImpl),
             abi.encodeCall(
-                CoverPoolFactory.initialize, (admin, creator, address(implementation), policyManager, address(0))
+                CoverPoolFactory.initialize,
+                (admin, creator, address(implementation), policyManager, address(0), specRegistry)
+            )
+        );
+    }
+
+    function test_initialize_WhenSpecRegistryZero_Reverts() public {
+        CoverPoolFactory factoryImpl = new CoverPoolFactory();
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        new ERC1967Proxy(
+            address(factoryImpl),
+            abi.encodeCall(
+                CoverPoolFactory.initialize,
+                (admin, creator, address(implementation), policyManager, stakeManager, address(0))
             )
         );
     }
@@ -111,7 +131,9 @@ contract CoverPoolFactoryTest is Test {
         vm.expectRevert(ICoverPoolFactory.InvalidImplementation.selector);
         new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(CoverPoolFactory.initialize, (admin, creator, eoa, policyManager, stakeManager))
+            abi.encodeCall(
+                CoverPoolFactory.initialize, (admin, creator, eoa, policyManager, stakeManager, specRegistry)
+            )
         );
     }
 

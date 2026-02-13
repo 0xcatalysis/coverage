@@ -163,6 +163,12 @@ interface ICoverPoolFactory is IAccessControl {
     function policyManager() external view returns (address);
 
     /**
+     * @notice Returns the SpecRegistry address.
+     * @return The address of the SpecRegistry contract.
+     */
+    function specRegistry() external view returns (address);
+
+    /**
      * @notice Role identifier allowed to create cover pools.
      * @return The role identifier hash.
      */
