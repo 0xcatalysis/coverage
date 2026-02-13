@@ -78,14 +78,13 @@ contract PremiumCollector is
     function registerVault(
         address vault,
         address pool,
-        uint96 policyId,
-        address operator
+        uint96 policyId
     )
         external
         override
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        require(vault != address(0) && pool != address(0) && operator != address(0), ZeroAddress());
+        require(vault != address(0) && pool != address(0), ZeroAddress());
         require(policyId != 0, ZeroAmount());
         require(!_vaultConfigs[vault].registered, VaultAlreadyRegistered(vault));
 
@@ -93,18 +92,13 @@ contract PremiumCollector is
         require(underlying != address(0), ZeroAddress());
 
         _vaultConfigs[vault] = VaultConfig({
-            underlying: underlying,
-            pool: pool,
-            policyId: policyId,
-            operator: operator,
-            lastDistributeTime: 0,
-            registered: true
+            underlying: underlying, pool: pool, policyId: policyId, lastDistributeTime: 0, registered: true
         });
 
         _vaultIndex[vault] = _registeredVaults.length;
         _registeredVaults.push(vault);
 
-        emit VaultRegistered(vault, underlying, pool, policyId, operator);
+        emit VaultRegistered(vault, underlying, pool, policyId);
     }
 
     /**
@@ -136,26 +130,16 @@ contract PremiumCollector is
     /**
      * @inheritdoc IPremiumCollector
      */
-    function updateVault(
-        address vault,
-        address pool,
-        uint96 policyId,
-        address operator
-    )
-        external
-        override
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function updateVault(address vault, address pool, uint96 policyId) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(_vaultConfigs[vault].registered, VaultNotRegistered(vault));
-        require(pool != address(0) && operator != address(0), ZeroAddress());
+        require(pool != address(0), ZeroAddress());
         require(policyId != 0, ZeroAmount());
 
         VaultConfig storage config = _vaultConfigs[vault];
         config.pool = pool;
         config.policyId = policyId;
-        config.operator = operator;
 
-        emit VaultUpdated(vault, pool, policyId, operator);
+        emit VaultUpdated(vault, pool, policyId);
     }
 
     /**
@@ -282,8 +266,7 @@ contract PremiumCollector is
         IERC20(config.underlying).safeTransfer(premiumManager, assets);
 
         // slither-disable-next-line calls-loop
-        IPremiumManager(premiumManager)
-            .distributePremium(config.pool, config.policyId, config.operator, config.underlying, assets);
+        IPremiumManager(premiumManager).distributePremium(config.pool, config.policyId, config.underlying, assets);
 
         emit Distributed(vault, shares, assets);
     }

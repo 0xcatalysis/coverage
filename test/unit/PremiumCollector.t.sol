@@ -23,16 +23,15 @@ contract PremiumCollectorTest is Test {
 
     PremiumCollector internal premiumCollector;
     MockPremiumManager internal premiumManager;
+    MockCoverPool internal mockPool;
     MockERC4626 internal mockVault1;
     MockERC4626 internal mockVault2;
     MockToken internal underlying1;
     MockToken internal underlying2;
 
-    event VaultRegistered(
-        address indexed vault, address indexed underlying, address pool, uint96 policyId, address operator
-    );
+    event VaultRegistered(address indexed vault, address indexed underlying, address pool, uint96 policyId);
     event VaultRemoved(address indexed vault);
-    event VaultUpdated(address indexed vault, address pool, uint96 policyId, address operator);
+    event VaultUpdated(address indexed vault, address pool, uint96 policyId);
     event Distributed(address indexed vault, uint256 shares, uint256 assets);
     event DistributeIntervalSet(uint64 interval);
     event PremiumManagerSet(address indexed premiumManager_);
@@ -41,12 +40,15 @@ contract PremiumCollectorTest is Test {
         vm.warp(1_000_000);
 
         admin = makeAddr("admin");
-        pool = makeAddr("pool");
         operator = makeAddr("operator");
 
         vm.label(admin, "Admin");
-        vm.label(pool, "Pool");
         vm.label(operator, "Operator");
+
+        mockPool = new MockCoverPool(operator);
+        pool = address(mockPool);
+
+        vm.label(pool, "Pool");
 
         underlying1 = new MockToken("Underlying1", "U1");
         underlying2 = new MockToken("Underlying2", "U2");
@@ -113,53 +115,46 @@ contract PremiumCollectorTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), bytes32(0))
         );
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
     }
 
     function test_registerVault_WhenVaultZero_Reverts() public {
         vm.prank(admin);
         vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
-        premiumCollector.registerVault(address(0), pool, POLICY_ID, operator);
+        premiumCollector.registerVault(address(0), pool, POLICY_ID);
     }
 
     function test_registerVault_WhenPoolZero_Reverts() public {
         vm.prank(admin);
         vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
-        premiumCollector.registerVault(vault1, address(0), POLICY_ID, operator);
-    }
-
-    function test_registerVault_WhenOperatorZero_Reverts() public {
-        vm.prank(admin);
-        vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, address(0));
+        premiumCollector.registerVault(vault1, address(0), POLICY_ID);
     }
 
     function test_registerVault_WhenCommitteeIdZero_Reverts() public {
         vm.prank(admin);
         vm.expectRevert(IPremiumCollector.ZeroAmount.selector);
-        premiumCollector.registerVault(vault1, pool, 0, operator);
+        premiumCollector.registerVault(vault1, pool, 0);
     }
 
     function test_registerVault_WhenAlreadyRegistered_Reverts() public {
         vm.startPrank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.VaultAlreadyRegistered.selector, vault1));
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
         vm.stopPrank();
     }
 
     function test_registerVault_Success() public {
         vm.prank(admin);
         vm.expectEmit(true, true, false, true);
-        emit VaultRegistered(vault1, address(underlying1), pool, POLICY_ID, operator);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        emit VaultRegistered(vault1, address(underlying1), pool, POLICY_ID);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         IPremiumCollector.VaultConfig memory config = premiumCollector.getVaultConfig(vault1);
         assertEq(config.underlying, address(underlying1));
         assertEq(config.pool, pool);
         assertEq(config.policyId, POLICY_ID);
-        assertEq(config.operator, operator);
         assertEq(config.lastDistributeTime, 0);
         assertTrue(config.registered);
 
@@ -174,7 +169,7 @@ contract PremiumCollectorTest is Test {
 
     function test_removeVault_WhenNotAdmin_Reverts() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), bytes32(0))
@@ -190,7 +185,7 @@ contract PremiumCollectorTest is Test {
 
     function test_removeVault_WhenHasShares_Reverts() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         mockVault1.mint(address(premiumCollector), 100 ether);
 
@@ -201,8 +196,8 @@ contract PremiumCollectorTest is Test {
 
     function test_removeVault_Success() public {
         vm.startPrank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
-        premiumCollector.registerVault(vault2, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+        premiumCollector.registerVault(vault2, pool, POLICY_ID);
 
         vm.expectEmit(true, false, false, false);
         emit VaultRemoved(vault1);
@@ -223,39 +218,37 @@ contract PremiumCollectorTest is Test {
 
     function test_updateVault_WhenNotAdmin_Reverts() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         address newPool = makeAddr("newPool");
         vm.expectRevert(
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), bytes32(0))
         );
-        premiumCollector.updateVault(vault1, newPool, POLICY_ID + 1, operator);
+        premiumCollector.updateVault(vault1, newPool, POLICY_ID + 1);
     }
 
     function test_updateVault_WhenNotRegistered_Reverts() public {
         address newPool = makeAddr("newPool");
         vm.prank(admin);
         vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.VaultNotRegistered.selector, vault1));
-        premiumCollector.updateVault(vault1, newPool, POLICY_ID + 1, operator);
+        premiumCollector.updateVault(vault1, newPool, POLICY_ID + 1);
     }
 
     function test_updateVault_Success() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         address newPool = makeAddr("newPool");
-        address newOperator = makeAddr("newOperator");
         uint96 newPolicyId = POLICY_ID + 1;
 
         vm.prank(admin);
         vm.expectEmit(true, false, false, true);
-        emit VaultUpdated(vault1, newPool, newPolicyId, newOperator);
-        premiumCollector.updateVault(vault1, newPool, newPolicyId, newOperator);
+        emit VaultUpdated(vault1, newPool, newPolicyId);
+        premiumCollector.updateVault(vault1, newPool, newPolicyId);
 
         IPremiumCollector.VaultConfig memory config = premiumCollector.getVaultConfig(vault1);
         assertEq(config.pool, newPool);
         assertEq(config.policyId, newPolicyId);
-        assertEq(config.operator, newOperator);
         assertEq(config.underlying, address(underlying1));
     }
 
@@ -283,7 +276,7 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_SkipsWhenIntervalNotElapsed() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         mockVault1.mint(address(premiumCollector), 100 ether);
         underlying1.mint(vault1, 100 ether);
@@ -303,7 +296,7 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_SkipsWhenNoShares() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         address[] memory vaults = new address[](1);
         vaults[0] = vault1;
@@ -313,7 +306,7 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_SingleVaultSuccess() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         uint256 shares = 100 ether;
         uint256 assets = 100 ether;
@@ -336,8 +329,8 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_MultipleVaultsSuccess() public {
         vm.startPrank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
-        premiumCollector.registerVault(vault2, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+        premiumCollector.registerVault(vault2, pool, POLICY_ID);
         vm.stopPrank();
 
         mockVault1.mint(address(premiumCollector), 100 ether);
@@ -359,7 +352,7 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_SkipsWhenRedeemReturnsZeroAssets() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         uint256 shares = 100 ether;
         mockVault1.mint(address(premiumCollector), shares);
@@ -380,8 +373,8 @@ contract PremiumCollectorTest is Test {
 
     function test_distributeBatch_ZeroAssetVaultDoesNotBlockOthers() public {
         vm.startPrank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
-        premiumCollector.registerVault(vault2, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+        premiumCollector.registerVault(vault2, pool, POLICY_ID);
         vm.stopPrank();
 
         mockVault1.mint(address(premiumCollector), 100 ether);
@@ -418,7 +411,7 @@ contract PremiumCollectorTest is Test {
 
     function test_getDistributableVaults_ExcludesNoShares() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         address[] memory distributable = premiumCollector.getDistributableVaults();
         assertEq(distributable.length, 0);
@@ -426,7 +419,7 @@ contract PremiumCollectorTest is Test {
 
     function test_getDistributableVaults_ExcludesIntervalNotElapsed() public {
         vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         mockVault1.mint(address(premiumCollector), 100 ether);
         underlying1.mint(address(mockVault1), 100 ether);
@@ -443,8 +436,8 @@ contract PremiumCollectorTest is Test {
 
     function test_getDistributableVaults_IncludesEligible() public {
         vm.startPrank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID, operator);
-        premiumCollector.registerVault(vault2, pool, POLICY_ID, operator);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+        premiumCollector.registerVault(vault2, pool, POLICY_ID);
         vm.stopPrank();
 
         mockVault1.mint(address(premiumCollector), 100 ether);
@@ -620,10 +613,21 @@ contract MockPremiumManager {
     function distributePremium(
         address, /*pool*/
         uint96, /*policyId*/
-        address, /*operator*/
         address, /*premiumToken*/
         uint256 /*amount*/
     )
         external
         pure {}
+}
+
+contract MockCoverPool {
+    address private immutable _owner;
+
+    constructor(address owner_) {
+        _owner = owner_;
+    }
+
+    function owner() external view returns (address) {
+        return _owner;
+    }
 }

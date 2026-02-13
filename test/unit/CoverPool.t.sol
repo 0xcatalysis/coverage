@@ -14,7 +14,7 @@ import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 
 contract CoverPoolTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,uint64 maturityTime,uint64 expirationTime)"
     );
     string internal constant NAME = "Catalysis Cover Pool";
     string internal constant VERSION = "1";
@@ -472,7 +472,6 @@ contract CoverPoolTest is Test {
             termsHash: termsHash,
             beneficiary: payoutRecipient,
             startTime: uint64(block.timestamp + 1 hours),
-            operator: operator,
             maturityTime: uint64(block.timestamp + 25 hours),
             expirationTime: uint64(block.timestamp + 2 days)
         });
@@ -500,7 +499,6 @@ contract CoverPoolTest is Test {
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),
             uint256(quote.startTime),
-            uint256(uint160(quote.operator)),
             uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );
@@ -529,7 +527,6 @@ contract MockPolicyManager {
             beneficiary: address(0),
             claimer: address(0),
             payoutToken: address(0),
-            operator: address(0),
             coverageAmount: 1_000_000e8,
             policyId: policyId,
             status: IPolicyManager.PolicyStatus.Created,

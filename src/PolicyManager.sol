@@ -147,7 +147,6 @@ contract PolicyManager is
             beneficiary: beneficiary,
             claimer: claimer,
             payoutToken: payoutToken,
-            operator: curator,
             coverageAmount: coverageAmount,
             policyId: policyId,
             status: PolicyStatus.Created,
@@ -209,7 +208,8 @@ contract PolicyManager is
         // Query core contracts using policyId as committeeId (1:1 mapping).
         require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));
 
-        uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(quote.operator, policyId);
+        address curator = ICoverPool(quote.pool).owner();
+        uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(curator, policyId);
         require(totalStake >= request.coverageAmount, InsufficientStake(policyId, request.coverageAmount, totalStake));
 
         bytes32 policyCommit = boundPolicy.policyCommit;
@@ -226,7 +226,6 @@ contract PolicyManager is
             payoutToken: request.payoutToken,
             pool: quote.pool,
             coverageLimit: boundPolicy.coverageLimit,
-            operator: boundPolicy.operator,
             specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
             policyCommit: policyCommit

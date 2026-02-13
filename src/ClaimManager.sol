@@ -10,6 +10,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
+import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {ISpec} from "./interfaces/ISpec.sol";
 import {ISpecRegistry} from "./interfaces/ISpecRegistry.sol";
@@ -314,7 +315,7 @@ contract ClaimManager is
      * @notice Executes slashing and collateral swapping for payout directly.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
-     * @param metadata Policy metadata containing policyId, operator, and payout details.
+     * @param metadata Policy metadata containing policyId and payout details.
      * @param requestedAmount Maximum amount to disburse (in payout token terms).
      * @return totalPayout Total amount paid out from slashing.
      */
@@ -333,8 +334,8 @@ contract ClaimManager is
 
         // Slash committee in core contracts using policyId as committeeId (1:1 mapping).
         // slither-disable-next-line calls-loop
-        (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
-            ISlashingManager(slashingManager).executeSlashing(metadata.policyId, metadata.operator, slashAmountUSD);
+        (address[] memory collateralTokens, uint256[] memory collateralAmounts) = ISlashingManager(slashingManager)
+            .executeSlashing(metadata.policyId, ICoverPool(metadata.pool).owner(), slashAmountUSD);
 
         uint256 tokensLength = collateralTokens.length;
         // slither-disable-next-line incorrect-equality

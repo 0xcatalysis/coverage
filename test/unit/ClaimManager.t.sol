@@ -45,6 +45,7 @@ contract ClaimManagerTest is Test {
     MockChainlinkPriceFeed internal chainlinkPriceFeedMock;
     MockToken internal collateralTokenMock;
     MockToken internal payoutTokenMock;
+    MockCoverPool internal mockPool;
 
     bytes32 internal evidenceHash;
     bytes32 internal policyCommit;
@@ -92,8 +93,10 @@ contract ClaimManagerTest is Test {
         buyer = makeAddr("buyer");
         beneficiary = makeAddr("beneficiary");
         operator = makeAddr("operator");
-        pool = makeAddr("pool");
         premiumToken = makeAddr("premiumToken");
+
+        mockPool = new MockCoverPool(operator);
+        pool = address(mockPool);
 
         vm.label(admin, "Admin");
         vm.label(claimer, "Claimer");
@@ -626,7 +629,6 @@ contract ClaimManagerTest is Test {
                 payoutToken: address(0),
                 pool: address(0),
                 coverageLimit: 0,
-                operator: address(0),
                 specId: bytes32(0),
                 termsHash: bytes32(0),
                 policyCommit: bytes32(0)
@@ -996,7 +998,6 @@ contract ClaimManagerTest is Test {
             payoutToken: payoutToken,
             pool: pool,
             coverageLimit: COVERAGE_LIMIT,
-            operator: operator,
             specId: keccak256("MorphoSpec"),
             termsHash: keccak256("terms-hash"),
             policyCommit: policyCommit
@@ -1149,5 +1150,17 @@ contract MockMultiSwapper {
             MockToken(_payoutToken).mint(params.recipient, output);
         }
         return output;
+    }
+}
+
+contract MockCoverPool {
+    address private immutable _owner;
+
+    constructor(address owner_) {
+        _owner = owner_;
+    }
+
+    function owner() external view returns (address) {
+        return _owner;
     }
 }

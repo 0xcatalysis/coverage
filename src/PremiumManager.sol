@@ -118,7 +118,6 @@ contract PremiumManager is
     function distributePremium(
         address pool,
         uint96 policyId,
-        address operator,
         address premiumToken,
         uint256 amount
     )
@@ -128,13 +127,13 @@ contract PremiumManager is
         whenNotPaused
         onlyRole(PREMIUM_COLLECTOR_ROLE)
     {
-        require(pool != address(0) && operator != address(0) && premiumToken != address(0), ZeroAddress());
+        require(pool != address(0) && premiumToken != address(0), ZeroAddress());
         require(amount != 0, ZeroAmount());
         require(policyId != 0, InvalidPolicyId());
 
         uint16 poolFeeBps = ICoverPool(pool).poolFeeBps();
-        address poolFeeRecipient = ICoverPool(pool).owner();
-        require(poolFeeRecipient != address(0), ZeroAddress());
+        address curator = ICoverPool(pool).owner();
+        require(curator != address(0), ZeroAddress());
 
         uint16 totalFeeBps = platformFeeBps + poolFeeBps;
         require(totalFeeBps <= _MAX_FEE_BPS, ExcessiveCombinedFees(platformFeeBps, poolFeeBps, totalFeeBps));
@@ -149,13 +148,13 @@ contract PremiumManager is
         }
 
         if (poolSplit > 0) {
-            token.safeTransfer(poolFeeRecipient, poolSplit);
+            token.safeTransfer(curator, poolSplit);
         }
 
         if (restakerSplit > 0) {
             token.safeTransfer(rewardsManager, restakerSplit);
             // Distribute rewards to committee in core contracts using policyId as committeeId (1:1 mapping).
-            IRewardsManager(rewardsManager).distributeRewards(policyId, operator, restakerSplit, token);
+            IRewardsManager(rewardsManager).distributeRewards(policyId, curator, restakerSplit, token);
         }
 
         emit PremiumDistributed(pool, policyId, amount);

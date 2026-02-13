@@ -298,7 +298,7 @@ contract PremiumManagerTest is Test {
             )
         );
         vm.prank(unauthorized);
-        premiumManager.distributePremium(pool, POLICY_ID, operator, address(premiumToken), PREMIUM_AMOUNT);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
     function test_distributePremium_WhenPaused_Reverts() public {
@@ -307,37 +307,31 @@ contract PremiumManagerTest is Test {
 
         vm.expectRevert();
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(pool, POLICY_ID, operator, address(premiumToken), PREMIUM_AMOUNT);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
     function test_distributePremium_WhenPoolZero_Reverts() public {
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(address(0), POLICY_ID, operator, address(premiumToken), PREMIUM_AMOUNT);
-    }
-
-    function test_distributePremium_WhenOperatorZero_Reverts() public {
-        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        vm.prank(premiumCollector);
-        premiumManager.distributePremium(pool, POLICY_ID, address(0), address(premiumToken), PREMIUM_AMOUNT);
+        premiumManager.distributePremium(address(0), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
     function test_distributePremium_WhenPremiumTokenZero_Reverts() public {
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(pool, POLICY_ID, operator, address(0), PREMIUM_AMOUNT);
+        premiumManager.distributePremium(pool, POLICY_ID, address(0), PREMIUM_AMOUNT);
     }
 
     function test_distributePremium_WhenAmountZero_Reverts() public {
         vm.expectRevert(IPremiumManager.ZeroAmount.selector);
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(pool, POLICY_ID, operator, address(premiumToken), 0);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), 0);
     }
 
     function test_distributePremium_WhenCommitteeIdZero_Reverts() public {
         vm.expectRevert(IPremiumManager.InvalidPolicyId.selector);
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(pool, 0, operator, address(premiumToken), PREMIUM_AMOUNT);
+        premiumManager.distributePremium(pool, 0, address(premiumToken), PREMIUM_AMOUNT);
     }
 
     function test_distributePremium_WhenPoolFeeRecipientZero_Reverts() public {
@@ -345,9 +339,7 @@ contract PremiumManagerTest is Test {
 
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(
-            address(zeroOwnerPool), POLICY_ID, operator, address(premiumToken), PREMIUM_AMOUNT
-        );
+        premiumManager.distributePremium(address(zeroOwnerPool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
     function test_distributePremium_WhenCombinedFeesExceed100Percent_Reverts() public {
@@ -357,9 +349,7 @@ contract PremiumManagerTest is Test {
             abi.encodeWithSelector(IPremiumManager.ExcessiveCombinedFees.selector, PLATFORM_FEE_BPS, 9990, 10_040)
         );
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(
-            address(highFeePool), POLICY_ID, operator, address(premiumToken), PREMIUM_AMOUNT
-        );
+        premiumManager.distributePremium(address(highFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
     function test_distributePremium_WhenValid_DistributesFundsCorrectly() public {
@@ -372,7 +362,7 @@ contract PremiumManagerTest is Test {
         emit PremiumDistributed(pool, POLICY_ID, PREMIUM_AMOUNT);
 
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(pool, POLICY_ID, operator, address(premiumToken), PREMIUM_AMOUNT);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
@@ -389,7 +379,7 @@ contract PremiumManagerTest is Test {
         premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
 
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(pool, POLICY_ID, operator, address(premiumToken), PREMIUM_AMOUNT);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
         assertEq(premiumToken.balanceOf(platformTreasury), 0, "Platform fee should be zero");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
@@ -405,9 +395,7 @@ contract PremiumManagerTest is Test {
         premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
 
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(
-            address(zeroFeePool), POLICY_ID, operator, address(premiumToken), PREMIUM_AMOUNT
-        );
+        premiumManager.distributePremium(address(zeroFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), 0, "Pool fee should be zero");
@@ -420,11 +408,11 @@ contract PremiumManagerTest is Test {
         premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
 
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(pool, POLICY_ID, operator, address(premiumToken), PREMIUM_AMOUNT);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
         MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
         assertEq(call.policyId, POLICY_ID, "Policy ID mismatch");
-        assertEq(call.operator, operator, "Operator mismatch");
+        assertEq(call.operator, poolFeeRecipient, "Operator mismatch");
         assertEq(call.rewardAmount, restakerSplit, "Reward amount mismatch");
         assertEq(address(call.rewardToken), address(premiumToken), "Reward token mismatch");
     }

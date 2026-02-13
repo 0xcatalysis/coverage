@@ -36,8 +36,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         address beneficiary;
         /// @notice Policy coverage start timestamp proposed in the quote.
         uint64 startTime;
-        /// @notice Restaking operator whose delegation is being covered.
-        address operator;
         /// @notice Policy coverage maturity timestamp proposed in the quote.
         uint64 maturityTime;
         /// @notice Expiration timestamp for the signed quote.
@@ -61,8 +59,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         uint256 coverageLimit;
         /// @notice Destination address for potential claim payouts (the policy holder).
         address beneficiary;
-        /// @notice Restaking operator whose delegation the coverage protects.
-        address operator;
         /// @notice Policy coverage start timestamp confirmed at bind.
         uint64 startTime;
         /// @notice Policy coverage maturity timestamp confirmed at bind.
@@ -116,11 +112,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Reverts when the beneficiary address is zero.
      */
     error InvalidBeneficiary();
-
-    /**
-     * @notice Reverts when the operator address is zero.
-     */
-    error InvalidOperator();
 
     /**
      * @notice Reverts when a required spec identifier is empty.
@@ -178,7 +169,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
 
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
-     * @param curator_ Address assigned as the owner (curator) and operator.
+     * @param curator_ Address assigned as the owner (curator). Serves as the operator for the pool.
      * @param policyManager_ Address of the PolicyManager contract for policy binding operations.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
      * @param stakeManager_ Address of the StakeManager contract for vault binding operations.

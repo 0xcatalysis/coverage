@@ -33,8 +33,6 @@ interface IPolicyManager is IAccessControl {
         address claimer;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
-        /// @notice Operator address captured at draft creation and added to the committee.
-        address operator;
         /// @notice Coverage amount requested (stake requirement in USD with 8 decimals).
         uint256 coverageAmount;
         /// @notice Policy identifier (1:1 with committee).
@@ -69,8 +67,6 @@ interface IPolicyManager is IAccessControl {
         address pool;
         /// @notice Coverage notional allocated from the pool.
         uint256 coverageLimit;
-        /// @notice Operator address delegated for this policy.
-        address operator;
         /// @notice Spec identifier for parametric claim evaluation (e.g., MorphoSpec, MapleSpec).
         bytes32 specId;
         /// @notice Hash of referenced terms governing this policy.

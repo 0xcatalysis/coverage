@@ -103,18 +103,10 @@ interface IPremiumManager is IAccessControl {
      *      Tokens must already be in PremiumManager's balance before calling.
      * @param pool CoverPool address for fee routing.
      * @param policyId Policy identifier for rewards routing.
-     * @param operator Operator address for rewards routing.
      * @param premiumToken ERC20 token to distribute.
      * @param amount Total premium amount to distribute.
      */
-    function distributePremium(
-        address pool,
-        uint96 policyId,
-        address operator,
-        address premiumToken,
-        uint256 amount
-    )
-        external;
+    function distributePremium(address pool, uint96 policyId, address premiumToken, uint256 amount) external;
 
     /**
      * @notice Returns the configured RewardsManager address.

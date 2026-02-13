@@ -28,7 +28,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,uint64 maturityTime,uint64 expirationTime)"
     );
 
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
@@ -51,7 +51,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.specId != bytes32(0), InvalidSpecId());
         require(quote.termsHash != bytes32(0), InvalidTermsHash());
         require(quote.beneficiary != address(0), InvalidBeneficiary());
-        require(quote.operator != address(0), InvalidOperator());
         require(quote.startTime < quote.maturityTime, InvalidCoverageWindow());
 
         uint256 currentTimestamp = block.timestamp;
@@ -141,7 +140,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
         require(quote.policyId == draft.policyId, InvalidPolicyId());
         require(quote.beneficiary == draft.beneficiary, InvalidBeneficiary());
-        require(quote.operator == owner(), InvalidOperator());
         require(vaults.length != 0, ICoverPool.EmptyVaults());
 
         bytes32 policyCommit = _verifyQuote(quote, signature);
@@ -243,7 +241,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             termsHash: quote.termsHash,
             coverageLimit: quote.coverageLimit,
             beneficiary: quote.beneficiary,
-            operator: quote.operator,
             startTime: quote.startTime,
             maturityTime: quote.maturityTime
         });
@@ -290,7 +287,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),
             uint256(quote.startTime),
-            uint256(uint160(quote.operator)),
             uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );

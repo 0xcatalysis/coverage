@@ -19,8 +19,6 @@ interface IPremiumCollector is IAccessControl {
         address pool;
         /// @notice RewardsManager routing policy identifier.
         uint96 policyId;
-        /// @notice RewardsManager routing operator address.
-        address operator;
         /// @notice Timestamp of most recent distribute for this vault.
         uint64 lastDistributeTime;
         /// @notice Active flag indicating if vault is registered.
@@ -33,11 +31,8 @@ interface IPremiumCollector is IAccessControl {
      * @param underlying Address of the underlying asset.
      * @param pool Address of the CoverPool.
      * @param policyId Policy identifier for rewards routing.
-     * @param operator Operator address for rewards routing.
      */
-    event VaultRegistered(
-        address indexed vault, address indexed underlying, address pool, uint96 policyId, address operator
-    );
+    event VaultRegistered(address indexed vault, address indexed underlying, address pool, uint96 policyId);
 
     /**
      * @notice Emitted when a vault is removed.
@@ -50,9 +45,8 @@ interface IPremiumCollector is IAccessControl {
      * @param vault Address of the ERC-4626 vault.
      * @param pool New CoverPool address.
      * @param policyId New policy identifier.
-     * @param operator New operator address.
      */
-    event VaultUpdated(address indexed vault, address pool, uint96 policyId, address operator);
+    event VaultUpdated(address indexed vault, address pool, uint96 policyId);
 
     /**
      * @notice Emitted when shares are redeemed and distributed.
@@ -125,12 +119,12 @@ interface IPremiumCollector is IAccessControl {
      * @notice Registers a new ERC-4626 vault for premium collection.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      *      Automatically reads the underlying asset from the vault's asset() method.
+     *      Operator address is derived from the pool's owner.
      * @param vault Address of the ERC-4626 vault.
      * @param pool Address of the CoverPool for fee routing.
      * @param policyId Policy identifier for rewards routing.
-     * @param operator Operator address for rewards routing.
      */
-    function registerVault(address vault, address pool, uint96 policyId, address operator) external;
+    function registerVault(address vault, address pool, uint96 policyId) external;
 
     /**
      * @notice Removes a vault from the registry.
@@ -143,12 +137,12 @@ interface IPremiumCollector is IAccessControl {
     /**
      * @notice Updates the configuration for a registered vault.
      * @dev Requires DEFAULT_ADMIN_ROLE.
+     *      Operator address is derived from the pool's owner.
      * @param vault Address of the ERC-4626 vault.
      * @param pool New CoverPool address.
      * @param policyId New policy identifier.
-     * @param operator New operator address.
      */
-    function updateVault(address vault, address pool, uint96 policyId, address operator) external;
+    function updateVault(address vault, address pool, uint96 policyId) external;
 
     /**
      * @notice Distributes premiums for multiple vaults in a single transaction.
