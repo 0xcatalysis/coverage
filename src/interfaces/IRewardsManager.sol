@@ -9,12 +9,12 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  */
 interface IRewardsManager {
     /**
-     * @notice Distributes rewards for a policy's restaker premium to the appropriate committee/operator.
+     * @notice Distributes rewards for a policy's restaker premium to the appropriate policy/operator.
      * @dev Called by PremiumReserve after policy maturity to distribute escrowed premiums.
-     * @param committeeId The restaking committee identifier backing the policy.
+     * @param policyId The policy identifier backing the coverage (1:1 with committee).
      * @param operator The operator address whose stake backed the coverage.
      * @param rewardAmount Amount of reward token to distribute.
      * @param rewardToken The ERC20 token used for rewards.
      */
-    function distributeRewards(uint96 committeeId, address operator, uint256 rewardAmount, IERC20 rewardToken) external;
+    function distributeRewards(uint96 policyId, address operator, uint256 rewardAmount, IERC20 rewardToken) external;
 }

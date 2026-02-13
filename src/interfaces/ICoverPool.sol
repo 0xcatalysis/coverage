@@ -22,8 +22,8 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     struct Quote {
         /// @notice Address of the CoverPool issuing the quote.
         address pool;
-        /// @notice Restaking committee identifier associated with the policy.
-        uint96 committeeId;
+        /// @notice Policy identifier associated with the coverage.
+        uint96 policyId;
         /// @notice Maximum notional coverage in payout token units supplied by this pool.
         uint256 coverageLimit;
         /// @notice Base premium amount owed to the pool for this coverage.
@@ -49,7 +49,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @dev Contains the confirmed terms and coverage details for the bound policy.
      */
     struct BoundPolicy {
-        /// @notice Incremental identifier for the policy.
+        /// @notice Policy identifier (1:1 with committee).
         uint96 policyId;
         /// @notice Deterministic hash representing the policy schedule.
         bytes32 policyCommit;
@@ -61,8 +61,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         uint256 coverageLimit;
         /// @notice Destination address for potential claim payouts (the policy holder).
         address beneficiary;
-        /// @notice Restaking committee identifier for the bound policy.
-        uint96 committeeId;
         /// @notice Restaking operator whose delegation the coverage protects.
         address operator;
         /// @notice Policy coverage start timestamp confirmed at bind.
@@ -81,10 +79,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Emitted when a policy is bound through bindPolicyForRequest.
      * @param policyId The policy identifier.
-     * @param committeeId The committee identifier.
-     * @param vaultCount The number of vaults bound to the committee.
+     * @param vaultCount The number of vaults bound to the policy.
      */
-    event PolicyForRequestBound(uint96 indexed policyId, uint96 indexed committeeId, uint256 vaultCount);
+    event PolicyForRequestBound(uint96 indexed policyId, uint256 vaultCount);
 
     /**
      * @notice Reverts when a required address argument is zero.

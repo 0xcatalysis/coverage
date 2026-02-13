@@ -141,8 +141,6 @@ contract PolicyManager is
 
         policyId = ++_nextPolicyId;
 
-        uint96 committeeId = policyId;
-
         _policyDrafts[policyId] = PolicyDraft({
             pool: pool,
             buyer: msg.sender,
@@ -151,15 +149,15 @@ contract PolicyManager is
             payoutToken: payoutToken,
             operator: curator,
             coverageAmount: coverageAmount,
-            committeeId: committeeId,
+            policyId: policyId,
             status: PolicyStatus.Created,
             bindPolicyHook: bindPolicyHook
         });
 
         emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount);
 
-        IStakeManager(stakeManager).createCommittee(committeeId, coverageAmount);
-        IStakeManager(stakeManager).addOperatorToCommittee(curator, committeeId);
+        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount);
+        IStakeManager(stakeManager).addOperatorToCommittee(curator, policyId);
     }
 
     /**
@@ -203,17 +201,14 @@ contract PolicyManager is
         );
 
         ICoverPool.Quote calldata quote = request.quote;
-        uint96 committeeId = quote.committeeId;
-        require(policyId == committeeId, InvalidPolicyId());
+        require(policyId == quote.policyId, InvalidPolicyId());
 
         draft.status = PolicyStatus.Bound;
 
-        require(IStakeManager(stakeManager).getCommitteeVaults(committeeId).length > 0, NoVaultsBound(committeeId));
+        require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));
 
-        uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(quote.operator, committeeId);
-        require(
-            totalStake >= request.coverageAmount, InsufficientStake(committeeId, request.coverageAmount, totalStake)
-        );
+        uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(quote.operator, policyId);
+        require(totalStake >= request.coverageAmount, InsufficientStake(policyId, request.coverageAmount, totalStake));
 
         bytes32 policyCommit = boundPolicy.policyCommit;
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
@@ -221,7 +216,7 @@ contract PolicyManager is
 
         IPolicyManager.PolicyMetadata memory metadata = IPolicyManager.PolicyMetadata({
             buyer: request.buyer,
-            committeeId: committeeId,
+            policyId: policyId,
             beneficiary: request.beneficiary,
             claimer: request.claimer,
             startTime: boundPolicy.startTime,
@@ -230,7 +225,6 @@ contract PolicyManager is
             pool: quote.pool,
             coverageLimit: boundPolicy.coverageLimit,
             operator: boundPolicy.operator,
-            poolPolicyId: boundPolicy.policyId,
             specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
             policyCommit: policyCommit
@@ -295,7 +289,7 @@ contract PolicyManager is
         require(request.quote.pool != address(0), InvalidCoverPool(request.quote.pool));
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(msg.sender), InvalidCoverPool(msg.sender));
         require(request.quote.pool == msg.sender, UnauthorizedCaller());
-        require(request.quote.committeeId != 0, InvalidPolicyId());
+        require(request.quote.policyId != 0, InvalidPolicyId());
         require(request.quote.coverageLimit != 0, InvalidCoverageLimit());
         require(request.coverageAmount != 0, InvalidCoverageAmount());
         require(

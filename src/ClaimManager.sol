@@ -314,7 +314,7 @@ contract ClaimManager is
      * @notice Executes slashing and collateral swapping for payout directly.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
-     * @param metadata Policy metadata containing committeeId, operator, and payout details.
+     * @param metadata Policy metadata containing policyId, operator, and payout details.
      * @param requestedAmount Maximum amount to disburse (in payout token terms).
      * @return totalPayout Total amount paid out from slashing.
      */
@@ -333,7 +333,7 @@ contract ClaimManager is
 
         // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
-            ISlashingManager(slashingManager).executeSlashing(metadata.committeeId, metadata.operator, slashAmountUSD);
+            ISlashingManager(slashingManager).executeSlashing(metadata.policyId, metadata.operator, slashAmountUSD);
 
         uint256 tokensLength = collateralTokens.length;
         // slither-disable-next-line incorrect-equality

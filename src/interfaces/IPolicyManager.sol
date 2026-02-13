@@ -37,8 +37,8 @@ interface IPolicyManager is IAccessControl {
         address operator;
         /// @notice Coverage amount requested (stake requirement in USD with 8 decimals).
         uint256 coverageAmount;
-        /// @notice Restaking committee identifier created for this policy.
-        uint96 committeeId;
+        /// @notice Policy identifier (1:1 with committee).
+        uint96 policyId;
         /// @notice Draft lifecycle status.
         PolicyStatus status;
         /// @notice Callback target invoked when policy is bound (required).
@@ -53,8 +53,8 @@ interface IPolicyManager is IAccessControl {
     struct PolicyMetadata {
         /// @notice Buyer wallet responsible for paying premiums.
         address buyer;
-        /// @notice Restaking committee identifier that backs this policy.
-        uint96 committeeId;
+        /// @notice Policy identifier (1:1 with committee).
+        uint96 policyId;
         /// @notice Beneficiary receiving payouts upon approved claims.
         address beneficiary;
         /// @notice Account authorized to trigger claims for the policy.
@@ -71,8 +71,6 @@ interface IPolicyManager is IAccessControl {
         uint256 coverageLimit;
         /// @notice Operator address delegated for this policy.
         address operator;
-        /// @notice Incremental identifier for the policy.
-        uint96 poolPolicyId;
         /// @notice Spec identifier for parametric claim evaluation (e.g., MorphoSpec, MapleSpec).
         bytes32 specId;
         /// @notice Hash of referenced terms governing this policy.
@@ -211,18 +209,18 @@ interface IPolicyManager is IAccessControl {
     error InvalidPolicyId();
 
     /**
-     * @notice Reverts when committee doesn't have sufficient stake.
-     * @param committeeId Committee identifier.
+     * @notice Reverts when policy doesn't have sufficient stake.
+     * @param policyId Policy identifier.
      * @param required Required stake amount.
      * @param actual Actual stake amount.
      */
-    error InsufficientStake(uint96 committeeId, uint256 required, uint256 actual);
+    error InsufficientStake(uint96 policyId, uint256 required, uint256 actual);
 
     /**
-     * @notice Reverts when no vaults are bound to a committee.
-     * @param committeeId Committee identifier without vaults.
+     * @notice Reverts when no vaults are bound to a policy.
+     * @param policyId Policy identifier without vaults.
      */
-    error NoVaultsBound(uint96 committeeId);
+    error NoVaultsBound(uint96 policyId);
 
     /**
      * @notice Reverts when a policy draft is not found.

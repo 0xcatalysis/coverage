@@ -28,7 +28,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
     );
 
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
@@ -139,7 +139,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(draft.pool == address(this), PoolAddressMismatch(address(this), draft.pool));
         require(draft.status == IPolicyManager.PolicyStatus.Created, IPolicyManager.InvalidPolicyStatus(draft.status));
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
-        require(quote.committeeId == draft.committeeId, InvalidPolicyId());
+        require(quote.policyId == draft.policyId, InvalidPolicyId());
         require(quote.beneficiary == draft.beneficiary, InvalidBeneficiary());
         require(quote.operator == owner(), InvalidOperator());
         require(vaults.length != 0, ICoverPool.EmptyVaults());
@@ -147,9 +147,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         bytes32 policyCommit = _verifyQuote(quote, signature);
         BoundPolicy memory boundPolicy = _recordBoundPolicy(policyId, policyCommit, quote);
 
-        emit PolicyForRequestBound(policyId, draft.committeeId, vaults.length);
+        emit PolicyForRequestBound(policyId, vaults.length);
 
-        IStakeManager(stakeManager).addCommitteeVaults(draft.committeeId, vaults);
+        IStakeManager(stakeManager).addCommitteeVaults(draft.policyId, vaults);
 
         IPolicyManager(policyManager)
             .bindPolicy(
@@ -242,7 +242,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             termsHash: quote.termsHash,
             coverageLimit: quote.coverageLimit,
             beneficiary: quote.beneficiary,
-            committeeId: quote.committeeId,
             operator: quote.operator,
             startTime: quote.startTime,
             maturityTime: quote.maturityTime
@@ -283,7 +282,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         return EfficientHashLib.hash(
             uint256(_QUOTE_TYPEHASH),
             uint256(uint160(quote.pool)),
-            uint256(quote.committeeId),
+            uint256(quote.policyId),
             quote.coverageLimit,
             quote.basePremium,
             uint256(quote.specId),

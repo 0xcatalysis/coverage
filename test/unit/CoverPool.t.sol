@@ -14,7 +14,7 @@ import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 
 contract CoverPoolTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 committeeId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,address operator,uint64 maturityTime,uint64 expirationTime)"
     );
     string internal constant NAME = "Catalysis Cover Pool";
     string internal constant VERSION = "1";
@@ -465,7 +465,7 @@ contract CoverPoolTest is Test {
     function _defaultQuote() private view returns (ICoverPool.Quote memory quote) {
         quote = ICoverPool.Quote({
             pool: address(coverPool),
-            committeeId: uint96(123),
+            policyId: uint96(123),
             coverageLimit: 1000 ether,
             basePremium: 100 ether,
             specId: specId,
@@ -493,7 +493,7 @@ contract CoverPoolTest is Test {
         return EfficientHashLib.hash(
             uint256(QUOTE_TYPEHASH),
             uint256(uint160(quote.pool)),
-            uint256(quote.committeeId),
+            uint256(quote.policyId),
             quote.coverageLimit,
             quote.basePremium,
             uint256(quote.specId),
@@ -531,7 +531,7 @@ contract MockPolicyManager {
             payoutToken: address(0),
             operator: address(0),
             coverageAmount: 1_000_000e8,
-            committeeId: policyId,
+            policyId: policyId,
             status: IPolicyManager.PolicyStatus.Created,
             bindPolicyHook: address(1)
         });

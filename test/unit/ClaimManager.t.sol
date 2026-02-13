@@ -618,19 +618,18 @@ contract ClaimManagerTest is Test {
             invalidPolicyId,
             IPolicyManager.PolicyMetadata({
                 buyer: address(0),
+                policyId: 0,
                 beneficiary: address(0),
                 claimer: address(0),
+                startTime: 0,
+                maturityTime: 0,
                 payoutToken: address(0),
                 pool: address(0),
                 coverageLimit: 0,
-                poolPolicyId: 0,
+                operator: address(0),
                 specId: bytes32(0),
                 termsHash: bytes32(0),
-                policyCommit: bytes32(0),
-                committeeId: 0,
-                startTime: 0,
-                maturityTime: 0,
-                operator: address(0)
+                policyCommit: bytes32(0)
             })
         );
 
@@ -989,19 +988,18 @@ contract ClaimManagerTest is Test {
     function _defaultMetadata() private view returns (IPolicyManager.PolicyMetadata memory metadata) {
         metadata = IPolicyManager.PolicyMetadata({
             buyer: buyer,
+            policyId: uint96(123),
             beneficiary: beneficiary,
             claimer: claimer,
+            startTime: uint64(block.timestamp),
+            maturityTime: uint64(block.timestamp + COVERAGE_DURATION),
             payoutToken: payoutToken,
             pool: pool,
             coverageLimit: COVERAGE_LIMIT,
-            poolPolicyId: 1,
+            operator: operator,
             specId: keccak256("MorphoSpec"),
             termsHash: keccak256("terms-hash"),
-            policyCommit: policyCommit,
-            committeeId: uint96(123),
-            startTime: uint64(block.timestamp),
-            maturityTime: uint64(block.timestamp + COVERAGE_DURATION),
-            operator: operator
+            policyCommit: policyCommit
         });
     }
 }
