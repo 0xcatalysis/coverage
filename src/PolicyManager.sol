@@ -5,6 +5,7 @@ import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/acce
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
@@ -135,6 +136,12 @@ contract PolicyManager is
         require(beneficiary != address(0) && claimer != address(0) && payoutToken != address(0), ZeroAddress());
         require(coverageAmount != 0, InvalidCoverageAmount());
         require(bindPolicyHook != address(0), InvalidBindPolicyHook());
+
+        try IERC165(bindPolicyHook).supportsInterface(type(IBindPolicyHook).interfaceId) returns (bool supported) {
+            require(supported, InvalidBindPolicyHook());
+        } catch {
+            revert InvalidBindPolicyHook();
+        }
 
         address curator = ICoverPool(pool).owner();
         require(curator != address(0), InvalidPoolOperator());

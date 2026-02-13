@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {Test} from "forge-std/Test.sol";
@@ -1044,6 +1046,22 @@ contract PolicyManagerTest is Test {
         );
     }
 
+    function test_requestCoverage_WhenBindPolicyHookNotContract_Reverts() public {
+        address eoa = makeAddr("notAContract");
+        vm.expectRevert(); // EOA will cause supportsInterface to revert, caught by try-catch
+        vm.prank(buyer);
+        policyManager.requestCoverage(address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, eoa);
+    }
+
+    function test_requestCoverage_WhenBindPolicyHookDoesNotSupportInterface_Reverts() public {
+        MockInvalidHook invalidHook = new MockInvalidHook();
+        vm.expectRevert(IPolicyManager.InvalidBindPolicyHook.selector);
+        vm.prank(buyer);
+        policyManager.requestCoverage(
+            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(invalidHook)
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                                  HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -1278,7 +1296,7 @@ contract MockCoverPoolFactory {
     }
 }
 
-contract MockBindPolicyHook is IBindPolicyHook {
+contract MockBindPolicyHook is IBindPolicyHook, ERC165 {
     uint256 public callCount;
     uint96 public lastPolicyId;
     uint256 public lastCoverageLimit;
@@ -1295,5 +1313,20 @@ contract MockBindPolicyHook is IBindPolicyHook {
 
     function setShouldRevert(bool _shouldRevert) external {
         shouldRevert = _shouldRevert;
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view virtual override (ERC165, IERC165) returns (bool) {
+        return interfaceId == type(IBindPolicyHook).interfaceId || super.supportsInterface(interfaceId);
+    }
+}
+
+// Contract that does not implement IBindPolicyHook interface for testing
+contract MockInvalidHook is ERC165 {
+    function onPolicyBound(uint96, uint256) external pure {
+        // Empty
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 }
