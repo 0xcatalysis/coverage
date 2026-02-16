@@ -54,6 +54,7 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
     function registerSpec(bytes32 specId, ISpec spec) external override whenNotPaused {
         require(specId != bytes32(0), InvalidSpecId());
         require(address(spec) != address(0), InvalidSpec());
+        require(address(spec).code.length > 0, InvalidSpec());
 
         address pool = msg.sender;
         ISpec existingSpec = _specs[pool][specId];

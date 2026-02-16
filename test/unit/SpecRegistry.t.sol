@@ -8,6 +8,7 @@ import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {ISpec} from "../../src/interfaces/ISpec.sol";
 import {ISpecRegistry} from "../../src/interfaces/ISpecRegistry.sol";
+import {MockSpec} from "../../src/mocks/MockSpec.sol";
 import {SpecRegistry} from "../../src/SpecRegistry.sol";
 
 contract SpecRegistryTest is Test {
@@ -33,8 +34,8 @@ contract SpecRegistryTest is Test {
         admin = makeAddr("admin");
         pool1 = makeAddr("pool1");
         pool2 = makeAddr("pool2");
-        spec1 = makeAddr("spec1");
-        spec2 = makeAddr("spec2");
+        spec1 = address(new MockSpec());
+        spec2 = address(new MockSpec());
 
         vm.label(admin, "Admin");
         vm.label(pool1, "Pool1");
