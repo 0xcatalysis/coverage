@@ -11,6 +11,7 @@ FORGE_DEFAULT = FOUNDRY_PROFILE=default forge
 FORGE_CI = FOUNDRY_PROFILE=ci forge
 FORGE_COVERAGE = FOUNDRY_PROFILE=coverage forge
 FORGE_PROD = FOUNDRY_PROFILE=prod forge
+FORGE_GAS = FOUNDRY_PROFILE=gas forge
 
 FORGE_SCRIPT_DEFAULT = $(FORGE_DEFAULT) script --ffi
 FORGE_SCRIPT_PROD = $(FORGE_PROD) script --ffi
@@ -85,7 +86,7 @@ cover-lcov:
 
 gas:
 	@echo "Generating gas report..."
-	@$(FORGE_PROD) test --gas-report
+	@$(FORGE_GAS) test --gas-report
 
 snapshot:
 	@echo "Generating gas snapshot..."
