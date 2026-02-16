@@ -180,6 +180,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param policyManager_ Address of the PolicyManager contract for policy binding operations.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
      * @param stakeManager_ Address of the StakeManager contract for vault binding operations.
+     * @param specRegistry_ Address of the SpecRegistry contract for spec registration.
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
      */
     function initialize(
@@ -187,6 +188,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         address quoteSigner_,
         address policyManager_,
         address stakeManager_,
+        address specRegistry_,
         uint16 poolFeeBps_
     )
         external;
@@ -220,12 +222,14 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param quote Quote struct signed by an authorized quote signer.
      * @param signature EIP-712 signature authorizing the quote.
      * @param vaults Vault addresses to bind to the committee.
+     * @param spec ISpec implementation contract address for quote.specId registration.
      */
     function bindPolicyForRequest(
         uint96 policyId,
         Quote calldata quote,
-        bytes calldata signature,
-        address[] calldata vaults
+        address spec,
+        address[] calldata vaults,
+        bytes calldata signature
     )
         external;
 
@@ -270,6 +274,11 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @notice Returns the StakeManager address used for vault binding operations.
      */
     function stakeManager() external view returns (address);
+
+    /**
+     * @notice Returns the SpecRegistry address used for spec registration.
+     */
+    function specRegistry() external view returns (address);
 
     /**
      * @notice AccessControl identifier for approved quote signers.

@@ -40,11 +40,17 @@ gas_reports = []
 no_match_path = "script/**/*.sol"
 
 [profile.prod]
-gas_reports = []
 optimizer = true
 optimizer_runs = 1_000
 bytecode_hash = "ipfs"
 via_ir = true
+gas_reports = []
+
+[profile.gas]
+optimizer = true
+optimizer_runs = 1_000
+via_ir = false
+gas_reports = ["*"]
 
 [rpc_endpoints]
 anvil = "${ANVIL_RPC_URL}"

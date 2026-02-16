@@ -11,6 +11,8 @@ import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
+import {ISpec} from "./interfaces/ISpec.sol";
+import {ISpecRegistry} from "./interfaces/ISpecRegistry.sol";
 import {IStakeManager} from "./interfaces/IStakeManager.sol";
 
 /**
@@ -35,6 +37,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
 
     address public override policyManager;
     address public override stakeManager;
+    address public override specRegistry;
     address public override feeRecipient;
     uint16 public override poolFeeBps;
     mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
@@ -71,6 +74,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         address quoteSigner_,
         address policyManager_,
         address stakeManager_,
+        address specRegistry_,
         uint16 poolFeeBps_
     )
         external
@@ -78,7 +82,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     {
         require(
             curator_ != address(0) && policyManager_ != address(0) && quoteSigner_ != address(0)
-                && stakeManager_ != address(0),
+                && stakeManager_ != address(0) && specRegistry_ != address(0),
             ZeroAddress()
         );
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
@@ -91,6 +95,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
 
         policyManager = policyManager_;
         stakeManager = stakeManager_;
+        specRegistry = specRegistry_;
         poolFeeBps = poolFeeBps_;
         feeRecipient = curator_;
     }
@@ -139,8 +144,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     function bindPolicyForRequest(
         uint96 policyId,
         Quote calldata quote,
-        bytes calldata signature,
-        address[] calldata vaults
+        address spec,
+        address[] calldata vaults,
+        bytes calldata signature
     )
         external
         override
@@ -159,6 +165,8 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         BoundPolicy memory boundPolicy = _recordBoundPolicy(policyId, policyCommit, quote);
 
         emit PolicyForRequestBound(policyId, vaults.length);
+
+        ISpecRegistry(specRegistry).registerSpec(quote.specId, ISpec(spec));
 
         // Add vaults to committee in core contracts using policyId as committeeId (1:1 mapping).
         IStakeManager(stakeManager).addCommitteeVaults(draft.policyId, vaults);
