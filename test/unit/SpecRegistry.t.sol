@@ -6,6 +6,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
+import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
 import {ISpec} from "../../src/interfaces/ISpec.sol";
 import {ISpecRegistry} from "../../src/interfaces/ISpecRegistry.sol";
 import {MockSpec} from "../../src/mocks/MockSpec.sol";
@@ -16,6 +17,7 @@ contract SpecRegistryTest is Test {
 
     SpecRegistry internal registry;
     address internal admin;
+    address internal factory;
     address internal pool1;
     address internal pool2;
     address internal spec1;
@@ -32,21 +34,31 @@ contract SpecRegistryTest is Test {
 
     function setUp() public {
         admin = makeAddr("admin");
+        factory = makeAddr("factory");
         pool1 = makeAddr("pool1");
         pool2 = makeAddr("pool2");
         spec1 = address(new MockSpec());
         spec2 = address(new MockSpec());
 
         vm.label(admin, "Admin");
+        vm.label(factory, "Factory");
         vm.label(pool1, "Pool1");
         vm.label(pool2, "Pool2");
         vm.label(spec1, "Spec1");
         vm.label(spec2, "Spec2");
 
+        // Mock the factory to return true for pool1 and pool2
+        vm.mockCall(
+            factory, abi.encodeWithSelector(ICoverPoolFactory.coverPoolExists.selector, pool1), abi.encode(true)
+        );
+        vm.mockCall(
+            factory, abi.encodeWithSelector(ICoverPoolFactory.coverPoolExists.selector, pool2), abi.encode(true)
+        );
+
         opts.unsafeSkipAllChecks = true;
 
         address proxy = Upgrades.deployUUPSProxy(
-            "SpecRegistry.sol:SpecRegistry", abi.encodeCall(SpecRegistry.initialize, (admin)), opts
+            "SpecRegistry.sol:SpecRegistry", abi.encodeCall(SpecRegistry.initialize, (admin, factory)), opts
         );
         registry = SpecRegistry(proxy);
 
@@ -61,18 +73,27 @@ contract SpecRegistryTest is Test {
     function test_initialize_WhenAdminZero_Reverts() public {
         SpecRegistry registryImpl = new SpecRegistry();
         vm.expectRevert(ISpecRegistry.ZeroAddress.selector);
-        new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (address(0))));
+        new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (address(0), factory)));
+    }
+
+    function test_initialize_WhenFactoryZero_Reverts() public {
+        SpecRegistry registryImpl = new SpecRegistry();
+        vm.expectRevert(ISpecRegistry.ZeroAddress.selector);
+        new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (admin, address(0))));
     }
 
     function test_initialize_WhenValid_GrantsAdminRole() public {
         SpecRegistry registryImpl = new SpecRegistry();
         address testAdmin = makeAddr("testAdmin");
+        address testFactory = makeAddr("testFactory");
 
-        address proxy =
-            address(new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (testAdmin))));
+        address proxy = address(
+            new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (testAdmin, testFactory)))
+        );
         SpecRegistry testRegistry = SpecRegistry(proxy);
 
         assertTrue(testRegistry.hasRole(ADMIN_ROLE, testAdmin), "Admin role not granted");
+        assertEq(address(testRegistry.coverPoolFactory()), testFactory, "Factory not set correctly");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -143,6 +164,17 @@ contract SpecRegistryTest is Test {
         vm.expectRevert(ISpecRegistry.InvalidSpec.selector);
         vm.prank(pool1);
         registry.registerSpec(specId1, ISpec(address(0)));
+    }
+
+    function test_registerSpec_WhenInvalidPool_Reverts() public {
+        address invalidPool = makeAddr("invalidPool");
+        vm.mockCall(
+            factory, abi.encodeWithSelector(ICoverPoolFactory.coverPoolExists.selector, invalidPool), abi.encode(false)
+        );
+
+        vm.expectRevert(ISpecRegistry.InvalidCoverPool.selector);
+        vm.prank(invalidPool);
+        registry.registerSpec(specId1, ISpec(spec1));
     }
 
     function test_registerSpec_WhenValid_StoresMapping() public {
