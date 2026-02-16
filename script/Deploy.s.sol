@@ -246,7 +246,7 @@ abstract contract Deploy is Script {
         );
         contracts.premiumManagerImpl = Upgrades.getImplementationAddress(contracts.premiumManagerProxy);
 
-        uint64 distributeInterval = 86_400; // 24 hours default
+        uint64 distributeInterval = 86_400; // 24 hours
         contracts.premiumCollectorProxy = Upgrades.deployUUPSProxy(
             "PremiumCollector.sol:PremiumCollector",
             abi.encodeCall(
@@ -320,7 +320,8 @@ abstract contract Deploy is Script {
                     roles.coverPoolFactoryCreator,
                     contracts.coverPoolImplementation,
                     contracts.policyManagerProxy,
-                    external_.stakeManager
+                    external_.stakeManager,
+                    external_.specRegistry
                 )
             ),
             opts

@@ -31,6 +31,7 @@ contract CoverPoolFactory is
     address public override coverPoolImplementation;
     address public override policyManager;
     address public override stakeManager;
+    address public override specRegistry;
 
     EnumerableSet.AddressSet private _pools;
 
@@ -47,14 +48,15 @@ contract CoverPoolFactory is
         address creator_,
         address coverPoolImplementation_,
         address policyManager_,
-        address stakeManager_
+        address stakeManager_,
+        address specRegistry_
     )
         external
         initializer
     {
         require(
             admin_ != address(0) && creator_ != address(0) && coverPoolImplementation_ != address(0)
-                && policyManager_ != address(0) && stakeManager_ != address(0),
+                && policyManager_ != address(0) && stakeManager_ != address(0) && specRegistry_ != address(0),
             ZeroAddress()
         );
         require(coverPoolImplementation_.code.length != 0, InvalidImplementation());
@@ -68,6 +70,7 @@ contract CoverPoolFactory is
         coverPoolImplementation = coverPoolImplementation_;
         policyManager = policyManager_;
         stakeManager = stakeManager_;
+        specRegistry = specRegistry_;
     }
 
     /**
@@ -98,7 +101,9 @@ contract CoverPoolFactory is
 
         address coverPool = coverPoolImplementation.cloneDeterministic(salt);
         ICoverPool(coverPool)
-            .initialize(params.curator, params.quoteSigner, policyManager, stakeManager, params.poolFeeBps);
+            .initialize(
+                params.curator, params.quoteSigner, policyManager, stakeManager, specRegistry, params.poolFeeBps
+            );
 
         // slither-disable-next-line unused-return
         _pools.add(coverPool);

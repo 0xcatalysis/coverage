@@ -11,17 +11,10 @@ import {ISpecRegistry} from "../interfaces/ISpecRegistry.sol";
  *      Provides flexible claim evaluation without real oracle dependencies.
  */
 contract MockSpecRegistry is ISpecRegistry {
-    mapping(address pool => mapping(bytes32 specId => ISpec spec)) private _specs;
+    mapping(address coverPool => mapping(bytes32 specId => ISpec spec)) private _specs;
     address private _defaultSpec;
     address public immutable OWNER;
-
-    /**
-     * @notice Emitted when a spec is registered for a specific pool and specId combination.
-     * @param pool Address of the CoverPool.
-     * @param specId Identifier for the spec (e.g., keccak256("MorphoSpec")).
-     * @param spec Address of the ISpec implementation.
-     */
-    event SpecRegistered(address indexed pool, bytes32 indexed specId, address indexed spec);
+    bool private _paused;
 
     /**
      * @notice Emitted when the default spec is updated.
@@ -40,15 +33,23 @@ contract MockSpecRegistry is ISpecRegistry {
     error NoSpecRegistered();
 
     /**
-     * @notice Thrown when a zero address is provided where it's not allowed.
+     * @notice Thrown when attempting to perform an action while paused.
      */
-    error ZeroAddress();
+    error EnforcedPause();
 
     /**
      * @dev Restricts function access to the contract owner.
      */
     modifier onlyOwner() {
         require(msg.sender == OWNER, NotOwner());
+        _;
+    }
+
+    /**
+     * @dev Restricts function execution when the contract is paused.
+     */
+    modifier whenNotPaused() {
+        require(!_paused, EnforcedPause());
         _;
     }
 
@@ -63,14 +64,37 @@ contract MockSpecRegistry is ISpecRegistry {
     }
 
     /**
-     * @notice Register a spec for a specific pool and specId combination.
-     * @param pool Address of the CoverPool.
+     * @inheritdoc ISpecRegistry
+     * @dev In MockSpecRegistry, this uses msg.sender as the coverPool address.
+     */
+    function registerSpec(bytes32 specId, ISpec spec) external override whenNotPaused {
+        require(specId != bytes32(0), InvalidSpecId());
+        require(address(spec) != address(0), InvalidSpec());
+
+        address coverPool = msg.sender;
+        ISpec existingSpec = _specs[coverPool][specId];
+
+        if (address(existingSpec) != address(0)) {
+            require(
+                address(existingSpec) == address(spec),
+                SpecAlreadyRegistered(coverPool, specId, address(existingSpec), address(spec))
+            );
+            return;
+        }
+
+        _specs[coverPool][specId] = spec;
+        emit SpecRegistered(coverPool, specId, address(spec));
+    }
+
+    /**
+     * @notice Register a spec for a specific CoverPool and specId combination (admin function).
+     * @param coverPool Address of the CoverPool.
      * @param specId Identifier for the spec (e.g., keccak256("MorphoSpec")).
      * @param spec Address of the ISpec implementation.
      */
-    function registerSpec(address pool, bytes32 specId, address spec) external onlyOwner {
-        _specs[pool][specId] = ISpec(spec);
-        emit SpecRegistered(pool, specId, spec);
+    function registerSpecForPool(address coverPool, bytes32 specId, address spec) external onlyOwner whenNotPaused {
+        _specs[coverPool][specId] = ISpec(spec);
+        emit SpecRegistered(coverPool, specId, spec);
     }
 
     /**
@@ -85,10 +109,31 @@ contract MockSpecRegistry is ISpecRegistry {
 
     /**
      * @inheritdoc ISpecRegistry
-     * @dev Returns pool-specific spec if registered, otherwise returns default spec.
      */
-    function resolveSpec(address pool, bytes32 specId) external view override returns (ISpec spec) {
-        spec = _specs[pool][specId];
+    function pause() external override onlyOwner {
+        _paused = true;
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
+     */
+    function unpause() external override onlyOwner {
+        _paused = false;
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
+     */
+    function paused() external view override returns (bool) {
+        return _paused;
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
+     * @dev Returns coverPool-specific spec if registered, otherwise returns default spec.
+     */
+    function resolveSpec(address coverPool, bytes32 specId) external view override returns (ISpec spec) {
+        spec = _specs[coverPool][specId];
         if (address(spec) == address(0)) {
             spec = ISpec(_defaultSpec);
         }
