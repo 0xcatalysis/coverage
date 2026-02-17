@@ -121,6 +121,20 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidBeneficiary();
 
     /**
+     * @notice Reverts when the beneficiary in the quote does not match the policy draft.
+     * @param expected Beneficiary address from the policy draft.
+     * @param actual Beneficiary address from the quote.
+     */
+    error BeneficiaryMismatch(address expected, address actual);
+
+    /**
+     * @notice Reverts when the policy ID in the quote does not match the policy draft.
+     * @param expected Policy ID from the policy draft.
+     * @param actual Policy ID from the quote.
+     */
+    error PolicyIdMismatch(uint96 expected, uint96 actual);
+
+    /**
      * @notice Reverts when a required spec identifier is empty.
      */
     error InvalidSpecId();

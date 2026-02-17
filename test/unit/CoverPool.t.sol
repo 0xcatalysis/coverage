@@ -369,7 +369,7 @@ contract CoverPoolTest is Test {
         vaults[0] = makeAddr("vault1");
         address spec = makeAddr("spec");
 
-        vm.expectRevert(ICoverPool.InvalidPolicyId.selector);
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyIdMismatch.selector, policyId, policyId + 1));
         vm.prank(curator);
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
     }
@@ -384,7 +384,9 @@ contract CoverPoolTest is Test {
         vaults[0] = makeAddr("vault1");
         address spec = makeAddr("spec");
 
-        vm.expectRevert(ICoverPool.InvalidBeneficiary.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(ICoverPool.BeneficiaryMismatch.selector, beneficiary, makeAddr("wrongBeneficiary"))
+        );
         vm.prank(curator);
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
     }
@@ -461,7 +463,7 @@ contract CoverPoolTest is Test {
         vaults[0] = makeAddr("vault1");
         address spec = makeAddr("spec");
 
-        vm.expectRevert(ICoverPool.InvalidBeneficiary.selector);
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.BeneficiaryMismatch.selector, beneficiary, address(0)));
         vm.prank(curator);
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
     }
