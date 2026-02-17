@@ -166,7 +166,7 @@ contract PolicyManager is
         emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount, duration);
 
         // Create committee in core contracts using policyId as committeeId (1:1 mapping).
-        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount);
+        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, uint32(duration));
         IStakeManager(stakeManager).addOperatorToCommittee(curator, policyId);
     }
 

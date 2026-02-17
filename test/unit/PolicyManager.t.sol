@@ -411,7 +411,7 @@ contract PolicyManagerTest is Test {
 
         address[] memory vaults = new address[](1);
         vaults[0] = makeAddr("vault1");
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, uint32(COVERAGE_DURATION));
         mockStakeManager.addOperatorToCommittee(lowStakeOperator, committeeId);
         mockStakeManager.addCommitteeVaults(committeeId, vaults);
 
@@ -433,7 +433,7 @@ contract PolicyManagerTest is Test {
 
         address[] memory vaults = new address[](1);
         vaults[0] = makeAddr("vault1");
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, uint32(COVERAGE_DURATION));
         mockStakeManager.addOperatorToCommittee(curator, committeeId);
         mockStakeManager.addCommitteeVaults(committeeId, vaults);
 
@@ -448,7 +448,7 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_WhenNoVaultsBound_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint96 committeeId = request.quote.policyId;
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, uint32(COVERAGE_DURATION));
         mockStakeManager.addOperatorToCommittee(curator, committeeId);
         mockStakeManager.setOperatorCommitteeStake(curator, committeeId, request.coverageAmount);
 
@@ -1814,7 +1814,7 @@ contract PolicyManagerTest is Test {
     )
         internal
     {
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, uint32(COVERAGE_DURATION));
         mockStakeManager.addOperatorToCommittee(committeeOperator, committeeId);
         if (addVaults) {
             address[] memory vaults = new address[](2);
@@ -1942,6 +1942,7 @@ contract MockStakeManager {
     uint256 public createCommitteeCallCount;
     uint96 public lastCommitteeId;
     uint256 public lastMaxStake;
+    uint32 public lastDuration;
     bool private _shouldFailVaultLocking;
 
     mapping(address => uint96) private _operatorCommittees;
@@ -1952,10 +1953,11 @@ contract MockStakeManager {
     mapping(uint96 => uint256) private _committeeMaxStake;
     mapping(uint96 => bool) private _vaultsLocked;
 
-    function createCommittee(uint96 committeeId, uint256 maxStakeForCommittee) external {
+    function createCommittee(uint96 committeeId, uint256 maxStakeForCommittee, uint32 duration) external {
         createCommitteeCallCount++;
         lastCommitteeId = committeeId;
         lastMaxStake = maxStakeForCommittee;
+        lastDuration = duration;
         _committeeExists[committeeId] = true;
         _committeeMaxStake[committeeId] = maxStakeForCommittee;
     }
