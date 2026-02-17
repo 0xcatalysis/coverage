@@ -124,7 +124,7 @@ contract PolicyManager is
         address claimer,
         address payoutToken,
         uint256 coverageAmount,
-        uint64 duration,
+        uint32 duration,
         address bindPolicyHook
     )
         external
@@ -166,7 +166,7 @@ contract PolicyManager is
         emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount, duration);
 
         // Create committee in core contracts using policyId as committeeId (1:1 mapping).
-        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, uint32(duration));
+        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, duration);
         IStakeManager(stakeManager).addOperatorToCommittee(curator, policyId);
     }
 
@@ -215,7 +215,7 @@ contract PolicyManager is
 
         require(
             boundPolicy.maturityTime - boundPolicy.startTime == draft.duration,
-            DurationMismatch(draft.duration, boundPolicy.maturityTime - boundPolicy.startTime)
+            DurationMismatch(draft.duration, uint32(boundPolicy.maturityTime - boundPolicy.startTime))
         );
 
         draft.status = PolicyStatus.Bound;

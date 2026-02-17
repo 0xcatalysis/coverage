@@ -17,7 +17,7 @@ contract ClaimManagerTest is Test {
     uint96 internal constant POLICY_ID = 1;
     uint256 internal constant COVERAGE_LIMIT = 1000 ether;
     uint256 internal constant BASE_PREMIUM = 100 ether;
-    uint64 internal constant COVERAGE_DURATION = 30 days;
+    uint32 internal constant COVERAGE_DURATION = 30 days;
     uint256 internal constant SLASH_AMOUNT = 500 ether;
 
     address internal admin;
@@ -653,7 +653,7 @@ contract ClaimManagerTest is Test {
 
     function test_fileClaim_WhenBeforeCoverageWindow_Reverts() public {
         IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
-        metadata.startTime = uint64(block.timestamp + 1 days);
+        metadata.startTime = uint32(block.timestamp + 1 days);
         policyMock.setPolicyMetadata(POLICY_ID, metadata);
 
         vm.expectRevert(
@@ -1379,8 +1379,8 @@ contract ClaimManagerTest is Test {
             policyId: POLICY_ID,
             beneficiary: beneficiary,
             claimer: claimer,
-            startTime: uint64(block.timestamp),
-            maturityTime: uint64(block.timestamp + COVERAGE_DURATION),
+            startTime: uint32(block.timestamp),
+            maturityTime: uint32(block.timestamp + COVERAGE_DURATION),
             payoutToken: payoutToken,
             pool: pool,
             coverageLimit: COVERAGE_LIMIT,

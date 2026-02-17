@@ -30,11 +30,11 @@ interface ISpec {
         /// @notice Maximum coverage limit from the policy.
         uint256 coverageLimit;
         /// @notice Policy start timestamp.
-        uint64 startTime;
+        uint32 startTime;
         /// @notice Policy maturity timestamp.
-        uint64 maturityTime;
+        uint32 maturityTime;
         /// @notice Block timestamp when evaluation is performed.
-        uint256 evaluationTime;
+        uint32 evaluationTime;
         /// @notice Hash of evidence submitted with the claim.
         bytes32 evidenceHash;
         /// @notice Additional context data (ABI-encoded product-specific parameters).

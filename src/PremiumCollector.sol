@@ -262,7 +262,7 @@ contract PremiumCollector is
             return;
         }
 
-        config.lastDistributeTime = uint64(block.timestamp);
+        config.lastDistributeTime = uint32(block.timestamp);
         IERC20(config.underlying).safeTransfer(premiumManager, assets);
 
         // slither-disable-next-line calls-loop

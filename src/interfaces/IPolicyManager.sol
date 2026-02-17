@@ -36,7 +36,7 @@ interface IPolicyManager is IAccessControl {
         /// @notice Coverage amount requested (stake requirement in USD with 8 decimals).
         uint256 coverageAmount;
         /// @notice Coverage duration requested (in seconds).
-        uint64 duration;
+        uint32 duration;
         /// @notice Policy identifier (1:1 with committee).
         uint96 policyId;
         /// @notice Draft lifecycle status.
@@ -60,9 +60,9 @@ interface IPolicyManager is IAccessControl {
         /// @notice Account authorized to trigger claims for the policy.
         address claimer;
         /// @notice Policy coverage start timestamp.
-        uint64 startTime;
+        uint32 startTime;
         /// @notice Policy coverage end timestamp.
-        uint64 maturityTime;
+        uint32 maturityTime;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
         /// @notice Address of the pool providing coverage.
@@ -117,7 +117,7 @@ interface IPolicyManager is IAccessControl {
         address beneficiary,
         address claimer,
         uint256 coverageAmount,
-        uint64 duration
+        uint32 duration
     );
 
     /**
@@ -175,7 +175,7 @@ interface IPolicyManager is IAccessControl {
      * @param startTime Coverage start timestamp.
      * @param maturityTime Coverage maturity timestamp.
      */
-    error InvalidCoverageWindow(uint64 startTime, uint64 maturityTime);
+    error InvalidCoverageWindow(uint32 startTime, uint32 maturityTime);
 
     /**
      * @notice Reverts when coverage limit is zero.
@@ -277,7 +277,7 @@ interface IPolicyManager is IAccessControl {
      * @param requested Requested duration from the policy draft.
      * @param actual Actual duration from the bound policy (maturityTime - startTime).
      */
-    error DurationMismatch(uint64 requested, uint64 actual);
+    error DurationMismatch(uint32 requested, uint32 actual);
 
     /**
      * @notice Pauses policy binding operations.
@@ -332,7 +332,7 @@ interface IPolicyManager is IAccessControl {
         address claimer,
         address payoutToken,
         uint256 coverageAmount,
-        uint64 duration,
+        uint32 duration,
         address bindPolicyHook
     )
         external

@@ -35,11 +35,11 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         /// @notice Address that will receive claim payouts for this policy.
         address beneficiary;
         /// @notice Policy coverage start timestamp proposed in the quote.
-        uint64 startTime;
+        uint32 startTime;
         /// @notice Policy coverage maturity timestamp proposed in the quote.
-        uint64 maturityTime;
+        uint32 maturityTime;
         /// @notice Expiration timestamp for the signed quote.
-        uint64 expirationTime;
+        uint32 expirationTime;
     }
 
     /**
@@ -60,9 +60,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         /// @notice Destination address for potential claim payouts (the policy holder).
         address beneficiary;
         /// @notice Policy coverage start timestamp confirmed at bind.
-        uint64 startTime;
+        uint32 startTime;
         /// @notice Policy coverage maturity timestamp confirmed at bind.
-        uint64 maturityTime;
+        uint32 maturityTime;
     }
 
     /**
@@ -108,7 +108,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param expirationTime Expiration timestamp encoded within the quote.
      * @param currentTimestamp Current block timestamp at validation.
      */
-    error QuoteExpired(uint64 expirationTime, uint256 currentTimestamp);
+    error QuoteExpired(uint32 expirationTime, uint32 currentTimestamp);
 
     /**
      * @notice Reverts when an incoming quote specifies zero coverage.
