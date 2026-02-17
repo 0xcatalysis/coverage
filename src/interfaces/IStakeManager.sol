@@ -20,8 +20,9 @@ interface IStakeManager {
      * @notice Creates a committee by setting up operator sets and network limits across protocols.
      * @param committeeId The committee ID.
      * @param maxStakeForCommittee The maximum stake limit for Symbiotic vaults.
+     * @param duration The duration in seconds for the vault lock period.
      */
-    function createCommittee(uint96 committeeId, uint256 maxStakeForCommittee) external;
+    function createCommittee(uint96 committeeId, uint256 maxStakeForCommittee, uint32 duration) external;
 
     /**
      * @notice Associates vaults with a committee.

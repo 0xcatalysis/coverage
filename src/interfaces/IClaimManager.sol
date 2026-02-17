@@ -180,7 +180,7 @@ interface IClaimManager is IAccessControl {
      * @param maturityTime Coverage maturity timestamp.
      * @param currentTime Current block timestamp.
      */
-    error ClaimOutsideCoverageWindow(uint96 policyId, uint64 startTime, uint64 maturityTime, uint256 currentTime);
+    error ClaimOutsideCoverageWindow(uint96 policyId, uint32 startTime, uint32 maturityTime, uint32 currentTime);
 
     /**
      * @notice Reverts when the caller is not authorized to file a claim for this policy.

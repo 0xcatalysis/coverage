@@ -412,8 +412,9 @@ contract CoverPoolFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                UPGRADE
+                          AUTHORIZE UPGRADE
     //////////////////////////////////////////////////////////////*/
+
     function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
         address newImplementation = address(new CoverPoolFactory());
 
@@ -677,6 +678,118 @@ contract CoverPoolFactoryTest is Test {
             uint256(uint160(params.quoteSigner)),
             uint256(params.poolFeeBps)
         );
+    }
+
+    function test_createCoverPool_CuratorBecomesPoolOperator() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+
+        vm.mockCall(
+            stakeManager,
+            abi.encodeWithSelector(
+                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+            ),
+            ""
+        );
+
+        uint256 poolCountBefore = factory.totalCoverPools();
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        address poolAddress = factory.coverPoolAt(poolCountBefore);
+        CoverPool pool = CoverPool(poolAddress);
+
+        assertEq(pool.owner(), params.curator, "Curator should be pool owner/operator");
+        assertTrue(pool.hasRole(pool.DEFAULT_ADMIN_ROLE(), params.curator), "Curator should have admin role");
+    }
+
+    function test_createCoverPool_RegistersCuratorAsNetworkOperator() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+
+        vm.expectCall(
+            stakeManager,
+            abi.encodeWithSelector(
+                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+            )
+        );
+
+        vm.mockCall(
+            stakeManager,
+            abi.encodeWithSelector(
+                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+            ),
+            ""
+        );
+
+        vm.prank(creator);
+        factory.createCoverPool(params);
+    }
+
+    function test_createCoverPool_StoresPolicyManagerReference() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+
+        vm.mockCall(
+            stakeManager,
+            abi.encodeWithSelector(
+                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
+            ),
+            ""
+        );
+
+        uint256 poolCountBefore = factory.totalCoverPools();
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        address poolAddress = factory.coverPoolAt(poolCountBefore);
+        CoverPool pool = CoverPool(poolAddress);
+
+        assertEq(pool.policyManager(), policyManager, "PolicyManager should be set correctly");
+    }
+
+    function test_createCoverPool_MultipleCuratorsCreateIsolatedPools() public {
+        address curator1 = makeAddr("curator1");
+        address curator2 = makeAddr("curator2");
+
+        ICoverPoolFactory.CreateCoverPoolParams memory params1 = _defaultCreateParams();
+        params1.curator = curator1;
+        params1.quoteSigner = makeAddr("signer1");
+
+        ICoverPoolFactory.CreateCoverPoolParams memory params2 = _defaultCreateParams();
+        params2.curator = curator2;
+        params2.quoteSigner = makeAddr("signer2");
+
+        vm.mockCall(
+            stakeManager,
+            abi.encodeWithSelector(
+                IStakeManager.registerOperatorToNetwork.selector, curator1, params1.deadline, params1.signature
+            ),
+            ""
+        );
+
+        vm.mockCall(
+            stakeManager,
+            abi.encodeWithSelector(
+                IStakeManager.registerOperatorToNetwork.selector, curator2, params2.deadline, params2.signature
+            ),
+            ""
+        );
+
+        uint256 poolCountBefore1 = factory.totalCoverPools();
+        vm.prank(creator);
+        factory.createCoverPool(params1);
+        address pool1 = factory.coverPoolAt(poolCountBefore1);
+
+        uint256 poolCountBefore2 = factory.totalCoverPools();
+        vm.prank(creator);
+        factory.createCoverPool(params2);
+        address pool2 = factory.coverPoolAt(poolCountBefore2);
+
+        assertEq(CoverPool(pool1).owner(), curator1, "Curator1 should own pool1");
+        assertEq(CoverPool(pool2).owner(), curator2, "Curator2 should own pool2");
+        assertNotEq(pool1, pool2, "Pools should be distinct");
+
+        vm.expectRevert();
+        vm.prank(curator1);
+        CoverPool(pool2).setPoolFeeBps(200);
     }
 
     function _defaultCreateParams() internal view returns (ICoverPoolFactory.CreateCoverPoolParams memory params) {

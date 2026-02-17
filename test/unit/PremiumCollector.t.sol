@@ -447,8 +447,119 @@ contract PremiumCollectorTest is Test {
         assertEq(distributable[0], vault1);
     }
 
+    function test_distributeBatch_EndToEndPremiumFlow() public {
+        vm.prank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        uint256 shares = 1000 ether;
+        mockVault1.mint(address(premiumCollector), shares);
+
+        uint256 assets = 1000 ether;
+        underlying1.mint(vault1, assets);
+
+        vm.warp(block.timestamp + DEFAULT_DISTRIBUTE_INTERVAL);
+
+        address[] memory vaults = new address[](1);
+        vaults[0] = vault1;
+
+        vm.prank(address(this));
+        premiumCollector.distributeBatch(vaults);
+
+        assertEq(mockVault1.balanceOf(address(premiumCollector)), 0, "Shares should be redeemed");
+        assertEq(underlying1.balanceOf(address(premiumManager)), assets, "Underlying should be sent to PremiumManager");
+        assertEq(premiumManager.lastDistributedAmount(), assets, "PremiumManager should receive correct amount");
+    }
+
+    function test_distributeBatch_CallsPremiumManagerWithCorrectParameters() public {
+        vm.prank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        uint256 shares = 500 ether;
+        uint256 assets = 500 ether;
+        mockVault1.mint(address(premiumCollector), shares);
+        underlying1.mint(vault1, assets);
+
+        vm.warp(block.timestamp + DEFAULT_DISTRIBUTE_INTERVAL);
+
+        address[] memory vaults = new address[](1);
+        vaults[0] = vault1;
+
+        vm.prank(address(this));
+        premiumCollector.distributeBatch(vaults);
+
+        assertEq(premiumManager.lastPool(), pool, "Pool address should match");
+        assertEq(premiumManager.lastPremiumToken(), address(underlying1), "Premium token should be underlying asset");
+        assertEq(premiumManager.lastCommitteeId(), POLICY_ID, "CommitteeId should equal policyId");
+        assertEq(premiumManager.lastDistributedAmount(), assets, "Amount should match redeemed assets");
+    }
+
+    function test_distributeBatch_MultiplePoliciesSamePool_DistributesWithCorrectCommitteeIds() public {
+        uint96 policyId2 = 456;
+
+        vm.startPrank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+        premiumCollector.registerVault(vault2, pool, policyId2);
+        vm.stopPrank();
+
+        uint256 shares1 = 300 ether;
+        uint256 shares2 = 700 ether;
+        mockVault1.mint(address(premiumCollector), shares1);
+        mockVault2.mint(address(premiumCollector), shares2);
+
+        underlying1.mint(vault1, shares1);
+        underlying2.mint(vault2, shares2);
+
+        vm.warp(block.timestamp + DEFAULT_DISTRIBUTE_INTERVAL);
+
+        address[] memory vaults1 = new address[](1);
+        vaults1[0] = vault1;
+        vm.prank(address(this));
+        premiumCollector.distributeBatch(vaults1);
+
+        uint96 firstCommitteeId = premiumManager.lastCommitteeId();
+
+        address[] memory vaults2 = new address[](1);
+        vaults2[0] = vault2;
+        vm.prank(address(this));
+        premiumCollector.distributeBatch(vaults2);
+
+        uint96 secondCommitteeId = premiumManager.lastCommitteeId();
+
+        assertEq(firstCommitteeId, POLICY_ID, "First distribution should use first policyId");
+        assertEq(secondCommitteeId, policyId2, "Second distribution should use second policyId");
+        assertNotEq(firstCommitteeId, secondCommitteeId, "Different policies should have different committeeIds");
+    }
+
+    function test_distributeBatch_ShareConversionToUnderlyingAssets() public {
+        vm.prank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        uint256 shares = 100 ether;
+        uint256 expectedAssets = 95 ether;
+        mockVault1.mint(address(premiumCollector), shares);
+        underlying1.mint(vault1, expectedAssets);
+
+        vm.warp(block.timestamp + DEFAULT_DISTRIBUTE_INTERVAL);
+
+        address[] memory vaults = new address[](1);
+        vaults[0] = vault1;
+
+        vm.prank(address(this));
+        premiumCollector.distributeBatch(vaults);
+
+        assertEq(mockVault1.balanceOf(address(premiumCollector)), 0, "All shares should be redeemed");
+        assertEq(
+            underlying1.balanceOf(address(premiumManager)),
+            expectedAssets,
+            "PremiumManager should receive underlying assets"
+        );
+        assertEq(
+            premiumManager.lastDistributedAmount(), expectedAssets, "Distribution amount should equal redeemed assets"
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
-                            ADMIN SETTERS
+                       SET DISTRIBUTE INTERVAL
     //////////////////////////////////////////////////////////////*/
 
     function test_setDistributeInterval_WhenNotAdmin_Reverts() public {
@@ -473,6 +584,10 @@ contract PremiumCollectorTest is Test {
 
         assertEq(premiumCollector.distributeInterval(), newInterval);
     }
+
+    /*//////////////////////////////////////////////////////////////
+                        SET PREMIUM MANAGER
+    //////////////////////////////////////////////////////////////*/
 
     function test_setPremiumManager_WhenNotAdmin_Reverts() public {
         address newManager = makeAddr("newManager");
@@ -610,14 +725,17 @@ contract MockERC4626 is IERC4626, ERC20 {
 }
 
 contract MockPremiumManager {
-    function distributePremium(
-        address, /*pool*/
-        uint96, /*policyId*/
-        address, /*premiumToken*/
-        uint256 /*amount*/
-    )
-        external
-        pure {}
+    address public lastPool;
+    address public lastPremiumToken;
+    uint96 public lastCommitteeId;
+    uint256 public lastDistributedAmount;
+
+    function distributePremium(address pool, uint96 policyId, address premiumToken, uint256 amount) external {
+        lastPool = pool;
+        lastCommitteeId = policyId;
+        lastPremiumToken = premiumToken;
+        lastDistributedAmount = amount;
+    }
 }
 
 contract MockCoverPool {

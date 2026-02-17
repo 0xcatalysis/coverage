@@ -124,6 +124,7 @@ contract PolicyManager is
         address claimer,
         address payoutToken,
         uint256 coverageAmount,
+        uint32 duration,
         address bindPolicyHook
     )
         external
@@ -135,6 +136,7 @@ contract PolicyManager is
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
         require(beneficiary != address(0) && claimer != address(0) && payoutToken != address(0), ZeroAddress());
         require(coverageAmount != 0, InvalidCoverageAmount());
+        require(duration != 0, InvalidDuration());
         require(bindPolicyHook != address(0), InvalidBindPolicyHook());
 
         try IERC165(bindPolicyHook).supportsInterface(type(IBindPolicyHook).interfaceId) returns (bool supported) {
@@ -155,15 +157,16 @@ contract PolicyManager is
             claimer: claimer,
             payoutToken: payoutToken,
             coverageAmount: coverageAmount,
+            duration: duration,
             policyId: policyId,
             status: PolicyStatus.Created,
             bindPolicyHook: bindPolicyHook
         });
 
-        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount);
+        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount, duration);
 
         // Create committee in core contracts using policyId as committeeId (1:1 mapping).
-        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount);
+        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, duration);
         IStakeManager(stakeManager).addOperatorToCommittee(curator, policyId);
     }
 
@@ -209,6 +212,11 @@ contract PolicyManager is
 
         ICoverPool.Quote calldata quote = request.quote;
         require(policyId == quote.policyId, InvalidPolicyId());
+
+        require(
+            boundPolicy.maturityTime - boundPolicy.startTime == draft.duration,
+            DurationMismatch(draft.duration, uint32(boundPolicy.maturityTime - boundPolicy.startTime))
+        );
 
         draft.status = PolicyStatus.Bound;
 
