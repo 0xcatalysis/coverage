@@ -30,7 +30,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint64 startTime,uint64 maturityTime,uint64 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
     );
 
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
@@ -57,7 +57,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.startTime < quote.maturityTime, InvalidCoverageWindow());
 
         uint256 currentTimestamp = block.timestamp;
-        require(quote.expirationTime >= currentTimestamp, QuoteExpired(quote.expirationTime, currentTimestamp));
+        require(quote.expirationTime >= currentTimestamp, QuoteExpired(quote.expirationTime, uint32(currentTimestamp)));
         _;
     }
 
@@ -157,8 +157,8 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(draft.pool == address(this), PoolAddressMismatch(address(this), draft.pool));
         require(draft.status == IPolicyManager.PolicyStatus.Created, IPolicyManager.InvalidPolicyStatus(draft.status));
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
-        require(quote.policyId == draft.policyId, InvalidPolicyId());
-        require(quote.beneficiary == draft.beneficiary, InvalidBeneficiary());
+        require(quote.policyId == draft.policyId, PolicyIdMismatch(draft.policyId, quote.policyId));
+        require(quote.beneficiary == draft.beneficiary, BeneficiaryMismatch(draft.beneficiary, quote.beneficiary));
         require(vaults.length != 0, ICoverPool.EmptyVaults());
 
         bytes32 policyCommit = _verifyQuote(quote, signature);

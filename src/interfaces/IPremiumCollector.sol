@@ -20,7 +20,7 @@ interface IPremiumCollector is IAccessControl {
         /// @notice RewardsManager routing policy identifier.
         uint96 policyId;
         /// @notice Timestamp of most recent distribute for this vault.
-        uint64 lastDistributeTime;
+        uint32 lastDistributeTime;
         /// @notice Active flag indicating if vault is registered.
         bool registered;
     }

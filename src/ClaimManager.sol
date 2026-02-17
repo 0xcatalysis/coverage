@@ -261,7 +261,7 @@ contract ClaimManager is
 
         require(
             block.timestamp >= metadata.startTime && block.timestamp <= metadata.maturityTime,
-            ClaimOutsideCoverageWindow(policyId, metadata.startTime, metadata.maturityTime, block.timestamp)
+            ClaimOutsideCoverageWindow(policyId, metadata.startTime, metadata.maturityTime, uint32(block.timestamp))
         );
 
         claimId = _policyClaims[policyId].claimCount;
@@ -438,7 +438,7 @@ contract ClaimManager is
             coverageLimit: metadata.coverageLimit,
             startTime: metadata.startTime,
             maturityTime: metadata.maturityTime,
-            evaluationTime: block.timestamp,
+            evaluationTime: uint32(block.timestamp),
             evidenceHash: evidenceHash,
             additionalData: additionalData
         });
