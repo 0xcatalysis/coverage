@@ -458,6 +458,22 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
     }
 
+    function test_bindPolicy_WhenDurationMismatch_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, request.coverageAmount, true);
+
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        boundPolicy.maturityTime = boundPolicy.startTime + COVERAGE_DURATION + 1 days;
+        uint64 actualDuration = boundPolicy.maturityTime - boundPolicy.startTime;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.DurationMismatch.selector, COVERAGE_DURATION, actualDuration)
+        );
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+    }
+
     function test_bindPolicy_WhenCommitteeIdMismatchesPolicyId_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint96 wrongCommitteeId = request.policyId + 1;
@@ -570,11 +586,23 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_MultiplePoliciesToSameBuyer_Succeeds() public {
         vm.prank(buyer);
         uint96 policyId1 = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
         vm.prank(buyer);
         uint96 policyId2 = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
 
         IPolicyManager.BindPolicyRequest memory request1 = _buildRequest(policyId1);
@@ -599,11 +627,23 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_IsProtectedByReentrancyGuard() public {
         vm.prank(buyer);
         uint96 policyId1 = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
         vm.prank(buyer);
         uint96 policyId2 = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
 
         IPolicyManager.BindPolicyRequest memory request1 = _buildRequest(policyId1);
@@ -759,7 +799,7 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidCoverPool.selector, invalidPool));
         vm.prank(buyer);
         policyManager.requestCoverage(
-            invalidPool, beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            invalidPool, beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, COVERAGE_DURATION, address(defaultHook)
         );
     }
 
@@ -767,7 +807,13 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
         vm.prank(buyer);
         policyManager.requestCoverage(
-            address(coverPool), address(0), beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            address(0),
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
     }
 
@@ -775,7 +821,13 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
         vm.prank(buyer);
         policyManager.requestCoverage(
-            address(coverPool), beneficiary, address(0), payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            address(0),
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
     }
 
@@ -783,7 +835,13 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
         vm.prank(buyer);
         policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, address(0), COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            address(0),
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
     }
 
@@ -791,7 +849,15 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(IPolicyManager.InvalidCoverageAmount.selector);
         vm.prank(buyer);
         policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, 0, address(defaultHook)
+            address(coverPool), beneficiary, beneficiary, payoutToken, 0, COVERAGE_DURATION, address(defaultHook)
+        );
+    }
+
+    function test_requestCoverage_WhenDurationZero_Reverts() public {
+        vm.expectRevert(IPolicyManager.InvalidDuration.selector);
+        vm.prank(buyer);
+        policyManager.requestCoverage(
+            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, 0, address(defaultHook)
         );
     }
 
@@ -803,7 +869,13 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(IPolicyManager.InvalidPoolOperator.selector);
         vm.prank(buyer);
         policyManager.requestCoverage(
-            address(poolWithoutCurator), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(poolWithoutCurator),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
     }
 
@@ -814,17 +886,31 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         vm.prank(buyer);
         policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
     }
 
     function test_requestCoverage_CreatesDraftSuccessfully() public {
         vm.expectEmit(true, true, true, true, address(policyManager));
-        emit IPolicyManager.CoverageRequested(1, address(coverPool), buyer, beneficiary, beneficiary, COVERAGE_AMOUNT);
+        emit IPolicyManager.CoverageRequested(
+            1, address(coverPool), buyer, beneficiary, beneficiary, COVERAGE_AMOUNT, COVERAGE_DURATION
+        );
 
         vm.prank(buyer);
         uint96 policyId = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
 
         assertEq(policyId, 1, "Policy ID should be 1");
@@ -838,6 +924,7 @@ contract PolicyManagerTest is Test {
         assertEq(draft.claimer, beneficiary, "Claimer mismatch");
         assertEq(draft.payoutToken, payoutToken, "Payout token mismatch");
         assertEq(draft.coverageAmount, COVERAGE_AMOUNT, "Coverage amount mismatch");
+        assertEq(draft.duration, COVERAGE_DURATION, "Duration mismatch");
         assertEq(draft.policyId, policyId, "Committee ID mismatch");
         assertTrue(draft.status == IPolicyManager.PolicyStatus.Created, "Status should be Created");
     }
@@ -845,10 +932,22 @@ contract PolicyManagerTest is Test {
     function test_requestCoverage_IncrementsPolicyIdCorrectly() public {
         vm.startPrank(buyer);
         uint96 policyId1 = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
         uint96 policyId2 = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
         vm.stopPrank();
 
@@ -869,7 +968,13 @@ contract PolicyManagerTest is Test {
     function test_cancelPolicyDraft_WhenNotBuyer_Reverts() public {
         vm.prank(buyer);
         uint96 policyId = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
 
         address notBuyer = makeAddr("notBuyer");
@@ -881,7 +986,13 @@ contract PolicyManagerTest is Test {
     function test_cancelPolicyDraft_WhenAlreadyCancelled_Reverts() public {
         vm.prank(buyer);
         uint96 policyId = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
 
         vm.prank(buyer);
@@ -897,7 +1008,13 @@ contract PolicyManagerTest is Test {
     function test_cancelPolicyDraft_WhenPaused_Reverts() public {
         vm.prank(buyer);
         uint96 policyId = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
 
         vm.prank(admin);
@@ -911,7 +1028,13 @@ contract PolicyManagerTest is Test {
     function test_cancelPolicyDraft_CancelsSuccessfully() public {
         vm.prank(buyer);
         uint96 policyId = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
 
         vm.expectEmit(true, true, false, true, address(policyManager));
@@ -936,7 +1059,13 @@ contract PolicyManagerTest is Test {
     function test_getPolicyDraft_ReturnsCorrectDraft() public {
         vm.prank(buyer);
         uint96 policyId = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
 
         IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
@@ -964,7 +1093,7 @@ contract PolicyManagerTest is Test {
 
         vm.prank(buyer);
         uint96 policyId = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(hook)
+            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, COVERAGE_DURATION, address(hook)
         );
 
         IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
@@ -976,7 +1105,7 @@ contract PolicyManagerTest is Test {
 
         vm.prank(buyer);
         uint96 policyId = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(hook)
+            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, COVERAGE_DURATION, address(hook)
         );
 
         IPolicyManager.BindPolicyRequest memory request = _buildRequest(policyId);
@@ -997,7 +1126,7 @@ contract PolicyManagerTest is Test {
 
         vm.prank(buyer);
         uint96 policyId = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(hook)
+            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, COVERAGE_DURATION, address(hook)
         );
 
         IPolicyManager.BindPolicyRequest memory request = _buildRequest(policyId);
@@ -1021,7 +1150,7 @@ contract PolicyManagerTest is Test {
 
         vm.prank(buyer);
         uint96 policyId = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(hook)
+            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, COVERAGE_DURATION, address(hook)
         );
 
         IPolicyManager.BindPolicyRequest memory request = _buildRequest(policyId);
@@ -1042,7 +1171,7 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(IPolicyManager.InvalidBindPolicyHook.selector);
         vm.prank(buyer);
         policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(0)
+            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, COVERAGE_DURATION, address(0)
         );
     }
 
@@ -1050,7 +1179,9 @@ contract PolicyManagerTest is Test {
         address eoa = makeAddr("notAContract");
         vm.expectRevert(); // EOA will cause supportsInterface to revert, caught by try-catch
         vm.prank(buyer);
-        policyManager.requestCoverage(address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, eoa);
+        policyManager.requestCoverage(
+            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, COVERAGE_DURATION, eoa
+        );
     }
 
     function test_requestCoverage_WhenBindPolicyHookDoesNotSupportInterface_Reverts() public {
@@ -1058,7 +1189,13 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(IPolicyManager.InvalidBindPolicyHook.selector);
         vm.prank(buyer);
         policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(invalidHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(invalidHook)
         );
     }
 
@@ -1069,7 +1206,13 @@ contract PolicyManagerTest is Test {
     function _defaultRequest() internal returns (IPolicyManager.BindPolicyRequest memory) {
         vm.prank(buyer);
         uint96 policyId = policyManager.requestCoverage(
-            address(coverPool), beneficiary, beneficiary, payoutToken, COVERAGE_AMOUNT, address(defaultHook)
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
         );
         return _buildRequest(policyId);
     }

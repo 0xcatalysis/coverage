@@ -35,6 +35,8 @@ interface IPolicyManager is IAccessControl {
         address payoutToken;
         /// @notice Coverage amount requested (stake requirement in USD with 8 decimals).
         uint256 coverageAmount;
+        /// @notice Coverage duration requested (in seconds).
+        uint64 duration;
         /// @notice Policy identifier (1:1 with committee).
         uint96 policyId;
         /// @notice Draft lifecycle status.
@@ -106,6 +108,7 @@ interface IPolicyManager is IAccessControl {
      * @param beneficiary Beneficiary address for claims.
      * @param claimer Account authorized to trigger claims.
      * @param coverageAmount Requested coverage amount (stake requirement).
+     * @param duration Requested coverage duration (in seconds).
      */
     event CoverageRequested(
         uint96 indexed policyId,
@@ -113,7 +116,8 @@ interface IPolicyManager is IAccessControl {
         address indexed buyer,
         address beneficiary,
         address claimer,
-        uint256 coverageAmount
+        uint256 coverageAmount,
+        uint64 duration
     );
 
     /**
@@ -182,6 +186,11 @@ interface IPolicyManager is IAccessControl {
      * @notice Reverts when coverage amount is zero.
      */
     error InvalidCoverageAmount();
+
+    /**
+     * @notice Reverts when coverage duration is zero.
+     */
+    error InvalidDuration();
 
     /**
      * @notice Reverts when the cover pool address is not registered in the factory.
@@ -264,6 +273,13 @@ interface IPolicyManager is IAccessControl {
     error InvalidBindPolicyHook();
 
     /**
+     * @notice Reverts when the bound policy duration doesn't match the requested duration.
+     * @param requested Requested duration from the policy draft.
+     * @param actual Actual duration from the bound policy (maturityTime - startTime).
+     */
+    error DurationMismatch(uint64 requested, uint64 actual);
+
+    /**
      * @notice Pauses policy binding operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
@@ -306,6 +322,7 @@ interface IPolicyManager is IAccessControl {
      * @param claimer Account authorized to trigger claims for the policy.
      * @param payoutToken ERC20 token used for claim payouts.
      * @param coverageAmount Requested coverage amount (stake requirement in USD with 8 decimals).
+     * @param duration Requested coverage duration (in seconds).
      * @param bindPolicyHook Callback target invoked when policy is bound.
      * @return policyId Identifier reserved for binding and minting.
      */
@@ -315,6 +332,7 @@ interface IPolicyManager is IAccessControl {
         address claimer,
         address payoutToken,
         uint256 coverageAmount,
+        uint64 duration,
         address bindPolicyHook
     )
         external
