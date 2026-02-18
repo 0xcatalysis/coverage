@@ -1,86 +1,57 @@
 # Sepolia Testnet
 
-## Coverage Deployment
+## Deployment Information
 
 ### CoverPool
 
-- Implementation address: [0xa44156708188184a390B151A563Cb528604cfE8B](https://sepolia.etherscan.io/address/0xa44156708188184a390B151A563Cb528604cfE8B)
+- Implementation address: [0x68d24DB92E2E2B3B08700cA342D16e89C18A9825](https://sepolia.etherscan.io/address/0x68d24DB92E2E2B3B08700cA342D16e89C18A9825)
 
 ### Swapper
 
-- Proxy address: [0xcE22Aa500df3E94A5cdBdBD0a97795ff99948C10](https://sepolia.etherscan.io/address/0xcE22Aa500df3E94A5cdBdBD0a97795ff99948C10)
-- Implementation address: [0xA54b73611E3b1f9462302b54ce3e9Eb08ABEf449](https://sepolia.etherscan.io/address/0xA54b73611E3b1f9462302b54ce3e9Eb08ABEf449)
+- Proxy address: [0x80a39816dD7d57a4280da70621B9641D5aEf04ED](https://sepolia.etherscan.io/address/0x80a39816dD7d57a4280da70621B9641D5aEf04ED)
+- Implementation address: [0xf9709EB0a97fd9B9052d112717fe01B59f69cddd](https://sepolia.etherscan.io/address/0xf9709EB0a97fd9B9052d112717fe01B59f69cddd)
+
+### Policy
+
+- Proxy address: [0xd6fE1c958ce48Df9543BAb0Bc05d4949536e9E53](https://sepolia.etherscan.io/address/0xd6fE1c958ce48Df9543BAb0Bc05d4949536e9E53)
+- Implementation address: [0x25f9a441F6566dd3b7c040B820Bb9951fDeb7B12](https://sepolia.etherscan.io/address/0x25f9a441F6566dd3b7c040B820Bb9951fDeb7B12)
+
+### PremiumReserve
+
+- Proxy address: [0x220ad92F1D17506ff09d5ADef38639A24018ebee](https://sepolia.etherscan.io/address/0x220ad92F1D17506ff09d5ADef38639A24018ebee)
+- Implementation address: [0x1F8ae61373250c5F31216BAcC9594c95016BEaD8](https://sepolia.etherscan.io/address/0x1F8ae61373250c5F31216BAcC9594c95016BEaD8)
 
 ### PremiumManager
 
-- Proxy address: [0x746DAa7Eb8D2a4407C19b4D9Cc2Cd6B839dbB720](https://sepolia.etherscan.io/address/0x746DAa7Eb8D2a4407C19b4D9Cc2Cd6B839dbB720)
-- Implementation address: [0xED341606aB240908d559cB168A7f0420d75039B3](https://sepolia.etherscan.io/address/0xED341606aB240908d559cB168A7f0420d75039B3)
-
-### PremiumCollector
-
-- Proxy address: [0x04C89398D66705323a0851e99aE03092B196db57](https://sepolia.etherscan.io/address/0x04C89398D66705323a0851e99aE03092B196db57)
-- Implementation address: [0xa9E2c064d2456B589A92c6567C35F3B96FCdD27A](https://sepolia.etherscan.io/address/0xa9E2c064d2456B589A92c6567C35F3B96FCdD27A)
-
-### PolicyManager
-
-- Proxy address: [0xaA254C2C00F1dF3635e47F51cA1fe1fD04335742](https://sepolia.etherscan.io/address/0xaA254C2C00F1dF3635e47F51cA1fe1fD04335742)
-- Implementation address: [0x2651CC2bA254f46DFA25190729995293Bf47b646](https://sepolia.etherscan.io/address/0x2651CC2bA254f46DFA25190729995293Bf47b646)
+- Proxy address: [0xCb896Da0B7A551Db4dC7defF00b8b9A7DC3D7b8D](https://sepolia.etherscan.io/address/0xCb896Da0B7A551Db4dC7defF00b8b9A7DC3D7b8D)
+- Implementation address: [0x3a49050C7D181C1eC8D8e7530f1083A8Aee8b690](https://sepolia.etherscan.io/address/0x3a49050C7D181C1eC8D8e7530f1083A8Aee8b690)
 
 ### ClaimManager
 
-- Proxy address: [0xecB428fe7895377EFfE2Bf9189d24e34a8Bdf9A6](https://sepolia.etherscan.io/address/0xecB428fe7895377EFfE2Bf9189d24e34a8Bdf9A6)
-- Implementation address: [0x4dC83B7dF5d616d2A1585B871C60da0209f809c5](https://sepolia.etherscan.io/address/0x4dC83B7dF5d616d2A1585B871C60da0209f809c5)
+- Proxy address: [0x620d88895E74BD91457329c3de9922317b97Ab5A](https://sepolia.etherscan.io/address/0x620d88895E74BD91457329c3de9922317b97Ab5A)
+- Implementation address: [0xC843231093Fc4F354D6A8b6d4e181CD1895d8220](https://sepolia.etherscan.io/address/0xC843231093Fc4F354D6A8b6d4e181CD1895d8220)
+
+### PolicyManager
+
+- Proxy address: [0x29766EAb044fd65d56cE1592667935A15DB55Bb7](https://sepolia.etherscan.io/address/0x29766EAb044fd65d56cE1592667935A15DB55Bb7)
+- Implementation address: [0x25084EeA5f628F9C16C75DB7Cd4F0290e265399D](https://sepolia.etherscan.io/address/0x25084EeA5f628F9C16C75DB7Cd4F0290e265399D)
 
 ### CoverPoolFactory
 
-- Proxy address: [0x99E28c60FA0C0476fb867Cf5b5663b6bcC1C923E](https://sepolia.etherscan.io/address/0x99E28c60FA0C0476fb867Cf5b5663b6bcC1C923E)
-- Implementation address: [0x0a4Fa11BEf3e456484548323e5706b8150745bCd](https://sepolia.etherscan.io/address/0x0a4Fa11BEf3e456484548323e5706b8150745bCd)
+- Proxy address: [0x833B89337fb60c467bC0aBD3024D7D5B7bC31781](https://sepolia.etherscan.io/address/0x833B89337fb60c467bC0aBD3024D7D5B7bC31781)
+- Implementation address: [0xcA99EaB897F3A969FB82bFc5e0630980c4503470](https://sepolia.etherscan.io/address/0xcA99EaB897F3A969FB82bFc5e0630980c4503470)
 
-### SpecRegistry
+### MockSpec
 
-- Proxy address: [0xc44c149A8deEa50dBBc62454D617187C1de1f31C](https://sepolia.etherscan.io/address/0xc44c149A8deEa50dBBc62454D617187C1de1f31C)
-- Implementation address: [0xcED8F62D2A0900F449d0Cd9fFd014493Df9ffB7b](https://sepolia.etherscan.io/address/0xcED8F62D2A0900F449d0Cd9fFd014493Df9ffB7b)
+- Address: [0x5376b34171C2aF72009e003C9390bC95f4128CD9](https://sepolia.etherscan.io/address/0x5376b34171C2aF72009e003C9390bC95f4128CD9)
 
-## Core Deployment
+### MockSpecRegistry
 
-### ChainlinkPriceFeed
+- Address: [0xfc8De72193bb1a2fbe4bCB24EcFe891Cf3040F9b](https://sepolia.etherscan.io/address/0xfc8De72193bb1a2fbe4bCB24EcFe891Cf3040F9b)
 
-- Proxy address: [0x7799B9897d9d4BA0CfEEFd8B7607F3b80115980C](https://sepolia.etherscan.io/address/0x7799B9897d9d4BA0CfEEFd8B7607F3b80115980C)
-- Implementation address: [0x47321ffC65376f37d9408d88c061CDd4DBB65bd7](https://sepolia.etherscan.io/address/0x47321ffC65376f37d9408d88c061CDd4DBB65bd7)
+## WETH
 
-### EigenAdapter
-
-- Proxy address: [0xB380879A7e3c6d8cD14a905b155845cb3a572B26](https://sepolia.etherscan.io/address/0xB380879A7e3c6d8cD14a905b155845cb3a572B26)
-- Implementation address: [0x5896F95e8D2B04208B7d627c08Fdda5A44C1119b](https://sepolia.etherscan.io/address/0x5896F95e8D2B04208B7d627c08Fdda5A44C1119b)
-
-### SymbioticAdapter
-
-- Proxy address: [0x34319DBc5f8eaE785803317f4a093De143334d52](https://sepolia.etherscan.io/address/0x34319DBc5f8eaE785803317f4a093De143334d52)
-- Implementation address: [0xCA679Bf6748F0E132Af9f0D6d91b0246bCF1823A](https://sepolia.etherscan.io/address/0xCA679Bf6748F0E132Af9f0D6d91b0246bCF1823A)
-
-### StakeManager
-
-- Proxy address: [0x8f45602E31dEE8F8661209E7D93D57E38eE305d7](https://sepolia.etherscan.io/address/0x8f45602E31dEE8F8661209E7D93D57E38eE305d7)
-- Implementation address: [0x4e520242f573689FffA7a9f8082106109BE434d5](https://sepolia.etherscan.io/address/0x4e520242f573689FffA7a9f8082106109BE434d5)
-
-### RewardsManager
-
-- Proxy address: [0xd235dE53f441b95ede20cA9eB51Ee10616b6C4E1](https://sepolia.etherscan.io/address/0xd235dE53f441b95ede20cA9eB51Ee10616b6C4E1)
-- Implementation address: [0x4687BD60d123808270Dd1c74e880f0725cb97224](https://sepolia.etherscan.io/address/0x4687BD60d123808270Dd1c74e880f0725cb97224)
-
-### SlashingManager
-
-- Proxy address: [0x00370a7503cE49F5F6d46C8E380Ab9FBDe852fa2](https://sepolia.etherscan.io/address/0x00370a7503cE49F5F6d46C8E380Ab9FBDe852fa2)
-- Implementation address: [0x51C388762D001D44a7D55b77dB94260cC9582FC5](https://sepolia.etherscan.io/address/0x51C388762D001D44a7D55b77dB94260cC9582FC5)
-
-### SSPRouter
-
-- Proxy address: [0xDc66D05E196ac52610958AEf348f0e70a2fD0Ec9](https://sepolia.etherscan.io/address/0xDc66D05E196ac52610958AEf348f0e70a2fD0Ec9)
-- Implementation address: [0x3700BD7e5c08cE22603F1498669190438d76d01E](https://sepolia.etherscan.io/address/0x3700BD7e5c08cE22603F1498669190438d76d01E)
-
-## Third-party Deployment
-
-- WETH: [0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9](https://sepolia.etherscan.io/address/0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9)
+- Address: [0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9](https://sepolia.etherscan.io/address/0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9)
 
 ## Accounts
 
