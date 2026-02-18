@@ -33,7 +33,6 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  *   - COVERED_VAULT: ERC-4626 vault address that accrues premiums
  *   - COVER_POOL: CoverPool address associated with the vault
  *   - POLICY_ID: Policy ID (1:1 with committeeId)
- *   - PLATFORM_TREASURY: Platform treasury address (for fee verification)
  *
  * Prerequisites:
  *   - Policy must be bound (Flow 5 completed)
@@ -66,9 +65,6 @@ contract DistributePremium is Script {
     /// @notice Policy ID
     uint96 public policyId;
 
-    /// @notice Platform treasury address
-    address public platformTreasury;
-
     /// @notice Contract instances
     IPremiumCollector public collectorContract;
     IPremiumManager public managerContract;
@@ -88,7 +84,6 @@ contract DistributePremium is Script {
         coveredVault = vm.envAddress("COVERED_VAULT");
         coverPool = vm.envAddress("COVER_POOL");
         policyId = uint96(vm.envUint("POLICY_ID"));
-        platformTreasury = vm.envAddress("PLATFORM_TREASURY");
 
         collectorContract = IPremiumCollector(premiumCollector);
         managerContract = IPremiumManager(premiumManager);
@@ -169,7 +164,6 @@ contract DistributePremium is Script {
         address treasury = managerContract.platformTreasury();
         console.log("Platform Treasury:", treasury);
 
-        // Calculate example splits
         uint256 examplePremium = 1 ether;
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             managerContract.getFeeSplits(examplePremium, platformFeeBps, poolFeeBps);
@@ -205,8 +199,9 @@ contract DistributePremium is Script {
 
         IPremiumCollector.VaultConfig memory config = collectorContract.getVaultConfig(coveredVault);
         address underlying = config.underlying;
+        address onChainTreasury = managerContract.platformTreasury();
         uint256 rewardsManagerBalanceBefore = IERC20(underlying).balanceOf(rewardsManager);
-        uint256 treasuryBalanceBefore = IERC20(underlying).balanceOf(platformTreasury);
+        uint256 treasuryBalanceBefore = IERC20(underlying).balanceOf(onChainTreasury);
 
         address[] memory vaultsToDistribute = new address[](1);
         vaultsToDistribute[0] = coveredVault;
@@ -219,7 +214,7 @@ contract DistributePremium is Script {
         vm.stopBroadcast();
 
         uint256 rewardsManagerBalanceAfter = IERC20(underlying).balanceOf(rewardsManager);
-        uint256 treasuryBalanceAfter = IERC20(underlying).balanceOf(platformTreasury);
+        uint256 treasuryBalanceAfter = IERC20(underlying).balanceOf(onChainTreasury);
 
         uint256 rewardsManagerReceived = rewardsManagerBalanceAfter - rewardsManagerBalanceBefore;
         uint256 treasuryReceived = treasuryBalanceAfter - treasuryBalanceBefore;
