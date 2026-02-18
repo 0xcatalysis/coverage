@@ -51,6 +51,9 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *
  *   Core Contracts:
  *   - STAKE_MANAGER: StakeManager proxy address
+ *   - REWARDS_MANAGER: RewardsManager proxy address
+ *   - SLASHING_MANAGER: SlashingManager proxy address
+ *   - CHAINLINK_PRICE_FEED: ChainlinkPriceFeed proxy address
  *
  *   Pool Creation Params:
  *   - POOL_FEE_BPS: Pool fee basis points (e.g. 1000 = 10%)
@@ -77,6 +80,7 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *
  *   Premium Params:
  *   - COVERED_VAULT: ERC-4626 vault address
+ *   - PLATFORM_TREASURY: Platform treasury address
  *
  *   Claim Params:
  *   - REQUESTED_CLAIM_AMOUNT: Payout amount to request in claim
@@ -106,6 +110,8 @@ contract CompleteCoverageFlow is Script {
 
     // ── Core Contracts ──
     address public stakeManager;
+    address public rewardsManager;
+    address public chainlinkPriceFeed;
 
     // ── Pool Creation ──
     uint16 public poolFeeBps;
@@ -132,6 +138,7 @@ contract CompleteCoverageFlow is Script {
 
     // ── Premium ──
     address public coveredVault;
+    address public platformTreasury;
 
     // ── Claim ──
     uint256 public requestedClaimAmount;
@@ -552,6 +559,8 @@ contract CompleteCoverageFlow is Script {
         premiumManager = vm.envAddress("PREMIUM_MANAGER");
 
         stakeManager = vm.envAddress("STAKE_MANAGER");
+        rewardsManager = vm.envAddress("REWARDS_MANAGER");
+        chainlinkPriceFeed = vm.envAddress("CHAINLINK_PRICE_FEED");
     }
 
     function _loadPoolCreationParams() internal {
@@ -588,6 +597,7 @@ contract CompleteCoverageFlow is Script {
 
     function _loadPremiumParams() internal {
         coveredVault = vm.envOr("COVERED_VAULT", address(0));
+        platformTreasury = vm.envAddress("PLATFORM_TREASURY");
     }
 
     function _loadClaimParams() internal {
