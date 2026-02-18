@@ -33,7 +33,6 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  *   - COVERED_VAULT: ERC-4626 vault address that accrues premiums
  *   - COVER_POOL: CoverPool address associated with the vault
  *   - POLICY_ID: Policy ID (1:1 with committeeId)
- *   - PLATFORM_TREASURY: Platform treasury address (for fee verification)
  *
  * Prerequisites:
  *   - Policy must be bound (Flow 5 completed)
@@ -66,9 +65,6 @@ contract DistributePremium is Script {
     /// @notice Policy ID
     uint96 public policyId;
 
-    /// @notice Platform treasury address
-    address public platformTreasury;
-
     /// @notice Contract instances
     IPremiumCollector public collectorContract;
     IPremiumManager public managerContract;
@@ -88,7 +84,6 @@ contract DistributePremium is Script {
         coveredVault = vm.envAddress("COVERED_VAULT");
         coverPool = vm.envAddress("COVER_POOL");
         policyId = uint96(vm.envUint("POLICY_ID"));
-        platformTreasury = vm.envAddress("PLATFORM_TREASURY");
 
         collectorContract = IPremiumCollector(premiumCollector);
         managerContract = IPremiumManager(premiumManager);
@@ -195,13 +190,14 @@ contract DistributePremium is Script {
         }
 
         address underlying = collectorContract.getVaultConfig(coveredVault).underlying;
+        address onChainTreasury = managerContract.platformTreasury();
         address poolFeeRecipient = ICoverPool(coverPool).feeRecipient();
 
         console.log("Distributing premiums for vault:", coveredVault);
         console.log("Shares to redeem:", shares);
 
         (uint256 rewardsManagerReceived, uint256 treasuryReceived, uint256 poolFeeRecipientReceived) =
-            _executeDistribution(underlying, platformTreasury, poolFeeRecipient);
+            _executeDistribution(underlying, onChainTreasury, poolFeeRecipient);
 
         console.log("RewardsManager received:", rewardsManagerReceived);
         console.log("Platform Treasury received:", treasuryReceived);
