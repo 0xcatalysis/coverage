@@ -51,9 +51,6 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *
  *   Core Contracts:
  *   - STAKE_MANAGER: StakeManager proxy address
- *   - REWARDS_MANAGER: RewardsManager proxy address
- *   - SLASHING_MANAGER: SlashingManager proxy address
- *   - CHAINLINK_PRICE_FEED: ChainlinkPriceFeed proxy address
  *
  *   Pool Creation Params:
  *   - POOL_FEE_BPS: Pool fee basis points (e.g. 1000 = 10%)
@@ -110,8 +107,6 @@ contract CompleteCoverageFlow is Script {
 
     // ── Core Contracts ──
     address public stakeManager;
-    address public rewardsManager;
-    address public chainlinkPriceFeed;
 
     // ── Pool Creation ──
     uint16 public poolFeeBps;
@@ -559,8 +554,6 @@ contract CompleteCoverageFlow is Script {
         premiumManager = vm.envAddress("PREMIUM_MANAGER");
 
         stakeManager = vm.envAddress("STAKE_MANAGER");
-        rewardsManager = vm.envAddress("REWARDS_MANAGER");
-        chainlinkPriceFeed = vm.envAddress("CHAINLINK_PRICE_FEED");
     }
 
     function _loadPoolCreationParams() internal {
