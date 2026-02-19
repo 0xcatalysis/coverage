@@ -200,8 +200,10 @@ contract DistributePremium is Script {
         IPremiumCollector.VaultConfig memory config = collectorContract.getVaultConfig(coveredVault);
         address underlying = config.underlying;
         address onChainTreasury = managerContract.platformTreasury();
+        address poolFeeRecipient = ICoverPool(coverPool).feeRecipient();
         uint256 rewardsManagerBalanceBefore = IERC20(underlying).balanceOf(rewardsManager);
         uint256 treasuryBalanceBefore = IERC20(underlying).balanceOf(onChainTreasury);
+        uint256 poolFeeRecipientBalanceBefore = IERC20(underlying).balanceOf(poolFeeRecipient);
 
         address[] memory vaultsToDistribute = new address[](1);
         vaultsToDistribute[0] = coveredVault;
@@ -215,18 +217,23 @@ contract DistributePremium is Script {
 
         uint256 rewardsManagerBalanceAfter = IERC20(underlying).balanceOf(rewardsManager);
         uint256 treasuryBalanceAfter = IERC20(underlying).balanceOf(onChainTreasury);
+        uint256 poolFeeRecipientBalanceAfter = IERC20(underlying).balanceOf(poolFeeRecipient);
 
         uint256 rewardsManagerReceived = rewardsManagerBalanceAfter - rewardsManagerBalanceBefore;
         uint256 treasuryReceived = treasuryBalanceAfter - treasuryBalanceBefore;
+        uint256 poolFeeRecipientReceived = poolFeeRecipientBalanceAfter - poolFeeRecipientBalanceBefore;
 
         console.log("RewardsManager received:", rewardsManagerReceived);
         console.log("Platform Treasury received:", treasuryReceived);
+        console.log("Pool Fee Recipient received:", poolFeeRecipientReceived);
 
         uint256 sharesAfter = collectorContract.getAccruedShares(coveredVault);
         console.log("Remaining shares:", sharesAfter);
         require(sharesAfter == 0, "Shares not fully redeemed");
 
         console.log("[SUCCESS] Premiums distributed");
-        emit PremiumsDistributed(coveredVault, policyId, shares, rewardsManagerReceived + treasuryReceived);
+        emit PremiumsDistributed(
+            coveredVault, policyId, shares, rewardsManagerReceived + treasuryReceived + poolFeeRecipientReceived
+        );
     }
 }
