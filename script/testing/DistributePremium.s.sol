@@ -225,14 +225,14 @@ contract DistributePremium is Script {
 
     function _executeDistribution(
         address underlying,
-        address treasury,
+        address onChainTreasury,
         address poolFeeRecipient
     )
         internal
         returns (uint256 rewardsManagerReceived, uint256 treasuryReceived, uint256 poolFeeRecipientReceived)
     {
         uint256 rewardsManagerBalanceBefore = IERC20(underlying).balanceOf(rewardsManager);
-        uint256 treasuryBalanceBefore = IERC20(underlying).balanceOf(treasury);
+        uint256 treasuryBalanceBefore = IERC20(underlying).balanceOf(onChainTreasury);
         uint256 poolFeeRecipientBalanceBefore = IERC20(underlying).balanceOf(poolFeeRecipient);
 
         address[] memory vaultsToDistribute = new address[](1);
@@ -243,7 +243,7 @@ contract DistributePremium is Script {
         vm.stopBroadcast();
 
         rewardsManagerReceived = IERC20(underlying).balanceOf(rewardsManager) - rewardsManagerBalanceBefore;
-        treasuryReceived = IERC20(underlying).balanceOf(treasury) - treasuryBalanceBefore;
+        treasuryReceived = IERC20(underlying).balanceOf(onChainTreasury) - treasuryBalanceBefore;
         poolFeeRecipientReceived = IERC20(underlying).balanceOf(poolFeeRecipient) - poolFeeRecipientBalanceBefore;
     }
 }
