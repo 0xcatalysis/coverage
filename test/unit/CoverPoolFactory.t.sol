@@ -78,6 +78,54 @@ contract CoverPoolFactoryTest is Test {
     /*//////////////////////////////////////////////////////////////
                                INITIALIZE
     //////////////////////////////////////////////////////////////*/
+    function test_initialize_WhenAdminZero_Reverts() public {
+        CoverPoolFactory factoryImpl = new CoverPoolFactory();
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        new ERC1967Proxy(
+            address(factoryImpl),
+            abi.encodeCall(
+                CoverPoolFactory.initialize,
+                (address(0), creator, address(implementation), policyManager, stakeManager, specRegistry)
+            )
+        );
+    }
+
+    function test_initialize_WhenCreatorZero_Reverts() public {
+        CoverPoolFactory factoryImpl = new CoverPoolFactory();
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        new ERC1967Proxy(
+            address(factoryImpl),
+            abi.encodeCall(
+                CoverPoolFactory.initialize,
+                (admin, address(0), address(implementation), policyManager, stakeManager, specRegistry)
+            )
+        );
+    }
+
+    function test_initialize_WhenValid_GrantsRoles() public {
+        CoverPoolFactory factoryImpl = new CoverPoolFactory();
+        address testAdmin = makeAddr("testAdmin");
+        address testCreator = makeAddr("testCreator");
+
+        address proxy = address(
+            new ERC1967Proxy(
+                address(factoryImpl),
+                abi.encodeCall(
+                    CoverPoolFactory.initialize,
+                    (testAdmin, testCreator, address(implementation), policyManager, stakeManager, specRegistry)
+                )
+            )
+        );
+        CoverPoolFactory testFactory = CoverPoolFactory(proxy);
+
+        assertTrue(testFactory.hasRole(ADMIN_ROLE, testAdmin), "Admin role not granted");
+        assertTrue(testFactory.hasRole(testFactory.CREATOR_ROLE(), testCreator), "Creator role not granted");
+        assertEq(testFactory.coverPoolImplementation(), address(implementation), "Implementation not set");
+        assertEq(testFactory.policyManager(), policyManager, "PolicyManager not set");
+        assertEq(testFactory.stakeManager(), stakeManager, "StakeManager not set");
+        assertEq(testFactory.specRegistry(), specRegistry, "SpecRegistry not set");
+    }
+
     function test_initialize_WhenImplementationZero_Reverts() public {
         CoverPoolFactory factoryImpl = new CoverPoolFactory();
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
@@ -181,6 +229,16 @@ contract CoverPoolFactoryTest is Test {
     /*//////////////////////////////////////////////////////////////
                             CREATE COVER POOL
     //////////////////////////////////////////////////////////////*/
+    function test_createCoverPool_WhenCallerNotCreator_Reverts() public {
+        address notCreator = makeAddr("notCreator");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, notCreator, creatorRole)
+        );
+        vm.prank(notCreator);
+        factory.createCoverPool(_defaultCreateParams());
+    }
+
     function test_createCoverPool_WhenPaused_Reverts() public {
         vm.prank(admin);
         factory.pause();
@@ -409,6 +467,38 @@ contract CoverPoolFactoryTest is Test {
         factory.setStakeManager(newStakeManager);
 
         assertEq(factory.stakeManager(), newStakeManager, "StakeManager not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          SET SPEC REGISTRY
+    //////////////////////////////////////////////////////////////*/
+    function test_setSpecRegistry_WhenCallerNotCreator_Reverts() public {
+        address caller = makeAddr("notCreatorSpec");
+        address newSpecRegistry = makeAddr("specRegistry2");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, caller, creatorRole)
+        );
+        vm.prank(caller);
+        factory.setSpecRegistry(newSpecRegistry);
+    }
+
+    function test_setSpecRegistry_WhenZero_Reverts() public {
+        vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
+        vm.prank(creator);
+        factory.setSpecRegistry(address(0));
+    }
+
+    function test_setSpecRegistry_WhenValid_UpdatesState() public {
+        address newSpecRegistry = makeAddr("specRegistryNew");
+
+        vm.expectEmit(true, true, true, true, address(factory));
+        emit ICoverPoolFactory.SpecRegistrySet(specRegistry, newSpecRegistry);
+
+        vm.prank(creator);
+        factory.setSpecRegistry(newSpecRegistry);
+
+        assertEq(factory.specRegistry(), newSpecRegistry, "SpecRegistry not updated");
     }
 
     /*//////////////////////////////////////////////////////////////
