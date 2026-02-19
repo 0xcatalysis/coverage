@@ -18,7 +18,7 @@ FORGE_SCRIPT_PROD = $(FORGE_PROD) script --ffi
 FORGE_VERIFY_PROD = $(FORGE_PROD) verify-contract --verifier etherscan --compilation-profile prod
 FORGE_SCRIPT_OPTS = --broadcast --slow
 
-.PHONY: all setup build test test-ci test-unit test-fuzz test-invariant cover cover-lcov gas snapshot snapshot-check build-prod deploy-anvil deploy-sepolia deploy-ethereum deploy-specregistry-sepolia upgrade-coverpool-factory-sepolia upgrade-coverpool-factory-ethereum verify-sepolia verify-ethereum verify-coverpool-sepolia verify-coverpool-ethereum verify-coverpool-factory-sepolia verify-coverpool-factory-ethereum verify-swapper-sepolia verify-swapper-ethereum verify-policy-sepolia verify-policy-ethereum verify-premium-reserve-sepolia verify-premium-reserve-ethereum verify-premium-manager-sepolia verify-premium-manager-ethereum verify-claim-manager-sepolia verify-claim-manager-ethereum verify-policy-manager-sepolia verify-policy-manager-ethereum show-sepolia show-ethereum format format-check lint docs clean slither mythril help
+.PHONY: all setup build test test-ci test-unit test-fuzz test-invariant cover cover-lcov gas snapshot snapshot-check build-prod deploy-anvil deploy-sepolia deploy-ethereum upgrade-coverpool-factory-sepolia upgrade-coverpool-factory-ethereum verify-sepolia verify-ethereum verify-coverpool-sepolia verify-coverpool-ethereum verify-coverpool-factory-sepolia verify-coverpool-factory-ethereum verify-swapper-sepolia verify-swapper-ethereum verify-policy-sepolia verify-policy-ethereum verify-premium-reserve-sepolia verify-premium-reserve-ethereum verify-premium-manager-sepolia verify-premium-manager-ethereum verify-claim-manager-sepolia verify-claim-manager-ethereum verify-policy-manager-sepolia verify-policy-manager-ethereum verify-spec-registry-sepolia verify-spec-registry-ethereum show-sepolia show-ethereum format format-check lint docs clean slither mythril help
 
 all: clean build test
 
@@ -120,14 +120,6 @@ deploy-ethereum: clean
 		--chain mainnet \
 		$(FORGE_SCRIPT_OPTS)
 
-deploy-specregistry-sepolia:
-	@echo "Deploying SpecRegistry mocks to Sepolia..."
-	@$(FORGE_SCRIPT_PROD) script/DeploySpecRegistrySepolia.s.sol \
-		--rpc-url $(SEPOLIA_RPC_URL) \
-		--private-key $(PRIVATE_KEY) \
-		--chain sepolia \
-		$(FORGE_SCRIPT_OPTS)
-
 upgrade-coverpool-factory-sepolia:
 	@echo "Upgrading CoverPoolFactory on Sepolia..."
 	@$(FORGE_SCRIPT_PROD) script/UpgradeCoverPoolFactorySepolia.s.sol \
@@ -144,10 +136,10 @@ upgrade-coverpool-factory-ethereum:
 		--chain mainnet \
 		$(FORGE_SCRIPT_OPTS)
 
-verify-sepolia: verify-coverpool-sepolia verify-coverpool-factory-sepolia verify-swapper-sepolia verify-policy-sepolia verify-premium-reserve-sepolia verify-premium-manager-sepolia verify-claim-manager-sepolia verify-policy-manager-sepolia
+verify-sepolia: verify-coverpool-sepolia verify-coverpool-factory-sepolia verify-swapper-sepolia verify-policy-sepolia verify-premium-reserve-sepolia verify-premium-manager-sepolia verify-claim-manager-sepolia verify-policy-manager-sepolia verify-spec-registry-sepolia
 	@echo "Sepolia verification complete!"
 
-verify-ethereum: verify-coverpool-ethereum verify-coverpool-factory-ethereum verify-swapper-ethereum verify-policy-ethereum verify-premium-reserve-ethereum verify-premium-manager-ethereum verify-claim-manager-ethereum verify-policy-manager-ethereum
+verify-ethereum: verify-coverpool-ethereum verify-coverpool-factory-ethereum verify-swapper-ethereum verify-policy-ethereum verify-premium-reserve-ethereum verify-premium-manager-ethereum verify-claim-manager-ethereum verify-policy-manager-ethereum verify-spec-registry-ethereum
 	@echo "Ethereum verification complete!"
 
 verify-coverpool-sepolia:
@@ -294,6 +286,24 @@ verify-policy-manager-ethereum:
 		--etherscan-api-key $(ETHERSCAN_API_KEY) \
 		--watch || true
 
+verify-spec-registry-sepolia:
+	@echo "Verifying SpecRegistry on Sepolia..."
+	@test -n "$(SPEC_REGISTRY_IMPL)" || (echo "SPEC_REGISTRY_IMPL environment variable required" && exit 1)
+	@$(FORGE_VERIFY_PROD) $(SPEC_REGISTRY_IMPL) src/SpecRegistry.sol:SpecRegistry \
+		--rpc-url $(SEPOLIA_RPC_URL) \
+		--chain sepolia \
+		--etherscan-api-key $(ETHERSCAN_API_KEY) \
+		--watch || true
+
+verify-spec-registry-ethereum:
+	@echo "Verifying SpecRegistry on Ethereum..."
+	@test -n "$(SPEC_REGISTRY_IMPL)" || (echo "SPEC_REGISTRY_IMPL environment variable required" && exit 1)
+	@$(FORGE_VERIFY_PROD) $(SPEC_REGISTRY_IMPL) src/SpecRegistry.sol:SpecRegistry \
+		--rpc-url $(ETHEREUM_RPC_URL) \
+		--chain mainnet \
+		--etherscan-api-key $(ETHERSCAN_API_KEY) \
+		--watch || true
+
 show-sepolia:
 	@echo "Showing deployments for Sepolia..."
 	@$(FORGE_SCRIPT_DEFAULT) script/ShowSepolia.s.sol \
@@ -345,10 +355,9 @@ help:
 	@echo "  make gas              - Generate gas report"
 	@echo ""
 	@echo "Deployment:"
-	@echo "  make deploy-anvil                - Deploy contracts to Anvil"
-	@echo "  make deploy-sepolia              - Deploy contracts to Sepolia"
-	@echo "  make deploy-specregistry-sepolia - Deploy SpecRegistry mocks to Sepolia"
-	@echo "  make deploy-ethereum             - Deploy contracts to Ethereum"
+	@echo "  make deploy-anvil                     - Deploy contracts to Anvil"
+	@echo "  make deploy-sepolia                   - Deploy contracts to Sepolia"
+	@echo "  make deploy-ethereum                  - Deploy contracts to Ethereum"
 	@echo ""
 	@echo "Upgrades:"
 	@echo "  make upgrade-coverpool-factory-sepolia  - Upgrade CoverPoolFactory on Sepolia"
@@ -373,6 +382,8 @@ help:
 	@echo "  make verify-claim-manager-ethereum    - Verify ClaimManager on Ethereum"
 	@echo "  make verify-policy-manager-sepolia    - Verify PolicyManager on Sepolia"
 	@echo "  make verify-policy-manager-ethereum   - Verify PolicyManager on Ethereum"
+	@echo "  make verify-spec-registry-sepolia     - Verify SpecRegistry on Sepolia"
+	@echo "  make verify-spec-registry-ethereum    - Verify SpecRegistry on Ethereum"
 	@echo ""
 	@echo "Inspection:"
 	@echo "  make show-sepolia       - Show Sepolia deployment metadata"

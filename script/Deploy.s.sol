@@ -11,6 +11,7 @@ import {CoverPoolFactory} from "../src/CoverPoolFactory.sol";
 import {PolicyManager} from "../src/PolicyManager.sol";
 import {PremiumCollector} from "../src/PremiumCollector.sol";
 import {PremiumManager} from "../src/PremiumManager.sol";
+import {SpecRegistry} from "../src/SpecRegistry.sol";
 import {Swapper} from "../src/Swapper.sol";
 
 /**
@@ -36,7 +37,6 @@ import {Swapper} from "../src/Swapper.sol";
  *      Environment Variables:
  *        - PRIVATE_KEY: Deployer private key (defaults to Anvil key 0)
  *        - ADMIN: Admin address for all contracts (defaults to deployer)
- *        - SPEC_REGISTRY: SpecRegistry address (required)
  *        - SLASHING_MANAGER: Catalysis Core SlashingManager address (required)
  *        - STAKE_MANAGER: Catalysis Core StakeManager address (required)
  *        - REWARDS_MANAGER: Catalysis Core RewardsManager address (required)
@@ -67,7 +67,6 @@ abstract contract Deploy is Script {
     /**
      * @notice External contract addresses required for deployment.
      * @param nativeWrapper WETH or equivalent native token wrapper address.
-     * @param specRegistry SpecRegistry contract address.
      * @param slashingManager SlashingManager contract address from Catalysis Core.
      * @param chainlinkPriceFeed ChainlinkPriceFeed contract address from Catalysis Core.
      * @param stakeManager StakeManager contract address from Catalysis Core.
@@ -75,7 +74,6 @@ abstract contract Deploy is Script {
      */
     struct ExternalConfig {
         address nativeWrapper;
-        address specRegistry;
         address slashingManager;
         address chainlinkPriceFeed;
         address stakeManager;
@@ -115,6 +113,8 @@ abstract contract Deploy is Script {
      * @param claimManagerImpl ClaimManager implementation address.
      * @param policyManagerProxy PolicyManager UUPS proxy address.
      * @param policyManagerImpl PolicyManager implementation address.
+     * @param specRegistryProxy SpecRegistry UUPS proxy address.
+     * @param specRegistryImpl SpecRegistry implementation address.
      */
     struct DeployedContracts {
         address coverPoolImplementation;
@@ -130,6 +130,8 @@ abstract contract Deploy is Script {
         address claimManagerImpl;
         address policyManagerProxy;
         address policyManagerImpl;
+        address specRegistryProxy;
+        address specRegistryImpl;
     }
 
     /**
@@ -175,7 +177,6 @@ abstract contract Deploy is Script {
     function getExternalConfig() internal view virtual returns (ExternalConfig memory) {
         return ExternalConfig({
             nativeWrapper: vm.envOr("NATIVE_WRAPPER", address(0)),
-            specRegistry: vm.envOr("SPEC_REGISTRY", address(0)),
             slashingManager: vm.envOr("SLASHING_MANAGER", address(0)),
             chainlinkPriceFeed: vm.envOr("CHAINLINK_PRICE_FEED", address(0)),
             stakeManager: vm.envOr("STAKE_MANAGER", address(0)),
@@ -292,13 +293,18 @@ abstract contract Deploy is Script {
         );
         contracts.policyManagerImpl = Upgrades.getImplementationAddress(contracts.policyManagerProxy);
 
+        contracts.specRegistryProxy = Upgrades.deployUUPSProxy(
+            "SpecRegistry.sol:SpecRegistry", abi.encodeCall(SpecRegistry.initialize, (roles.deployer, address(0))), opts
+        );
+        contracts.specRegistryImpl = Upgrades.getImplementationAddress(contracts.specRegistryProxy);
+
         contracts.claimManagerProxy = Upgrades.deployUUPSProxy(
             "ClaimManager.sol:ClaimManager",
             abi.encodeCall(
                 ClaimManager.initialize,
                 (
                     roles.deployer,
-                    external_.specRegistry,
+                    contracts.specRegistryProxy,
                     external_.slashingManager,
                     contracts.swapperProxy,
                     contracts.policyManagerProxy,
@@ -321,7 +327,7 @@ abstract contract Deploy is Script {
                     contracts.coverPoolImplementation,
                     contracts.policyManagerProxy,
                     external_.stakeManager,
-                    external_.specRegistry
+                    contracts.specRegistryProxy
                 )
             ),
             opts
@@ -329,6 +335,7 @@ abstract contract Deploy is Script {
         contracts.coverPoolFactoryImpl = Upgrades.getImplementationAddress(contracts.coverPoolFactoryProxy);
 
         PolicyManager(contracts.policyManagerProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
+        SpecRegistry(contracts.specRegistryProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
     }
 
     /**
@@ -364,6 +371,7 @@ abstract contract Deploy is Script {
             IAccessControl(contracts.claimManagerProxy).grantRole(defaultAdminRole, roles.admin);
             IAccessControl(contracts.policyManagerProxy).grantRole(defaultAdminRole, roles.admin);
             IAccessControl(contracts.coverPoolFactoryProxy).grantRole(defaultAdminRole, roles.admin);
+            IAccessControl(contracts.specRegistryProxy).grantRole(defaultAdminRole, roles.admin);
         }
 
         IAccessControl(contracts.swapperProxy)
@@ -400,6 +408,7 @@ abstract contract Deploy is Script {
         IAccessControl(contracts.claimManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
         IAccessControl(contracts.policyManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
         IAccessControl(contracts.coverPoolFactoryProxy).revokeRole(defaultAdminRole, roles.deployer);
+        IAccessControl(contracts.specRegistryProxy).revokeRole(defaultAdminRole, roles.deployer);
     }
 
     /**
@@ -433,7 +442,6 @@ abstract contract Deploy is Script {
 
         console2.log("--- External Dependencies ---");
         console2.log("Native Wrapper (WETH):", external_.nativeWrapper);
-        console2.log("SpecRegistry:", external_.specRegistry);
         console2.log("SlashingManager:", external_.slashingManager);
         console2.log("StakeManager:", external_.stakeManager);
         console2.log("RewardsManager:", external_.rewardsManager);
@@ -459,6 +467,9 @@ abstract contract Deploy is Script {
         console2.log("");
         console2.log("CoverPoolFactory Proxy:", contracts.coverPoolFactoryProxy);
         console2.log("CoverPoolFactory Implementation:", contracts.coverPoolFactoryImpl);
+        console2.log("");
+        console2.log("SpecRegistry Proxy:", contracts.specRegistryProxy);
+        console2.log("SpecRegistry Implementation:", contracts.specRegistryImpl);
         console2.log("====================================");
     }
 
@@ -485,7 +496,6 @@ abstract contract Deploy is Script {
     function _loadAndValidateExternalConfig() private view returns (ExternalConfig memory external_) {
         external_ = getExternalConfig();
         require(external_.nativeWrapper != address(0), "Native wrapper address required");
-        require(external_.specRegistry != address(0), "SPEC_REGISTRY required");
         require(external_.slashingManager != address(0), "SLASHING_MANAGER required");
         require(external_.chainlinkPriceFeed != address(0), "CHAINLINK_PRICE_FEED required");
         require(external_.stakeManager != address(0), "STAKE_MANAGER required");

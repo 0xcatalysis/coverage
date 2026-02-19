@@ -153,6 +153,18 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
+    function setSpecRegistry(address specRegistry_) external override onlyRole(CREATOR_ROLE) {
+        require(specRegistry_ != address(0), ZeroAddress());
+
+        address previousSpecRegistry = specRegistry;
+        specRegistry = specRegistry_;
+
+        emit SpecRegistrySet(previousSpecRegistry, specRegistry_);
+    }
+
+    /**
+     * @inheritdoc ICoverPoolFactory
+     */
     function coverPoolExists(address pool) external view override returns (bool) {
         return _pools.contains(pool);
     }

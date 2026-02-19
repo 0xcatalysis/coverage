@@ -27,16 +27,28 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
     /**
      * @notice Initializes the SpecRegistry with role assignments.
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
-     * @param coverPoolFactory_ Address of the CoverPoolFactory contract.
+     * @param coverPoolFactory_ Address of the CoverPoolFactory contract (may be zero; set via setCoverPoolFactory).
      */
     function initialize(address admin_, address coverPoolFactory_) external initializer {
         require(admin_ != address(0), ZeroAddress());
-        require(coverPoolFactory_ != address(0), ZeroAddress());
 
         __AccessControl_init();
         __Pausable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
+        if (coverPoolFactory_ != address(0)) {
+            coverPoolFactory = ICoverPoolFactory(coverPoolFactory_);
+        }
+    }
+
+    /**
+     * @notice Sets the CoverPoolFactory address (deployment bootstrap for circular dependency).
+     * @dev May only be called once when coverPoolFactory is unset. Restricted to DEFAULT_ADMIN_ROLE.
+     * @param coverPoolFactory_ Address of the CoverPoolFactory contract.
+     */
+    function setCoverPoolFactory(address coverPoolFactory_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(coverPoolFactory_ != address(0), ZeroAddress());
+        require(address(coverPoolFactory) == address(0), "CoverPoolFactory already set");
         coverPoolFactory = ICoverPoolFactory(coverPoolFactory_);
     }
 
@@ -61,6 +73,7 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
         require(specId != bytes32(0), InvalidSpecId());
         require(address(spec) != address(0), InvalidSpec());
         require(address(spec).code.length > 0, InvalidSpec());
+        require(address(coverPoolFactory) != address(0), ZeroAddress());
 
         address coverPool = msg.sender;
         require(coverPoolFactory.coverPoolExists(coverPool), InvalidCoverPool());
