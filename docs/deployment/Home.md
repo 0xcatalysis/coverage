@@ -2,12 +2,12 @@
 
 ## Architecture
 
-- [System Overview](./architecture/01-system-overview.md)
-- [Smart Contracts Architecture](./architecture/02-smart-contracts.md)
-- [Core Integration](./architecture/03-core-integration.md)
-- [Covered Vault Integration](./architecture/04-covered-vault-integration.md)
-- [Policy Lifecycle](./architecture/05-policy-lifecycle.md)
-- [Premiums and Claims](./architecture/06-premiums-claims.md)
+- [System Overview](01-system-overview)
+- [Smart Contracts Architecture](02-smart-contracts)
+- [Core Integration](03-core-integration)
+- [Covered Vault Integration](04-covered-vault-integration)
+- [Policy Lifecycle](05-policy-lifecycle)
+- [Premiums and Claims](06-premiums-claims)
 
 ## Deployment Information
 

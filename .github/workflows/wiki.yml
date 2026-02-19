@@ -29,7 +29,10 @@ jobs:
           git config user.email actions@users.noreply.github.com
           cp $GITHUB_WORKSPACE/coverage/docs/deployment/Home.md $GITHUB_WORKSPACE/coverage.wiki/Home.md
           cp $GITHUB_WORKSPACE/coverage/docs/deployment/Sepolia-Testnet.md $GITHUB_WORKSPACE/coverage.wiki/Sepolia-Testnet.md
-          cp -r $GITHUB_WORKSPACE/coverage/docs/architecture $GITHUB_WORKSPACE/coverage.wiki/
+          for f in $GITHUB_WORKSPACE/coverage/docs/architecture/*.md; do
+            fname=$(basename "$f")
+            sed -E 's|\((\./)?([^)]+)\.md\)|(\2)|g' "$f" > "$GITHUB_WORKSPACE/coverage.wiki/$fname"
+          done
           git add .
           git diff-index --quiet HEAD -- || git commit -m "Mirror docs to wiki"
           git push
