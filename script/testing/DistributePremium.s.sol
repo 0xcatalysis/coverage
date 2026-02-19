@@ -183,45 +183,20 @@ contract DistributePremium is Script {
             return;
         }
 
-        address[] memory distributableVaults = collectorContract.getDistributableVaults();
-        bool isDistributable = false;
-        for (uint256 i = 0; i < distributableVaults.length; i++) {
-            if (distributableVaults[i] == coveredVault) {
-                isDistributable = true;
-                break;
-            }
-        }
-
-        if (!isDistributable) {
+        if (!_isVaultDistributable()) {
             console.log("[SKIP] Vault not yet distributable (interval not elapsed)");
             return;
         }
 
-        IPremiumCollector.VaultConfig memory config = collectorContract.getVaultConfig(coveredVault);
-        address underlying = config.underlying;
+        address underlying = collectorContract.getVaultConfig(coveredVault).underlying;
         address onChainTreasury = managerContract.platformTreasury();
         address poolFeeRecipient = ICoverPool(coverPool).feeRecipient();
-        uint256 rewardsManagerBalanceBefore = IERC20(underlying).balanceOf(rewardsManager);
-        uint256 treasuryBalanceBefore = IERC20(underlying).balanceOf(onChainTreasury);
-        uint256 poolFeeRecipientBalanceBefore = IERC20(underlying).balanceOf(poolFeeRecipient);
-
-        address[] memory vaultsToDistribute = new address[](1);
-        vaultsToDistribute[0] = coveredVault;
 
         console.log("Distributing premiums for vault:", coveredVault);
         console.log("Shares to redeem:", shares);
 
-        vm.startBroadcast(deployerPrivateKey);
-        collectorContract.distributeBatch(vaultsToDistribute);
-        vm.stopBroadcast();
-
-        uint256 rewardsManagerBalanceAfter = IERC20(underlying).balanceOf(rewardsManager);
-        uint256 treasuryBalanceAfter = IERC20(underlying).balanceOf(onChainTreasury);
-        uint256 poolFeeRecipientBalanceAfter = IERC20(underlying).balanceOf(poolFeeRecipient);
-
-        uint256 rewardsManagerReceived = rewardsManagerBalanceAfter - rewardsManagerBalanceBefore;
-        uint256 treasuryReceived = treasuryBalanceAfter - treasuryBalanceBefore;
-        uint256 poolFeeRecipientReceived = poolFeeRecipientBalanceAfter - poolFeeRecipientBalanceBefore;
+        (uint256 rewardsManagerReceived, uint256 treasuryReceived, uint256 poolFeeRecipientReceived) =
+            _executeDistribution(underlying, onChainTreasury, poolFeeRecipient);
 
         console.log("RewardsManager received:", rewardsManagerReceived);
         console.log("Platform Treasury received:", treasuryReceived);
@@ -235,5 +210,39 @@ contract DistributePremium is Script {
         emit PremiumsDistributed(
             coveredVault, policyId, shares, rewardsManagerReceived + treasuryReceived + poolFeeRecipientReceived
         );
+    }
+
+    function _isVaultDistributable() internal view returns (bool) {
+        address[] memory distributableVaults = collectorContract.getDistributableVaults();
+        for (uint256 i = 0; i < distributableVaults.length; i++) {
+            if (distributableVaults[i] == coveredVault) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function _executeDistribution(
+        address underlying,
+        address onChainTreasury,
+        address poolFeeRecipient
+    )
+        internal
+        returns (uint256 rewardsManagerReceived, uint256 treasuryReceived, uint256 poolFeeRecipientReceived)
+    {
+        uint256 rewardsManagerBalanceBefore = IERC20(underlying).balanceOf(rewardsManager);
+        uint256 treasuryBalanceBefore = IERC20(underlying).balanceOf(onChainTreasury);
+        uint256 poolFeeRecipientBalanceBefore = IERC20(underlying).balanceOf(poolFeeRecipient);
+
+        address[] memory vaultsToDistribute = new address[](1);
+        vaultsToDistribute[0] = coveredVault;
+
+        vm.startBroadcast(deployerPrivateKey);
+        collectorContract.distributeBatch(vaultsToDistribute);
+        vm.stopBroadcast();
+
+        rewardsManagerReceived = IERC20(underlying).balanceOf(rewardsManager) - rewardsManagerBalanceBefore;
+        treasuryReceived = IERC20(underlying).balanceOf(onChainTreasury) - treasuryBalanceBefore;
+        poolFeeRecipientReceived = IERC20(underlying).balanceOf(poolFeeRecipient) - poolFeeRecipientBalanceBefore;
     }
 }
