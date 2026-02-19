@@ -5,43 +5,41 @@
 ### CoverPool
 
 - Implementation address:
-- Deployer:
 
 ### Swapper
 
 - Proxy address:
 - Implementation address:
-- Deployer:
-
-### PremiumCollector
-
-- Proxy address:
-- Implementation address:
-- Deployer:
 
 ### PremiumManager
 
 - Proxy address:
 - Implementation address:
-- Deployer:
 
-### ClaimManager
+### PremiumCollector
 
 - Proxy address:
 - Implementation address:
-- Deployer:
 
 ### PolicyManager
 
 - Proxy address:
 - Implementation address:
-- Deployer:
+
+### ClaimManager
+
+- Proxy address:
+- Implementation address:
 
 ### CoverPoolFactory
 
 - Proxy address:
 - Implementation address:
-- Deployer:
+
+### SpecRegistry
+
+- Proxy address:
+- Implementation address:
 
 ## Core Deployment
 
@@ -49,47 +47,39 @@
 
 - Proxy address:
 - Implementation address:
-- Deployer:
 
 ### EigenAdapter
 
 - Proxy address:
 - Implementation address:
-- Deployer:
 
 ### SymbioticAdapter
 
 - Proxy address:
 - Implementation address:
-- Deployer:
 
 ### StakeManager
 
 - Proxy address:
 - Implementation address:
-- Deployer:
 
 ### RewardsManager
 
 - Proxy address:
 - Implementation address:
-- Deployer:
 
 ### SlashingManager
 
 - Proxy address:
 - Implementation address:
-- Deployer:
 
 ### SSPRouter
 
 - Proxy address:
 - Implementation address:
-- Deployer:
 
-## External Dependencies
+## Third-party Deployment
 
-- SpecRegistry:
 - WETH:
 
 ## Accounts
