@@ -77,7 +77,6 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *
  *   Premium Params:
  *   - COVERED_VAULT: ERC-4626 vault address
- *   - PLATFORM_TREASURY: Platform treasury address
  *
  *   Claim Params:
  *   - REQUESTED_CLAIM_AMOUNT: Payout amount to request in claim
@@ -133,7 +132,6 @@ contract CompleteCoverageFlow is Script {
 
     // ── Premium ──
     address public coveredVault;
-    address public platformTreasury;
 
     // ── Claim ──
     uint256 public requestedClaimAmount;
@@ -590,7 +588,6 @@ contract CompleteCoverageFlow is Script {
 
     function _loadPremiumParams() internal {
         coveredVault = vm.envOr("COVERED_VAULT", address(0));
-        platformTreasury = vm.envAddress("PLATFORM_TREASURY");
     }
 
     function _loadClaimParams() internal {
