@@ -1142,6 +1142,32 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                                UPGRADE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
+        Swapper newImpl = new Swapper();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, swapExecutor, swapper.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(swapExecutor);
+        swapper.upgradeToAndCall(address(newImpl), "");
+    }
+
+    function test_authorizeUpgrade_WhenCalledByAdmin_Succeeds() public {
+        Swapper newImpl = new Swapper();
+        vm.prank(admin);
+        swapper.upgradeToAndCall(address(newImpl), "");
+
+        assertEq(swapper.nativeWrapper(), nativeWrapper, "NativeWrapper should be preserved");
+        assertTrue(swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), admin), "Admin role should be preserved");
+        assertTrue(swapper.hasRole(swapper.SWAP_MANAGER_ROLE(), swapManager), "SwapManager role should be preserved");
+        assertTrue(swapper.hasRole(swapper.SWAP_EXECUTOR_ROLE(), swapExecutor), "SwapExecutor role should be preserved");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                               HELPERS
     //////////////////////////////////////////////////////////////*/
 

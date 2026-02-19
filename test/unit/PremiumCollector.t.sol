@@ -163,6 +163,13 @@ contract PremiumCollectorTest is Test {
         assertEq(vaults[0], vault1);
     }
 
+    function test_registerVault_WhenUnderlyingZero_Reverts() public {
+        MockZeroAssetVault zeroVault = new MockZeroAssetVault();
+        vm.prank(admin);
+        vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
+        premiumCollector.registerVault(address(zeroVault), pool, POLICY_ID);
+    }
+
     /*//////////////////////////////////////////////////////////////
                            REMOVE VAULT
     //////////////////////////////////////////////////////////////*/
@@ -212,6 +219,22 @@ contract PremiumCollectorTest is Test {
         assertEq(vaults[0], vault2);
     }
 
+    function test_removeVault_WhenLastElement_Succeeds() public {
+        vm.startPrank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        vm.expectEmit(true, false, false, false);
+        emit VaultRemoved(vault1);
+        premiumCollector.removeVault(vault1);
+        vm.stopPrank();
+
+        IPremiumCollector.VaultConfig memory config = premiumCollector.getVaultConfig(vault1);
+        assertFalse(config.registered, "Vault should be deregistered");
+
+        address[] memory vaults = premiumCollector.getRegisteredVaults();
+        assertEq(vaults.length, 0, "Registered vaults list should be empty");
+    }
+
     /*//////////////////////////////////////////////////////////////
                            UPDATE VAULT
     //////////////////////////////////////////////////////////////*/
@@ -250,6 +273,24 @@ contract PremiumCollectorTest is Test {
         assertEq(config.pool, newPool);
         assertEq(config.policyId, newPolicyId);
         assertEq(config.underlying, address(underlying1));
+    }
+
+    function test_updateVault_WhenPoolZero_Reverts() public {
+        vm.prank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        vm.prank(admin);
+        vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
+        premiumCollector.updateVault(vault1, address(0), POLICY_ID);
+    }
+
+    function test_updateVault_WhenPolicyIdZero_Reverts() public {
+        vm.prank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        vm.prank(admin);
+        vm.expectRevert(IPremiumCollector.ZeroAmount.selector);
+        premiumCollector.updateVault(vault1, pool, 0);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -365,8 +406,6 @@ contract PremiumCollectorTest is Test {
         assertEq(mockVault1.balanceOf(address(premiumCollector)), 0);
         assertEq(underlying1.balanceOf(address(premiumManager)), 0);
 
-        // When redeem returns 0 assets, lastDistributeTime should NOT be updated
-        // This allows immediate retry and prevents silent loss of shares
         IPremiumCollector.VaultConfig memory config = premiumCollector.getVaultConfig(vault1);
         assertEq(config.lastDistributeTime, 0);
     }
@@ -612,6 +651,94 @@ contract PremiumCollectorTest is Test {
 
         assertEq(premiumCollector.premiumManager(), newManager);
     }
+
+    /*//////////////////////////////////////////////////////////////
+                              PAUSE / UNPAUSE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_pause_WhenCalledByAdmin_PausesCollector() public {
+        vm.prank(admin);
+        premiumCollector.pause();
+        assertTrue(premiumCollector.paused());
+    }
+
+    function test_pause_WhenCallerNotAdmin_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), bytes32(0))
+        );
+        premiumCollector.pause();
+    }
+
+    function test_unpause_WhenCalledByAdmin_UnpausesCollector() public {
+        vm.startPrank(admin);
+        premiumCollector.pause();
+        premiumCollector.unpause();
+        vm.stopPrank();
+        assertFalse(premiumCollector.paused());
+    }
+
+    function test_unpause_WhenCallerNotAdmin_Reverts() public {
+        vm.prank(admin);
+        premiumCollector.pause();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), bytes32(0))
+        );
+        premiumCollector.unpause();
+    }
+
+    function test_paused_ReturnsCorrectState() public {
+        assertFalse(premiumCollector.paused(), "Should start unpaused");
+
+        vm.prank(admin);
+        premiumCollector.pause();
+        assertTrue(premiumCollector.paused(), "Should be paused after pause()");
+
+        vm.prank(admin);
+        premiumCollector.unpause();
+        assertFalse(premiumCollector.paused(), "Should be unpaused after unpause()");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           GET ACCRUED SHARES
+    //////////////////////////////////////////////////////////////*/
+
+    function test_getAccruedShares_WhenNoShares_ReturnsZero() public {
+        vm.prank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+        assertEq(premiumCollector.getAccruedShares(vault1), 0, "Should return 0 when no shares held");
+    }
+
+    function test_getAccruedShares_WhenHasShares_ReturnsBalance() public {
+        vm.prank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        uint256 shares = 500 ether;
+        mockVault1.mint(address(premiumCollector), shares);
+        assertEq(premiumCollector.getAccruedShares(vault1), shares, "Should return correct accrued shares");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                UPGRADE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
+        PremiumCollector newImpl = new PremiumCollector();
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), bytes32(0))
+        );
+        premiumCollector.upgradeToAndCall(address(newImpl), "");
+    }
+
+    function test_authorizeUpgrade_WhenCalledByAdmin_Succeeds() public {
+        PremiumCollector newImpl = new PremiumCollector();
+        vm.prank(admin);
+        premiumCollector.upgradeToAndCall(address(newImpl), "");
+
+        assertEq(premiumCollector.premiumManager(), address(premiumManager), "PremiumManager should be preserved");
+        assertEq(premiumCollector.distributeInterval(), DEFAULT_DISTRIBUTE_INTERVAL, "Interval should be preserved");
+        assertTrue(premiumCollector.hasRole(bytes32(0), admin), "Admin role should be preserved");
+    }
 }
 
 /*//////////////////////////////////////////////////////////////
@@ -747,5 +874,16 @@ contract MockCoverPool {
 
     function owner() external view returns (address) {
         return _owner;
+    }
+}
+
+/// @dev ERC-4626 vault stub whose asset() returns address(0) to trigger the zero-underlying guard in registerVault.
+contract MockZeroAssetVault {
+    function asset() external pure returns (address) {
+        return address(0);
+    }
+
+    function balanceOf(address) external pure returns (uint256) {
+        return 0;
     }
 }

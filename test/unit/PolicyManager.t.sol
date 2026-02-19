@@ -1199,6 +1199,21 @@ contract PolicyManagerTest is Test {
         );
     }
 
+    function test_requestCoverage_WhenBindPolicyHookSupportsInterfaceReverts_Reverts() public {
+        MockRevertingHook revertingHook = new MockRevertingHook();
+        vm.expectRevert(IPolicyManager.InvalidBindPolicyHook.selector);
+        vm.prank(buyer);
+        policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(revertingHook)
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                           REQUEST COVERAGE
     //////////////////////////////////////////////////////////////*/
@@ -2096,5 +2111,12 @@ contract MockBindPolicyHookWithQuery is IBindPolicyHook, ERC165 {
 
     function supportsInterface(bytes4 interfaceId) public view virtual override (ERC165, IERC165) returns (bool) {
         return interfaceId == type(IBindPolicyHook).interfaceId || super.supportsInterface(interfaceId);
+    }
+}
+
+/// @dev Hook whose supportsInterface() always reverts, exercising the catch branch in requestCoverage.
+contract MockRevertingHook {
+    function supportsInterface(bytes4) external pure returns (bool) {
+        revert("supportsInterface: always reverts");
     }
 }
