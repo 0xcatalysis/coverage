@@ -1,13 +1,10 @@
 name: Wiki
 on:
   push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
   wiki:
-    if: false
     name: Wiki
     runs-on: ubuntu-latest
     steps:
