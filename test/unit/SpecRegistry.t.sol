@@ -146,6 +146,9 @@ contract SpecRegistryTest is Test {
         SpecRegistry emptyRegistry = SpecRegistry(proxy);
         assertEq(address(emptyRegistry.coverPoolFactory()), address(0), "Factory should be unset initially");
 
+        vm.expectEmit(true, true, true, true);
+        emit ISpecRegistry.CoverPoolFactorySet(factory);
+
         vm.prank(admin);
         emptyRegistry.setCoverPoolFactory(factory);
 

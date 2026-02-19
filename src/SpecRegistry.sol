@@ -49,7 +49,9 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
     function setCoverPoolFactory(address coverPoolFactory_) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(coverPoolFactory_ != address(0), ZeroAddress());
         require(address(coverPoolFactory) == address(0), "CoverPoolFactory already set");
+
         coverPoolFactory = ICoverPoolFactory(coverPoolFactory_);
+        emit CoverPoolFactorySet(coverPoolFactory_);
     }
 
     /**
