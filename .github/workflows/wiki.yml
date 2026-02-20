@@ -1,15 +1,14 @@
 name: Wiki
 on:
   push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
   wiki:
-    if: false
     name: Wiki
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,6 +19,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 0xcatalysis/coverage.wiki
+          token: ${{ secrets.GITHUB_TOKEN }}
           path: coverage.wiki
 
       - name: Mirror docs to wiki
@@ -27,7 +27,13 @@ jobs:
           cd $GITHUB_WORKSPACE/coverage.wiki
           git config user.name Actions
           git config user.email actions@users.noreply.github.com
-          cp $GITHUB_WORKSPACE/coverage/docs/*.md $GITHUB_WORKSPACE/coverage.wiki
+          cp $GITHUB_WORKSPACE/coverage/docs/deployment/Home.md $GITHUB_WORKSPACE/coverage.wiki/Home.md
+          cp $GITHUB_WORKSPACE/coverage/docs/deployment/Sepolia-Testnet.md $GITHUB_WORKSPACE/coverage.wiki/Sepolia-Testnet.md
+          cp $GITHUB_WORKSPACE/coverage/docs/deployment/Ethereum-Mainnet.md $GITHUB_WORKSPACE/coverage.wiki/Ethereum-Mainnet.md
+          for f in $GITHUB_WORKSPACE/coverage/docs/architecture/*.md; do
+            fname=$(basename "$f")
+            sed -E 's|\((\./)?([^)]+)\.md\)|(\2)|g' "$f" > "$GITHUB_WORKSPACE/coverage.wiki/$fname"
+          done
           git add .
           git diff-index --quiet HEAD -- || git commit -m "Mirror docs to wiki"
           git push

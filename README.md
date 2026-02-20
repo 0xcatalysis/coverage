@@ -80,7 +80,6 @@ All deployment scripts extend the shared `Deploy.s.sol` base which handles contr
 
 ```bash
 make deploy-anvil                # local iteration loop against anvil
-make deploy-specregistry-sepolia # deploy SpecRegistry mocks to Sepolia
 make deploy-sepolia              # deploy Coverage contracts to Sepolia
 make deploy-ethereum             # mainnet deployment with production optimizer profile
 
@@ -98,7 +97,6 @@ Required for testnet/mainnet deployments:
 | Variable | Description |
 |----------|-------------|
 | `PRIVATE_KEY` | Deployer private key |
-| `SPEC_REGISTRY` | SpecRegistry address |
 | `SLASHING_MANAGER` | Catalysis Core SlashingManager address |
 | `CHAINLINK_PRICE_FEED` | ChainlinkPriceFeed address |
 | `STAKE_MANAGER` | Catalysis Core StakeManager address |

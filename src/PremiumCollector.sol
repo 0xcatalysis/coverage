@@ -82,6 +82,7 @@ contract PremiumCollector is
     )
         external
         override
+        nonReentrant
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         require(vault != address(0) && pool != address(0), ZeroAddress());
@@ -104,7 +105,7 @@ contract PremiumCollector is
     /**
      * @inheritdoc IPremiumCollector
      */
-    function removeVault(address vault) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function removeVault(address vault) external override nonReentrant onlyRole(DEFAULT_ADMIN_ROLE) {
         require(_vaultConfigs[vault].registered, VaultNotRegistered(vault));
 
         uint256 shares = IERC4626(vault).balanceOf(address(this));

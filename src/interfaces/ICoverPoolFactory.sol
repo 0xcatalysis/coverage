@@ -56,6 +56,11 @@ interface ICoverPoolFactory is IAccessControl {
     event StakeManagerSet(address indexed previousStakeManager, address indexed newStakeManager);
 
     /**
+     * @notice Emitted when the SpecRegistry reference is updated.
+     */
+    event SpecRegistrySet(address indexed previousSpecRegistry, address indexed newSpecRegistry);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -107,6 +112,13 @@ interface ICoverPoolFactory is IAccessControl {
      * @param stakeManager_ Address of the new StakeManager contract.
      */
     function setStakeManager(address stakeManager_) external;
+
+    /**
+     * @notice Updates the SpecRegistry configured on new pools.
+     * @dev Requires CREATOR_ROLE.
+     * @param specRegistry_ Address of the new SpecRegistry contract.
+     */
+    function setSpecRegistry(address specRegistry_) external;
 
     /**
      * @notice Returns the pool address stored at the given index.
