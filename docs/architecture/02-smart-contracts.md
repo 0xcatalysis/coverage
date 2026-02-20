@@ -1,0 +1,252 @@
+# Coverage Smart Contracts Architecture
+
+## Overview
+
+Coverage contracts are the policy and payout application layer over Catalysis Core.
+They are responsible for policy issuance semantics, premium collection/routing, and
+claim execution, while Core handles committee stake and SSP-level execution.
+
+## Contract Topology
+
+```mermaid
+graph LR
+    CPF[CoverPoolFactory]
+    CP[CoverPool]
+    PM[PolicyManager]
+    CM[ClaimManager]
+    PC[PremiumCollector]
+    PRM[PremiumManager]
+    SR[SpecRegistry]
+    SW[Swapper]
+
+    CPF --> CP
+    PM --> CP
+    CP --> PM
+    CP --> SR
+    PM --> CM
+    PC --> PRM
+    CM --> SR
+    CM --> SW
+```
+
+## Core Coverage Contracts
+
+### 1) CoverPoolFactory
+
+**Role:** Deploys and tracks `CoverPool` clones and bootstraps operator registration in Core.
+
+**Pattern and state:**
+
+- UUPS upgradeable proxy.
+- Deploys deterministic minimal proxy clones using `Clones.cloneDeterministic`.
+- Maintains an internal pool set and pagination helpers.
+
+**Key functions:**
+
+- `createCoverPool(params)` creates clone, initializes pool, and calls
+  `StakeManager.registerOperatorToNetwork(curator, deadline, signature)`.
+- `computeCoverPoolAddress(params)` predicts deterministic clone address.
+- `coverPoolExists(pool)` validates whether a pool is factory-created.
+
+**Key role:**
+
+- `CREATOR_ROLE` controls pool creation and major factory settings.
+
+### 2) CoverPool
+
+**Role:** Curator-owned underwriting pool for quote validation and policy binding.
+
+**Pattern and state:**
+
+- Intended for minimal-clone deployment.
+- Uses `AccessControlDefaultAdminRulesUpgradeable` for admin transfer safety.
+- Maintains bound policy commits and per-policy bound metadata.
+
+**Key functions:**
+
+- `bindPolicyForRequest(policyId, quote, spec, vaults, signature)` performs:
+  - draft checks via `PolicyManager`,
+  - EIP-712 quote signature verification,
+  - spec registration in `SpecRegistry`,
+  - committee vault binding in Core via `StakeManager`,
+  - final policy bind callback into `PolicyManager`.
+- `setPoolFeeBps(...)`, `setFeeRecipient(...)` configure pool economics.
+
+**Key role:**
+
+- `QUOTE_SIGNER_ROLE` defines trusted quote signers.
+
+### 3) PolicyManager
+
+**Role:** Policy draft and bound-policy authority.
+
+**Pattern and state:**
+
+- UUPS upgradeable proxy.
+- Stores draft records (`PolicyDraft`) and canonical bound metadata (`PolicyMetadata`).
+- Tracks next policy id and policy commit uniqueness.
+
+**Key functions:**
+
+- `requestCoverage(...)`:
+  - called by the covered vault (or its adapter) as the `buyer`,
+  - commonly sets `claimer` to the cover adapter,
+  - commonly sets `beneficiary` to the cover adapter for atomic shortfall top-ups,
+  - validates pool and hook,
+  - creates policy draft,
+  - creates Core committee with `committeeId = policyId`,
+  - assigns pool curator as committee operator.
+- `bindPolicy(request, boundPolicy)`:
+  - callable by pool only,
+  - validates request/draft/quote consistency,
+  - verifies stake and vault readiness through Core,
+  - stores canonical policy metadata,
+  - calls `IBindPolicyHook.onPolicyBound(policyId, coverageLimit)`.
+
+### 4) PremiumCollector
+
+**Role:** Collector of ERC-4626 vault shares and periodic redeemer/distributor.
+
+**Pattern and state:**
+
+- UUPS upgradeable proxy.
+- Tracks registered vault configs: underlying token, pool, policyId, and distribution timestamp.
+- Supports keeper-style public batch distribution.
+
+**Key functions:**
+
+- `registerVault(vault, pool, policyId)` maps a covered vault to routing metadata.
+- `distributeBatch(vaults)` redeems shares to underlying and forwards assets to `PremiumManager`.
+- `getDistributableVaults()` surfaces vaults eligible by interval and balance.
+
+### 5) PremiumManager
+
+**Role:** Premium split and restaker reward routing bridge into Core.
+
+**Pattern and state:**
+
+- UUPS upgradeable proxy.
+- Holds platform configuration: `platformTreasury`, `platformFeeBps`.
+
+**Key functions:**
+
+- `distributePremium(pool, policyId, premiumToken, amount)`:
+  - computes split: platform / pool / restaker,
+  - transfers platform fee to treasury,
+  - transfers pool fee to pool fee recipient,
+  - transfers restaker share to Core `RewardsManager`,
+  - triggers `RewardsManager.distributeRewards(policyId, operator, amount, token)`.
+- `getFeeSplits(...)` deterministic split helper.
+
+**Key role:**
+
+- `PREMIUM_COLLECTOR_ROLE` gates premium distribution entrypoint.
+
+### 6) ClaimManager
+
+**Role:** Claim execution engine from filing to payout.
+
+**Pattern and state:**
+
+- UUPS upgradeable proxy.
+- Maintains per-policy claim counters, claim records, and cumulative paid-out amount.
+
+**Key functions:**
+
+- `fileClaim(policyId, requestedAmount, evidenceHash, additionalData)`:
+  - acts as a file-and-resolve entrypoint (single transaction),
+  - validates coverage window and remaining coverage,
+  - requires caller equals policy `claimer`,
+  - resolves spec and runs evaluation,
+  - if payable, executes slashing and collateral processing,
+  - transfers payout to beneficiary.
+- `remainingCoverage(policyId)` and read models for claims.
+
+**Slashing and payout mechanics:**
+
+- Converts requested payout token amount to USD via Core `ChainlinkPriceFeed`.
+- Calls Core `SlashingManager.executeSlashing(committeeId, operator, slashAmountUSD)`.
+- Processes returned collateral token arrays:
+  - direct transfer if already payout token,
+  - otherwise swap through `Swapper`.
+
+### 7) SpecRegistry
+
+**Role:** Immutable-style mapping of `(coverPool, specId)` to `ISpec`.
+
+**Pattern and state:**
+
+- UUPS upgradeable proxy.
+- Registration is idempotent for the same target and rejects remapping to a different spec.
+- Enforces caller is a factory-created pool.
+
+**Key functions:**
+
+- `registerSpec(specId, spec)` called by pool during bind.
+- `resolveSpec(pool, specId)` called by `ClaimManager`.
+
+### 8) Swapper
+
+**Role:** Controlled token conversion path for claim collateral.
+
+**Pattern and state:**
+
+- UUPS upgradeable proxy.
+- Route registry keyed by `(tokenIn, tokenOut)`.
+- Supports whitelisted swap targets and native wrapper semantics.
+
+**Key functions:**
+
+- `setSwapRoute(...)`, `setSwapTargetWhitelist(...)` for configuration.
+- `executeSwap(params)` for authorized executors (typically `ClaimManager`).
+
+## Covered Vault Integration Components (Morpho)
+
+These components typically live outside this repository but are first-class architecture actors.
+
+### Covered Vault (Morpho V2)
+
+- user-facing insured vault,
+- sets management-fee style premium parameters (via curator controls),
+- allocates/deallocates through the adapter.
+
+### CatalysisCoverAdapter
+
+- implements Morpho adapter interface,
+- tracks principal/reference accounting for shortfall detection,
+- calls Coverage policy and claims entrypoints (`requestCoverage`, `fileClaim`) as integration policy dictates,
+- receives claim payout and forwards make-whole assets through withdrawal path.
+
+### Base Vault (Morpho V1/V2)
+
+- underlying yield venue where adapter actually places capital,
+- can be shared with uninsured users outside the covered vault.
+
+## Upgrade and Access-Control Model
+
+All major contracts are UUPS upgradeable (except CoverPool clones, which are minimal proxies).
+
+Typical control planes:
+
+- `DEFAULT_ADMIN_ROLE` for contract-wide configuration and upgrades.
+- specialized roles for restricted entrypoints:
+  - `CREATOR_ROLE` on factory,
+  - `QUOTE_SIGNER_ROLE` on pools,
+  - `PREMIUM_COLLECTOR_ROLE` on premium manager,
+  - `SWAP_MANAGER_ROLE` / `SWAP_EXECUTOR_ROLE` on swapper.
+
+## Integration Dependencies
+
+Coverage contracts rely on Core interfaces:
+
+- `IStakeManager` for committee create/operator/vault and stake reads,
+- `IRewardsManager` for reward fan-out trigger,
+- `ISlashingManager` for committee slashing execution,
+- `IChainlinkPriceFeed` for payout-to-USD conversion.
+
+## Next Steps
+
+- [Core Integration](./03-core-integration.md)
+- [Covered Vault Integration](./04-covered-vault-integration.md)
+- [Policy Lifecycle](./05-policy-lifecycle.md)
+- [Premiums and Claims](./06-premiums-claims.md)

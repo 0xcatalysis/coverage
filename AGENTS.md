@@ -45,8 +45,7 @@ Mock implementations of external dependencies for testnet deployments:
 **Initial Deployment:**
 - `Deploy.s.sol` – shared base handling all deployment logic
 - `DeployAnvil.s.sol` – local Anvil deployment for rapid iteration
-- `DeploySpecRegistrySepolia.s.sol` – standalone mock SpecRegistry deployment for Sepolia testing
-- `DeploySepolia.s.sol` – Sepolia deployment (requires SPEC_REGISTRY)
+- `DeploySepolia.s.sol` – Sepolia deployment
 - `DeployEthereum.s.sol` – mainnet deployment
 
 **UUPS Upgrades:**

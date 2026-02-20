@@ -76,10 +76,15 @@ contract SpecRegistryTest is Test {
         new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (address(0), factory)));
     }
 
-    function test_initialize_WhenFactoryZero_Reverts() public {
+    function test_initialize_WhenFactoryZero_Succeeds() public {
         SpecRegistry registryImpl = new SpecRegistry();
-        vm.expectRevert(ISpecRegistry.ZeroAddress.selector);
-        new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (admin, address(0))));
+        address proxy = address(
+            new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (admin, address(0))))
+        );
+        SpecRegistry testRegistry = SpecRegistry(proxy);
+
+        assertTrue(testRegistry.hasRole(ADMIN_ROLE, admin), "Admin role not granted");
+        assertEq(address(testRegistry.coverPoolFactory()), address(0), "Factory should remain unset");
     }
 
     function test_initialize_WhenValid_GrantsAdminRole() public {
@@ -94,6 +99,60 @@ contract SpecRegistryTest is Test {
 
         assertTrue(testRegistry.hasRole(ADMIN_ROLE, testAdmin), "Admin role not granted");
         assertEq(address(testRegistry.coverPoolFactory()), testFactory, "Factory not set correctly");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        SET COVER POOL FACTORY
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setCoverPoolFactory_WhenCallerNotAdmin_Reverts() public {
+        SpecRegistry registryImpl = new SpecRegistry();
+        address proxy = address(
+            new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (admin, address(0))))
+        );
+        SpecRegistry emptyRegistry = SpecRegistry(proxy);
+
+        address notAdmin = makeAddr("notAdmin");
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, notAdmin, ADMIN_ROLE)
+        );
+        vm.prank(notAdmin);
+        emptyRegistry.setCoverPoolFactory(factory);
+    }
+
+    function test_setCoverPoolFactory_WhenZeroAddress_Reverts() public {
+        SpecRegistry registryImpl = new SpecRegistry();
+        address proxy = address(
+            new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (admin, address(0))))
+        );
+        SpecRegistry emptyRegistry = SpecRegistry(proxy);
+
+        vm.expectRevert(ISpecRegistry.ZeroAddress.selector);
+        vm.prank(admin);
+        emptyRegistry.setCoverPoolFactory(address(0));
+    }
+
+    function test_setCoverPoolFactory_WhenAlreadySet_Reverts() public {
+        vm.expectRevert("CoverPoolFactory already set");
+        vm.prank(admin);
+        registry.setCoverPoolFactory(makeAddr("anotherFactory"));
+    }
+
+    function test_setCoverPoolFactory_WhenValid_SetsFactory() public {
+        SpecRegistry registryImpl = new SpecRegistry();
+        address proxy = address(
+            new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (admin, address(0))))
+        );
+        SpecRegistry emptyRegistry = SpecRegistry(proxy);
+        assertEq(address(emptyRegistry.coverPoolFactory()), address(0), "Factory should be unset initially");
+
+        vm.expectEmit(true, true, true, true);
+        emit ISpecRegistry.CoverPoolFactorySet(factory);
+
+        vm.prank(admin);
+        emptyRegistry.setCoverPoolFactory(factory);
+
+        assertEq(address(emptyRegistry.coverPoolFactory()), factory, "Factory not set correctly");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -164,6 +223,25 @@ contract SpecRegistryTest is Test {
         vm.expectRevert(ISpecRegistry.InvalidSpec.selector);
         vm.prank(pool1);
         registry.registerSpec(specId1, ISpec(address(0)));
+    }
+
+    function test_registerSpec_WhenSpecHasNoCode_Reverts() public {
+        address eoa = makeAddr("eoaSpec");
+        vm.expectRevert(ISpecRegistry.InvalidSpec.selector);
+        vm.prank(pool1);
+        registry.registerSpec(specId1, ISpec(eoa));
+    }
+
+    function test_registerSpec_WhenFactoryNotSet_Reverts() public {
+        SpecRegistry registryImpl = new SpecRegistry();
+        address proxy = address(
+            new ERC1967Proxy(address(registryImpl), abi.encodeCall(SpecRegistry.initialize, (admin, address(0))))
+        );
+        SpecRegistry emptyRegistry = SpecRegistry(proxy);
+
+        vm.expectRevert(ISpecRegistry.ZeroAddress.selector);
+        vm.prank(pool1);
+        emptyRegistry.registerSpec(specId1, ISpec(spec1));
     }
 
     function test_registerSpec_WhenInvalidPool_Reverts() public {

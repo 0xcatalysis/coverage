@@ -10,6 +10,12 @@ import {ISpec} from "./ISpec.sol";
  */
 interface ISpecRegistry {
     /**
+     * @notice Emitted when the CoverPoolFactory address is set (deployment bootstrap).
+     * @param coverPoolFactory Address of the CoverPoolFactory contract.
+     */
+    event CoverPoolFactorySet(address indexed coverPoolFactory);
+
+    /**
      * @notice Emitted when a spec is registered for a pool.
      * @param coverPool Address of the CoverPool.
      * @param specId Identifier referencing the parametric product.

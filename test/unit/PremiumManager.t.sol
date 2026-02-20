@@ -586,6 +586,34 @@ contract PremiumManagerTest is Test {
         assertEq(restakerSplit, 99_000, "Restaker split rounding");
         assertEq(platformSplit + poolSplit + restakerSplit, grossPremium, "Total should match");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                UPGRADE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
+        PremiumManager newImpl = new PremiumManager();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(premiumCollector);
+        premiumManager.upgradeToAndCall(address(newImpl), "");
+    }
+
+    function test_authorizeUpgrade_WhenCalledByAdmin_Succeeds() public {
+        PremiumManager newImpl = new PremiumManager();
+        vm.prank(admin);
+        premiumManager.upgradeToAndCall(address(newImpl), "");
+
+        assertEq(premiumManager.rewardsManager(), address(rewardsManager), "RewardsManager should be preserved");
+        assertEq(premiumManager.platformTreasury(), platformTreasury, "PlatformTreasury should be preserved");
+        assertEq(premiumManager.platformFeeBps(), PLATFORM_FEE_BPS, "PlatformFeeBps should be preserved");
+        assertTrue(premiumManager.hasRole(premiumManager.DEFAULT_ADMIN_ROLE(), admin), "Admin role should be preserved");
+    }
 }
 
 contract MockToken is ERC20 {

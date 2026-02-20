@@ -7,14 +7,13 @@ import {Deploy} from "./Deploy.s.sol";
  * @title DeployAnvil
  * @notice Deploys all Catalysis Coverage contracts to a local Anvil chain.
  * @dev WETH address is hardcoded for Anvil. External dependencies must be provided via environment variables:
- *      - SPEC_REGISTRY: Address of SpecRegistry contract
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
  *      - STAKE_MANAGER: Address of StakeManager from Catalysis Core
  *      - REWARDS_MANAGER: Address of RewardsManager from Catalysis Core
  *      - CHAINLINK_PRICE_FEED: Address of ChainlinkPriceFeed
  *
  *      Usage:
- *        SPEC_REGISTRY=0x... SLASHING_MANAGER=0x... STAKE_MANAGER=0x... REWARDS_MANAGER=0x...
+ *        SLASHING_MANAGER=0x... STAKE_MANAGER=0x... REWARDS_MANAGER=0x...
  * CHAINLINK_PRICE_FEED=0x... \
  *          forge script script/DeployAnvil.s.sol --broadcast --rpc-url http://localhost:8545
  */
@@ -38,7 +37,6 @@ contract DeployAnvil is Deploy {
     function getExternalConfig() internal view override returns (ExternalConfig memory) {
         return ExternalConfig({
             nativeWrapper: WETH_ANVIL,
-            specRegistry: vm.envAddress("SPEC_REGISTRY"),
             slashingManager: vm.envAddress("SLASHING_MANAGER"),
             chainlinkPriceFeed: vm.envAddress("CHAINLINK_PRICE_FEED"),
             stakeManager: vm.envAddress("STAKE_MANAGER"),
