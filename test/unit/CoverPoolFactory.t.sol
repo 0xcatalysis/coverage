@@ -13,7 +13,6 @@ import {CoverPool} from "../../src/CoverPool.sol";
 import {CoverPoolFactory} from "../../src/CoverPoolFactory.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
-import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 
 contract CoverPoolFactoryTest is Test {
     bytes32 internal constant ADMIN_ROLE = 0x00;
@@ -280,14 +279,6 @@ contract CoverPoolFactoryTest is Test {
         address expected = _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
         assertEq(factory.computeCoverPoolAddress(params), expected, "Prediction mismatch");
 
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            ),
-            ""
-        );
-
         vm.expectEmit(false, true, true, true, address(factory));
         emit ICoverPoolFactory.CoverPoolCreated(
             address(0), params.curator, params.quoteSigner, policyManager, params.poolFeeBps
@@ -312,14 +303,6 @@ contract CoverPoolFactoryTest is Test {
     function test_createCoverPool_WhenParamsReused_Reverts() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
 
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            ),
-            ""
-        );
-
         vm.prank(creator);
         factory.createCoverPool(params);
 
@@ -332,28 +315,12 @@ contract CoverPoolFactoryTest is Test {
         ICoverPoolFactory.CreateCoverPoolParams memory params1 = _defaultCreateParams();
         params1.poolFeeBps = 100;
 
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params1.curator, params1.deadline, params1.signature
-            ),
-            ""
-        );
-
         vm.prank(creator);
         factory.createCoverPool(params1);
         assertEq(factory.totalCoverPools(), 1, "First pool not created");
 
         ICoverPoolFactory.CreateCoverPoolParams memory params2 = _defaultCreateParams();
         params2.poolFeeBps = 200;
-
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params2.curator, params2.deadline, params2.signature
-            ),
-            ""
-        );
 
         vm.prank(creator);
         factory.createCoverPool(params2);
@@ -564,14 +531,6 @@ contract CoverPoolFactoryTest is Test {
             params.curator = makeAddr(string.concat("curator", vm.toString(i)));
             params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
 
-            vm.mockCall(
-                stakeManager,
-                abi.encodeWithSelector(
-                    IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-                ),
-                ""
-            );
-
             vm.prank(creator);
             factory.createCoverPool(params);
         }
@@ -596,14 +555,6 @@ contract CoverPoolFactoryTest is Test {
             ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
             params.curator = makeAddr(string.concat("curator", vm.toString(i)));
             params.quoteSigner = makeAddr(string.concat("quoteSigner", vm.toString(i)));
-
-            vm.mockCall(
-                stakeManager,
-                abi.encodeWithSelector(
-                    IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-                ),
-                ""
-            );
 
             vm.prank(creator);
             factory.createCoverPool(params);
@@ -650,14 +601,6 @@ contract CoverPoolFactoryTest is Test {
         address expected = _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
         assertEq(factory.computeCoverPoolAddress(params), expected, "Prediction mismatch");
 
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            ),
-            ""
-        );
-
         vm.prank(creator);
         factory.createCoverPool(params);
 
@@ -679,14 +622,6 @@ contract CoverPoolFactoryTest is Test {
         assertEq(factory.computeCoverPoolAddress(params), updatedPrediction, "Prediction mismatch");
         assertNotEq(updatedPrediction, initialPrediction, "Expected salt to incorporate policy manager");
 
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            ),
-            ""
-        );
-
         vm.prank(creator);
         factory.createCoverPool(params);
 
@@ -702,14 +637,6 @@ contract CoverPoolFactoryTest is Test {
             _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
         assertEq(factory.computeCoverPoolAddress(params), firstPrediction, "Prediction mismatch");
 
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            ),
-            ""
-        );
-
         vm.prank(creator);
         factory.createCoverPool(params);
         assertEq(factory.coverPoolAt(0), firstPrediction, "First deployment mismatch");
@@ -722,14 +649,6 @@ contract CoverPoolFactoryTest is Test {
             _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
         assertEq(factory.computeCoverPoolAddress(params), secondPrediction, "Prediction mismatch");
         assertNotEq(secondPrediction, firstPrediction, "Implementation change should affect prediction");
-
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            ),
-            ""
-        );
 
         vm.prank(creator);
         factory.createCoverPool(params);
@@ -773,14 +692,6 @@ contract CoverPoolFactoryTest is Test {
     function test_createCoverPool_CuratorBecomesPoolOperator() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
 
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            ),
-            ""
-        );
-
         uint256 poolCountBefore = factory.totalCoverPools();
         vm.prank(creator);
         factory.createCoverPool(params);
@@ -792,38 +703,8 @@ contract CoverPoolFactoryTest is Test {
         assertTrue(pool.hasRole(pool.DEFAULT_ADMIN_ROLE(), params.curator), "Curator should have admin role");
     }
 
-    function test_createCoverPool_RegistersCuratorAsNetworkOperator() public {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
-
-        vm.expectCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            )
-        );
-
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            ),
-            ""
-        );
-
-        vm.prank(creator);
-        factory.createCoverPool(params);
-    }
-
     function test_createCoverPool_StoresPolicyManagerReference() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
-
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            ),
-            ""
-        );
 
         uint256 poolCountBefore = factory.totalCoverPools();
         vm.prank(creator);
@@ -847,22 +728,6 @@ contract CoverPoolFactoryTest is Test {
         params2.curator = curator2;
         params2.quoteSigner = makeAddr("signer2");
 
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, curator1, params1.deadline, params1.signature
-            ),
-            ""
-        );
-
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, curator2, params2.deadline, params2.signature
-            ),
-            ""
-        );
-
         uint256 poolCountBefore1 = factory.totalCoverPools();
         vm.prank(creator);
         factory.createCoverPool(params1);
@@ -884,11 +749,7 @@ contract CoverPoolFactoryTest is Test {
 
     function _defaultCreateParams() internal view returns (ICoverPoolFactory.CreateCoverPoolParams memory params) {
         params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: quoteSigner,
-            poolFeeBps: DEFAULT_POOL_FEE,
-            deadline: uint48(block.timestamp + 1 days),
-            signature: hex"1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef00"
+            curator: curator, quoteSigner: quoteSigner, poolFeeBps: DEFAULT_POOL_FEE
         });
     }
 
@@ -896,14 +757,6 @@ contract CoverPoolFactoryTest is Test {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
         params.curator = makeAddr(string.concat("curator_", label));
         params.quoteSigner = makeAddr(string.concat("signer_", label));
-
-        vm.mockCall(
-            stakeManager,
-            abi.encodeWithSelector(
-                IStakeManager.registerOperatorToNetwork.selector, params.curator, params.deadline, params.signature
-            ),
-            ""
-        );
 
         vm.prank(creator);
         factory.createCoverPool(params);
