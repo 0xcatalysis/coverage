@@ -20,3 +20,8 @@ coverage.json
 coverage-report.txt
 lcov.info
 Thumbs.db
+.idea/
+
+# Go build artifacts and runtime config (contains secrets)
+updater/updater
+updater/config.yaml
