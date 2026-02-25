@@ -188,13 +188,14 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         bytes4 selector,
         address sender
     ) external override nonReentrant onlyParentVaultWithEmptyData(data) returns (bytes32[] memory, int256) {
+        uint256 shares;
         if (assets > 0) {
             // Approve exact amount before depositing into underlying vault
             IERC20(asset).forceApprove(underlyingVault, assets);
             // Use shares output instead of checking share balance delta, since ERC4626 guarantees
             // to return the exact amount of minted shares.
             // aderyn-fp-next-line(reentrancy-state-change) Protected by nonReentrant modifier
-            uint256 shares = IERC4626(underlyingVault).deposit(assets, address(this));
+            shares = IERC4626(underlyingVault).deposit(assets, address(this));
             underlyingShares += shares;
             totalPrincipal += assets;
 
@@ -212,7 +213,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         uint256 newAllocation =
             IERC4626(underlyingVault).previewRedeem(IERC4626(underlyingVault).balanceOf(address(this)));
 
-        emit IE.NavRecorded(sender, assets, underlyingShares, totalPrincipal);
+        emit IE.NavRecorded(sender, assets, shares, userPrincipal[sender]);
 
         return (ids(), int256(newAllocation) - int256(oldAllocation));
     }
@@ -228,7 +229,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         bytes4 selector,
         address sender
     ) external override nonReentrant onlyParentVaultWithEmptyData(data) returns (bytes32[] memory, int256) {
-        if (assets > 0) {
+        if (assets > 0 && currentValue() > 0) {
             // aderyn-fp-next-line(reentrancy-state-change) Only called by trusted parentVault via nonReentrant +
             // onlyParentVaultWithEmptyData
             if (
@@ -448,9 +449,6 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         uint256 assets,
         address sender
     ) internal {
-        uint256 currentVal = currentValue();
-        if (currentVal == 0) return;
-
         // Burn pro-rata shares from underlying vault based on currentValue (not protected value)
         // Use withdraw(assets) rather than redeem(sharesToBurn) to guarantee the adapter
         // receives exactly `assets` tokens.  redeem(sharesToBurn) applies two consecutive
@@ -487,7 +485,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
             }
         }
 
-        emit IE.NavWithdrawn(sender, assets, sharesToBurn, insurancePayout, totalPrincipal);
+        emit IE.NavWithdrawn(sender, assets, sharesToBurn, insurancePayout, userPrincipal[sender]);
     }
 
     /// @notice Claims insurance for a shortfall
