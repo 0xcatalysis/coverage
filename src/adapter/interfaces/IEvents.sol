@@ -15,10 +15,10 @@ interface IEvents {
     /// @param user The user address
     /// @param assets Amount of assets withdrawn
     /// @param sharesBurned Amount of shares burned
-    /// @param shortfall Shortfall amount (if any)
+    /// @param insurancePayout Actual insurance paid to user (if any)
     /// @param remainingNav User's remaining NAV after withdrawal
     event NavWithdrawn(
-        address indexed user, uint256 assets, uint256 sharesBurned, uint256 shortfall, uint256 remainingNav
+        address indexed user, uint256 assets, uint256 sharesBurned, uint256 insurancePayout, uint256 remainingNav
     );
 
     /// @notice Emitted when insurance is claimed for a shortfall

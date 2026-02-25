@@ -305,6 +305,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         if (pol.buyer != IVaultV2(parentVault).owner()) revert InvalidData();
         if (pol.pool != address(coverPool)) revert InvalidData();
         if (pol.claimer != address(this)) revert InvalidData();
+        if (pol.payoutToken != asset) revert InvalidData();
 
         policyId = _policyId;
         policyBoundExecuted = true;
