@@ -411,11 +411,11 @@ contract PolicyManagerTest is Test {
 
         address[] memory vaults = new address[](1);
         vaults[0] = makeAddr("vault1");
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8, COVERAGE_DURATION);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, address(coverPool), COVERAGE_DURATION);
         mockStakeManager.addOperatorToCommittee(lowStakeOperator, committeeId);
         mockStakeManager.addCommitteeVaults(committeeId, vaults);
 
-        mockStakeManager.setOperatorCommitteeStake(lowStakeOperator, committeeId, 100e8);
+        mockStakeManager.setOperatorCommitteeStake(committeeId, 100e8);
 
         request.coverageAmount = 500_000e8;
 
@@ -433,12 +433,12 @@ contract PolicyManagerTest is Test {
 
         address[] memory vaults = new address[](1);
         vaults[0] = makeAddr("vault1");
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8, COVERAGE_DURATION);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, address(coverPool), COVERAGE_DURATION);
         mockStakeManager.addOperatorToCommittee(curator, committeeId);
         mockStakeManager.addCommitteeVaults(committeeId, vaults);
 
         request.coverageAmount = 500_000e8;
-        mockStakeManager.setOperatorCommitteeStake(curator, committeeId, 550_000e8);
+        mockStakeManager.setOperatorCommitteeStake(committeeId, 550_000e8);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
         vm.prank(address(coverPool));
@@ -448,9 +448,9 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_WhenNoVaultsBound_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint96 committeeId = request.quote.policyId;
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8, COVERAGE_DURATION);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, address(coverPool), COVERAGE_DURATION);
         mockStakeManager.addOperatorToCommittee(curator, committeeId);
-        mockStakeManager.setOperatorCommitteeStake(curator, committeeId, request.coverageAmount);
+        mockStakeManager.setOperatorCommitteeStake(committeeId, request.coverageAmount);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
         vm.expectRevert(abi.encodeWithSelector(IPolicyManager.NoVaultsBound.selector, committeeId));
@@ -1339,10 +1339,8 @@ contract PolicyManagerTest is Test {
 
         IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
         assertEq(metadata.coverageLimit, COVERAGE_LIMIT, "Coverage limit stored in metadata");
-
-        // Verify coverageAmount was used for stake check (not coverageLimit)
         assertTrue(
-            mockStakeManager.getOperatorCommitteeStake(curator, request.quote.policyId) >= request.coverageAmount,
+            mockStakeManager.getOperatorCommitteeStake(request.quote.policyId) >= request.coverageAmount,
             "Stake should cover coverageAmount"
         );
     }
@@ -1351,16 +1349,14 @@ contract PolicyManagerTest is Test {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint96 committeeId = request.quote.policyId;
 
-        // Setup: stake = 500k, coverageAmount = 500k, coverageLimit = 1M
         request.coverageAmount = 500_000e8;
         request.quote.coverageLimit = 1_000_000e18; // Larger limit for economic payouts
 
         _seedCommitteeForTesting(committeeId, curator, request.coverageAmount, true);
-        mockStakeManager.setOperatorCommitteeStake(curator, committeeId, 500_000e8);
+        mockStakeManager.setOperatorCommitteeStake(committeeId, 500_000e8);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
 
-        // Should succeed: stake covers coverageAmount even though coverageLimit is higher
         vm.prank(address(coverPool));
         policyManager.bindPolicy(request, boundPolicy);
 
@@ -1829,7 +1825,7 @@ contract PolicyManagerTest is Test {
     )
         internal
     {
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8, COVERAGE_DURATION);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, address(coverPool), COVERAGE_DURATION);
         mockStakeManager.addOperatorToCommittee(committeeOperator, committeeId);
         if (addVaults) {
             address[] memory vaults = new address[](2);
@@ -1837,7 +1833,7 @@ contract PolicyManagerTest is Test {
             vaults[1] = makeAddr("vault2");
             mockStakeManager.addCommitteeVaults(committeeId, vaults);
         }
-        mockStakeManager.setOperatorCommitteeStake(committeeOperator, committeeId, operatorStake);
+        mockStakeManager.setOperatorCommitteeStake(committeeId, operatorStake);
     }
 
     function _getBoundPolicy(IPolicyManager.BindPolicyRequest memory request)
@@ -1957,21 +1953,28 @@ contract MockStakeManager {
     uint256 public createCommitteeCallCount;
     uint96 public lastCommitteeId;
     uint256 public lastMaxStake;
+    address public lastCoverPool;
     uint32 public lastDuration;
-    bool private _shouldFailVaultLocking;
 
     mapping(address => uint96) private _operatorCommittees;
     mapping(uint96 => address) private _committeeOperators;
     mapping(uint96 => address[]) private _committeeVaults;
     mapping(uint96 => bool) private _committeeExists;
-    mapping(uint96 => mapping(address => uint256)) private _operatorStake;
+    mapping(uint96 => uint256) private _committeeStake;
     mapping(uint96 => uint256) private _committeeMaxStake;
-    mapping(uint96 => bool) private _vaultsLocked;
 
-    function createCommittee(uint96 committeeId, uint256 maxStakeForCommittee, uint32 duration) external {
+    function createCommittee(
+        uint96 committeeId,
+        uint256 maxStakeForCommittee,
+        address coverPool,
+        uint32 duration
+    )
+        external
+    {
         createCommitteeCallCount++;
         lastCommitteeId = committeeId;
         lastMaxStake = maxStakeForCommittee;
+        lastCoverPool = coverPool;
         lastDuration = duration;
         _committeeExists[committeeId] = true;
         _committeeMaxStake[committeeId] = maxStakeForCommittee;
@@ -1996,16 +1999,16 @@ contract MockStakeManager {
         }
     }
 
-    function getOperatorCommitteeStake(address operator, uint96 committeeId) external view returns (uint256) {
-        if (_committeeOperators[committeeId] == operator && _committeeExists[committeeId]) {
-            uint256 stake = _operatorStake[committeeId][operator];
+    function getOperatorCommitteeStake(uint96 committeeId) external view returns (uint256) {
+        if (_committeeExists[committeeId]) {
+            uint256 stake = _committeeStake[committeeId];
             return stake > 0 ? stake : 1_000_000e8;
         }
         return 0;
     }
 
-    function setOperatorCommitteeStake(address operator, uint96 committeeId, uint256 stake) external {
-        _operatorStake[committeeId][operator] = stake;
+    function setOperatorCommitteeStake(uint96 committeeId, uint256 stake) external {
+        _committeeStake[committeeId] = stake;
     }
 
     function getCommitteeMaxStake(uint96 committeeId) external view returns (uint256) {
@@ -2018,21 +2021,6 @@ contract MockStakeManager {
 
     function committeeExists(uint96 committeeId) external view returns (bool) {
         return _committeeExists[committeeId];
-    }
-
-    function lockVaults(uint96 committeeId) external {
-        if (_shouldFailVaultLocking) {
-            revert("Vault locking failed");
-        }
-        _vaultsLocked[committeeId] = true;
-    }
-
-    function areVaultsLocked(uint96 committeeId) external view returns (bool) {
-        return _vaultsLocked[committeeId];
-    }
-
-    function setShouldFailVaultLocking(bool shouldFail) external {
-        _shouldFailVaultLocking = shouldFail;
     }
 }
 
@@ -2120,3 +2108,4 @@ contract MockRevertingHook {
         revert("supportsInterface: always reverts");
     }
 }
+

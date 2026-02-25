@@ -37,6 +37,8 @@ contract PremiumManager is
     address public override platformTreasury;
     uint16 public override platformFeeBps;
 
+    uint256 private _distributionNonce;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -154,8 +156,8 @@ contract PremiumManager is
 
         if (restakerSplit > 0) {
             token.safeTransfer(rewardsManager, restakerSplit);
-            // Distribute rewards to committee in core contracts using policyId as committeeId (1:1 mapping).
-            IRewardsManager(rewardsManager).distributeRewards(policyId, curator, restakerSplit, token);
+            bytes32 taskId = keccak256(abi.encodePacked(policyId, ++_distributionNonce));
+            IRewardsManager(rewardsManager).distributeRewards(policyId, curator, restakerSplit, token, taskId);
         }
 
         emit PremiumDistributed(pool, policyId, amount);

@@ -166,7 +166,7 @@ contract PolicyManager is
         emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount, duration);
 
         // Create committee in core contracts using policyId as committeeId (1:1 mapping).
-        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, duration);
+        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, pool, duration);
         IStakeManager(stakeManager).addOperatorToCommittee(curator, policyId);
     }
 
@@ -223,8 +223,7 @@ contract PolicyManager is
         // Query core contracts using policyId as committeeId (1:1 mapping).
         require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));
 
-        address curator = ICoverPool(quote.pool).owner();
-        uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(curator, policyId);
+        uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(policyId);
         require(totalStake >= request.coverageAmount, InsufficientStake(policyId, request.coverageAmount, totalStake));
 
         bytes32 policyCommit = boundPolicy.policyCommit;

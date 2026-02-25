@@ -1473,7 +1473,8 @@ contract MockSlashingManager {
     function executeSlashing(
         uint96 committeeId,
         address beneficiary,
-        uint256 slashAmount
+        uint256 slashAmount,
+        bytes32 /*taskId*/
     )
         external
         returns (address[] memory, uint256[] memory)

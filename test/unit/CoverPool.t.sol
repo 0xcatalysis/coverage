@@ -912,7 +912,7 @@ contract CoverPoolTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function _createDraft() private returns (uint96 policyId) {
-        vm.mockCall(stakeManager, abi.encodeWithSignature("createCommittee(uint96,uint256,uint32)"), "");
+        vm.mockCall(stakeManager, abi.encodeWithSignature("createCommittee(uint96,uint256,address,uint32)"), "");
         vm.mockCall(stakeManager, abi.encodeWithSignature("addOperatorToCommittee(address,uint96)"), "");
 
         // Mock that coverPool exists in factory

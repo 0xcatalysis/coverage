@@ -333,9 +333,15 @@ contract ClaimManager is
             IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(metadata.payoutToken, requestedAmount);
 
         // Slash committee in core contracts using policyId as committeeId (1:1 mapping).
+        // taskId (inlined) is deterministic per (policyId, claimId) pair to prevent replay attacks.
         // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) = ISlashingManager(slashingManager)
-            .executeSlashing(metadata.policyId, ICoverPool(metadata.pool).owner(), slashAmountUSD);
+            .executeSlashing(
+                metadata.policyId,
+                ICoverPool(metadata.pool).owner(),
+                slashAmountUSD,
+                keccak256(abi.encodePacked(metadata.policyId, claimId))
+            );
 
         uint256 tokensLength = collateralTokens.length;
         // slither-disable-next-line incorrect-equality
