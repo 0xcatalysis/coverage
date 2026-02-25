@@ -1959,4 +1959,70 @@ contract CatalysisCoverAdapterForkTest is Test {
         emit log_named_uint("Alice received with donation", aliceReceived);
         emit log_string("Donation to ctrlVault: adapter sees phantom profit, user benefits");
     }
+
+    function test_fork_UnderlyingVaultSharesDonation_FullDeallocationPossible() public onlyFork {
+        address alice = makeAddr("alice_donation");
+        address donator = makeAddr("donator");
+        address newAllocator;
+        uint96 donPolicyId = 104;
+
+        // Setup: deploy contracts with mock underlying
+        IVaultV2 vault;
+        CatalysisCoverAdapter donAdapter;
+        ControllableVault donCtrlVault;
+        ForkClaimManager donClaimMgr;
+        {
+            (
+                IVaultV2 v,,
+                CatalysisCoverAdapter a,
+                ControllableVault c,
+                ForkClaimManager f,,
+                address na
+            ) = _setupParentWithMockUnderlyingVault(donPolicyId);
+            vault = v;
+            donAdapter = a;
+            donCtrlVault = c;
+            donClaimMgr = f;
+            newAllocator = na;
+        }
+
+        // STEP 1: Alice deposits 1000 USDC at P = 1.00
+        uint256 aliceShares;
+        uint256 depositAmount = 1000e6;
+        {
+            deal(USDC, alice, depositAmount);
+            vm.prank(alice);
+            IERC20(USDC).approve(address(vault), depositAmount);
+            vm.prank(alice);
+            aliceShares = vault.deposit(depositAmount, alice);
+
+            assertEq(donAdapter.currentValue(), depositAmount, "currentValue = 1000 after deposit");
+            assertEq(donAdapter.totalPrincipal(), depositAmount, "totalPrincipal = 1000");
+        }
+
+        // STEP 2: Donate Underlying shares directly to the Adapter's balance
+        uint256 donationShares;
+        {
+            uint256 donationAmount = 200e6;
+            deal(USDC, donator, donationAmount);
+            vm.prank(donator);
+            IERC20(USDC).approve(address(donCtrlVault), donationAmount);
+            vm.prank(donator);
+            donationShares = donCtrlVault.deposit(donationAmount, donator);
+            vm.prank(donator);
+            donCtrlVault.transfer(address(donAdapter), donationShares);
+        }
+
+        // STEP 3: Deallocate assets
+        {
+            uint256 deallocateAmount = vault.previewRedeem(vault.totalSupply());
+            vm.prank(newAllocator);
+            vault.deallocate(address(donAdapter), "", deallocateAmount);
+            assertEq(deallocateAmount, IERC20(USDC).balanceOf(address(vault)), "Full deallocate on Vault");
+            assertEq(deallocateAmount, depositAmount, "Deallocation equals users' deposits");
+            assertEq(donCtrlVault.balanceOf(address(donAdapter)), donationShares, "Donation shares ignored");
+            assertEq(donAdapter.totalPrincipal(), 0, "Total principal fully withdrawn");
+            assertEq(donAdapter.underlyingShares(), 0, "Total shares fully withdrawn");
+        }
+    }
 }

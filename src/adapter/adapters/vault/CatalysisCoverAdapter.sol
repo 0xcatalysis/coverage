@@ -430,7 +430,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
     // slither-disable-next-line incorrect-equality
     function currentValue() public view override returns (uint256) {
         if (underlyingShares == 0) return 0;
-        return IERC4626(underlyingVault).convertToAssets(underlyingShares);
+        return IERC4626(underlyingVault).previewRedeem(underlyingShares);
     }
 
     /*//////////////////////////////////////////////////////////////
