@@ -360,8 +360,6 @@ contract CatalysisCoverAdapterForkTest is Test {
 
         // Deallocate all since deallocation allow only full withdrawal
         uint256 deallocateAmount = parentVault.previewRedeem(parentVault.totalSupply());
-        console.log("Adapter addr: ", address(adapter));
-        console.log("parent addr: ", address(parentVault));
         vm.prank(allocatorAddr);
         parentVault.deallocate(address(adapter), "", deallocateAmount);
 
@@ -469,7 +467,6 @@ contract CatalysisCoverAdapterForkTest is Test {
         );
         vm.prank(user2);
         parentVault.redeem(user2Shares, user2, user2);
-        console.log("Reached here");
         // Withdraw only originally invested
         vm.prank(user2);
         parentVault.withdraw(amount2, user2, user2);
@@ -683,8 +680,6 @@ contract CatalysisCoverAdapterForkTest is Test {
         uint256 out2 = parentVault.redeem(remainingShares, user1, user1);
 
         assertTrue(out2 > 0, "Should receive assets on final withdrawal");
-
-        console.log("User received amount: ", IERC20(USDC).balanceOf(user1));
 
         // Final principal should be 0 since:
         // - User withdrew all their shares
@@ -1119,7 +1114,6 @@ contract CatalysisCoverAdapterForkTest is Test {
         // STEP 7: Bob transfers shares back to Alice, Alice redeems all
         {
             uint256 sharesToTransfer = parentVault.balanceOf(bob);
-            console.log("Shares to transfer: ", sharesToTransfer);
             vm.prank(bob);
             IERC20(address(parentVault)).transfer(alice, sharesToTransfer);
 
@@ -1331,7 +1325,7 @@ contract CatalysisCoverAdapterForkTest is Test {
             parentVault.redeem(aliceOriginalShares, alice, alice);
             uint256 aliceReceived = IERC20(USDC).balanceOf(alice) - aliceBefore;
 
-            // Alice onl her half of asset without insurance payout
+            // Alice only her half of asset without insurance payout
             assertApproxEqAbs(
                 aliceReceived, currentValBeforeRedeem / 2, 2, "Alice received ~2800 USDC (full vault value)"
             );
@@ -1343,7 +1337,7 @@ contract CatalysisCoverAdapterForkTest is Test {
             assertApproxEqAbs(
                 baAdapter.userUnderlyingShares(alice), 0, ALLOWED_DUST_2_WEI, "Alice ctrlVault shares cleared"
             );
-            // totalPrincipal is corrupted: 2000e6 was deducted (scaled principal), 500e6 remains
+            // totalPrincipal contains Bob's principal only
             assertApproxEqAbs(
                 baAdapter.totalPrincipal(),
                 baAdapter.userPrincipal(bob),
@@ -1375,10 +1369,9 @@ contract CatalysisCoverAdapterForkTest is Test {
             uint256 bobBefore = IERC20(USDC).balanceOf(bob);
             uint256 currentValBeforeRedeem = baAdapter.currentValue();
             uint256 expectedPayout = baAdapter.userShortfall(bob) - (baAdapter.userShortfall(bob) * 100 / 10_000); // Minus
-            // deductible
-            console.log("Underlying shares total: ", baAdapter.userUnderlyingShares(bob));
+            uint256 withdrawAmount = parentVault.convertToAssets(sharesToTransfer) - 1;
             vm.prank(bob);
-            parentVault.withdraw(parentVault.convertToAssets(sharesToTransfer) - 1, bob, bob);
+            parentVault.withdraw(withdrawAmount, bob, bob);
             uint256 bobReceived = IERC20(USDC).balanceOf(bob) - bobBefore;
 
             assertApproxEqAbs(
@@ -1671,100 +1664,111 @@ contract CatalysisCoverAdapterForkTest is Test {
     ///   - Insurance works correctly after the full cycle
     function test_fork_deallocateCycle_emergencyAndRedeposit() public onlyFork {
         address alice = makeAddr("alice_cycle");
-        address bob = makeAddr("bob_cycle");
-        uint96 cyclePolicyId = 102;
 
         // Setup: deploy contracts with mock underlying
-        (
-            IVaultV2 vault,,
-            CatalysisCoverAdapter cycleAdapter,
-            ControllableVault cycleCtrlVault,
-            ForkClaimManager cycleClaimMgr,,
-            address cycleAllocator
-        ) = _setupParentWithMockUnderlyingVault(cyclePolicyId);
-
-        // STEP 1: Alice deposits 1000 USDC at P = 1.00
-        uint256 aliceShares;
+        IVaultV2 vault;
+        CatalysisCoverAdapter cycleAdapter;
+        ControllableVault cycleCtrlVault;
+        ForkClaimManager cycleClaimMgr;
         {
-            deal(USDC, alice, 1000e6);
-            vm.prank(alice);
-            IERC20(USDC).approve(address(vault), 1000e6);
-            vm.prank(alice);
-            aliceShares = vault.deposit(1000e6, alice);
+            address cycleAllocator;
+            {
+                (
+                    IVaultV2 v,,
+                    CatalysisCoverAdapter a,
+                    ControllableVault c,
+                    ForkClaimManager f,,
+                    address alloc
+                ) = _setupParentWithMockUnderlyingVault(102);
+                vault = v;
+                cycleAdapter = a;
+                cycleCtrlVault = c;
+                cycleClaimMgr = f;
+                cycleAllocator = alloc;
+            }
 
-            assertEq(cycleAdapter.userPrincipal(alice), 1000e6, "Alice principal = 1000 USDC");
-            assertEq(cycleAdapter.userUnderlyingShares(alice), 1000e6, "Alice ctrlVault shares = 1000e6");
-            assertEq(cycleAdapter.totalPrincipal(), 1000e6, "Total principal = 1000 USDC");
-        }
+            // STEP 1: Alice deposits 1000 USDC at P = 1.00
+            uint256 aliceShares;
+            {
+                deal(USDC, alice, 1000e6);
+                vm.prank(alice);
+                IERC20(USDC).approve(address(vault), 1000e6);
+                vm.prank(alice);
+                aliceShares = vault.deposit(1000e6, alice);
 
-        // STEP 2: Bob deposits 1000 USDC at P = 1.00
-        uint256 bobShares;
-        {
-            deal(USDC, bob, 1000e6);
-            vm.prank(bob);
-            IERC20(USDC).approve(address(vault), 1000e6);
-            vm.prank(bob);
-            bobShares = vault.deposit(1000e6, bob);
+                assertEq(cycleAdapter.userPrincipal(alice), 1000e6, "Alice principal = 1000 USDC");
+                assertEq(cycleAdapter.userUnderlyingShares(alice), 1000e6, "Alice ctrlVault shares = 1000e6");
+                assertEq(cycleAdapter.totalPrincipal(), 1000e6, "Total principal = 1000 USDC");
+            }
 
-            assertEq(cycleAdapter.userPrincipal(bob), 1000e6, "Bob principal = 1000 USDC");
-            assertEq(cycleAdapter.totalPrincipal(), 2000e6, "Total principal = 2000 USDC");
-            assertEq(cycleAdapter.currentValue(), 2000e6, "currentValue = 2000 USDC");
-        }
+            // STEP 2: Bob deposits 1000 USDC at P = 1.00
+            uint256 bobShares;
+            {
+                address bob = makeAddr("bob_cycle");
+                deal(USDC, bob, 1000e6);
+                vm.prank(bob);
+                IERC20(USDC).approve(address(vault), 1000e6);
+                vm.prank(bob);
+                bobShares = vault.deposit(1000e6, bob);
 
-        // STEP 3: Allocator emergency-deallocates ALL (DEALLOCATE_SELECTOR → Branch 1)
-        // This moves all assets from adapter back to parent vault idle.
-        // totalPrincipal → 0, underlyingShares → 0
-        // Per-user state is NOT cleared (Branch 1 doesn't touch userPrincipal / userUnderlyingShares)
-        {
-            uint256 amountToDeallocate = vault.previewRedeem(vault.totalSupply());
-            vm.prank(cycleAllocator);
-            vault.deallocate(address(cycleAdapter), "", amountToDeallocate);
+                assertEq(cycleAdapter.userPrincipal(bob), 1000e6, "Bob principal = 1000 USDC");
+                assertEq(cycleAdapter.totalPrincipal(), 2000e6, "Total principal = 2000 USDC");
+                assertEq(cycleAdapter.currentValue(), 2000e6, "currentValue = 2000 USDC");
+            }
 
-            assertEq(cycleAdapter.totalPrincipal(), 0, "totalPrincipal = 0 after emergency deallocate");
-            assertEq(cycleAdapter.underlyingShares(), 0, "underlyingShares = 0 after emergency deallocate");
-            assertEq(cycleAdapter.currentValue(), 0, "currentValue = 0 after emergency deallocate");
+            // STEP 3: Allocator emergency-deallocates ALL
+            {
+                address bob = makeAddr("bob_cycle");
+                uint256 amountToDeallocate = vault.previewRedeem(vault.totalSupply());
+                vm.prank(cycleAllocator);
+                vault.deallocate(address(cycleAdapter), "", amountToDeallocate);
 
-            // Ghost per-user state persists
-            assertEq(cycleAdapter.userPrincipal(alice), 1000e6, "Alice ghost principal persists");
-            assertEq(cycleAdapter.userUnderlyingShares(alice), 1000e6, "Alice ghost shares persist");
-            assertEq(cycleAdapter.userPrincipal(bob), 1000e6, "Bob ghost principal persists");
-            assertEq(cycleAdapter.userUnderlyingShares(bob), 1000e6, "Bob ghost shares persist");
+                assertEq(cycleAdapter.totalPrincipal(), 0, "totalPrincipal = 0 after emergency deallocate");
+                assertEq(cycleAdapter.underlyingShares(), 0, "underlyingShares = 0 after emergency deallocate");
+                assertEq(cycleAdapter.currentValue(), 0, "currentValue = 0 after emergency deallocate");
 
-            emit log_string("Emergency deallocate: global state zeroed, per-user ghost state persists");
-        }
+                assertEq(cycleAdapter.userPrincipal(alice), 1000e6, "Alice ghost principal persists");
+                assertEq(cycleAdapter.userUnderlyingShares(alice), 1000e6, "Alice ghost shares persist");
+                assertEq(cycleAdapter.userPrincipal(bob), 1000e6, "Bob ghost principal persists");
+                assertEq(cycleAdapter.userUnderlyingShares(bob), 1000e6, "Bob ghost shares persist");
 
-        // STEP 4: Alice and Bob withdraw from parent vault idle
-        // V2 vault has idle balance from emergency deallocate — no adapter interaction needed
-        {
-            vm.prank(alice);
-            vault.redeem(aliceShares, alice, alice);
-            vm.prank(bob);
-            vault.redeem(bobShares, bob, bob);
+                emit log_string("Emergency deallocate: global state zeroed, per-user ghost state persists");
+            }
 
-            assertApproxEqAbs(IERC20(USDC).balanceOf(alice), 1000e6, ALLOWED_DUST_2_WEI, "Alice got ~1000 USDC back");
-            assertApproxEqAbs(IERC20(USDC).balanceOf(bob), 1000e6, ALLOWED_DUST_2_WEI, "Bob got ~1000 USDC back");
-            assertEq(vault.balanceOf(alice), 0, "Alice has 0 parent shares");
-            assertEq(vault.balanceOf(bob), 0, "Bob has 0 parent shares");
+            // STEP 4: Alice and Bob withdraw from parent vault idle
+            {
+                address bob = makeAddr("bob_cycle");
+                vm.prank(alice);
+                vault.redeem(aliceShares, alice, alice);
+                vm.prank(bob);
+                vault.redeem(bobShares, bob, bob);
 
-            emit log_string("Users withdrew from idle -- no adapter deallocate triggered");
+                assertApproxEqAbs(IERC20(USDC).balanceOf(alice), 1000e6, ALLOWED_DUST_2_WEI, "Alice got ~1000 USDC back");
+                assertApproxEqAbs(IERC20(USDC).balanceOf(bob), 1000e6, ALLOWED_DUST_2_WEI, "Bob got ~1000 USDC back");
+                assertEq(vault.balanceOf(alice), 0, "Alice has 0 parent shares");
+                assertEq(vault.balanceOf(bob), 0, "Bob has 0 parent shares");
+
+                emit log_string("Users withdrew from idle -- no adapter deallocate triggered");
+            }
         }
 
         // STEP 5: Alice re-deposits 2000 USDC (fresh cycle)
         // Per-user tracking accumulates on top of ghost state from Step 1
         uint256 aliceNewShares;
+        uint256 aliceNewDepositValue = 2000e6;
         {
-            deal(USDC, alice, 2000e6);
+            deal(USDC, alice, aliceNewDepositValue);
             vm.prank(alice);
-            IERC20(USDC).approve(address(vault), 2000e6);
+            IERC20(USDC).approve(address(vault), aliceNewDepositValue);
             vm.prank(alice);
-            aliceNewShares = vault.deposit(2000e6, alice);
+            aliceNewShares = vault.deposit(aliceNewDepositValue, alice);
 
             // Ghost principal (1000) + new deposit (2000) = 3000
-            assertEq(cycleAdapter.userPrincipal(alice), 3000e6, "Alice principal = ghost 1000 + new 2000 = 3000");
+            assertEq(cycleAdapter.userPrincipal(alice), 1000e6 + aliceNewDepositValue, "Alice principal = ghost 1000 + new 2000 = 3000");
             // Ghost shares (1000e6) + new shares (2000e6 at P=1.00) = 3000e6
             assertEq(cycleAdapter.userUnderlyingShares(alice), 3000e6, "Alice shares = ghost + new");
-            assertEq(cycleAdapter.totalPrincipal(), 2000e6, "totalPrincipal = 2000 (only new deposit)");
-            assertEq(cycleAdapter.currentValue(), 2000e6, "currentValue = 2000 USDC");
+            assertEq(cycleAdapter.totalPrincipal(), aliceNewDepositValue, "totalPrincipal = 2000 (only new deposit)");
+            assertEq(cycleAdapter.currentValue(), aliceNewDepositValue, "currentValue = 2000 USDC");
 
             emit log_named_uint("Alice accumulated principal (ghost + new)", cycleAdapter.userPrincipal(alice));
         }
@@ -1773,27 +1777,26 @@ contract CatalysisCoverAdapterForkTest is Test {
         // ctrlVault: 2000e6 - 200e6 = 1800e6 / 2000e6 shares, P = 0.90
         {
             cycleCtrlVault.simulateLoss(200e6);
-            assertEq(cycleAdapter.currentValue(), 1800e6, "currentValue = 1800 USDC after 10% loss");
+            assertEq(cycleAdapter.currentValue(), aliceNewDepositValue * (10_000 - 1000) / 10_000, "currentValue = 1800 USDC after 10% loss");
         }
 
         // STEP 7: Alice redeems all — insurance should cover her shortfall
-        // The adapter sees Alice's userPrincipal = 3000e6 and userUnderlyingShares = 3000e6
-        // But only 2000e6 actual underlying shares exist (adapter.underlyingShares = 2000e6)
-        // Branch 2 check: convertToShares(assets) <= userUnderlyingShares[alice]
-        // assets ≈ 1800e6, convertToShares(1800e6) = 2000e6 <= 3000e6 ✓
-        // _withdraw will burn 2000 shares from underlying, proportional principal decrease
         {
+            uint256 maxCoverable = aliceNewDepositValue * 1000 / 10_000;
+            uint256 expectedReceived = cycleAdapter.currentValue() + (maxCoverable - (maxCoverable * 100 / 10_000));
             uint256 aliceBefore = IERC20(USDC).balanceOf(alice);
             vm.prank(alice);
             vault.redeem(aliceNewShares, alice, alice);
             uint256 aliceReceived = IERC20(USDC).balanceOf(alice) - aliceBefore;
 
-            // Alice receives vault proceeds + direct insurance payout
-            assertTrue(aliceReceived > 0, "Alice received USDC after cycle");
-            assertTrue(cycleClaimMgr.totalPaidOut(cyclePolicyId) > 0, "Insurance was paid after cycle");
+            assertEq(aliceReceived, expectedReceived, "Alice received principle - deductible");
+            assertEq(cycleClaimMgr.totalPaidOut(102), maxCoverable - (maxCoverable * 100 / 10_000), "Insurance was paid after cycle");
+            assertEq(cycleAdapter.totalPrincipal(), 0, "Total principle empty after full withdrawal");
+            assertEq(cycleAdapter.userPrincipal(alice), 1000e6, "Ghost state persists in principal");
+            assertEq(cycleAdapter.userUnderlyingShares(alice), 1000e6, "Ghost state persists in shares");
 
             emit log_named_uint("Alice received USDC", aliceReceived);
-            emit log_named_uint("Insurance paid", cycleClaimMgr.totalPaidOut(cyclePolicyId));
+            emit log_named_uint("Insurance paid", cycleClaimMgr.totalPaidOut(102));
             emit log_named_uint("Alice remaining principal", cycleAdapter.userPrincipal(alice));
             emit log_named_uint("totalPrincipal remaining", cycleAdapter.totalPrincipal());
             emit log_string("Deallocate cycle complete: deposit -> emergency -> re-deposit -> loss -> insurance");
@@ -1814,12 +1817,19 @@ contract CatalysisCoverAdapterForkTest is Test {
     ///   5. Verify: 500 USDC is stranded on the adapter (not recoverable via normal flow)
     function test_fork_directBalanceTransfer_usdcToAdapter() public onlyFork {
         address alice = makeAddr("alice_directXfer");
-        address donor = makeAddr("donor");
         uint96 xferPolicyId = 103;
 
         // Setup: deploy contracts with mock underlying
-        (IVaultV2 vault,, CatalysisCoverAdapter xferAdapter,, ForkClaimManager xferClaimMgr,,) =
-            _setupParentWithMockUnderlyingVault(xferPolicyId);
+        IVaultV2 vault;
+        CatalysisCoverAdapter xferAdapter;
+        ForkClaimManager xferClaimMgr;
+        {
+            (IVaultV2 v,, CatalysisCoverAdapter a,, ForkClaimManager f,,) =
+                _setupParentWithMockUnderlyingVault(xferPolicyId);
+            vault = v;
+            xferAdapter = a;
+            xferClaimMgr = f;
+        }
 
         // STEP 1: Alice deposits 1000 USDC at P = 1.00
         uint256 aliceShares;
@@ -1840,8 +1850,9 @@ contract CatalysisCoverAdapterForkTest is Test {
         uint256 tpBefore = xferAdapter.totalPrincipal();
         uint256 usBefore = xferAdapter.underlyingShares();
 
-        // STEP 2: Random address sends 500 USDC directly to the adapter contract
+        // STEP 2: Random address sends 500 USDC directly to the vault contract
         {
+            address donor = makeAddr("donor");
             deal(USDC, donor, 500e6);
             vm.prank(donor);
             IERC20(USDC).transfer(address(xferAdapter), 500e6);
@@ -1872,7 +1883,7 @@ contract CatalysisCoverAdapterForkTest is Test {
         assertEq(xferAdapter.currentValue(), 0, "currentValue = 0 (all shares burned)");
     }
 
-    /// @notice Donation to underlying vault increases adapter's currentValue (phantom profit).
+    /// @notice Donations to parent vault sits idle and used to pay during withdrawal
     ///
     /// When USDC is sent directly to the ctrlVault (underlying), totalAssets increases
     /// without minting new shares, raising the share price. The adapter sees a higher
@@ -1882,55 +1893,74 @@ contract CatalysisCoverAdapterForkTest is Test {
     ///   1. Alice deposits 1000 USDC
     ///   2. Donate 200 USDC to ctrlVault (share price rises)
     ///   3. Alice redeems -- receives 1200 USDC (deposit + donation)
-    function test_fork_directBalanceTransfer_donationToUnderlying() public onlyFork {
+    function test_fork_directBalanceTransfer_donationToParentVault() public onlyFork {
         address alice = makeAddr("alice_donation");
-        address donor = makeAddr("donor_donation");
         uint96 donPolicyId = 104;
 
         // Setup: deploy contracts with mock underlying
-        (
-            IVaultV2 vault,,
-            CatalysisCoverAdapter donAdapter,
-            ControllableVault donCtrlVault,
-            ForkClaimManager donClaimMgr,,
-        ) = _setupParentWithMockUnderlyingVault(donPolicyId);
+        IVaultV2 vault;
+        CatalysisCoverAdapter donAdapter;
+        ControllableVault donCtrlVault;
+        ForkClaimManager donClaimMgr;
+        {
+            (
+                IVaultV2 v,,
+                CatalysisCoverAdapter a,
+                ControllableVault c,
+                ForkClaimManager f,,
+            ) = _setupParentWithMockUnderlyingVault(donPolicyId);
+            vault = v;
+            donAdapter = a;
+            donCtrlVault = c;
+            donClaimMgr = f;
+        }
 
         // STEP 1: Alice deposits 1000 USDC at P = 1.00
         uint256 aliceShares;
+        uint256 depositAmount = 1000e6;
         {
-            deal(USDC, alice, 1000e6);
+            deal(USDC, alice, depositAmount);
             vm.prank(alice);
-            IERC20(USDC).approve(address(vault), 1000e6);
+            IERC20(USDC).approve(address(vault), depositAmount);
             vm.prank(alice);
-            aliceShares = vault.deposit(1000e6, alice);
+            aliceShares = vault.deposit(depositAmount, alice);
 
-            assertEq(donAdapter.currentValue(), 1000e6, "currentValue = 1000 after deposit");
-            assertEq(donAdapter.totalPrincipal(), 1000e6, "totalPrincipal = 1000");
+            assertEq(donAdapter.currentValue(), depositAmount, "currentValue = 1000 after deposit");
+            assertEq(donAdapter.totalPrincipal(), depositAmount, "totalPrincipal = 1000");
         }
 
-        // STEP 2: Donate 200 USDC directly to ctrlVault -- increases totalAssets without minting shares
+        // STEP 2: Donate 200 USDC directly to Parent Vault
+        uint256 donation = 200e6;
         {
-            deal(USDC, donor, 200e6);
+            address donor = makeAddr("donor_donation");
+            deal(USDC, donor, donation);
             vm.prank(donor);
-            IERC20(USDC).transfer(address(donCtrlVault), 200e6);
+            IERC20(USDC).transfer(address(vault), donation);
+            skip(365 days);
 
-            assertEq(donAdapter.currentValue(), 1200e6, "currentValue = 1200 after donation");
-            assertEq(donAdapter.totalPrincipal(), 1000e6, "totalPrincipal still 1000 (unchanged)");
-            assertEq(donAdapter.userShortfall(alice), 0, "No shortfall -- phantom profit");
+            assertEq(donAdapter.currentValue(), depositAmount, "currentValue stays the same");
+            assertEq(donAdapter.totalPrincipal(), depositAmount, "totalPrincipal still 1000 (unchanged)");
+            assertEq(donAdapter.userShortfall(alice), 0, "No shortfall");
+            assertApproxEqAbs(vault.previewRedeem(aliceShares), depositAmount + donation, ALLOWED_DUST_2_WEI, "Donation included in profit");
         }
 
-        // STEP 3: Alice redeems -- gets the phantom profit too
-        {
-            uint256 aliceBefore = IERC20(USDC).balanceOf(alice);
-            vm.prank(alice);
-            vault.redeem(aliceShares, alice, alice);
-            uint256 aliceReceived = IERC20(USDC).balanceOf(alice) - aliceBefore;
+        // STEP 3: Simulate loss 20%
+        donCtrlVault.simulateLoss(depositAmount * 2000 / 10_000);
+        assertEq(donAdapter.currentValue(), depositAmount * (10_000 - 2000) / 10_000, "currentValue = 800 USDC after 20% loss");
+        assertEq(vault.previewRedeem(aliceShares), donAdapter.currentValue() + donation, "Donation still included even in case of loss");
 
-            assertApproxEqAbs(aliceReceived, 1200e6, ALLOWED_DUST_2_WEI, "Alice receives ~1200 USDC (incl. donation)");
-            assertEq(donClaimMgr.totalPaidOut(donPolicyId), 0, "No insurance paid (phantom profit)");
+        // STEP 4: Alice redeems -- gets the donation and covered loss
+        uint256 maxCoverable = depositAmount * 1000 / 10_000;
+        uint256 expectedReceived = donAdapter.currentValue() + (maxCoverable - (maxCoverable * 100 / 10_000));
+        uint256 aliceBefore = IERC20(USDC).balanceOf(alice);
+        vm.prank(alice);
+        vault.redeem(aliceShares, alice, alice);
+        uint256 aliceReceived = IERC20(USDC).balanceOf(alice) - aliceBefore;
 
-            emit log_named_uint("Alice received with donation", aliceReceived);
-            emit log_string("Donation to ctrlVault: adapter sees phantom profit, user benefits");
-        }
+        assertApproxEqAbs(aliceReceived, expectedReceived + donation, ALLOWED_DUST_2_WEI, "Alice receives ~1200 USDC (incl. donation)");
+        assertEq(donClaimMgr.totalPaidOut(donPolicyId), maxCoverable - (maxCoverable * 100 / 10_000), "No insurance paid (phantom profit)");
+
+        emit log_named_uint("Alice received with donation", aliceReceived);
+        emit log_string("Donation to ctrlVault: adapter sees phantom profit, user benefits");
     }
 }

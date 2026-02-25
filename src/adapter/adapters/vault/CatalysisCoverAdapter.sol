@@ -191,6 +191,8 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         if (assets > 0) {
             // Approve exact amount before depositing into underlying vault
             IERC20(asset).forceApprove(underlyingVault, assets);
+            // Use shares output instead of checking share balance delta, since ERC4626 guarantees
+            // to return the exact amount of minted shares.
             // aderyn-fp-next-line(reentrancy-state-change) Protected by nonReentrant modifier
             uint256 shares = IERC4626(underlyingVault).deposit(assets, address(this));
             underlyingShares += shares;
@@ -204,7 +206,8 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         }
 
         // Read allocation AFTER deposit - matches Morpho's approach
-        // This returns delta from yield only, not from the deposit itself
+        // This returns delta between previous and current allocation
+        // to the Underlying Vault
         uint256 oldAllocation = allocation();
         uint256 newAllocation =
             IERC4626(underlyingVault).previewRedeem(IERC4626(underlyingVault).balanceOf(address(this)));
@@ -237,6 +240,8 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
                 // In this case, do not modify per-user principal.
                 // Coverage is not requested in this case as deallocate or force deallocate should be used only in case
                 // of emergency.
+                // Note! We treat management fee recipient specially because he doesn't have per-user principal stored 
+                // and shouldn't receive coverage.
                 uint256 currentVal = currentValue();
                 // slither-disable-next-line reentrancy-no-eth,reentrancy-benign
                 // aderyn-fp-next-line(reentrancy-state-change) Trusted underlyingVault set in constructor
@@ -253,9 +258,12 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
                     require(totalPrincipal == 0, IA.WithdrawAllOnlyDuringDealoc());
                 }
             } else if (
+                // Validate that user doesn't withdraw more than his principal by comparing
+                // his underlying shares balance with share value of `assets`.
                 userPrincipal[sender] > 0
                     && IERC4626(underlyingVault).convertToShares(assets) <= userUnderlyingShares[sender]
             ) {
+                // case 2. User withdraws and receives insurance payout in case of shortfall.
                 _withdraw(assets, sender);
             } else {
                 revert IA.UnsupportedDeallocation(assets, selector, sender);
@@ -280,6 +288,8 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
     ///        absoluteCap = (BPS_DENOMINATOR / maxCoverableLossBps) * coverageLimit
     ///      Then calls submit + increaseAbsoluteCap on the parent vault.
     ///      Requires the adapter to have the Curator role on the parent vault.
+    /// @dev Deposits to the Parent Vault should not be possible until the hook is executed.
+    ///      Absolute cap should be 0 until the hook is executed.
     // slither-disable-next-line reentrancy-events
     function onPolicyBound(
         uint96 _policyId,
@@ -450,16 +460,16 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
 
         // Sender has tracked shares — use per-user path
         uint256 userPrincipalForWithdrawal = userPrincipal[sender].mulDiv(sharesToBurn, userUnderlyingShares[sender]);
-        userPrincipal[sender] -= userPrincipalForWithdrawal;
-        userUnderlyingShares[sender] -= sharesToBurn;
         require(
             userPrincipalForWithdrawal <= totalPrincipal,
             IA.ExceedsTotalPrincipal(userPrincipalForWithdrawal, totalPrincipal)
         );
+        userPrincipal[sender] -= userPrincipalForWithdrawal;
+        userUnderlyingShares[sender] -= sharesToBurn;
         totalPrincipal -= userPrincipalForWithdrawal;
 
         // Per-user insurance: only if sender has tracked principal and policy is active
-        uint256 insurancePayout = 0;
+        uint256 insurancePayout;
         if (userPrincipalForWithdrawal > 0 && _isPolicyActive()) {
             uint256 shortfall = userPrincipalForWithdrawal > assets ? userPrincipalForWithdrawal - assets : 0;
             if (shortfall > 0) {
@@ -509,7 +519,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         _clearPendingClaim();
 
         uint256 balanceAfter = IERC20(payoutToken).balanceOf(address(this));
-        payout = balanceAfter > balanceBefore ? balanceAfter - balanceBefore : 0;
+        payout = balanceAfter - balanceBefore;
 
         emit IE.InsuranceClaimed(address(this), policyId, shortfall, payout);
     }
