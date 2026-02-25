@@ -6,7 +6,6 @@ import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IClaimManager} from "../../src/interfaces/IClaimManager.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
-import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {IChainlinkPriceFeed} from "../../src/interfaces/IChainlinkPriceFeed.sol";
 import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 
@@ -147,8 +146,7 @@ contract FileClaim is Script {
         require(requestedAmount <= remaining, "Requested exceeds remaining coverage");
         console.log("[OK] Requested amount within remaining coverage");
 
-        address curator = ICoverPool(metadata.pool).owner();
-        uint256 operatorStake = stakeManagerContract.getOperatorCommitteeStake(curator, policyId);
+        uint256 operatorStake = stakeManagerContract.getOperatorCommitteeStake(policyId);
         console.log("Operator stake (USD):", operatorStake);
 
         uint256 requestedUSD = priceFeedContract.getUSDValue(metadata.payoutToken, requestedAmount);

@@ -6,6 +6,17 @@ import {console} from "forge-std/console.sol";
 import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 
+/// @dev Minimal EigenLayer DelegationManager interface used only for operator registration.
+interface IDelegationManager {
+    function registerAsOperator(
+        address delegationApprover,
+        uint32 allocationDelay,
+        string calldata metadataURI
+    )
+        external;
+    function isOperator(address operator) external view returns (bool);
+}
+
 /**
  * @title CreateCoverPool
  * @notice Creates a CoverPool via CoverPoolFactory and registers the curator as an operator.
@@ -22,13 +33,19 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  *   - COVER_POOL_FACTORY: CoverPoolFactory proxy address
  *   - QUOTE_SIGNER: Address authorized to sign coverage quotes
  *   - POOL_FEE_BPS: Pool fee in basis points (e.g. 1000 = 10%, max 2000 = 20%)
- *   - OPERATOR_DEADLINE: Deadline timestamp for operator registration signature
- *   - OPERATOR_SIGNATURE: Hex-encoded operator registration signature for StakeManager
+ *
+ * Optional Environment Variables (EigenLayer operator registration):
+ *   - EIGEN_DELEGATION_MANAGER: EigenLayer DelegationManager address. When set,
+ *     the script also registers the curator as an EigenLayer operator, which is a
+ *     prerequisite for PrepareBindPolicy and BindPolicy flows.
+ *   - DELEGATION_APPROVER: Address that must approve delegations (default: address(0)).
+ *   - ALLOCATION_DELAY: Delay in blocks before EigenLayer allocations take effect
+ *     (default: 0).
+ *   - METADATA_URI: Operator metadata URI emitted in EigenLayer (default: "").
  *
  * Prerequisites:
  *   - Curator must have CREATOR_ROLE on CoverPoolFactory (or caller must be the CREATOR)
- *   - Curator must be registered as an operator on Symbiotic/EigenLayer
- *   - Operator signature must be valid for StakeManager.registerOperatorToNetwork()
+ *   - For EigenLayer operators: curator must be registered in the EigenLayer DelegationManager
  */
 contract CreateCoverPool is Script {
     /// @notice Curator address derived from private key
@@ -46,11 +63,17 @@ contract CreateCoverPool is Script {
     /// @notice Pool fee in basis points
     uint16 public poolFeeBps;
 
-    /// @notice Operator registration deadline
-    uint48 public operatorDeadline;
+    /// @notice EigenLayer DelegationManager address (optional; triggers EL registration)
+    address public eigenDelegationManager;
 
-    /// @notice Operator registration signature
-    bytes public operatorSignature;
+    /// @notice EigenLayer delegation approver (optional; default zero address)
+    address public delegationApprover;
+
+    /// @notice EigenLayer allocation delay in blocks (optional; default 0)
+    uint32 public allocationDelay;
+
+    /// @notice EigenLayer operator metadata URI (optional)
+    string public metadataURI;
 
     /// @notice CoverPoolFactory contract instance
     ICoverPoolFactory public factoryContract;
@@ -65,8 +88,12 @@ contract CreateCoverPool is Script {
         coverPoolFactory = vm.envAddress("COVER_POOL_FACTORY");
         quoteSigner = vm.envAddress("QUOTE_SIGNER");
         poolFeeBps = uint16(vm.envUint("POOL_FEE_BPS"));
-        operatorDeadline = uint48(vm.envUint("OPERATOR_DEADLINE"));
-        operatorSignature = vm.envBytes("OPERATOR_SIGNATURE");
+
+        // EigenLayer registration params (all optional)
+        eigenDelegationManager = vm.envOr("EIGEN_DELEGATION_MANAGER", address(0));
+        delegationApprover = vm.envOr("DELEGATION_APPROVER", address(0));
+        allocationDelay = uint32(vm.envOr("ALLOCATION_DELAY", uint256(0)));
+        metadataURI = vm.envOr("METADATA_URI", string(""));
 
         factoryContract = ICoverPoolFactory(coverPoolFactory);
     }
@@ -78,12 +105,18 @@ contract CreateCoverPool is Script {
         console.log("Quote Signer:", quoteSigner);
         console.log("Pool Fee BPS:", poolFeeBps);
 
+        // ------------------------------------------------------------------
+        // Optional: register curator as an EigenLayer operator
+        // ------------------------------------------------------------------
+        if (eigenDelegationManager != address(0)) {
+            _registerEigenLayerOperator();
+        }
+
+        // ------------------------------------------------------------------
+        // Create the CoverPool
+        // ------------------------------------------------------------------
         ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: quoteSigner,
-            poolFeeBps: poolFeeBps,
-            deadline: operatorDeadline,
-            signature: operatorSignature
+            curator: curator, quoteSigner: quoteSigner, poolFeeBps: poolFeeBps
         });
 
         // Predict the deterministic address before creation
@@ -103,6 +136,39 @@ contract CreateCoverPool is Script {
 
         console.log("\n=== COVER POOL CREATION COMPLETED ===");
         emit CoverPoolCreated(predictedPool, curator, quoteSigner, poolFeeBps);
+    }
+
+    // ------------------------------------------------------------------
+    // Internal helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * @dev Registers the curator as an EigenLayer operator if not already registered.
+     *      Requires EIGEN_DELEGATION_MANAGER to be set.
+     */
+    function _registerEigenLayerOperator() internal {
+        console.log("\n--- EigenLayer Operator Registration ---");
+        console.log("DelegationManager:", eigenDelegationManager);
+
+        IDelegationManager dm = IDelegationManager(eigenDelegationManager);
+
+        bool alreadyRegistered = dm.isOperator(curator);
+        if (alreadyRegistered) {
+            console.log("[SKIP] Curator is already an EigenLayer operator");
+            return;
+        }
+
+        console.log("Registering curator as EigenLayer operator...");
+        console.log("  Delegation Approver:", delegationApprover);
+        console.log("  Allocation Delay:", allocationDelay);
+        console.log("  Metadata URI:", metadataURI);
+
+        vm.startBroadcast(curatorPrivateKey);
+        dm.registerAsOperator(delegationApprover, allocationDelay, metadataURI);
+        vm.stopBroadcast();
+
+        require(dm.isOperator(curator), "EigenLayer operator registration failed");
+        console.log("[SUCCESS] Curator registered as EigenLayer operator");
     }
 
     function _verifyCreation(address predictedPool, uint256 totalPoolsBefore) internal view {

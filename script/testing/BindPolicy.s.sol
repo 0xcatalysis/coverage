@@ -49,7 +49,6 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *   - Quote signer must have QUOTE_SIGNER_ROLE on the CoverPool
  *   - Policy draft must exist in PolicyManager (status = Created)
  *   - Sufficient stake must be delegated to vaults
- *   - Vaults must be registered in SSPRouter with module types
  */
 contract BindPolicy is Script {
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
@@ -191,7 +190,7 @@ contract BindPolicy is Script {
         require(draft.pool == coverPool, "Draft pool mismatch");
         console.log("Draft pool matches CoverPool");
 
-        uint256 totalStake = stakeManagerContract.getOperatorCommitteeStake(curator, policyId);
+        uint256 totalStake = stakeManagerContract.getOperatorCommitteeStake(policyId);
         console.log("Operator total stake (USD):", totalStake);
         console.log("Required coverage amount:", draft.coverageAmount);
 

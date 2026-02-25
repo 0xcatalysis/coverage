@@ -54,8 +54,6 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *
  *   Pool Creation Params:
  *   - POOL_FEE_BPS: Pool fee basis points (e.g. 1000 = 10%)
- *   - OPERATOR_DEADLINE: Operator registration deadline timestamp
- *   - OPERATOR_SIGNATURE: Hex-encoded operator signature
  *
  *   Coverage Request Params:
  *   - BENEFICIARY: Claim payout beneficiary
@@ -109,8 +107,6 @@ contract CompleteCoverageFlow is Script {
 
     // ── Pool Creation ──
     uint16 public poolFeeBps;
-    uint48 public operatorDeadline;
-    bytes public operatorSignature;
 
     // ── Coverage Request ──
     address public beneficiary;
@@ -191,11 +187,7 @@ contract CompleteCoverageFlow is Script {
         ICoverPoolFactory factory = ICoverPoolFactory(coverPoolFactory);
 
         ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: quoteSigner,
-            poolFeeBps: poolFeeBps,
-            deadline: operatorDeadline,
-            signature: operatorSignature
+            curator: curator, quoteSigner: quoteSigner, poolFeeBps: poolFeeBps
         });
 
         coverPool = factory.computeCoverPoolAddress(params);
@@ -245,9 +237,7 @@ contract CompleteCoverageFlow is Script {
     function _phase3_verifyCommittee() internal {
         console.log("\n=== PHASE 3: COMMITTEE VERIFICATION ===");
 
-        IStakeManager sm = IStakeManager(stakeManager);
-
-        uint256 stake = sm.getOperatorCommitteeStake(curator, policyId);
+        uint256 stake = IStakeManager(stakeManager).getOperatorCommitteeStake(policyId);
         console.log("Operator stake for committee:", stake);
         console.log("Committee ID:", policyId);
 
@@ -264,8 +254,7 @@ contract CompleteCoverageFlow is Script {
         console.log("NOTE: Restaker delegation happens externally (EigenLayer/Symbiotic)");
         console.log("Checking current operator stake...");
 
-        IStakeManager sm = IStakeManager(stakeManager);
-        uint256 totalStake = sm.getOperatorCommitteeStake(curator, policyId);
+        uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(policyId);
         console.log("Total operator stake (USD):", totalStake);
         console.log("Required coverage amount:", coverageAmount);
 
@@ -483,10 +472,9 @@ contract CompleteCoverageFlow is Script {
         console.log("Maturity Time:", metadata.maturityTime);
 
         console.log("\n--- Stake ---");
-        IStakeManager sm = IStakeManager(stakeManager);
-        uint256 stake = sm.getOperatorCommitteeStake(curator, policyId);
+        uint256 stake = IStakeManager(stakeManager).getOperatorCommitteeStake(policyId);
         console.log("Operator Stake (USD):", stake);
-        address[] memory committeeVaults = sm.getCommitteeVaults(policyId);
+        address[] memory committeeVaults = IStakeManager(stakeManager).getCommitteeVaults(policyId);
         console.log("Committee Vaults:", committeeVaults.length);
 
         console.log("\n--- Claims ---");
@@ -556,8 +544,6 @@ contract CompleteCoverageFlow is Script {
 
     function _loadPoolCreationParams() internal {
         poolFeeBps = uint16(vm.envUint("POOL_FEE_BPS"));
-        operatorDeadline = uint48(vm.envUint("OPERATOR_DEADLINE"));
-        operatorSignature = vm.envBytes("OPERATOR_SIGNATURE");
     }
 
     function _loadCoverageRequestParams() internal {
