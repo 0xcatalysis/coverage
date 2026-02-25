@@ -1179,10 +1179,7 @@ contract CatalysisCoverAdapterForkTest is Test {
             assertEq(dpCtrlVault.convertToAssets(1e6), 1_500_000, "ctrlVault P = 1.50");
         }
 
-        // STEP 3: Bob deposits 1000 USDC at P = 1.50
-        // ctrlVault mints floor(1000e6 * 1000e6 / 1500e6) = 666666666 shares for Bob.
-        // userPrincipal[bob] = 1000e6, userUnderlyingShares[bob] = 666666666.
-        // totalPrincipal = 2000e6; ctrlVault: 2500e6 USDC / 1666666666 shares.
+        // STEP 3: Bob deposits 1500 USDC at P = 1.50
         {
             deal(USDC, bob, 1500e6);
             vm.prank(bob);
@@ -1190,10 +1187,10 @@ contract CatalysisCoverAdapterForkTest is Test {
             vm.prank(bob);
             parentVault.deposit(1500e6, bob);
 
-            assertEq(dpAdapter.userPrincipal(bob), 1500e6, "Bob principal = 1000 USDC");
-            assertEq(dpAdapter.userUnderlyingShares(bob), 1000e6, "Bob ctrlVault shares = 666666666");
-            assertEq(dpAdapter.totalPrincipal(), 2500e6, "Total principal = 2000 USDC");
-            assertEq(dpCtrlVault.totalSupply(), 2000e6, "ctrlVault total shares = 1666666666");
+            assertEq(dpAdapter.userPrincipal(bob), 1500e6, "Bob principal = 1500 USDC");
+            assertEq(dpAdapter.userUnderlyingShares(bob), 1000e6, "Bob ctrlVault shares = 1000");
+            assertEq(dpAdapter.totalPrincipal(), 2500e6, "Total principal = 2500 USDC");
+            assertEq(dpCtrlVault.totalSupply(), 2000e6, "ctrlVault total shares = 2000");
 
             emit log_named_uint("Bob ctrlVault shares", dpAdapter.userUnderlyingShares(bob));
             emit log_named_uint("ctrlVault totalAssets after Bob", dpCtrlVault.totalAssets());
@@ -1214,8 +1211,7 @@ contract CatalysisCoverAdapterForkTest is Test {
         }
 
         // STEP 5: Loss -- 200 USDC drained from ctrlVault
-        // ctrlVault: 2500e6 - 200e6 = 2300e6 USDC / 1666666666 shares.
-        // V2 doesn't recognize losses via accrueInterest; force sync via deallocate(0).
+        // ctrlVault: 3000e6 - 200e6 = 2800e6 USDC / 2000 shares.
         {
             dpCtrlVault.simulateLoss(200e6);
             assertEq(dpAdapter.currentValue(), 2800e6, "ctrlVault value = 2300 USDC after loss");

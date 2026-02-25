@@ -240,7 +240,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
                 // In this case, do not modify per-user principal.
                 // Coverage is not requested in this case as deallocate or force deallocate should be used only in case
                 // of emergency.
-                // Note! We treat management fee recipient specially because he doesn't have per-user principal stored 
+                // Note! We treat management fee recipient specially because he doesn't have per-user principal stored
                 // and shouldn't receive coverage.
                 uint256 currentVal = currentValue();
                 // slither-disable-next-line reentrancy-no-eth,reentrancy-benign
@@ -261,7 +261,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
                 // Validate that user doesn't withdraw more than his principal by comparing
                 // his underlying shares balance with share value of `assets`.
                 userPrincipal[sender] > 0
-                    && IERC4626(underlyingVault).convertToShares(assets) <= userUnderlyingShares[sender]
+                    && IERC4626(underlyingVault).previewWithdraw(assets) <= userUnderlyingShares[sender]
             ) {
                 // case 2. User withdraws and receives insurance payout in case of shortfall.
                 _withdraw(assets, sender);
@@ -477,7 +477,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
                 uint256 effectiveInsurance = maxInsurance.mulDiv(BPS_DENOMINATOR - DEDUCTIBLE_BPS, BPS_DENOMINATOR);
                 uint256 claimAmount = shortfall < effectiveInsurance ? shortfall : effectiveInsurance;
                 if (claimAmount > 0) {
-                    insurancePayout = _claimInsurance(claimAmount);
+                    insurancePayout = _claimInsurance(claimAmount, sender);
                     if (insurancePayout > 0) {
                         IERC20(asset).safeTransfer(sender, insurancePayout);
                     }
@@ -490,9 +490,11 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
 
     /// @notice Claims insurance for a shortfall
     /// @param shortfall The shortfall amount
+    /// @param sender Address for coverage payment
     /// @return payout The insurance payout amount
     function _claimInsurance(
-        uint256 shortfall
+        uint256 shortfall,
+        address sender
     ) internal returns (uint256 payout) {
         (uint256 coverageLimit, address payoutToken) = _getCoverageParams(policyId);
 
@@ -512,7 +514,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         _setPendingClaim(policyId, cappedShortfall);
 
         // aderyn-fp-next-line(weak-randomness) evidenceHash is for claim identification, not security-critical
-        bytes32 evidenceHash = keccak256(abi.encodePacked(address(this), policyId, cappedShortfall, block.timestamp));
+        bytes32 evidenceHash = keccak256(abi.encodePacked(sender, policyId, cappedShortfall, block.timestamp));
         // aderyn-fp-next-line(unchecked-return) ClaimId not needed - success determined via balance change
         _fileAndResolveClaim(policyId, cappedShortfall, evidenceHash, abi.encode(address(this), cappedShortfall));
 
@@ -521,7 +523,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         uint256 balanceAfter = IERC20(payoutToken).balanceOf(address(this));
         payout = balanceAfter - balanceBefore;
 
-        emit IE.InsuranceClaimed(address(this), policyId, shortfall, payout);
+        emit IE.InsuranceClaimed(sender, policyId, shortfall, payout);
     }
 
     /*//////////////////////////////////////////////////////////////
