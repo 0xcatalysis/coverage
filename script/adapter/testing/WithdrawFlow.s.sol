@@ -144,7 +144,7 @@ contract WithdrawFlow is Script {
 
         // Post-withdrawal snapshot and verification
         Snapshot memory afterSnap = _takeSnapshot(adapterContract, policyId);
-        _verifyWithdrawal(before, afterSnap, sharesBurned, estInsurance);
+        _logWithdrawal(before, afterSnap);
 
         console.log("\n=== WITHDRAWAL FLOW COMPLETED ===");
     }
@@ -182,8 +182,7 @@ contract WithdrawFlow is Script {
         address underlyingVault = adapterContract.underlyingVault();
 
         // Estimate how many underlying vault shares will be burned for this withdrawal.
-        // convertToShares is equivalent to previewWithdraw for standard ERC4626 vaults.
-        uint256 estSharesToBurn = IERC4626(underlyingVault).convertToShares(withdrawAmount);
+        uint256 estSharesToBurn = IERC4626(underlyingVault).previewWithdraw(withdrawAmount);
 
         // Estimate the portion of user's principal that corresponds to these shares
         uint256 estPrincipalForWithdrawal;
@@ -219,11 +218,9 @@ contract WithdrawFlow is Script {
         console.log("Estimated coverage payout:", estInsurance);
     }
 
-    function _verifyWithdrawal(
+    function _logWithdrawal(
         Snapshot memory before,
-        Snapshot memory afterSnap,
-        uint256 sharesBurned,
-        uint256 estInsurance
+        Snapshot memory afterSnap
     ) internal view {
         console.log("\n--- Post-Withdrawal Verification ---");
 

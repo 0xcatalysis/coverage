@@ -107,27 +107,25 @@ contract DepositFlow is Script {
         vm.stopBroadcast();
 
         // Verification
-        _verifyDeposit(
+        _logDeposit(
             adapterContract,
             userAssetBalanceBefore,
             userVaultSharesBefore,
             userPrincipalBefore,
             userUnderlyingSharesBefore,
-            totalPrincipalBefore,
-            sharesReceived
+            totalPrincipalBefore
         );
 
         console.log("\n=== DEPOSIT FLOW COMPLETED ===");
     }
 
-    function _verifyDeposit(
+    function _logDeposit(
         ICatalysisCoverAdapter adapterContract,
         uint256 userAssetBalanceBefore,
         uint256 userVaultSharesBefore,
         uint256 userPrincipalBefore,
         uint256 userUnderlyingSharesBefore,
-        uint256 totalPrincipalBefore,
-        uint256 sharesReceived
+        uint256 totalPrincipalBefore
     ) internal view {
         console.log("\n--- Post-Deposit Verification ---");
 
