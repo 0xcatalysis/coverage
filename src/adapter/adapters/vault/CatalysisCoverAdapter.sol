@@ -392,7 +392,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
     function evaluate(
         ISpec.EvaluationContext calldata context
     ) external view override returns (ISpec.EvaluationResult memory result) {
-        (, uint256 pendingClaimAmount, bool hasPendingClaim) = _getPendingClaim();
+        (uint256 pendingClaimAmount, bool hasPendingClaim) = _getPendingClaim();
         (address claimant, uint256 claimedAmount) = abi.decode(context.additionalData, (address, uint256));
 
         if (!hasPendingClaim || policyId != context.policyId) {
@@ -506,7 +506,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
 
         uint256 balanceBefore = IERC20(payoutToken).balanceOf(address(this));
 
-        _setPendingClaim(policyId, cappedShortfall);
+        _setPendingClaim(cappedShortfall);
 
         // aderyn-fp-next-line(weak-randomness) evidenceHash is for claim identification, not security-critical
         bytes32 evidenceHash = keccak256(abi.encodePacked(sender, policyId, cappedShortfall, block.timestamp));
@@ -538,21 +538,17 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
                     PRIVATE FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    function _setPendingClaim(
-        uint256,
-        uint256 amount
-    ) private {
+    function _setPendingClaim(uint256 amount) private {
         assembly {
             tstore(PENDING_CLAIM_AMOUNT_SLOT, amount)
         }
     }
 
-    function _getPendingClaim() private view returns (uint256 _policyId, uint256 amount, bool hasPendingClaim) {
+    function _getPendingClaim() private view returns (uint256 amount, bool hasPendingClaim) {
         assembly {
             amount := tload(PENDING_CLAIM_AMOUNT_SLOT)
             hasPendingClaim := gt(amount, 0)
         }
-        _policyId = policyId;
     }
 
     function _clearPendingClaim() private {
