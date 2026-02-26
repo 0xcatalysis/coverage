@@ -314,8 +314,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
 
         // Calculate absolute cap: total assets the vault can hold for this adapter
         // If maxCoverableLossBps is 10% (1000) and coverageLimit is 100, cap = 10 * 100 = 1000
-        // slither-disable-next-line divide-before-multiply
-        uint256 absoluteCap = (BPS_DENOMINATOR / uint256(maxCoverableLossBps)) * coverageLimit;
+        uint256 absoluteCap = (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
 
         // Construct idData matching the adapterId encoding
         bytes memory _idData = abi.encodePacked("CatalysisCoverAdapter", parentVault, underlyingVault, deployTimestamp);
