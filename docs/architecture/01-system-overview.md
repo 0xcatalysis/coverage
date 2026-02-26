@@ -169,13 +169,13 @@ Claim logic is delegated to registered `ISpec` implementations:
 ## End-to-End Flow Summary
 
 1. Curator creates a pool through `CoverPoolFactory`.
-2. Factory registers curator/operator to network via Core `StakeManager`.
+2. Factory deploys pool clone; Core `StakeManager` committee is created on coverage request.
 3. Covered vault (or its adapter acting as buyer) requests coverage through `PolicyManager` (draft created).
 4. Core committee is created with `committeeId = policyId`; operator assigned.
 5. Restakers delegate stake in supported vaults/strategies.
 6. Curator binds policy with signed quote and committee vault list.
 7. Covered-vault management fees accrue as ERC-4626 shares to `PremiumCollector`.
-8. Collector redeems shares, `PremiumManager` splits fees and routes restaker share to Core `RewardsManager`.
+8. Collector redeems shares, `PremiumManager` splits fees; restaker share stays in `PremiumManager` and `SSPRouter` pulls it directly via a pre-set approval.
 9. On user withdrawal:
    - no shortfall: adapter deallocates from base vault and returns assets,
    - shortfall: adapter triggers claim, receives payout, and makes exit whole.
@@ -185,7 +185,7 @@ Claim logic is delegated to registered `ISpec` implementations:
 
 - [Smart Contracts Architecture](./02-smart-contracts.md)
 - [Core Integration](./03-core-integration.md)
-- [Restaker Setup and EigenLayer Operator Lifecycle](./04-restaker-setup.md)
+- [Restaker Setup and Delegation Lifecycle](./04-restaker-setup.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
 - [Premiums and Claims](./06-premiums-claims.md)
 - [Covered Vault Integration](./07-covered-vault-integration.md)

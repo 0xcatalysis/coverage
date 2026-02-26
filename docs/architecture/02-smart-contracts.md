@@ -33,7 +33,7 @@ graph LR
 
 ### 1) CoverPoolFactory
 
-**Role:** Deploys and tracks `CoverPool` clones and bootstraps operator registration in Core.
+**Role:** Deploys and tracks `CoverPool` clones.
 
 **Pattern and state:**
 
@@ -47,8 +47,7 @@ graph LR
 - `computeCoverPoolAddress(params)` predicts deterministic clone address.
 - `coverPoolExists(pool)` validates whether a pool is factory-created.
 
-Note: EigenLayer operator registration is handled separately by the curator (see
-[Restaker Setup](./04-restaker-setup.md)).
+Note: On EigenLayer, duration vaults act as operators and are auto-deployed during committee creation.
 
 **Key role:**
 
@@ -96,8 +95,8 @@ Note: EigenLayer operator registration is handled separately by the curator (see
   - commonly sets `beneficiary` to the cover adapter for atomic shortfall top-ups,
   - validates pool and hook,
   - creates policy draft,
-  - creates Core committee with `committeeId = policyId`,
-  - assigns pool curator as committee operator.
+  - creates Core committee with `committeeId = policyId`
+    (`createCommittee` auto-assigns the pool curator as committee operator).
 - `bindPolicy(request, boundPolicy)`:
   - callable by pool only,
   - validates request/draft/quote consistency,
@@ -136,8 +135,9 @@ Note: EigenLayer operator registration is handled separately by the curator (see
   - computes split: platform / pool / restaker,
   - transfers platform fee to treasury,
   - transfers pool fee to pool fee recipient,
-  - transfers restaker share to Core `RewardsManager`,
-  - triggers `RewardsManager.distributeRewards(policyId, operator, amount, token)`.
+  - retains restaker share (SSPRouter pulls it directly via allowance),
+  - calls `RewardsManager.distributeRewards(policyId, operator, amount, token)`.
+- `approveSpender(token, spender, amount)` grants SSPRouter an allowance to pull the restaker share.
 - `getFeeSplits(...)` deterministic split helper.
 
 **Key role:**

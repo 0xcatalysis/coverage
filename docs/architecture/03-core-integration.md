@@ -14,12 +14,11 @@ This separation keeps restaking platform complexity out of Coverage contracts.
 
 | Coverage Contract | Core Contract | Function | Purpose |
 |---|---|---|---|
-| `PolicyManager` | `StakeManager` | `createCommittee(policyId, coverageAmount, pool, duration)` | Create policy-scoped committee capacity |
-| `PolicyManager` | `StakeManager` | `addOperatorToCommittee(curator, policyId)` | Assign pool operator to committee |
+| `PolicyManager` | `StakeManager` | `createCommittee(policyId, coverageAmount, pool, duration)` | Create policy-scoped committee; auto-assigns pool curator as operator |
 | `CoverPool` | `StakeManager` | `addCommitteeVaults(policyId, vaults[])` | Bind selected vaults/strategies backing policy |
 | `PolicyManager` | `StakeManager` | `getCommitteeVaults(policyId)` | Verify vault backing exists before bind finalization |
 | `PolicyManager` | `StakeManager` | `getOperatorCommitteeStake(policyId)` | Enforce stake sufficiency before policy activation |
-| `PremiumManager` | `RewardsManager` | `distributeRewards(policyId, operator, amount, token, taskId)` | Route restaker premium share to Core reward fan-out |
+| `PremiumManager` | `RewardsManager` | `distributeRewards(policyId, operator, amount, token, taskId)` | Trigger Core reward fan-out; SSPRouter pulls restaker share from PremiumManager |
 | `ClaimManager` | `ChainlinkPriceFeed` | `getUSDValue(token, amount)` | Normalize requested payout to USD slash target |
 | `ClaimManager` | `SlashingManager` | `executeSlashing(policyId, operator, slashAmountUSD, taskId)` | Execute policy-scoped slashing and retrieve collateral |
 
@@ -57,23 +56,19 @@ Outcome:
 - Curator is pool owner and holds `DEFAULT_ADMIN_ROLE` on the pool.
 - Pool is tracked in factory for `coverPoolExists()` validation.
 
-Note: EigenLayer operator registration (`DelegationManager.registerAsOperator`) is performed
-separately by the curator before or after pool creation. The factory no longer calls Core
-registration — pool creation and operator registration are decoupled to allow flexible timing.
-
 ### 2) Coverage Request and Committee Creation
 
 Sequence:
 
 1. Covered vault (or its adapter acting as buyer) calls `PolicyManager.requestCoverage(...)`.
 2. Manager creates draft and increments `policyId`.
-3. Manager calls `StakeManager.createCommittee(policyId, coverageAmount, duration)`.
-4. Manager calls `StakeManager.addOperatorToCommittee(curator, policyId)`.
+3. Manager calls `StakeManager.createCommittee(policyId, coverageAmount, pool, duration)`.
+   `createCommittee` auto-assigns the pool's curator as the committee operator internally.
 
 Outcome:
 
 - Draft exists in Coverage.
-- Committee scaffold exists in Core with policy-aligned id.
+- Committee scaffold exists in Core with policy-aligned id and curator as operator.
 
 ### 3) Vault Binding and Policy Activation
 
@@ -95,8 +90,8 @@ Sequence:
 
 1. `PremiumCollector` redeems covered-vault shares to underlying.
 2. `PremiumManager.distributePremium(...)` computes fee splits.
-3. Restaker share is sent to Core `RewardsManager`.
-4. Coverage calls `RewardsManager.distributeRewards(policyId, operator, amount, token)`.
+3. Coverage calls `RewardsManager.distributeRewards(policyId, operator, amount, token)`.
+4. `SSPRouter` pulls the restaker share directly from `PremiumManager` (approved via `approveSpender`).
 
 Outcome:
 
@@ -145,15 +140,15 @@ Failure patterns:
 ## Operational Best Practices
 
 - Keep `policyId` and committee references consistent in all off-chain orchestration.
-- Complete the full restaker setup sequence before attempting bind: deposit → allocate magnitude → register to operator set. See [Restaker Setup](./04-restaker-setup.md).
-- Pre-check operator committee stake before attempting bind (`getOperatorCommitteeStake(policyId)`).
+- Ensure restakers have deposited into the committee's duration vault before bind. Duration vaults act as EigenLayer operators — no separate magnitude allocation or operator-set registration is needed. See [Restaker Setup](./04-restaker-setup.md).
+- Pre-check committee stake before attempting bind (`getOperatorCommitteeStake(policyId)`).
 - Register and verify vault module mappings in Core (`SSPRouter.registerVaultModule`) before bind.
 - Configure swap routes for expected collateral → payout token pairs before claims.
 - `WETH` price feed must be registered in `ChainlinkPriceFeed` before claims can be filed against WETH-payout policies.
 
 ## Next Steps
 
-- [Restaker Setup and EigenLayer Operator Lifecycle](./04-restaker-setup.md)
+- [Restaker Setup and Delegation Lifecycle](./04-restaker-setup.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
 - [Premiums and Claims](./06-premiums-claims.md)
 - [Covered Vault Integration](./07-covered-vault-integration.md)

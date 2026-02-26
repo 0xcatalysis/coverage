@@ -66,16 +66,19 @@ sequenceDiagram
     participant Treasury as Platform Treasury
     participant PoolRecipient as Pool Fee Recipient
     participant RM as Core RewardsManager
+    participant SSP as SSPRouter
 
     Vault->>PC: management fee shares accrue
     PC->>PC: redeem(shares) -> underlying assets
     PC->>PRM: transfer underlying
     PC->>PRM: distributePremium(pool, policyId, token, amount)
     PRM->>Pool: read poolFeeBps + feeRecipient + owner
-    PRM->>PRM: compute fee splits
+    PRM->>PRM: compute fee splits (retain restaker share)
     PRM->>Treasury: platform fee
     PRM->>PoolRecipient: pool fee
-    PRM->>RM: restaker share + distributeRewards(policyId, operator, amount, token)
+    PRM->>RM: distributeRewards(policyId, operator, amount, token)
+    RM->>SSP: distributeRewards(..., tokenSource=premiumManager)
+    SSP->>PRM: safeTransferFrom(premiumManager, adapter, restakerShare)
 ```
 
 ### Fee Split Logic

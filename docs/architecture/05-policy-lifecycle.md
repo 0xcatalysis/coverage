@@ -52,8 +52,8 @@ Effects:
 
 - new `policyId` reserved,
 - `PolicyDraft` stored with status `Created`,
-- Core committee created with id = `policyId`,
-- curator added as committee operator.
+- Core committee created with id = `policyId`;
+  `createCommittee` auto-assigns the pool curator as committee operator.
 
 ## Phase 2: Optional Draft Cancellation
 
@@ -95,7 +95,7 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 - request data matches draft values,
 - duration matches quote window,
 - committee has at least one vault,
-- operator committee stake >= requested `coverageAmount`,
+   - committee total stake (USD) >= requested `coverageAmount`,
 - policy commit is unique.
 
 Then it:
@@ -158,6 +158,6 @@ Evaluation and resolution:
 
 ## Next Steps
 
-- [Restaker Setup and EigenLayer Operator Lifecycle](./04-restaker-setup.md)
+- [Restaker Setup and Delegation Lifecycle](./04-restaker-setup.md)
 - [Premiums and Claims](./06-premiums-claims.md)
 - [Covered Vault Integration](./07-covered-vault-integration.md)
