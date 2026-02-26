@@ -147,7 +147,7 @@ contract FileClaim is Script {
         console.log("[OK] Requested amount within remaining coverage");
 
         uint256 operatorStake = stakeManagerContract.getOperatorCommitteeStake(policyId);
-        console.log("Operator stake (USD):", operatorStake);
+        console.log("Committee total stake (USD):", operatorStake);
 
         uint256 requestedUSD = priceFeedContract.getUSDValue(metadata.payoutToken, requestedAmount);
         console.log("Requested payout USD value:", requestedUSD);

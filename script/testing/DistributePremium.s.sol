@@ -11,15 +11,16 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 
 /**
  * @title DistributePremium
- * @notice Distributes premiums from the PremiumCollector through the PremiumManager and into the
- *         RewardsManager for restaker reward distribution.
+ * @notice Distributes premiums from the PremiumCollector through the PremiumManager to restakers via SSPRouter.
  * @dev Corresponds to Document Flows 6-7:
  *      Flow 6 – Premiums Accrue:
  *        6a. PremiumCollector is registered as the managementFeesRecipient in the covered vault
  *        6b. PremiumCollector collects premiums (vault shares), converts to underlying, sends to PremiumManager
  *      Flow 7 – Premiums Are Distributed:
- *        7a. PremiumManager accounts for platform/pool fees
- *        7b. PremiumManager uses RewardsManager to distribute restaker rewards
+ *        7a. PremiumManager accounts for platform/pool fees and retains the restaker split
+ *        7b. PremiumManager calls RewardsManager.distributeRewards; RewardsManager forwards to
+ *            SSPRouter which pulls the restaker share directly from PremiumManager via the
+ *            allowance pre-set by admin (PremiumManager.approveSpender(token, sspRouter, ...))
  *
  *      For E2E testing on Sepolia, vault shares may not yet exist in PremiumCollector because no
  *      real management fees have accrued. Set BOOTSTRAP_PREMIUM_AMOUNT to a non-zero value to
@@ -34,7 +35,6 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  *   - PRIVATE_KEY: Private key of the caller (admin for registration, anyone for distribution)
  *   - PREMIUM_COLLECTOR: PremiumCollector proxy address
  *   - PREMIUM_MANAGER: PremiumManager proxy address
- *   - REWARDS_MANAGER: RewardsManager proxy address (from core)
  *   - COVERED_VAULT: ERC-4626 vault address that accrues premiums
  *   - COVER_POOL: CoverPool address associated with the vault
  *   - POLICY_ID: Policy ID (1:1 with committeeId)
@@ -47,7 +47,7 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  * Prerequisites:
  *   - Policy must be bound (Flow 5 completed)
  *   - PremiumCollector must have PREMIUM_COLLECTOR_ROLE on PremiumManager
- *   - RewardsManager.premiumManager must be set to PremiumManager (Core Admin Action 2)
+ *   - PremiumManager must have approved SSPRouter for the premium token (via approveSpender)
  *   - Vault must support ERC-4626 deposits (required when BOOTSTRAP_PREMIUM_AMOUNT > 0)
  */
 contract DistributePremium is Script {
@@ -62,9 +62,6 @@ contract DistributePremium is Script {
 
     /// @notice PremiumManager proxy address
     address public premiumManager;
-
-    /// @notice RewardsManager proxy address (from core)
-    address public rewardsManager;
 
     /// @notice Covered vault (ERC-4626) address
     address public coveredVault;
@@ -98,7 +95,6 @@ contract DistributePremium is Script {
 
         premiumCollector = vm.envAddress("PREMIUM_COLLECTOR");
         premiumManager = vm.envAddress("PREMIUM_MANAGER");
-        rewardsManager = vm.envAddress("REWARDS_MANAGER");
         coveredVault = vm.envAddress("COVERED_VAULT");
         coverPool = vm.envAddress("COVER_POOL");
         policyId = uint96(vm.envUint("POLICY_ID"));
@@ -113,7 +109,6 @@ contract DistributePremium is Script {
         console.log("Caller:", deployer);
         console.log("PremiumCollector:", premiumCollector);
         console.log("PremiumManager:", premiumManager);
-        console.log("RewardsManager:", rewardsManager);
         console.log("Covered Vault:", coveredVault);
         console.log("CoverPool:", coverPool);
         console.log("Policy ID:", policyId);
@@ -253,10 +248,10 @@ contract DistributePremium is Script {
         console.log("Distributing premiums for vault:", coveredVault);
         console.log("Shares to redeem:", shares);
 
-        (uint256 rewardsManagerReceived, uint256 treasuryReceived, uint256 poolFeeRecipientReceived) =
+        (uint256 restakerSplit, uint256 treasuryReceived, uint256 poolFeeRecipientReceived) =
             _executeDistribution(underlying, onChainTreasury, poolFeeRecipient);
 
-        console.log("RewardsManager received:", rewardsManagerReceived);
+        console.log("Restaker split (held in PremiumManager):", restakerSplit);
         console.log("Platform Treasury received:", treasuryReceived);
         console.log("Pool Fee Recipient received:", poolFeeRecipientReceived);
 
@@ -266,7 +261,7 @@ contract DistributePremium is Script {
 
         console.log("[SUCCESS] Premiums distributed");
         emit PremiumsDistributed(
-            coveredVault, policyId, shares, rewardsManagerReceived + treasuryReceived + poolFeeRecipientReceived
+            coveredVault, policyId, shares, restakerSplit + treasuryReceived + poolFeeRecipientReceived
         );
     }
 
@@ -286,9 +281,9 @@ contract DistributePremium is Script {
         address poolFeeRecipient
     )
         internal
-        returns (uint256 rewardsManagerReceived, uint256 treasuryReceived, uint256 poolFeeRecipientReceived)
+        returns (uint256 restakerSplit, uint256 treasuryReceived, uint256 poolFeeRecipientReceived)
     {
-        uint256 rewardsManagerBalanceBefore = IERC20(underlying).balanceOf(rewardsManager);
+        uint256 pmBalanceBefore = IERC20(underlying).balanceOf(premiumManager);
         uint256 treasuryBalanceBefore = IERC20(underlying).balanceOf(onChainTreasury);
         uint256 poolFeeRecipientBalanceBefore = IERC20(underlying).balanceOf(poolFeeRecipient);
 
@@ -299,8 +294,10 @@ contract DistributePremium is Script {
         collectorContract.distributeBatch(vaultsToDistribute);
         vm.stopBroadcast();
 
-        rewardsManagerReceived = IERC20(underlying).balanceOf(rewardsManager) - rewardsManagerBalanceBefore;
         treasuryReceived = IERC20(underlying).balanceOf(onChainTreasury) - treasuryBalanceBefore;
         poolFeeRecipientReceived = IERC20(underlying).balanceOf(poolFeeRecipient) - poolFeeRecipientBalanceBefore;
+
+        uint256 pmBalanceAfter = IERC20(underlying).balanceOf(premiumManager);
+        restakerSplit = pmBalanceAfter >= pmBalanceBefore ? pmBalanceAfter - pmBalanceBefore : 0;
     }
 }

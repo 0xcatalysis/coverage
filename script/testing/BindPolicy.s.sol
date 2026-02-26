@@ -48,7 +48,8 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *   - Curator must be the CoverPool admin (owner)
  *   - Quote signer must have QUOTE_SIGNER_ROLE on the CoverPool
  *   - Policy draft must exist in PolicyManager (status = Created)
- *   - Sufficient stake must be delegated to vaults
+ *   - Sufficient stake must exist in the committee's duration vault (restaker deposits via
+ *     StrategyManager.depositIntoStrategy(durationVault, token, amount) independently)
  */
 contract BindPolicy is Script {
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
@@ -191,7 +192,7 @@ contract BindPolicy is Script {
         console.log("Draft pool matches CoverPool");
 
         uint256 totalStake = stakeManagerContract.getOperatorCommitteeStake(policyId);
-        console.log("Operator total stake (USD):", totalStake);
+        console.log("Committee total stake (USD):", totalStake);
         console.log("Required coverage amount:", draft.coverageAmount);
 
         console.log("[OK] Prerequisites verified");

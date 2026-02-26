@@ -19,7 +19,7 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *         policy binding, premium distribution, and claim settlement.
  * @dev Exercises all 8 documented flows in sequence:
  *
- *      Phase 1  - Flow 1:   CoverPool Creation (factory → pool clone → operator registration)
+ *      Phase 1  - Flow 1:   CoverPool Creation (factory → pool clone)
  *      Phase 2  - Flow 2:   Coverage Request (buyer requests coverage → policy draft + committee)
  *      Phase 3  - Flow 3:   Committee Verification (verify committee was created with policyId)
  *      Phase 4  - Flow 4:   [External] Restakers delegate (verified via stake query)
@@ -238,7 +238,7 @@ contract CompleteCoverageFlow is Script {
         console.log("\n=== PHASE 3: COMMITTEE VERIFICATION ===");
 
         uint256 stake = IStakeManager(stakeManager).getOperatorCommitteeStake(policyId);
-        console.log("Operator stake for committee:", stake);
+        console.log("Committee total stake (USD):", stake);
         console.log("Committee ID:", policyId);
 
         console.log("[OK] Committee created and operator assigned");
@@ -255,7 +255,7 @@ contract CompleteCoverageFlow is Script {
         console.log("Checking current operator stake...");
 
         uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(policyId);
-        console.log("Total operator stake (USD):", totalStake);
+        console.log("Committee total stake (USD):", totalStake);
         console.log("Required coverage amount:", coverageAmount);
 
         if (totalStake >= coverageAmount) {
@@ -473,7 +473,7 @@ contract CompleteCoverageFlow is Script {
 
         console.log("\n--- Stake ---");
         uint256 stake = IStakeManager(stakeManager).getOperatorCommitteeStake(policyId);
-        console.log("Operator Stake (USD):", stake);
+        console.log("Committee Total Stake (USD):", stake);
         address[] memory committeeVaults = IStakeManager(stakeManager).getCommitteeVaults(policyId);
         console.log("Committee Vaults:", committeeVaults.length);
 
