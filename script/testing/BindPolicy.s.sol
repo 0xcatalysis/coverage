@@ -3,9 +3,7 @@ pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
-import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 
@@ -191,7 +189,7 @@ contract BindPolicy is Script {
         require(draft.pool == coverPool, "Draft pool mismatch");
         console.log("Draft pool matches CoverPool");
 
-        uint256 totalStake = stakeManagerContract.getOperatorCommitteeStake(policyId);
+        uint256 totalStake = stakeManagerContract.getCommitteeTotalStakeUSD(policyId);
         console.log("Committee total stake (USD):", totalStake);
         console.log("Required coverage amount:", draft.coverageAmount);
 

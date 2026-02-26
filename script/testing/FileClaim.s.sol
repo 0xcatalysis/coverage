@@ -146,7 +146,7 @@ contract FileClaim is Script {
         require(requestedAmount <= remaining, "Requested exceeds remaining coverage");
         console.log("[OK] Requested amount within remaining coverage");
 
-        uint256 operatorStake = stakeManagerContract.getOperatorCommitteeStake(policyId);
+        uint256 operatorStake = stakeManagerContract.getCommitteeTotalStakeUSD(policyId);
         console.log("Committee total stake (USD):", operatorStake);
 
         uint256 requestedUSD = priceFeedContract.getUSDValue(metadata.payoutToken, requestedAmount);

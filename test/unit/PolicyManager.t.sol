@@ -445,6 +445,24 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
     }
 
+    function test_bindPolicy_WhenStakeEqualsAmount_Succeeds() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        uint96 committeeId = request.quote.policyId;
+
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault1");
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, address(coverPool), COVERAGE_DURATION);
+        mockStakeManager.addOperatorToCommittee(curator, committeeId);
+        mockStakeManager.addCommitteeVaults(committeeId, vaults);
+
+        request.coverageAmount = 500_000e8;
+        mockStakeManager.setOperatorCommitteeStake(committeeId, 500_000e8);
+
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+    }
+
     function test_bindPolicy_WhenNoVaultsBound_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint96 committeeId = request.quote.policyId;
@@ -1340,7 +1358,7 @@ contract PolicyManagerTest is Test {
         IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
         assertEq(metadata.coverageLimit, COVERAGE_LIMIT, "Coverage limit stored in metadata");
         assertTrue(
-            mockStakeManager.getOperatorCommitteeStake(request.quote.policyId) >= request.coverageAmount,
+            mockStakeManager.getCommitteeTotalStakeUSD(request.quote.policyId) >= request.coverageAmount,
             "Stake should cover coverageAmount"
         );
     }
@@ -2002,7 +2020,7 @@ contract MockStakeManager {
         }
     }
 
-    function getOperatorCommitteeStake(uint96 committeeId) external view returns (uint256 totalStakeUSD) {
+    function getCommitteeTotalStakeUSD(uint96 committeeId) external view returns (uint256 totalStakeUSD) {
         if (_committeeExists[committeeId]) {
             uint256 stake = _committeeStake[committeeId];
             return stake > 0 ? stake : 1_000_000e8;

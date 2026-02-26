@@ -26,6 +26,9 @@ interface IStakeManager {
     /// @notice Thrown when attempting to add an operator to a committee that already has an operator
     error CommitteeAlreadyHasOperator();
 
+    /// @notice Thrown when attempting to interact with a committee that has no operator assigned
+    error OperatorNotInCommittee();
+
     /// @notice Creates a committee by setting up operator sets and network limits across protocols.
     /// @param committeeId The committee ID (1:1 with policyId).
     /// @param maxStakeForCommittee The maximum stake limit in USD (8 decimals).
@@ -38,6 +41,12 @@ interface IStakeManager {
     )
         external;
 
+    /// @notice Adds an operator to a committee (one operator per committee).
+    /// @dev Requires POLICY_MANAGER_ROLE. The curator (CoverPool owner) is used as the committee operator.
+    /// @param operator The address of the operator (curator).
+    /// @param committeeId The ID of the committee to add the operator to.
+    function addOperatorToCommittee(address operator, uint96 committeeId) external;
+
     /// @notice Associates vaults with a committee and configures them in the appropriate adapters.
     /// @param committeeId The ID of the committee.
     /// @param vaults The array of vault addresses to associate.
@@ -46,8 +55,8 @@ interface IStakeManager {
     /// @notice Returns the total stake for a committee across all registered vaults (USD, 8 decimals).
     /// @dev Each committee has exactly one operator via the 1:1 policyId→committeeId mapping.
     /// @param committeeId The ID of the committee.
-    /// @return The total stake for the committee in USD (8 decimals).
-    function getOperatorCommitteeStake(uint96 committeeId) external view returns (uint256);
+    /// @return totalStakeUSD The total stake for the committee in USD (8 decimals).
+    function getCommitteeTotalStakeUSD(uint96 committeeId) external view returns (uint256 totalStakeUSD);
 
     /// @notice Returns all vault addresses associated with a committee.
     /// @param committeeId The ID of the committee to check.

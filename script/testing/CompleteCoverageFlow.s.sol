@@ -47,7 +47,6 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *   - CLAIM_MANAGER: ClaimManager proxy address
  *   - PREMIUM_COLLECTOR: PremiumCollector proxy address
  *   - PREMIUM_MANAGER: PremiumManager proxy address
- *   - SWAPPER: Swapper proxy address
  *
  *   Core Contracts:
  *   - STAKE_MANAGER: StakeManager proxy address
@@ -237,7 +236,7 @@ contract CompleteCoverageFlow is Script {
     function _phase3_verifyCommittee() internal {
         console.log("\n=== PHASE 3: COMMITTEE VERIFICATION ===");
 
-        uint256 stake = IStakeManager(stakeManager).getOperatorCommitteeStake(policyId);
+        uint256 stake = IStakeManager(stakeManager).getCommitteeTotalStakeUSD(policyId);
         console.log("Committee total stake (USD):", stake);
         console.log("Committee ID:", policyId);
 
@@ -254,7 +253,7 @@ contract CompleteCoverageFlow is Script {
         console.log("NOTE: Restaker delegation happens externally (EigenLayer/Symbiotic)");
         console.log("Checking current operator stake...");
 
-        uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(policyId);
+        uint256 totalStake = IStakeManager(stakeManager).getCommitteeTotalStakeUSD(policyId);
         console.log("Committee total stake (USD):", totalStake);
         console.log("Required coverage amount:", coverageAmount);
 
@@ -472,7 +471,7 @@ contract CompleteCoverageFlow is Script {
         console.log("Maturity Time:", metadata.maturityTime);
 
         console.log("\n--- Stake ---");
-        uint256 stake = IStakeManager(stakeManager).getOperatorCommitteeStake(policyId);
+        uint256 stake = IStakeManager(stakeManager).getCommitteeTotalStakeUSD(policyId);
         console.log("Committee Total Stake (USD):", stake);
         address[] memory committeeVaults = IStakeManager(stakeManager).getCommitteeVaults(policyId);
         console.log("Committee Vaults:", committeeVaults.length);

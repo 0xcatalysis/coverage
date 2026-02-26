@@ -6,7 +6,8 @@ Before a policy can be bound, the restaker must complete a deposit setup that ma
 slashable by the policy's committee. This process involves depositing directly into an EigenLayer
 duration vault (and optionally a Symbiotic vault).
 
-The coverage script `script/testing/PrepareBindPolicy.s.sol` implements all phases of this setup.
+The restaker deposit is performed directly against EigenLayer contracts (no Coverage script needed).
+`script/testing/CompleteCoverageFlow.s.sol` verifies stake sufficiency in Phase 4 before binding.
 
 ## Duration Vault Model (EigenLayer)
 
@@ -71,7 +72,7 @@ These steps are performed by the curator via `CoverPool.bindPolicyForRequest(...
 1. calls `StakeManager.addCommitteeVaults(policyId, [durationVaultStrategy])` — registers the
    vault as a committee vault and calls `EigenAdapter.addStrategiesToOperatorSet` to configure it,
 2. calls `PolicyManager.bindPolicy(...)` — verifies that stake ≥ `coverageAmount` (via
-   `StakeManager.getOperatorCommitteeStake`) and activates the policy.
+   `StakeManager.getCommitteeTotalStakeUSD`) and activates the policy.
 
 The `_checkDelegation` call inside `SSPRouter.addCommitteeVaults` computes
 `EigenAdapter.getStrategiesStakeUSD(vaults)` and reverts with
@@ -144,24 +145,29 @@ Where `committeeMaxStake[committeeId]` was set during `SSPRouter.createCommittee
 `committeeMaxStake` equals the `coverageAmount` from the policy request, denominated in USD
 (8 decimal places). For example, a `coverageAmount` of `100_000_000_000` means $1,000 USD.
 
-## PrepareBindPolicy Script Reference
+## Restaker Deposit Reference
 
-The `script/testing/PrepareBindPolicy.s.sol` script performs a single action: deposit into the
-EigenLayer duration vault via `StrategyManager.depositIntoStrategy`.
+The restaker deposit is a single direct EigenLayer call — no Coverage script is needed.
+Get the `durationVault` address from `StakeManager.getCommitteeVaults(policyId)[0]` after committee creation.
 
-| Step | Action | Selector |
-|------|--------|---------|
-| Deposit | `StrategyManager.depositIntoStrategy(durationVault, token, amount)` | EigenLayer |
+```bash
+# 1. Approve collateral token to EigenLayer StrategyManager
+cast send $COLLATERAL_TOKEN "approve(address,uint256)" $EIGEN_STRATEGY_MANAGER $DEPOSIT_AMOUNT \
+  --private-key $RESTAKER_PRIVATE_KEY --rpc-url $RPC_URL
 
-### Required Environment Variables
+# 2. Deposit into the duration vault
+cast send $EIGEN_STRATEGY_MANAGER \
+  "depositIntoStrategy(address,address,uint256)" \
+  $EIGEN_DURATION_VAULT $COLLATERAL_TOKEN $DEPOSIT_AMOUNT \
+  --private-key $RESTAKER_PRIVATE_KEY --rpc-url $RPC_URL
+```
 
 | Variable | Description |
 |----------|-------------|
-| `PRIVATE_KEY` | Restaker private key |
+| `RESTAKER_PRIVATE_KEY` | Restaker private key |
 | `EIGEN_STRATEGY_MANAGER` | EigenLayer StrategyManager address |
-| `EIGEN_DURATION_VAULT` | DurationVaultStrategy address for this committee (auto-deployed by EigenAdapter during `createCommittee`) |
-| `EIGENLAYER_COLLATERAL_TOKEN` | Collateral token accepted by the duration vault |
-| `POLICY_ID` | Policy / committee ID (from `RequestCoverage.s.sol` output) |
+| `EIGEN_DURATION_VAULT` | DurationVaultStrategy for this committee (`StakeManager.getCommitteeVaults(policyId)[0]`) |
+| `COLLATERAL_TOKEN` | Collateral token accepted by the duration vault |
 | `DEPOSIT_AMOUNT` | Amount to deposit (wei) |
 
 ## Key Addresses on Sepolia
