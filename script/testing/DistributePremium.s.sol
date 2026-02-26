@@ -21,6 +21,11 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  *        7a. PremiumManager accounts for platform/pool fees
  *        7b. PremiumManager uses RewardsManager to distribute restaker rewards
  *
+ *      For E2E testing on Sepolia, vault shares may not yet exist in PremiumCollector because no
+ *      real management fees have accrued. Set BOOTSTRAP_PREMIUM_AMOUNT to a non-zero value to
+ *      trigger a bootstrap phase that deposits underlying tokens into the vault and transfers the
+ *      resulting shares directly to PremiumCollector, simulating premium accrual.
+ *
  * Usage:
  *   forge script script/testing/DistributePremium.s.sol:DistributePremium \
  *     --rpc-url $RPC_URL --broadcast --slow -vvvv
@@ -34,11 +39,16 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  *   - COVER_POOL: CoverPool address associated with the vault
  *   - POLICY_ID: Policy ID (1:1 with committeeId)
  *
+ * Optional Environment Variables:
+ *   - BOOTSTRAP_PREMIUM_AMOUNT: If > 0, deposits this amount of underlying into the vault and
+ *                               transfers the minted shares to PremiumCollector. Used for E2E
+ *                               testing when no real premium has accrued yet. Default: 0 (skip).
+ *
  * Prerequisites:
  *   - Policy must be bound (Flow 5 completed)
  *   - PremiumCollector must have PREMIUM_COLLECTOR_ROLE on PremiumManager
- *   - Covered vault must have accrued shares to PremiumCollector
- *   - Vault must be registered in PremiumCollector
+ *   - RewardsManager.premiumManager must be set to PremiumManager (Core Admin Action 2)
+ *   - Vault must support ERC-4626 deposits (required when BOOTSTRAP_PREMIUM_AMOUNT > 0)
  */
 contract DistributePremium is Script {
     /// @notice Deployer/caller address
@@ -65,6 +75,11 @@ contract DistributePremium is Script {
     /// @notice Policy ID
     uint96 public policyId;
 
+    /// @notice Optional: deposit this amount of underlying into the vault and transfer
+    ///         shares to PremiumCollector to simulate premium accrual for E2E testing.
+    ///         Set to 0 (default) to skip.
+    uint256 public bootstrapPremiumAmount;
+
     /// @notice Contract instances
     IPremiumCollector public collectorContract;
     IPremiumManager public managerContract;
@@ -73,6 +88,9 @@ contract DistributePremium is Script {
     event PremiumsDistributed(
         address indexed vault, uint96 indexed policyId, uint256 sharesRedeemed, uint256 assetsDistributed
     );
+
+    /// @notice Emitted when E2E bootstrap shares are seeded into PremiumCollector
+    event PremiumBootstrapped(address indexed vault, address indexed underlying, uint256 amount, uint256 shares);
 
     constructor() {
         deployerPrivateKey = vm.envUint("PRIVATE_KEY");
@@ -84,6 +102,7 @@ contract DistributePremium is Script {
         coveredVault = vm.envAddress("COVERED_VAULT");
         coverPool = vm.envAddress("COVER_POOL");
         policyId = uint96(vm.envUint("POLICY_ID"));
+        bootstrapPremiumAmount = vm.envOr("BOOTSTRAP_PREMIUM_AMOUNT", uint256(0));
 
         collectorContract = IPremiumCollector(premiumCollector);
         managerContract = IPremiumManager(premiumManager);
@@ -98,8 +117,12 @@ contract DistributePremium is Script {
         console.log("Covered Vault:", coveredVault);
         console.log("CoverPool:", coverPool);
         console.log("Policy ID:", policyId);
+        if (bootstrapPremiumAmount > 0) {
+            console.log("Bootstrap premium amount:", bootstrapPremiumAmount);
+        }
 
         _registerVaultIfNeeded();
+        if (bootstrapPremiumAmount > 0) _bootstrapPremiumShares();
         _checkAccruedShares();
         _checkFeeConfiguration();
         _distributePremiums();
@@ -133,6 +156,40 @@ contract DistributePremium is Script {
         console.log("  Underlying:", config.underlying);
         require(config.registered, "Vault registration failed");
         console.log("[OK] Vault registered");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    //  E2E Bootstrap: seed vault shares into PremiumCollector
+    //  Only runs when BOOTSTRAP_PREMIUM_AMOUNT > 0.
+    //
+    //  In production, vault management fees accrue automatically and are pushed to
+    //  PremiumCollector by the vault's fee distribution mechanism. For Sepolia E2E
+    //  testing we simulate this by depositing directly into the vault and transferring
+    //  the minted shares to PremiumCollector.
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    function _bootstrapPremiumShares() internal {
+        console.log("\n--- Bootstrap: Seeding Premium Shares into PremiumCollector ---");
+
+        IERC4626 vault = IERC4626(coveredVault);
+        address underlying = vault.asset();
+
+        uint256 callerBalance = IERC20(underlying).balanceOf(deployer);
+        console.log("Caller underlying balance:", callerBalance);
+        require(callerBalance >= bootstrapPremiumAmount, "Insufficient underlying balance for bootstrap");
+
+        console.log("Depositing amount:", bootstrapPremiumAmount);
+        console.log("  Underlying token:", underlying);
+        console.log("  Into vault:", coveredVault);
+
+        vm.startBroadcast(deployerPrivateKey);
+        IERC20(underlying).approve(coveredVault, bootstrapPremiumAmount);
+        uint256 shares = vault.deposit(bootstrapPremiumAmount, deployer);
+        IERC20(coveredVault).transfer(premiumCollector, shares);
+        vm.stopBroadcast();
+
+        console.log("[OK] Deposited and transferred", shares, "shares to PremiumCollector");
+        emit PremiumBootstrapped(coveredVault, underlying, bootstrapPremiumAmount, shares);
     }
 
     function _checkAccruedShares() internal view {
