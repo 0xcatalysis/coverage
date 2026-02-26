@@ -14,7 +14,7 @@
 ### PremiumManager
 
 - Proxy address: [0x746DAa7Eb8D2a4407C19b4D9Cc2Cd6B839dbB720](https://sepolia.etherscan.io/address/0x746DAa7Eb8D2a4407C19b4D9Cc2Cd6B839dbB720)
-- Implementation address: [0x740Fc5746BDEEC4a8301Ce5da25b731a5C71Ca86](https://sepolia.etherscan.io/address/0x740Fc5746BDEEC4a8301Ce5da25b731a5C71Ca86)
+- Implementation address: [0xeF9E1F65BF7Fc2bc699f8565449AE1fc7D1Af39A](https://sepolia.etherscan.io/address/0xeF9E1F65BF7Fc2bc699f8565449AE1fc7D1Af39A)
 
 ### PremiumCollector
 
@@ -24,7 +24,7 @@
 ### PolicyManager
 
 - Proxy address: [0xaA254C2C00F1dF3635e47F51cA1fe1fD04335742](https://sepolia.etherscan.io/address/0xaA254C2C00F1dF3635e47F51cA1fe1fD04335742)
-- Implementation address: [0x0Dd5A4abf59B4327A1A49F7E1D045FD39d95B888](https://sepolia.etherscan.io/address/0x0Dd5A4abf59B4327A1A49F7E1D045FD39d95B888)
+- Implementation address: [0xaFae32247250224bEa4358c4f3cF8EDDB1e5C229](https://sepolia.etherscan.io/address/0xaFae32247250224bEa4358c4f3cF8EDDB1e5C229)
 
 ### ClaimManager
 
@@ -77,13 +77,12 @@
 
 ## Test Mocks
 
-Deployed via `script/DeployMocksSepolia.s.sol`:
-
 - MockBindPolicyHook: [0x738907231aaA4d5FE35042bE7F6f3DBA59E544a6](https://sepolia.etherscan.io/address/0x738907231aaA4d5FE35042bE7F6f3DBA59E544a6)
 - MockSpec: [0x4e13d4E56d6aE43bC17799AdCbFa9EE7F2002f72](https://sepolia.etherscan.io/address/0x4e13d4E56d6aE43bC17799AdCbFa9EE7F2002f72)
 - MockERC4626Vault (WETH): [0x94D9035B46e1ea3Beded37979836501F3A456C63](https://sepolia.etherscan.io/address/0x94D9035B46e1ea3Beded37979836501F3A456C63)
+- MockERC4626Vault 2 (WETH): [0xD7a0B49679A1C8a16F46333d555d4F8a75abA225](https://sepolia.etherscan.io/address/0xD7a0B49679A1C8a16F46333d555d4F8a75abA225)
 
-## Third-party Deployment
+## Third-party Contracts
 
 - WETH: [0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9](https://sepolia.etherscan.io/address/0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9)
 - Chainlink ETH/USD aggregator: [0x694AA1769357215DE4FAC081bf1f309aDC325306](https://sepolia.etherscan.io/address/0x694AA1769357215DE4FAC081bf1f309aDC325306)
