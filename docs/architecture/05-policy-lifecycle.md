@@ -158,6 +158,6 @@ Evaluation and resolution:
 
 ## Next Steps
 
-- [Core Integration](./03-core-integration.md)
-- [Covered Vault Integration](./04-covered-vault-integration.md)
+- [Restaker Setup and EigenLayer Operator Lifecycle](./04-restaker-setup.md)
 - [Premiums and Claims](./06-premiums-claims.md)
+- [Covered Vault Integration](./07-covered-vault-integration.md)

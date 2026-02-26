@@ -43,10 +43,12 @@ graph LR
 
 **Key functions:**
 
-- `createCoverPool(params)` creates clone, initializes pool, and calls
-  `StakeManager.registerOperatorToNetwork(curator, deadline, signature)`.
+- `createCoverPool(params)` creates and initializes a pool clone, grants curator ownership.
 - `computeCoverPoolAddress(params)` predicts deterministic clone address.
 - `coverPoolExists(pool)` validates whether a pool is factory-created.
+
+Note: EigenLayer operator registration is handled separately by the curator (see
+[Restaker Setup](./04-restaker-setup.md)).
 
 **Key role:**
 
@@ -247,6 +249,6 @@ Coverage contracts rely on Core interfaces:
 ## Next Steps
 
 - [Core Integration](./03-core-integration.md)
-- [Covered Vault Integration](./04-covered-vault-integration.md)
+- [Covered Vault Integration](./07-covered-vault-integration.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
 - [Premiums and Claims](./06-premiums-claims.md)

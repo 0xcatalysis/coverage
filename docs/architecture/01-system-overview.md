@@ -185,6 +185,7 @@ Claim logic is delegated to registered `ISpec` implementations:
 
 - [Smart Contracts Architecture](./02-smart-contracts.md)
 - [Core Integration](./03-core-integration.md)
-- [Covered Vault Integration](./04-covered-vault-integration.md)
+- [Restaker Setup and EigenLayer Operator Lifecycle](./04-restaker-setup.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
 - [Premiums and Claims](./06-premiums-claims.md)
+- [Covered Vault Integration](./07-covered-vault-integration.md)

@@ -261,8 +261,6 @@ The scripts in `script/testing/` map directly to this document:
 
 ## Next Steps
 
+- [Covered Vault Integration](./07-covered-vault-integration.md)
 - [System Overview](./01-system-overview.md)
-- [Smart Contracts Architecture](./02-smart-contracts.md)
-- [Core Integration](./03-core-integration.md)
-- [Covered Vault Integration](./04-covered-vault-integration.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
