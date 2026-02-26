@@ -33,6 +33,7 @@ contract PremiumManagerTest is Test {
     event RewardsManagerSet(address indexed rewardsManager_);
     event PlatformTreasurySet(address indexed treasury);
     event PlatformFeeBpsSet(uint16 indexed platformFeeBps_);
+    event SpenderApproved(address indexed token, address indexed spender, uint256 amount);
 
     function setUp() public {
         vm.warp(1_000_000);
@@ -374,7 +375,11 @@ contract PremiumManagerTest is Test {
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Rewards amount mismatch");
+        assertEq(
+            premiumToken.balanceOf(address(premiumManager)),
+            restakerSplit,
+            "Restaker split should remain in PremiumManager for SSPRouter to pull"
+        );
         assertEq(rewardsManager.distributeRewardsCallCount(), 1, "DistributeRewards not called");
     }
 
@@ -391,7 +396,11 @@ contract PremiumManagerTest is Test {
 
         assertEq(premiumToken.balanceOf(platformTreasury), 0, "Platform fee should be zero");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Rewards amount mismatch");
+        assertEq(
+            premiumToken.balanceOf(address(premiumManager)),
+            restakerSplit,
+            "Restaker split should remain in PremiumManager for SSPRouter to pull"
+        );
     }
 
     function test_distributePremium_WhenZeroPoolFee_OnlyTransfersPlatformFeeAndRewards() public {
@@ -407,7 +416,11 @@ contract PremiumManagerTest is Test {
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), 0, "Pool fee should be zero");
-        assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Rewards amount mismatch");
+        assertEq(
+            premiumToken.balanceOf(address(premiumManager)),
+            restakerSplit,
+            "Restaker split should remain in PremiumManager for SSPRouter to pull"
+        );
     }
 
     function test_distributePremium_DistributesRewardsWithCorrectParameters() public {
@@ -441,7 +454,11 @@ contract PremiumManagerTest is Test {
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(differentFeeRecipient), poolSplit, "Pool fee should go to feeRecipient");
         assertEq(premiumToken.balanceOf(separatePoolOwner), 0, "Pool owner should not receive pool fee");
-        assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Rewards amount mismatch");
+        assertEq(
+            premiumToken.balanceOf(address(premiumManager)),
+            restakerSplit,
+            "Restaker split should remain in PremiumManager for SSPRouter to pull"
+        );
 
         MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
         assertEq(call.curator, separatePoolOwner, "Curator should be the pool owner, not feeRecipient");
@@ -461,7 +478,11 @@ contract PremiumManagerTest is Test {
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform should receive fee");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool should receive fee");
-        assertEq(premiumToken.balanceOf(address(rewardsManager)), restakerSplit, "Restakers should receive premium");
+        assertEq(
+            premiumToken.balanceOf(address(premiumManager)),
+            restakerSplit,
+            "Restaker split should remain in PremiumManager for SSPRouter to pull"
+        );
     }
 
     function test_distributePremium_MultipleDistributionsToSamePolicy() public {
@@ -475,13 +496,13 @@ contract PremiumManagerTest is Test {
 
         uint256 platformAfterFirst = premiumToken.balanceOf(platformTreasury);
         uint256 poolAfterFirst = premiumToken.balanceOf(poolFeeRecipient);
+        uint256 pmBalanceAfterFirst = premiumToken.balanceOf(address(premiumManager));
 
         premiumToken.mint(address(premiumManager), secondPremium);
         vm.prank(premiumCollector);
         premiumManager.distributePremium(pool, policyId, address(premiumToken), secondPremium);
 
-        (uint256 platformSplit1,,) = premiumManager.getFeeSplits(firstPremium, PLATFORM_FEE_BPS, POOL_FEE_BPS);
-        (uint256 platformSplit2, uint256 poolSplit2,) =
+        (uint256 platformSplit2, uint256 poolSplit2, uint256 restakerSplit2) =
             premiumManager.getFeeSplits(secondPremium, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
         assertEq(
@@ -491,6 +512,11 @@ contract PremiumManagerTest is Test {
         );
         assertEq(
             premiumToken.balanceOf(poolFeeRecipient) - poolAfterFirst, poolSplit2, "Pool should receive second fee"
+        );
+        assertEq(
+            premiumToken.balanceOf(address(premiumManager)),
+            pmBalanceAfterFirst + restakerSplit2,
+            "PremiumManager should retain cumulative restaker splits for SSPRouter to pull"
         );
     }
 
@@ -517,19 +543,18 @@ contract PremiumManagerTest is Test {
         vm.prank(premiumCollector);
         premiumManager.distributePremium(pool, policyId1, address(premiumToken), premium1);
 
-        uint256 rewardsAfterFirst = premiumToken.balanceOf(address(rewardsManager));
+        uint256 pmBalanceAfterFirst = premiumToken.balanceOf(address(premiumManager));
 
         premiumToken.mint(address(premiumManager), premium2);
         vm.prank(premiumCollector);
         premiumManager.distributePremium(pool, policyId2, address(premiumToken), premium2);
 
-        (,, uint256 restakerSplit1) = premiumManager.getFeeSplits(premium1, PLATFORM_FEE_BPS, POOL_FEE_BPS);
         (,, uint256 restakerSplit2) = premiumManager.getFeeSplits(premium2, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
         assertEq(
-            premiumToken.balanceOf(address(rewardsManager)),
-            rewardsAfterFirst + restakerSplit2,
-            "Restakers should receive premiums from both policies"
+            premiumToken.balanceOf(address(premiumManager)),
+            pmBalanceAfterFirst + restakerSplit2,
+            "PremiumManager should retain restaker splits from both policies for SSPRouter to pull"
         );
     }
 
@@ -585,6 +610,67 @@ contract PremiumManagerTest is Test {
         assertEq(poolSplit, 670, "Pool split rounding");
         assertEq(restakerSplit, 99_000, "Restaker split rounding");
         assertEq(platformSplit + poolSplit + restakerSplit, grossPremium, "Total should match");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            APPROVE SPENDER
+    //////////////////////////////////////////////////////////////*/
+
+    function test_approveSpender_WhenCalledByAdmin_SetsAllowance() public {
+        address spender = makeAddr("spender");
+        uint256 amount = type(uint256).max;
+
+        vm.prank(admin);
+        premiumManager.approveSpender(address(premiumToken), spender, amount);
+
+        assertEq(premiumToken.allowance(address(premiumManager), spender), amount, "Allowance should be set");
+    }
+
+    function test_approveSpender_EmitsEvent() public {
+        address spender = makeAddr("spender");
+        uint256 amount = type(uint256).max;
+
+        vm.expectEmit(true, true, false, true, address(premiumManager));
+        emit SpenderApproved(address(premiumToken), spender, amount);
+
+        vm.prank(admin);
+        premiumManager.approveSpender(address(premiumToken), spender, amount);
+    }
+
+    function test_approveSpender_WhenCalledByNonAdmin_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(premiumCollector);
+        premiumManager.approveSpender(address(premiumToken), makeAddr("spender"), type(uint256).max);
+    }
+
+    function test_approveSpender_WhenTokenZero_Reverts() public {
+        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
+        vm.prank(admin);
+        premiumManager.approveSpender(address(0), makeAddr("spender"), type(uint256).max);
+    }
+
+    function test_approveSpender_WhenSpenderZero_Reverts() public {
+        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
+        vm.prank(admin);
+        premiumManager.approveSpender(address(premiumToken), address(0), type(uint256).max);
+    }
+
+    function test_approveSpender_CanResetApproval() public {
+        address spender = makeAddr("spender");
+
+        vm.prank(admin);
+        premiumManager.approveSpender(address(premiumToken), spender, type(uint256).max);
+        assertEq(premiumToken.allowance(address(premiumManager), spender), type(uint256).max, "Should be max");
+
+        vm.prank(admin);
+        premiumManager.approveSpender(address(premiumToken), spender, 0);
+        assertEq(premiumToken.allowance(address(premiumManager), spender), 0, "Should be revoked");
     }
 
     /*//////////////////////////////////////////////////////////////

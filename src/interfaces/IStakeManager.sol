@@ -38,11 +38,6 @@ interface IStakeManager {
     )
         external;
 
-    /// @notice Adds an operator to a committee (one operator per committee).
-    /// @param operator The address of the operator.
-    /// @param committeeId The ID of the committee to add the operator to.
-    function addOperatorToCommittee(address operator, uint96 committeeId) external;
-
     /// @notice Associates vaults with a committee and configures them in the appropriate adapters.
     /// @param committeeId The ID of the committee.
     /// @param vaults The array of vault addresses to associate.

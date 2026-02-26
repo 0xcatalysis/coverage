@@ -1978,6 +1978,9 @@ contract MockStakeManager {
         lastDuration = duration;
         _committeeExists[committeeId] = true;
         _committeeMaxStake[committeeId] = maxStakeForCommittee;
+        address curator = ICoverPool(coverPool).owner();
+        _operatorCommittees[curator] = committeeId;
+        _committeeOperators[committeeId] = curator;
     }
 
     function addOperatorToCommittee(address operator, uint96 committeeId) external {
@@ -1999,7 +2002,7 @@ contract MockStakeManager {
         }
     }
 
-    function getOperatorCommitteeStake(uint96 committeeId) external view returns (uint256) {
+    function getOperatorCommitteeStake(uint96 committeeId) external view returns (uint256 totalStakeUSD) {
         if (_committeeExists[committeeId]) {
             uint256 stake = _committeeStake[committeeId];
             return stake > 0 ? stake : 1_000_000e8;

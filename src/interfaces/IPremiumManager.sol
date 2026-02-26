@@ -24,6 +24,14 @@ interface IPremiumManager is IAccessControl {
     event RewardsManagerSet(address indexed rewardsManager_);
 
     /**
+     * @notice Emitted when an ERC20 spender approval is set by the admin.
+     * @param token ERC20 token address.
+     * @param spender Address approved to spend the token.
+     * @param amount Approved amount.
+     */
+    event SpenderApproved(address indexed token, address indexed spender, uint256 amount);
+
+    /**
      * @notice Emitted when the platform treasury is set or updated.
      * @param platformTreasury_ Address of the platform treasury.
      */
@@ -82,6 +90,15 @@ interface IPremiumManager is IAccessControl {
      * @param rewardsManager_ Address of the RewardsManager implementation.
      */
     function setRewardsManager(address rewardsManager_) external;
+
+    /**
+     * @notice Approves a spender to transfer an ERC20 token held by this contract.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Uses forceApprove to safely reset allowances.
+     * @param token ERC20 token to approve.
+     * @param spender Address to grant approval to.
+     * @param amount Allowance amount (use type(uint256).max for unlimited).
+     */
+    function approveSpender(address token, address spender, uint256 amount) external;
 
     /**
      * @notice Sets the platform treasury address.

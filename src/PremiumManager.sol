@@ -99,6 +99,23 @@ contract PremiumManager is
     /**
      * @inheritdoc IPremiumManager
      */
+    function approveSpender(
+        address token,
+        address spender,
+        uint256 amount
+    )
+        external
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        require(token != address(0) && spender != address(0), ZeroAddress());
+        IERC20(token).forceApprove(spender, amount);
+        emit SpenderApproved(token, spender, amount);
+    }
+
+    /**
+     * @inheritdoc IPremiumManager
+     */
     function setPlatformTreasury(address platformTreasury_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(platformTreasury_ != address(0), ZeroAddress());
         platformTreasury = platformTreasury_;
@@ -155,7 +172,6 @@ contract PremiumManager is
         }
 
         if (restakerSplit > 0) {
-            token.safeTransfer(rewardsManager, restakerSplit);
             bytes32 taskId = keccak256(abi.encodePacked(policyId, ++_distributionNonce));
             IRewardsManager(rewardsManager).distributeRewards(policyId, curator, restakerSplit, token, taskId);
         }
