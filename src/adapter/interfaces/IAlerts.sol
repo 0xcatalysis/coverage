@@ -71,9 +71,6 @@ interface IAlerts {
     // aderyn-fp-next-line(unused-error) Reserved for external protocol integrations
     error ZeroPolicyId();
 
-    /// @notice Thrown when user's withdrawn principal exceeds total principal (e.g. due to shares transfer)
-    error ExceedsTotalPrincipal(uint256 userWithdrawnPrincipal, uint256 totalPrincipal);
-
     /// @notice Thrown when trying to make a partial withdrawal during deallocate / forceDeallocate
     error WithdrawAllOnlyDuringDealoc();
 

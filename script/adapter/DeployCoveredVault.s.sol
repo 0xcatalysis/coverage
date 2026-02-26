@@ -85,8 +85,6 @@ contract DeployCoveredVault is Script {
         // ── Optional ──
         uint256 forceDeallocatePenalty; // 0 = skip
         uint256 maxRate; // 0 = skip
-        // ── Final role recipients ──
-        address catalysisCurator;
         address catalysisOwner;
     }
 
@@ -140,7 +138,6 @@ contract DeployCoveredVault is Script {
         console.log("Covered Vault:", coveredVault);
         console.log("Adapter:", address(adapter));
         console.log("Adapter ID:", vm.toString(adapter.adapterId()));
-        console.log("Curator:", cfg.catalysisCurator);
         console.log("Owner:", cfg.catalysisOwner);
         console.log("=== Done ===");
     }
@@ -339,7 +336,6 @@ contract DeployCoveredVault is Script {
         cfg.vaultSymbol = vm.envString("VAULT_SYMBOL");
         cfg.managementFee = uint96(vm.envUint("MANAGEMENT_FEE"));
         cfg.managementFeeRecipient = vm.envAddress("MANAGEMENT_FEE_RECIPIENT");
-        cfg.catalysisCurator = vm.envAddress("CATALYSIS_CURATOR");
         cfg.catalysisOwner = vm.envAddress("CATALYSIS_OWNER");
 
         // Optional parameters (default to 0 if not set)
@@ -358,7 +354,6 @@ contract DeployCoveredVault is Script {
         require(bytes(cfg.vaultName).length > 0, "VAULT_NAME not set");
         require(bytes(cfg.vaultSymbol).length > 0, "VAULT_SYMBOL not set");
         require(cfg.managementFeeRecipient != address(0), "MANAGEMENT_FEE_RECIPIENT not set");
-        require(cfg.catalysisCurator != address(0), "CATALYSIS_CURATOR not set");
         require(cfg.catalysisOwner != address(0), "CATALYSIS_OWNER not set");
     }
 }
