@@ -460,13 +460,9 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
 
         // Sender has tracked shares — use per-user path
         uint256 userPrincipalForWithdrawal = userPrincipal[sender].mulDiv(sharesToBurn, userUnderlyingShares[sender]);
-        require(
-            userPrincipalForWithdrawal <= totalPrincipal,
-            IA.ExceedsTotalPrincipal(userPrincipalForWithdrawal, totalPrincipal)
-        );
         userPrincipal[sender] -= userPrincipalForWithdrawal;
         userUnderlyingShares[sender] -= sharesToBurn;
-        totalPrincipal -= userPrincipalForWithdrawal;
+        totalPrincipal -= userPrincipalForWithdrawal > totalPrincipal ? totalPrincipal : userPrincipalForWithdrawal;
 
         // Per-user insurance: only if sender has tracked principal and policy is active
         uint256 insurancePayout;
