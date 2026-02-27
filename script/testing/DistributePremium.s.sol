@@ -251,7 +251,7 @@ contract DistributePremium is Script {
         (uint256 restakerSplit, uint256 treasuryReceived, uint256 poolFeeRecipientReceived) =
             _executeDistribution(underlying, onChainTreasury, poolFeeRecipient);
 
-        console.log("Restaker split (held in PremiumManager):", restakerSplit);
+        console.log("Restaker split (pulled by SSPRouter):", restakerSplit);
         console.log("Platform Treasury received:", treasuryReceived);
         console.log("Pool Fee Recipient received:", poolFeeRecipientReceived);
 
@@ -283,9 +283,11 @@ contract DistributePremium is Script {
         internal
         returns (uint256 restakerSplit, uint256 treasuryReceived, uint256 poolFeeRecipientReceived)
     {
-        uint256 pmBalanceBefore = IERC20(underlying).balanceOf(premiumManager);
         uint256 treasuryBalanceBefore = IERC20(underlying).balanceOf(onChainTreasury);
         uint256 poolFeeRecipientBalanceBefore = IERC20(underlying).balanceOf(poolFeeRecipient);
+
+        uint256 shares = collectorContract.getAccruedShares(coveredVault);
+        uint256 totalAssetsPreview = IERC4626(coveredVault).previewRedeem(shares);
 
         address[] memory vaultsToDistribute = new address[](1);
         vaultsToDistribute[0] = coveredVault;
@@ -297,7 +299,8 @@ contract DistributePremium is Script {
         treasuryReceived = IERC20(underlying).balanceOf(onChainTreasury) - treasuryBalanceBefore;
         poolFeeRecipientReceived = IERC20(underlying).balanceOf(poolFeeRecipient) - poolFeeRecipientBalanceBefore;
 
-        uint256 pmBalanceAfter = IERC20(underlying).balanceOf(premiumManager);
-        restakerSplit = pmBalanceAfter >= pmBalanceBefore ? pmBalanceAfter - pmBalanceBefore : 0;
+        restakerSplit = totalAssetsPreview > treasuryReceived + poolFeeRecipientReceived
+            ? totalAssetsPreview - treasuryReceived - poolFeeRecipientReceived
+            : 0;
     }
 }
