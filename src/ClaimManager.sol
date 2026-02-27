@@ -391,6 +391,7 @@ contract ClaimManager is
      * @param remainingPayout Maximum payout amount still needed.
      * @return amountOut Amount of payout token delivered (capped at remainingPayout).
      */
+    // slither-disable-start calls-loop
     function _processCollateral(
         uint96 policyId,
         uint256 claimId,
@@ -428,7 +429,6 @@ contract ClaimManager is
                 swapCalldata: ""
             });
 
-            // slither-disable-next-line calls-loop
             uint256 swapOutput = ISwapper(swapper).executeSwap(swapParams);
 
             amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
@@ -439,6 +439,7 @@ contract ClaimManager is
 
         emit CollateralSwapped(policyId, claimId, collateralToken, collateralAmount, payoutToken, amountOut);
     }
+    // slither-disable-end calls-loop
 
     /**
      * @notice Evaluates the Spec for a given policy.

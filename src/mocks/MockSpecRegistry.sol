@@ -122,9 +122,9 @@ contract MockSpecRegistry is ISpecRegistry {
     }
 
     /**
-     * @inheritdoc ISpecRegistry
+     * @notice Returns whether the registry is paused.
      */
-    function paused() external view override returns (bool) {
+    function paused() external view returns (bool) {
         return _paused;
     }
 
