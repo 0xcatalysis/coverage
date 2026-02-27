@@ -254,7 +254,7 @@ contract PolicyManager is
             policyId, request.buyer, request.beneficiary, quote.pool, boundPolicy.coverageLimit, policyCommit, hook
         );
 
-        IBindPolicyHook(hook).onPolicyBound(policyId, boundPolicy.coverageLimit);
+        try IBindPolicyHook(hook).onPolicyBound(policyId, boundPolicy.coverageLimit) {} catch {}
         //slither-disable-end reentrancy-benign
     }
 

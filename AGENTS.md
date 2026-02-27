@@ -15,11 +15,11 @@ Coverage contracts live in `src/`. Tests in `test/unit`, `test/fuzz`, and `test/
 | `CoverPool.sol` | Curator-controlled pool for quote validation and policy binding; deployed as minimal proxy clones. |
 | `CoverPoolFactory.sol` | Creates CoverPool clones and assigns PolicyManager role to each new pool. |
 | `PolicyManager.sol` | Entrypoint for policy binding; coordinates premium collection and mints Policy NFTs. |
-| `Policy.sol` | Soulbound ERC-721 representing bound coverage policies. |
 | `PremiumManager.sol` | Collects premiums and distributes fees to curators and platform treasury. |
-| `PremiumReserve.sol` | Escrow holding restaker premiums; releases on maturity or locks for claims. |
+| `PremiumCollector.sol` | Redeems ERC-4626 vault shares and forwards underlying assets to PremiumManager for distribution. |
 | `ClaimManager.sol` | Processes parametric/discretionary claims; orchestrates slashing and payouts. |
 | `Swapper.sol` | Converts slashed collateral via configured swap routes. |
+| `SpecRegistry.sol` | Registry mapping (pool, specId) pairs to ISpec evaluation implementations. |
 
 ### Interfaces (`src/interfaces/`)
 

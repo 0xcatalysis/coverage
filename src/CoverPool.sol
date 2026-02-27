@@ -87,7 +87,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         );
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
 
-        __AccessControlDefaultAdminRules_init(0, curator_);
+        __AccessControlDefaultAdminRules_init(24 hours, curator_);
         __EIP712_init(_NAME, _VERSION);
         __Pausable_init();
 
