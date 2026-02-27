@@ -134,7 +134,7 @@ contract CoverPoolTest is Test {
         );
         assertEq(coverPool.poolFeeBps(), poolFeeBps, "Pool fee mismatch");
         assertFalse(coverPool.paused(), "Pool unexpectedly paused");
-        assertEq(coverPool.defaultAdminDelay(), 0, "Default admin delay mismatch");
+        assertEq(coverPool.defaultAdminDelay(), 24 hours, "Default admin delay mismatch");
         assertEq(coverPool.feeRecipient(), curator, "Fee recipient should default to curator");
     }
 
@@ -815,7 +815,7 @@ contract CoverPoolTest is Test {
 
         (address pendingAdmin, uint48 schedule) = coverPool.pendingDefaultAdmin();
         assertEq(pendingAdmin, newAdmin, "Pending admin mismatch");
-        assertEq(schedule, block.timestamp, "Schedule mismatch");
+        assertEq(schedule, block.timestamp + 24 hours, "Schedule mismatch");
     }
 
     function test_acceptDefaultAdminTransfer_WhenDelayNotPassed_Reverts() public {

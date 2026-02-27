@@ -1162,7 +1162,7 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
     }
 
-    function test_bindPolicy_WithHookRevert_RevertsTransaction() public {
+    function test_bindPolicy_WithHookRevert_PolicyBoundSuccessfully() public {
         MockBindPolicyHook hook = new MockBindPolicyHook();
         hook.setShouldRevert(true);
 
@@ -1176,13 +1176,12 @@ contract PolicyManagerTest is Test {
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
 
-        vm.expectRevert("MockBindPolicyHook: intentional revert");
         vm.prank(address(coverPool));
         policyManager.bindPolicy(request, boundPolicy);
 
-        // Verify policy was not bound
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.PolicyNotFound.selector, policyId));
-        policyManager.policyMetadata(policyId);
+        IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(policyId);
+        assertEq(metadata.policyId, policyId, "Policy not bound");
+        assertEq(metadata.buyer, buyer, "Buyer mismatch");
     }
 
     function test_requestCoverage_WhenBindPolicyHookZero_Reverts() public {

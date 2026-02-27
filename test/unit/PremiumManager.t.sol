@@ -375,11 +375,7 @@ contract PremiumManagerTest is Test {
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertEq(
-            premiumToken.balanceOf(address(premiumManager)),
-            restakerSplit,
-            "Restaker split should remain in PremiumManager for SSPRouter to pull"
-        );
+        assertEq(premiumToken.balanceOf(address(premiumManager)), restakerSplit, "Restaker split mismatch");
         assertEq(rewardsManager.distributeRewardsCallCount(), 1, "DistributeRewards not called");
     }
 
@@ -394,13 +390,9 @@ contract PremiumManagerTest is Test {
         vm.prank(premiumCollector);
         premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
-        assertEq(premiumToken.balanceOf(platformTreasury), 0, "Platform fee should be zero");
+        assertEq(premiumToken.balanceOf(platformTreasury), 0, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertEq(
-            premiumToken.balanceOf(address(premiumManager)),
-            restakerSplit,
-            "Restaker split should remain in PremiumManager for SSPRouter to pull"
-        );
+        assertEq(premiumToken.balanceOf(address(premiumManager)), restakerSplit, "Restaker split mismatch");
     }
 
     function test_distributePremium_WhenZeroPoolFee_OnlyTransfersPlatformFeeAndRewards() public {
@@ -415,12 +407,8 @@ contract PremiumManagerTest is Test {
         premiumManager.distributePremium(address(zeroFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
-        assertEq(premiumToken.balanceOf(poolFeeRecipient), 0, "Pool fee should be zero");
-        assertEq(
-            premiumToken.balanceOf(address(premiumManager)),
-            restakerSplit,
-            "Restaker split should remain in PremiumManager for SSPRouter to pull"
-        );
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), 0, "Pool fee mismatch");
+        assertEq(premiumToken.balanceOf(address(premiumManager)), restakerSplit, "Restaker split mismatch");
     }
 
     function test_distributePremium_DistributesRewardsWithCorrectParameters() public {
@@ -452,13 +440,9 @@ contract PremiumManagerTest is Test {
         premiumManager.distributePremium(address(separateAddressPool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
-        assertEq(premiumToken.balanceOf(differentFeeRecipient), poolSplit, "Pool fee should go to feeRecipient");
+        assertEq(premiumToken.balanceOf(differentFeeRecipient), poolSplit, "Pool fee mismatch");
         assertEq(premiumToken.balanceOf(separatePoolOwner), 0, "Pool owner should not receive pool fee");
-        assertEq(
-            premiumToken.balanceOf(address(premiumManager)),
-            restakerSplit,
-            "Restaker split should remain in PremiumManager for SSPRouter to pull"
-        );
+        assertEq(premiumToken.balanceOf(address(premiumManager)), restakerSplit, "Restaker split mismatch");
 
         MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
         assertEq(call.curator, separatePoolOwner, "Curator should be the pool owner, not feeRecipient");
@@ -476,13 +460,9 @@ contract PremiumManagerTest is Test {
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(premiumAmount, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform should receive fee");
-        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool should receive fee");
-        assertEq(
-            premiumToken.balanceOf(address(premiumManager)),
-            restakerSplit,
-            "Restaker split should remain in PremiumManager for SSPRouter to pull"
-        );
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
+        assertEq(premiumToken.balanceOf(address(premiumManager)), restakerSplit, "Restaker split mismatch");
     }
 
     function test_distributePremium_MultipleDistributionsToSamePolicy() public {
@@ -505,18 +485,12 @@ contract PremiumManagerTest is Test {
         (uint256 platformSplit2, uint256 poolSplit2, uint256 restakerSplit2) =
             premiumManager.getFeeSplits(secondPremium, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        assertEq(
-            premiumToken.balanceOf(platformTreasury),
-            platformAfterFirst + platformSplit2,
-            "Platform should receive cumulative fees"
-        );
-        assertEq(
-            premiumToken.balanceOf(poolFeeRecipient) - poolAfterFirst, poolSplit2, "Pool should receive second fee"
-        );
+        assertEq(premiumToken.balanceOf(platformTreasury), platformAfterFirst + platformSplit2, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient) - poolAfterFirst, poolSplit2, "Pool fee mismatch");
         assertEq(
             premiumToken.balanceOf(address(premiumManager)),
             pmBalanceAfterFirst + restakerSplit2,
-            "PremiumManager should retain cumulative restaker splits for SSPRouter to pull"
+            "Restaker split mismatch"
         );
     }
 
@@ -554,7 +528,160 @@ contract PremiumManagerTest is Test {
         assertEq(
             premiumToken.balanceOf(address(premiumManager)),
             pmBalanceAfterFirst + restakerSplit2,
-            "PremiumManager should retain restaker splits from both policies for SSPRouter to pull"
+            "Restaker split mismatch"
+        );
+    }
+
+    function test_distributePremium_WhenMaxCombinedFees_RestakerSplitIsZero_SkipsRewardsCall() public {
+        uint16 maxPlatformFeeBps = 2500;
+        uint16 remainingPoolFeeBps = 7500;
+        MockCoverPool maxFeePool = new MockCoverPool(curator, poolFeeRecipient, remainingPoolFeeBps);
+
+        vm.prank(admin);
+        premiumManager.setPlatformFeeBps(maxPlatformFeeBps);
+
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
+            premiumManager.getFeeSplits(PREMIUM_AMOUNT, maxPlatformFeeBps, remainingPoolFeeBps);
+
+        assertEq(restakerSplit, 0, "Restaker split should be zero at 100% combined fees");
+
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(address(maxFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
+        assertEq(premiumToken.balanceOf(address(premiumManager)), 0, "Restaker split mismatch");
+        assertEq(rewardsManager.distributeRewardsCallCount(), 0, "RewardsManager should not be called");
+    }
+
+    function test_distributePremium_WhenBothFeesZero_EntirePremiumRetainedInPM() public {
+        MockCoverPool zeroFeePool = new MockCoverPool(curator, poolFeeRecipient, 0);
+
+        vm.prank(admin);
+        premiumManager.setPlatformFeeBps(0);
+
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(address(zeroFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+
+        assertEq(premiumToken.balanceOf(platformTreasury), 0, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), 0, "Pool fee mismatch");
+        assertEq(premiumToken.balanceOf(address(premiumManager)), PREMIUM_AMOUNT, "Restaker split mismatch");
+        assertEq(rewardsManager.distributeRewardsCallCount(), 1, "DistributeRewards not called");
+    }
+
+    function test_distributePremium_WhenSSPRouterApproved_CanPullRestakerSplitFromPM() public {
+        address sspRouter = makeAddr("sspRouter");
+        (,, uint256 restakerSplit) = premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
+
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+
+        vm.prank(admin);
+        premiumManager.approveSpender(address(premiumToken), sspRouter, type(uint256).max);
+
+        vm.prank(sspRouter);
+        premiumToken.transferFrom(address(premiumManager), sspRouter, restakerSplit);
+
+        assertEq(premiumToken.balanceOf(sspRouter), restakerSplit, "SSPRouter balance mismatch");
+        assertEq(premiumToken.balanceOf(address(premiumManager)), 0, "PM should be empty after pull");
+    }
+
+    function test_distributePremium_WhenDifferentPools_EachCuratorGetsOwnRewardsCall() public {
+        address curator2 = makeAddr("curator2");
+        address feeRecipient2 = makeAddr("feeRecipient2");
+        MockCoverPool pool2 = new MockCoverPool(curator2, feeRecipient2, POOL_FEE_BPS);
+        uint96 policyId2 = POLICY_ID + 1;
+
+        (uint256 platformSplit,, uint256 restakerSplit) =
+            premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
+
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+
+        assertEq(rewardsManager.lastCall().curator, curator, "First curator mismatch");
+
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(address(pool2), policyId2, address(premiumToken), PREMIUM_AMOUNT);
+
+        assertEq(rewardsManager.lastCall().curator, curator2, "Second curator mismatch");
+        assertEq(rewardsManager.distributeRewardsCallCount(), 2, "DistributeRewards call count mismatch");
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit * 2, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(address(premiumManager)), restakerSplit * 2, "Restaker split mismatch");
+    }
+
+    function test_distributePremium_WhenSmallPremium_SplitsSumToTotalPremium() public {
+        uint256 smallPremium = 100;
+
+        (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
+            premiumManager.getFeeSplits(smallPremium, PLATFORM_FEE_BPS, POOL_FEE_BPS);
+
+        premiumToken.mint(address(premiumManager), smallPremium);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), smallPremium);
+
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
+        assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
+        assertEq(premiumToken.balanceOf(address(premiumManager)), restakerSplit, "Restaker split mismatch");
+        assertEq(platformSplit + poolSplit + restakerSplit, smallPremium, "Splits must sum to premium");
+    }
+
+    function test_distributePremium_EmitsEventForEachDistributionInSequence() public {
+        uint96 policyId2 = POLICY_ID + 1;
+        uint256 premium2 = 500 ether;
+
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT + premium2);
+
+        vm.expectEmit(true, true, true, true, address(premiumManager));
+        emit PremiumDistributed(pool, POLICY_ID, PREMIUM_AMOUNT);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+
+        vm.expectEmit(true, true, true, true, address(premiumManager));
+        emit PremiumDistributed(pool, policyId2, premium2);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, policyId2, address(premiumToken), premium2);
+    }
+
+    function test_distributePremium_WhenPlatformFeeChanges_SubsequentCallUsesNewFee() public {
+        uint16 newPlatformFeeBps = 200;
+
+        (uint256 platformSplit1,, uint256 restakerSplit1) =
+            premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
+
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+
+        vm.prank(admin);
+        premiumManager.setPlatformFeeBps(newPlatformFeeBps);
+
+        (uint256 platformSplit2,, uint256 restakerSplit2) =
+            premiumManager.getFeeSplits(PREMIUM_AMOUNT, newPlatformFeeBps, POOL_FEE_BPS);
+
+        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+
+        uint96 policyId2 = POLICY_ID + 1;
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, policyId2, address(premiumToken), PREMIUM_AMOUNT);
+
+        assertEq(premiumToken.balanceOf(platformTreasury), platformSplit1 + platformSplit2, "Platform fee mismatch");
+        assertEq(
+            premiumToken.balanceOf(address(premiumManager)), restakerSplit1 + restakerSplit2, "Restaker split mismatch"
         );
     }
 
