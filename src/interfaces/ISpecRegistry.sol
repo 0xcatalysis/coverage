@@ -88,5 +88,4 @@ interface ISpecRegistry {
      * @return spec Address of the authorized ISpec implementation contract.
      */
     function resolveSpec(address coverPool, bytes32 specId) external view returns (ISpec spec);
-
 }

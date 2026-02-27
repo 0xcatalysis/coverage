@@ -439,6 +439,7 @@ contract ClaimManager is
 
         emit CollateralSwapped(policyId, claimId, collateralToken, collateralAmount, payoutToken, amountOut);
     }
+
     // slither-disable-end calls-loop
 
     /**
