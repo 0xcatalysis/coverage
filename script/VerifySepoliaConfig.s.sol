@@ -141,7 +141,7 @@ contract VerifySepoliaConfig is Script {
 
         console2.log("");
         if (_failures == 0) {
-            console2.log("[ALL OK] All", uint256(20), "checks passed. Configuration is complete for E2E testing.");
+            console2.log("[ALL OK] All", uint256(26), "checks passed. Configuration is complete for E2E testing.");
         } else {
             console2.log("[INCOMPLETE]", _failures, "check(s) failed. See [FAIL] lines above.");
             console2.log("  Fix: run cast send commands in docs/deployment/CoreAdminActions-Sepolia.md");
