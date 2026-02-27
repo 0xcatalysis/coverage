@@ -256,6 +256,7 @@ contract VerifySepoliaConfig is Script {
         } else {
             console2.log("[FAIL] PremiumManager has not approved SSPRouter for WETH");
             console2.log("  Fix: PremiumManager.approveSpender(WETH, SSPRouter, type(uint256).max)");
+            _failures++;
         }
         _checkRole(
             "RewardsManager: PREMIUM_MANAGER_ROLE -> PremiumManager",
