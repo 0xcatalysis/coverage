@@ -118,6 +118,7 @@ contract UniswapV3Adapter {
 
         IERC20(tokenIn).forceApprove(address(SWAP_ROUTER), 0);
 
+        // slither-disable-next-line reentrancy-events
         emit AdapterSwapExecuted(tokenIn, tokenOut, fee, amountIn, amountOut);
     }
 }
