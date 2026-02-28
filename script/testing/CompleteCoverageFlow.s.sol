@@ -78,6 +78,13 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   Premium Params:
  *   - COVERED_VAULT: ERC-4626 vault address
  *
+ *   Re-run Cleanup (optional):
+ *   - PRIOR_COMMITTEE_ID: Committee ID the curator/operator was assigned to in a previous run.
+ *       When set to a non-zero value, Phase 1b calls removeOperatorFromCommittee before
+ *       requestCoverage so the re-run does not revert with OperatorAlreadyInCommittee.
+ *       Defaults to 0 (phase is skipped). Obtain this value from the POLICY_ID output of
+ *       the previous run (committeeId == policyId).
+ *
  *   Claim Params:
  *   - REQUESTED_CLAIM_AMOUNT: Payout amount to request in claim
  *   - EVIDENCE_HASH: Evidence hash (bytes32)
@@ -582,18 +589,17 @@ contract CompleteCoverageFlow is Script {
      *      Calling requestCoverage when the operator is already in a committee reverts with
      *      OperatorAlreadyInCommittee, breaking re-runs of this script.
      *
-     *      The operator's current committee ID is read directly from StakeManager storage
-     *      (mapping slot 6: operatorToCommitteeId) so no env-var knowledge of previous runs
-     *      is required. If the operator is not in any committee the phase is skipped.
+     *      The prior committee ID is read from the PRIOR_COMMITTEE_ID environment variable.
+     *      Set it to the POLICY_ID value logged by the previous run (committeeId == policyId).
+     *      When the variable is absent or zero the phase is skipped.
      */
     function _phase1b_releaseOperator() internal {
         console.log("\n=== PHASE 1b: OPERATOR COMMITTEE CLEANUP ===");
 
-        bytes32 mapSlot = keccak256(abi.encode(curator, uint256(6)));
-        uint96 currentCommitteeId = uint96(uint256(vm.load(stakeManager, mapSlot)));
+        uint96 currentCommitteeId = uint96(vm.envOr("PRIOR_COMMITTEE_ID", uint256(0)));
 
         if (currentCommitteeId == 0) {
-            console.log("[SKIP] Operator not currently assigned to any committee");
+            console.log("[SKIP] PRIOR_COMMITTEE_ID not set or zero -- no cleanup needed");
             return;
         }
 
