@@ -57,6 +57,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.startTime < quote.maturityTime, InvalidCoverageWindow());
 
         uint256 currentTimestamp = block.timestamp;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        require(quote.startTime >= currentTimestamp, InvalidStartTime(quote.startTime, uint32(currentTimestamp)));
+        // forge-lint: disable-next-line(unsafe-typecast)
         require(quote.expirationTime >= currentTimestamp, QuoteExpired(quote.expirationTime, uint32(currentTimestamp)));
         _;
     }
@@ -159,7 +162,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
         require(quote.policyId == draft.policyId, PolicyIdMismatch(draft.policyId, quote.policyId));
         require(quote.beneficiary == draft.beneficiary, BeneficiaryMismatch(draft.beneficiary, quote.beneficiary));
-        require(vaults.length != 0, ICoverPool.EmptyVaults());
+        _validateVaults(vaults);
 
         bytes32 policyCommit = _verifyQuote(quote, signature);
         BoundPolicy memory boundPolicy = _recordBoundPolicy(policyId, policyCommit, quote);
@@ -228,6 +231,18 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         super.revokeRole(role, account);
+    }
+
+    /**
+     * @notice Validates that the vaults array is non-empty and contains no zero addresses.
+     * @param vaults Array of vault addresses to validate.
+     */
+    function _validateVaults(address[] calldata vaults) private pure {
+        uint256 vaultsLength = vaults.length;
+        require(vaultsLength != 0, EmptyVaults());
+        for (uint256 i = 0; i < vaultsLength; ++i) {
+            require(vaults[i] != address(0), ZeroAddress());
+        }
     }
 
     /**

@@ -503,6 +503,68 @@ contract CoverPoolTest is Test {
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
     }
 
+    function test_bindPolicyForRequest_WhenStartTimeInPast_Reverts() public {
+        uint96 policyId = _createDraft();
+        ICoverPool.Quote memory quote = _defaultQuote();
+        quote.policyId = policyId;
+        quote.beneficiary = beneficiary;
+        quote.startTime = uint32(block.timestamp) - 1;
+        quote.maturityTime = uint32(block.timestamp + 25 hours);
+        bytes memory signature = _signQuote(quote);
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault1");
+        address spec = makeAddr("spec");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ICoverPool.InvalidStartTime.selector, uint32(block.timestamp) - 1, block.timestamp)
+        );
+        vm.prank(curator);
+        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
+    }
+
+    function test_bindPolicyForRequest_WhenVaultZeroAddress_Reverts() public {
+        uint96 policyId = _createDraft();
+        ICoverPool.Quote memory quote = _defaultQuote();
+        quote.policyId = policyId;
+        quote.beneficiary = beneficiary;
+        bytes memory signature = _signQuote(quote);
+        address[] memory vaults = new address[](2);
+        vaults[0] = makeAddr("vault1");
+        vaults[1] = address(0);
+        address spec = makeAddr("spec");
+
+        vm.expectRevert(ICoverPool.ZeroAddress.selector);
+        vm.prank(curator);
+        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
+    }
+
+    function test_bindPolicyForRequest_WithDuplicateVaults_PassesThroughToCore() public {
+        uint96 policyId = _createDraft();
+        ICoverPool.Quote memory quote = _defaultQuote();
+        quote.policyId = policyId;
+        quote.beneficiary = beneficiary;
+        bytes memory signature = _signQuote(quote);
+        address vault1 = makeAddr("vault1");
+        address[] memory vaults = new address[](2);
+        vaults[0] = vault1;
+        vaults[1] = vault1;
+        address spec = makeAddr("spec");
+
+        vm.mockCall(
+            specRegistry, abi.encodeWithSignature("registerSpec(bytes32,address)", quote.specId, spec), abi.encode()
+        );
+        vm.mockCall(
+            stakeManager,
+            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encode()
+        );
+
+        vm.expectCall(stakeManager, abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults));
+
+        vm.prank(curator);
+        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
+    }
+
     function test_bindPolicyForRequest_WhenInvalidSignature_Reverts() public {
         uint96 policyId = _createDraft();
         ICoverPool.Quote memory quote = _defaultQuote();
