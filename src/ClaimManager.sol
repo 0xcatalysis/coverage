@@ -426,7 +426,8 @@ contract ClaimManager is
                 amountIn: collateralAmount,
                 amountOutMin: amountOutMin,
                 recipient: address(this),
-                swapCalldata: ""
+                swapCalldata: "",
+                deadline: block.timestamp
             });
 
             uint256 swapOutput = ISwapper(swapper).executeSwap(swapParams);

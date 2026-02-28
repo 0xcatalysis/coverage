@@ -518,6 +518,24 @@ contract SwapperTest is Test {
                             EXECUTE SWAP
     //////////////////////////////////////////////////////////////*/
 
+    function test_executeSwap_WhenDeadlineExpired_Reverts() public {
+        ISwapper.SwapParams memory params = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: address(tokenOut),
+            amountIn: 100 ether,
+            amountOutMin: 90 ether,
+            recipient: recipient,
+            swapCalldata: "",
+            deadline: block.timestamp - 1
+        });
+
+        vm.prank(swapExecutor);
+        vm.expectRevert(
+            abi.encodeWithSelector(ISwapper.SwapDeadlineExpired.selector, block.timestamp - 1, block.timestamp)
+        );
+        swapper.executeSwap(params);
+    }
+
     function test_executeSwap_WhenTokenInZero_Reverts() public {
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
             tokenIn: address(0),
@@ -525,7 +543,8 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: ""
+            swapCalldata: "",
+            deadline: block.timestamp
         });
 
         vm.prank(swapExecutor);
@@ -540,7 +559,8 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: ""
+            swapCalldata: "",
+            deadline: block.timestamp
         });
 
         vm.prank(swapExecutor);
@@ -555,7 +575,8 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: address(0),
-            swapCalldata: ""
+            swapCalldata: "",
+            deadline: block.timestamp
         });
 
         vm.prank(swapExecutor);
@@ -570,7 +591,8 @@ contract SwapperTest is Test {
             amountIn: 0,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: ""
+            swapCalldata: "",
+            deadline: block.timestamp
         });
 
         vm.prank(swapExecutor);
@@ -585,7 +607,8 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 0,
             recipient: recipient,
-            swapCalldata: ""
+            swapCalldata: "",
+            deadline: block.timestamp
         });
 
         vm.prank(swapExecutor);
@@ -600,7 +623,8 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: ""
+            swapCalldata: "",
+            deadline: block.timestamp
         });
 
         vm.prank(swapExecutor);
@@ -623,7 +647,8 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: ""
+            swapCalldata: "",
+            deadline: block.timestamp
         });
 
         vm.prank(swapExecutor);
@@ -649,7 +674,8 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: ""
+            swapCalldata: "",
+            deadline: block.timestamp
         });
 
         vm.prank(swapExecutor);
@@ -698,7 +724,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
 
         vm.startPrank(swapExecutor);
@@ -725,7 +752,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: minOut,
             recipient: recipient,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
 
         vm.startPrank(swapExecutor);
@@ -751,7 +779,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
 
         vm.startPrank(swapExecutor);
@@ -784,7 +813,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
 
         vm.startPrank(swapExecutor);
@@ -821,7 +851,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 0.9 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
 
         vm.deal(swapExecutor, amountIn);
@@ -858,7 +889,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 0.9 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
 
         uint256 recipientBalanceBefore = recipient.balance;
@@ -893,7 +925,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 0.9 ether,
             recipient: recipient,
-            swapCalldata: ""
+            swapCalldata: "",
+            deadline: block.timestamp
         });
 
         vm.deal(swapExecutor, amountIn);
@@ -911,7 +944,8 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: ""
+            swapCalldata: "",
+            deadline: block.timestamp
         });
 
         vm.deal(swapExecutor, 1 ether);
@@ -947,7 +981,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 0.9 ether,
             recipient: address(rejecter),
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
 
         vm.startPrank(swapExecutor);
@@ -972,7 +1007,8 @@ contract SwapperTest is Test {
             amountIn: amountIn1,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
 
         vm.startPrank(swapExecutor);
@@ -991,7 +1027,8 @@ contract SwapperTest is Test {
             amountIn: amountIn2,
             amountOutMin: 45 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
 
         tokenIn.approve(address(swapper), amountIn2);
@@ -1026,7 +1063,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
         swapper.executeSwap(params1);
 
@@ -1039,7 +1077,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient2,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
         swapper.executeSwap(params2);
 
@@ -1107,7 +1146,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
 
         vm.startPrank(swapExecutor);
@@ -1194,7 +1234,8 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: amountOutMin,
             recipient: recipient,
-            swapCalldata: swapCalldata
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
         });
     }
 }
@@ -1257,7 +1298,13 @@ contract MockDEX {
 
     function swapWithReentrancy(address tokenIn, address tokenOut) external {
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
-            tokenIn: tokenIn, tokenOut: tokenOut, amountIn: 0, amountOutMin: 1, recipient: msg.sender, swapCalldata: ""
+            tokenIn: tokenIn,
+            tokenOut: tokenOut,
+            amountIn: 0,
+            amountOutMin: 1,
+            recipient: msg.sender,
+            swapCalldata: "",
+            deadline: block.timestamp
         });
 
         ISwapper(reentrancyTarget).executeSwap(params);
