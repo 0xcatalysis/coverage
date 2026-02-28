@@ -59,7 +59,9 @@ abstract contract UpgradeSwapper is Script {
         result.oldImplementation = Upgrades.getImplementationAddress(result.proxy);
 
         Swapper swapper = Swapper(payable(result.proxy));
-        require(swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), deployer), "Deployer must have DEFAULT_ADMIN_ROLE on Swapper");
+        require(
+            swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), deployer), "Deployer must have DEFAULT_ADMIN_ROLE on Swapper"
+        );
 
         vm.startBroadcast(deployerPrivateKey);
 

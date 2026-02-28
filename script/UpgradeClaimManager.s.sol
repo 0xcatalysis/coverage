@@ -59,9 +59,7 @@ abstract contract UpgradeClaimManager is Script {
         result.oldImplementation = Upgrades.getImplementationAddress(result.proxy);
 
         ClaimManager cm = ClaimManager(result.proxy);
-        require(
-            cm.hasRole(cm.DEFAULT_ADMIN_ROLE(), deployer), "Deployer must have DEFAULT_ADMIN_ROLE on ClaimManager"
-        );
+        require(cm.hasRole(cm.DEFAULT_ADMIN_ROLE(), deployer), "Deployer must have DEFAULT_ADMIN_ROLE on ClaimManager");
 
         vm.startBroadcast(deployerPrivateKey);
 

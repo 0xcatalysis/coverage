@@ -66,8 +66,7 @@ abstract contract UpgradePremiumCollector is Script {
 
         PremiumCollector pc = PremiumCollector(result.proxy);
         require(
-            pc.hasRole(pc.DEFAULT_ADMIN_ROLE(), deployer),
-            "Deployer must have DEFAULT_ADMIN_ROLE on PremiumCollector"
+            pc.hasRole(pc.DEFAULT_ADMIN_ROLE(), deployer), "Deployer must have DEFAULT_ADMIN_ROLE on PremiumCollector"
         );
 
         address newCoverPoolFactory = vm.envOr("COVER_POOL_FACTORY", address(0));
