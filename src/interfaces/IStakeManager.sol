@@ -47,13 +47,19 @@ interface IStakeManager {
     /// @param committeeId The ID of the committee to add the operator to.
     function addOperatorToCommittee(address operator, uint96 committeeId) external;
 
+    /// @notice Removes an operator from a committee.
+    /// @dev Called by the operator themselves or by POLICY_MANAGER_ROLE to free the slot.
+    /// @param operator The address of the operator to remove.
+    /// @param committeeId The ID of the committee to remove the operator from.
+    function removeOperatorFromCommittee(address operator, uint96 committeeId) external;
+
     /// @notice Associates vaults with a committee and configures them in the appropriate adapters.
     /// @param committeeId The ID of the committee.
     /// @param vaults The array of vault addresses to associate.
     function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external;
 
     /// @notice Returns the total stake for a committee across all registered vaults (USD, 8 decimals).
-    /// @dev Each committee has exactly one operator via the 1:1 policyId→committeeId mapping.
+    /// @dev Called by PolicyManager.bindPolicy to enforce stake sufficiency before policy activation.
     /// @param committeeId The ID of the committee.
     /// @return totalStakeUSD The total stake for the committee in USD (8 decimals).
     function getCommitteeTotalStakeUSD(uint96 committeeId) external view returns (uint256 totalStakeUSD);

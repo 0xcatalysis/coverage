@@ -12,6 +12,7 @@ import {IClaimManager} from "../../src/interfaces/IClaimManager.sol";
 import {IPremiumCollector} from "../../src/interfaces/IPremiumCollector.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
 import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
+import {ISwapper} from "../../src/interfaces/ISwapper.sol";
 
 /**
  * @title CompleteCoverageFlow
@@ -19,15 +20,15 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *         policy binding, premium distribution, and claim settlement.
  * @dev Exercises all 8 documented flows in sequence:
  *
- *      Phase 1  - Flow 1:   CoverPool Creation (factory → pool clone)
- *      Phase 2  - Flow 2:   Coverage Request (buyer requests coverage → policy draft + committee)
- *      Phase 3  - Flow 3:   Committee Verification (verify committee was created with policyId)
- *      Phase 4  - Flow 4:   [External] Restakers delegate (verified via stake query)
- *      Phase 5  - Flow 5:   Policy Binding (curator signs quote → binds vaults → activates policy)
- *      Phase 6  - Flow 6:   Premium Accrual Verification (vault shares check)
- *      Phase 7  - Flow 7:   Premium Distribution (collector → manager → fees + rewards)
- *      Phase 8  - Flow 8:   Claim Filing & Payout (file → evaluate → slash → swap → payout)
- *      Phase 9  - Summary:  End-to-end state verification
+ *      Phase 1  - Flow 1:  CoverPool Creation (factory → pool clone)
+ *      Phase 1b -          Operator cleanup (auto-release from prior committee for re-runs)
+ *      Phase 2  - Flow 2:  Coverage Request (buyer requests coverage → policy draft + committee)
+ *      Phase 3  - Flow 3:  Committee Verification (verify committee was created with policyId)
+ *      Phase 4  - Flow 4:  Policy Binding (curator signs quote → binds vaults → activates policy)
+ *      Phase 5  - Flow 5:  Premium Accrual Verification (vault shares check)
+ *      Phase 6  - Flow 6:  Premium Distribution (collector → manager → fees + rewards)
+ *      Phase 7  - Flow 7:  Claim Filing & Payout (file → evaluate → slash → swap → payout)
+ *      Phase 8  - Summary: End-to-end state verification
  *
  * Usage:
  *   forge script script/testing/CompleteCoverageFlow.s.sol:CompleteCoverageFlow \
@@ -78,6 +79,12 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *   Claim Params:
  *   - REQUESTED_CLAIM_AMOUNT: Payout amount to request in claim
  *   - EVIDENCE_HASH: Evidence hash (bytes32)
+ *
+ * Prerequisites for Phase 8 (Claim):
+ *   EigenLayer operator setup (magnitude allocation + operatorSet registration) is a
+ *   restaker/core responsibility and must be completed before running this script.
+ *   Use script/testing/PrepareEigenLayer.s.sol and wait for ALLOCATION_CONFIGURATION_DELAY
+ *   blocks (~15 min on Sepolia) before filing a claim.
  */
 contract CompleteCoverageFlow is Script {
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
@@ -161,14 +168,14 @@ contract CompleteCoverageFlow is Script {
         console.log("");
 
         _phase1_createCoverPool();
+        _phase1b_releaseOperator();
         _phase2_requestCoverage();
         _phase3_verifyCommittee();
-        _phase4_verifyRestakerDelegation();
-        _phase5_bindPolicy();
-        _phase6_verifyPremiumAccrual();
-        _phase7_distributePremiums();
-        _phase8_fileClaim();
-        _phase9_summary();
+        _phase4_bindPolicy();
+        _phase5_verifyPremiumAccrual();
+        _phase6_distributePremiums();
+        _phase7_fileClaim();
+        _phase8_summary();
 
         console.log("\n============================================");
         console.log("  E2E FLOW COMPLETED SUCCESSFULLY");
@@ -192,14 +199,18 @@ contract CompleteCoverageFlow is Script {
         coverPool = factory.computeCoverPoolAddress(params);
         console.log("Predicted CoverPool:", coverPool);
 
-        vm.startBroadcast(curatorPrivateKey);
-        factory.createCoverPool(params);
-        vm.stopBroadcast();
+        if (factory.coverPoolExists(coverPool)) {
+            console.log("[SKIP] Pool already exists at:", coverPool);
+        } else {
+            vm.startBroadcast(curatorPrivateKey);
+            factory.createCoverPool(params);
+            vm.stopBroadcast();
+            console.log("[OK] CoverPool created:", coverPool);
+        }
 
         require(factory.coverPoolExists(coverPool), "Phase 1: Pool not created");
         require(ICoverPool(coverPool).owner() == curator, "Phase 1: Owner mismatch");
 
-        console.log("[OK] CoverPool created:", coverPool);
         emit FlowCompleted("CoverPool Creation", 1);
     }
 
@@ -236,43 +247,20 @@ contract CompleteCoverageFlow is Script {
     function _phase3_verifyCommittee() internal {
         console.log("\n=== PHASE 3: COMMITTEE VERIFICATION ===");
 
-        uint256 stake = IStakeManager(stakeManager).getCommitteeTotalStakeUSD(policyId);
-        console.log("Committee total stake (USD):", stake);
         console.log("Committee ID:", policyId);
+        address[] memory committeeVaults = IStakeManager(stakeManager).getCommitteeVaults(policyId);
+        console.log("Committee vaults registered:", committeeVaults.length);
 
         console.log("[OK] Committee created and operator assigned");
         emit FlowCompleted("Committee Verification", 3);
     }
 
     // ═══════════════════════════════════════════
-    //  Phase 4: Restaker Delegation
+    //  Phase 4: Policy Binding
     // ═══════════════════════════════════════════
 
-    function _phase4_verifyRestakerDelegation() internal {
-        console.log("\n=== PHASE 4: RESTAKER DELEGATION CHECK ===");
-        console.log("NOTE: Restaker delegation happens externally (EigenLayer/Symbiotic)");
-        console.log("Checking current operator stake...");
-
-        uint256 totalStake = IStakeManager(stakeManager).getCommitteeTotalStakeUSD(policyId);
-        console.log("Committee total stake (USD):", totalStake);
-        console.log("Required coverage amount:", coverageAmount);
-
-        if (totalStake >= coverageAmount) {
-            console.log("[OK] Sufficient stake for policy binding");
-        } else {
-            console.log("[WARNING] Insufficient stake. Need more delegation before binding.");
-            console.log("Shortfall:", coverageAmount - totalStake);
-        }
-
-        emit FlowCompleted("Restaker Delegation Check", 4);
-    }
-
-    // ═══════════════════════════════════════════
-    //  Phase 5: Policy Binding
-    // ═══════════════════════════════════════════
-
-    function _phase5_bindPolicy() internal {
-        console.log("\n=== PHASE 5: POLICY BINDING ===");
+    function _phase4_bindPolicy() internal {
+        console.log("\n=== PHASE 4: POLICY BINDING ===");
 
         IPolicyManager pm = IPolicyManager(policyManager);
         IPolicyManager.PolicyDraft memory draft = pm.getPolicyDraft(policyId);
@@ -313,15 +301,15 @@ contract CompleteCoverageFlow is Script {
         console.log("Committee vaults:", committeeVaults.length);
         console.log("Coverage window:", startTime, "-", maturityTime);
         console.log("[OK] Policy binding complete, policy active");
-        emit FlowCompleted("Policy Binding", 5);
+        emit FlowCompleted("Policy Binding", 4);
     }
 
     // ═══════════════════════════════════════════
-    //  Phase 6: Premium Accrual Check
+    //  Phase 5: Premium Accrual Check
     // ═══════════════════════════════════════════
 
-    function _phase6_verifyPremiumAccrual() internal {
-        console.log("\n=== PHASE 6: PREMIUM ACCRUAL CHECK (Flow 6) ===");
+    function _phase5_verifyPremiumAccrual() internal {
+        console.log("\n=== PHASE 5: PREMIUM ACCRUAL CHECK ===");
 
         if (coveredVault == address(0)) {
             console.log("[SKIP] No covered vault configured");
@@ -350,15 +338,15 @@ contract CompleteCoverageFlow is Script {
         }
 
         console.log("[OK] Premium accrual check done");
-        emit FlowCompleted("Premium Accrual Check", 6);
+        emit FlowCompleted("Premium Accrual Check", 5);
     }
 
     // ═══════════════════════════════════════════
-    //  Phase 7: Premium Distribution
+    //  Phase 6: Premium Distribution
     // ═══════════════════════════════════════════
 
-    function _phase7_distributePremiums() internal {
-        console.log("\n=== PHASE 7: PREMIUM DISTRIBUTION (Flow 7) ===");
+    function _phase6_distributePremiums() internal {
+        console.log("\n=== PHASE 6: PREMIUM DISTRIBUTION ===");
 
         if (coveredVault == address(0)) {
             console.log("[SKIP] No covered vault configured");
@@ -387,15 +375,15 @@ contract CompleteCoverageFlow is Script {
         vm.stopBroadcast();
 
         console.log("[OK] Premiums distributed");
-        emit FlowCompleted("Premium Distribution", 7);
+        emit FlowCompleted("Premium Distribution", 6);
     }
 
     // ═══════════════════════════════════════════
-    //  Phase 8: Claim Filing
+    //  Phase 7: Claim Filing
     // ═══════════════════════════════════════════
 
-    function _phase8_fileClaim() internal {
-        console.log("\n=== PHASE 8: CLAIM FILING & PAYOUT (Flow 8) ===");
+    function _phase7_fileClaim() internal {
+        console.log("\n=== PHASE 7: CLAIM FILING & PAYOUT ===");
 
         if (requestedClaimAmount == 0) {
             console.log("[SKIP] No claim amount specified");
@@ -405,6 +393,8 @@ contract CompleteCoverageFlow is Script {
         IClaimManager cm = IClaimManager(claimManager);
         IPolicyManager pm = IPolicyManager(policyManager);
         IPolicyManager.PolicyMetadata memory metadata = pm.policyMetadata(policyId);
+
+        _logSwapperReadiness(cm, metadata);
 
         uint256 beneficiaryBalanceBefore = IERC20(metadata.payoutToken).balanceOf(metadata.beneficiary);
         uint256 remainingBefore = cm.remainingCoverage(policyId);
@@ -439,14 +429,68 @@ contract CompleteCoverageFlow is Script {
             console.log("[OK] Claim rejected by Spec evaluation");
         }
 
-        emit FlowCompleted("Claim Filing", 8);
+        emit FlowCompleted("Claim Filing", 7);
+    }
+
+    /**
+     * @notice Lightweight Swapper readiness check for the end-to-end flow.
+     * @dev Logs the Swapper address, max slippage, and whether a swap will be triggered
+     *      based on committee vault collateral tokens vs the policy payout token.
+     *      Does not revert on misconfiguration -- informational only in the E2E context.
+     */
+    function _logSwapperReadiness(IClaimManager cm, IPolicyManager.PolicyMetadata memory metadata) internal view {
+        console.log("\n  [Swapper Readiness]");
+        address swapper = cm.swapper();
+        console.log("  Swapper:", swapper);
+
+        address[] memory committeeVaults = IStakeManager(stakeManager).getCommitteeVaults(policyId);
+        bool swapNeeded = false;
+        for (uint256 i = 0; i < committeeVaults.length; i++) {
+            address collateralToken = _getVaultCollateralToken(committeeVaults[i]);
+            if (collateralToken != address(0) && collateralToken != metadata.payoutToken) {
+                swapNeeded = true;
+                ISwapper.SwapRoute memory route = ISwapper(swapper).getSwapRoute(collateralToken, metadata.payoutToken);
+                bool whitelisted = ISwapper(swapper).whitelistedTargets(route.swapTarget);
+                console.log("  Vault", i, "collateral:", collateralToken);
+                if (route.enabled && whitelisted) {
+                    console.log("  [OK] Swap route configured, target:", route.swapTarget);
+                } else {
+                    console.log("  [WARN] Swap route not ready -- enabled:", route.enabled);
+                    console.log("  [WARN] Swap target whitelisted:", whitelisted);
+                }
+            }
+        }
+        if (!swapNeeded) {
+            console.log("  All collateral tokens match payout token -- direct transfer, no swap needed");
+        }
+    }
+
+    /**
+     * @notice Probes a vault's collateral token via low-level staticcall.
+     * @dev Tries three signatures: collateral() (Symbiotic), asset() (ERC-4626),
+     *      underlyingToken() (EigenLayer IStrategy). Returns address(0) if none respond.
+     */
+    function _getVaultCollateralToken(address vault) internal view returns (address) {
+        bool ok;
+        bytes memory data;
+
+        (ok, data) = vault.staticcall(abi.encodeWithSignature("collateral()"));
+        if (ok && data.length >= 32) return abi.decode(data, (address));
+
+        (ok, data) = vault.staticcall(abi.encodeWithSignature("asset()"));
+        if (ok && data.length >= 32) return abi.decode(data, (address));
+
+        (ok, data) = vault.staticcall(abi.encodeWithSignature("underlyingToken()"));
+        if (ok && data.length >= 32) return abi.decode(data, (address));
+
+        return address(0);
     }
 
     // ═══════════════════════════════════════════
-    //  Phase 9: End-to-End Summary
+    //  Phase 8: End-to-End Summary
     // ═══════════════════════════════════════════
 
-    function _phase9_summary() internal view {
+    function _phase8_summary() internal view {
         console.log("\n============================================");
         console.log("  END-TO-END SUMMARY");
         console.log("============================================");
@@ -471,8 +515,6 @@ contract CompleteCoverageFlow is Script {
         console.log("Maturity Time:", metadata.maturityTime);
 
         console.log("\n--- Stake ---");
-        uint256 stake = IStakeManager(stakeManager).getCommitteeTotalStakeUSD(policyId);
-        console.log("Committee Total Stake (USD):", stake);
         address[] memory committeeVaults = IStakeManager(stakeManager).getCommitteeVaults(policyId);
         console.log("Committee Vaults:", committeeVaults.length);
 
@@ -490,6 +532,42 @@ contract CompleteCoverageFlow is Script {
         console.log("Platform Treasury:", mgr.platformTreasury());
 
         console.log("\n============================================");
+    }
+
+    // ═══════════════════════════════════════════
+    //  Phase 1b: Release Operator from Prior Committee
+    // ═══════════════════════════════════════════
+
+    /**
+     * @notice Releases the curator/operator from any prior committee so requestCoverage can
+     *         assign them to the new one.
+     * @dev StakeManager enforces one-operator-per-committee AND one-committee-per-operator.
+     *      Calling requestCoverage when the operator is already in a committee reverts with
+     *      OperatorAlreadyInCommittee, breaking re-runs of this script.
+     *
+     *      The operator's current committee ID is read directly from StakeManager storage
+     *      (mapping slot 6: operatorToCommitteeId) so no env-var knowledge of previous runs
+     *      is required. If the operator is not in any committee the phase is skipped.
+     */
+    function _phase1b_releaseOperator() internal {
+        console.log("\n=== PHASE 1b: OPERATOR COMMITTEE CLEANUP ===");
+
+        bytes32 mapSlot = keccak256(abi.encode(curator, uint256(6)));
+        uint96 currentCommitteeId = uint96(uint256(vm.load(stakeManager, mapSlot)));
+
+        if (currentCommitteeId == 0) {
+            console.log("[SKIP] Operator not currently assigned to any committee");
+            return;
+        }
+
+        console.log("Operator currently in committee:", currentCommitteeId, "-- releasing");
+
+        vm.startBroadcast(curatorPrivateKey);
+        IStakeManager(stakeManager).removeOperatorFromCommittee(curator, currentCommitteeId);
+        vm.stopBroadcast();
+
+        console.log("[OK] Operator released from committee", currentCommitteeId);
+        emit FlowCompleted("Release Operator", 15);
     }
 
     // ═══════════════════════════════════════════

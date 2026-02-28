@@ -189,8 +189,6 @@ contract BindPolicy is Script {
         require(draft.pool == coverPool, "Draft pool mismatch");
         console.log("Draft pool matches CoverPool");
 
-        uint256 totalStake = stakeManagerContract.getCommitteeTotalStakeUSD(policyId);
-        console.log("Committee total stake (USD):", totalStake);
         console.log("Required coverage amount:", draft.coverageAmount);
 
         console.log("[OK] Prerequisites verified");
