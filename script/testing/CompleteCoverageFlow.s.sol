@@ -41,6 +41,8 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   - QUOTE_SIGNER_PRIVATE_KEY: Quote signer private key
  *   - BUYER_PRIVATE_KEY: Coverage buyer private key
  *   - CLAIMER_PRIVATE_KEY: Authorized claimer private key
+ *   - ADMIN_PRIVATE_KEY: (optional) DEFAULT_ADMIN_ROLE key on PolicyManager; used to whitelist
+ *       PAYOUT_TOKEN if not already supported. Defaults to CURATOR_PRIVATE_KEY when omitted.
  *
  *   Coverage Contracts:
  *   - COVER_POOL_FACTORY: CoverPoolFactory proxy address
@@ -100,6 +102,7 @@ contract CompleteCoverageFlow is Script {
     address public buyer;
     uint256 public claimerPrivateKey;
     address public claimer;
+    uint256 public adminPrivateKey;
 
     // ── Coverage Contracts ──
     address public coverPoolFactory;
@@ -167,6 +170,7 @@ contract CompleteCoverageFlow is Script {
         console.log("Beneficiary:", beneficiary);
         console.log("");
 
+        _phase0_whitelistPayoutToken();
         _phase1_createCoverPool();
         _phase1b_releaseOperator();
         _phase2_requestCoverage();
@@ -181,6 +185,39 @@ contract CompleteCoverageFlow is Script {
         console.log("  E2E FLOW COMPLETED SUCCESSFULLY");
         console.log("============================================");
         emit EndToEndCompleted(policyId, coverPool, beneficiary);
+    }
+
+    // ═══════════════════════════════════════════
+    //  Phase 0: Admin Setup – Payout Token Whitelist
+    // ═══════════════════════════════════════════
+
+    /**
+     * @notice Whitelists the payout token on PolicyManager if not already supported.
+     * @dev Uses ADMIN_PRIVATE_KEY (falls back to CURATOR_PRIVATE_KEY) to call
+     *      setSupportedPayoutToken. Skipped when the token is already whitelisted so
+     *      re-runs of the script are idempotent.
+     */
+    function _phase0_whitelistPayoutToken() internal {
+        console.log("\n=== PHASE 0: PAYOUT TOKEN WHITELIST ===");
+
+        IPolicyManager pm = IPolicyManager(policyManager);
+
+        if (pm.supportedPayoutTokens(payoutToken)) {
+            console.log("[SKIP] Payout token already whitelisted:", payoutToken);
+            emit FlowCompleted("Payout Token Whitelist", 0);
+            return;
+        }
+
+        console.log("Whitelisting payout token:", payoutToken);
+
+        vm.startBroadcast(adminPrivateKey);
+        pm.setSupportedPayoutToken(payoutToken, true);
+        vm.stopBroadcast();
+
+        require(pm.supportedPayoutTokens(payoutToken), "Phase 0: Payout token not whitelisted");
+
+        console.log("[OK] Payout token whitelisted");
+        emit FlowCompleted("Payout Token Whitelist", 0);
     }
 
     // ═══════════════════════════════════════════
@@ -607,6 +644,7 @@ contract CompleteCoverageFlow is Script {
         buyer = vm.addr(buyerPrivateKey);
         claimerPrivateKey = vm.envUint("CLAIMER_PRIVATE_KEY");
         claimer = vm.addr(claimerPrivateKey);
+        adminPrivateKey = vm.envOr("ADMIN_PRIVATE_KEY", curatorPrivateKey);
     }
 
     function _loadContractAddresses() internal {

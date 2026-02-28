@@ -37,6 +37,9 @@ import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
  *   - CoverPool must exist in the CoverPoolFactory registry
  *   - Buyer must have funds for premium payments (collected separately)
  *   - bindPolicyHook must implement IBindPolicyHook interface
+ *   - PAYOUT_TOKEN must be whitelisted on PolicyManager via setSupportedPayoutToken(); run:
+ *       cast send $POLICY_MANAGER "setSupportedPayoutToken(address,bool)" \
+ *         $PAYOUT_TOKEN true --private-key $ADMIN_PRIVATE_KEY --rpc-url $RPC_URL
  */
 contract RequestCoverage is Script {
     /// @notice Buyer address derived from private key
@@ -114,6 +117,7 @@ contract RequestCoverage is Script {
         console.log("BindPolicyHook:", bindPolicyHook);
 
         _verifyPoolExists();
+        _verifyPayoutTokenSupported();
 
         vm.startBroadcast(buyerPrivateKey);
 
@@ -138,6 +142,18 @@ contract RequestCoverage is Script {
         bool exists = factoryContract.coverPoolExists(coverPool);
         console.log("CoverPool exists:", exists);
         require(exists, "CoverPool not found in factory");
+    }
+
+    function _verifyPayoutTokenSupported() internal view {
+        bool supported = policyManagerContract.supportedPayoutTokens(payoutToken);
+        console.log("Payout token whitelisted:", supported);
+        require(
+            supported,
+            string.concat(
+                "Payout token not whitelisted on PolicyManager. Run: cast send $POLICY_MANAGER ",
+                "\"setSupportedPayoutToken(address,bool)\" $PAYOUT_TOKEN true --private-key $ADMIN_PRIVATE_KEY"
+            )
+        );
     }
 
     function _verifyDraft(uint96 policyId) internal view {

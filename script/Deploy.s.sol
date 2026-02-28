@@ -251,7 +251,8 @@ abstract contract Deploy is Script {
         contracts.premiumCollectorProxy = Upgrades.deployUUPSProxy(
             "PremiumCollector.sol:PremiumCollector",
             abi.encodeCall(
-                PremiumCollector.initialize, (roles.deployer, contracts.premiumManagerProxy, distributeInterval)
+                PremiumCollector.initialize,
+                (roles.deployer, contracts.premiumManagerProxy, roles.deployer, distributeInterval)
             ),
             opts
         );
@@ -336,6 +337,8 @@ abstract contract Deploy is Script {
 
         PolicyManager(contracts.policyManagerProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
         SpecRegistry(contracts.specRegistryProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
+
+        PremiumCollector(contracts.premiumCollectorProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
     }
 
     /**

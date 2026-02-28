@@ -67,6 +67,9 @@ Checks:
 Effects:
 
 - status becomes `Cancelled`,
+- `StakeManager.removeOperatorFromCommittee(curator, policyId)` is called to release the
+  committee resources created in Phase 1 — the curator is removed as operator and the committee
+  slot is freed in Core,
 - no policy metadata is created.
 
 ## Phase 3: Bind Policy
