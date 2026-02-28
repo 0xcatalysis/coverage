@@ -225,9 +225,13 @@ contract FileClaim is Script {
 
             console.log("    [OK] Swap route enabled, target whitelisted:", route.swapTarget);
 
-            uint256 collateralUSD = priceFeedContract.getUSDValue(collateralToken, requestedAmount);
-            uint256 expectedOut = priceFeedContract.getTokenAmount(metadata.payoutToken, collateralUSD);
+            uint256 payoutUSD = priceFeedContract.getUSDValue(metadata.payoutToken, requestedAmount);
+            uint256 collateralNeeded = priceFeedContract.getTokenAmount(collateralToken, payoutUSD);
+            uint256 expectedOut = priceFeedContract.getTokenAmount(
+                metadata.payoutToken, priceFeedContract.getUSDValue(collateralToken, collateralNeeded)
+            );
             uint256 amountOutMin = expectedOut * (10_000 - slippageBps) / 10_000;
+            console.log("    Collateral to slash (oracle est.)    :", collateralNeeded);
             console.log("    Oracle-expected output (payout token):", expectedOut);
             console.log("    Min output after slippage            :", amountOutMin);
         }
