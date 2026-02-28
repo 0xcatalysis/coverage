@@ -25,6 +25,14 @@ Coverage contracts live in `src/`. Tests in `test/unit`, `test/fuzz`, and `test/
 
 Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus external Catalysis Core dependencies (`ISpecRegistry`, `ISlashingManager`, `IRewardsManager`, `IChainlinkPriceFeed`, `IStakeManager`).
 
+### Adapters (`src/adapters/`)
+
+Thin integration contracts connecting Coverage contracts to external protocols:
+
+| Adapter | Purpose |
+|---------|---------|
+| `UniswapV3Adapter.sol` | Bridges the Swapper's static-calldata pattern to Uniswap V3 SwapRouter02; deployed as `swapTarget` for Swapper routes when collateral must be swapped to payout token. |
+
 ### Mock Contracts (`src/mocks/`)
 
 Mock implementations of external dependencies for testnet deployments:
@@ -55,6 +63,14 @@ Mock implementations of external dependencies for testnet deployments:
 
 **Inspection:**
 - `Show.s.sol`, `ShowSepolia.s.sol`, `ShowEthereum.s.sol` – inspect deployment metadata
+
+**Testing Scripts (`script/testing/`):**
+- `CreateCoverPool.s.sol` – Flow 1: creates a CoverPool via CoverPoolFactory
+- `RequestCoverage.s.sol` – Flows 2–3: requests coverage, creates policy draft and committee
+- `BindPolicy.s.sol` – Flow 5: signs quote, binds policy, associates vaults
+- `DistributePremium.s.sol` – Flows 6–7: collects and distributes premiums from vault shares
+- `FileClaim.s.sol` – Flow 8: files claim; includes Swapper readiness check (route/target verification, oracle preview) and post-claim swap metrics (effective rate vs oracle)
+- `CompleteCoverageFlow.s.sol` – end-to-end lifecycle from pool creation through claim settlement; Phase 8 includes lightweight Swapper readiness logging
 
 ## Build, Test, and Development Commands
 
