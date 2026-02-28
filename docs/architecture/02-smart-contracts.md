@@ -18,6 +18,7 @@ graph LR
     PRM[PremiumManager]
     SR[SpecRegistry]
     SW[Swapper]
+    UV3[UniswapV3Adapter]
 
     CPF --> CP
     PM --> CP
@@ -27,6 +28,7 @@ graph LR
     PC --> PRM
     CM --> SR
     CM --> SW
+    SW --> UV3
 ```
 
 ## Core Coverage Contracts
@@ -201,6 +203,38 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 - `setSwapRoute(...)`, `setSwapTargetWhitelist(...)` for configuration.
 - `executeSwap(params)` for authorized executors (typically `ClaimManager`).
+
+**Key roles:**
+
+- `SWAP_MANAGER_ROLE` configures routes and whitelisted targets.
+- `SWAP_EXECUTOR_ROLE` calls `executeSwap` (held by `ClaimManager`).
+
+### 9) UniswapV3Adapter
+
+**Role:** Bridges the Swapper's static-calldata pattern to Uniswap V3 `SwapRouter02`.
+
+**Why it exists:** The Swapper stores one static calldata blob per `(tokenIn, tokenOut)` route and
+replays it verbatim on every swap. Uniswap V3's `exactInputSingle` requires the `amountIn` to be
+encoded in each call, making a direct route impossible. The adapter resolves `amountIn` dynamically
+from the allowance the Swapper grants it.
+
+**Integration pattern** (called by `Swapper._performSwap`):
+
+1. Swapper approves adapter for `amountIn` of `tokenIn`.
+2. Swapper calls `adapter.swap(tokenIn, tokenOut, fee)` via stored static calldata.
+3. Adapter reads `allowance(Swapper, adapter)` to obtain `amountIn`.
+4. Adapter pulls `tokenIn` from Swapper via `transferFrom`.
+5. Adapter calls `SwapRouter02.exactInputSingle` with `recipient = Swapper`.
+6. Router delivers `tokenOut` directly to Swapper.
+7. Adapter clears residual approval to the router.
+
+**Deployment:** `script/DeployUniswapV3Adapter.s.sol` deploys the adapter, whitelists it in
+`Swapper`, and configures the route in one transaction.
+
+| Network | SwapRouter02 |
+|---------|-------------|
+| Sepolia | `0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E` |
+| Mainnet | `0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45` |
 
 ## Covered Vault Integration Components (Morpho)
 

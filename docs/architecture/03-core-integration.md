@@ -15,9 +15,8 @@ This separation keeps restaking platform complexity out of Coverage contracts.
 | Coverage Contract | Core Contract | Function | Purpose |
 |---|---|---|---|
 | `PolicyManager` | `StakeManager` | `createCommittee(policyId, coverageAmount, pool, duration)` | Create policy-scoped committee; auto-assigns pool curator as operator |
-| `CoverPool` | `StakeManager` | `addCommitteeVaults(policyId, vaults[])` | Bind selected vaults/strategies backing policy |
+| `CoverPool` | `StakeManager` | `addCommitteeVaults(policyId, vaults[])` | Bind selected vaults/strategies backing policy; triggers internal stake sufficiency check |
 | `PolicyManager` | `StakeManager` | `getCommitteeVaults(policyId)` | Verify vault backing exists before bind finalization |
-| `PolicyManager` | `StakeManager` | `getCommitteeTotalStakeUSD(policyId)` | Enforce stake sufficiency before policy activation |
 | `PremiumManager` | `RewardsManager` | `distributeRewards(policyId, operator, amount, token, taskId)` | Trigger Core reward fan-out; SSPRouter pulls restaker share from PremiumManager |
 | `ClaimManager` | `ChainlinkPriceFeed` | `getUSDValue(token, amount)` | Normalize requested payout to USD slash target |
 | `ClaimManager` | `SlashingManager` | `executeSlashing(policyId, operator, slashAmountUSD, taskId)` | Execute policy-scoped slashing and retrieve collateral |
@@ -76,13 +75,14 @@ Sequence:
 
 1. Curator calls `CoverPool.bindPolicyForRequest(...)` with quote and vaults.
 2. Pool calls `StakeManager.addCommitteeVaults(policyId, vaults)`.
+   - `SSPRouter._checkDelegation` runs internally and reverts with `InsufficientDelegationAmount`
+     if `EigenAdapter.getStrategiesStakeUSD(vaults)` < `committeeMaxStake` (= `coverageAmount`).
 3. `PolicyManager.bindPolicy(...)` checks:
-   - committee has vaults (`getCommitteeVaults`),
-   - operator stake covers requested amount (`getCommitteeTotalStakeUSD`).
+   - committee has at least one vault (`getCommitteeVaults`).
 
 Outcome:
 
-- Policy transitions to bound/active state only when Core backing is present.
+- Policy transitions to bound/active state only when Core backing is present and stake is sufficient.
 
 ### 4) Premium Rewards Routing
 
@@ -141,7 +141,6 @@ Failure patterns:
 
 - Keep `policyId` and committee references consistent in all off-chain orchestration.
 - Ensure restakers have deposited into the committee's duration vault before bind. Duration vaults act as EigenLayer operators — no separate magnitude allocation or operator-set registration is needed. See [Restaker Setup](./04-restaker-setup.md).
-- Pre-check committee stake before attempting bind (`getCommitteeTotalStakeUSD(policyId)`).
 - Register and verify vault module mappings in Core (`SSPRouter.registerVaultModule`) before bind.
 - Configure swap routes for expected collateral → payout token pairs before claims.
 - `WETH` price feed must be registered in `ChainlinkPriceFeed` before claims can be filed against WETH-payout policies.

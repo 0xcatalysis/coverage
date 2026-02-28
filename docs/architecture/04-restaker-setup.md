@@ -7,7 +7,8 @@ slashable by the policy's committee. This process involves depositing directly i
 duration vault (and optionally a Symbiotic vault).
 
 The restaker deposit is performed directly against EigenLayer contracts (no Coverage script needed).
-`script/testing/CompleteCoverageFlow.s.sol` verifies stake sufficiency in Phase 4 before binding.
+Stake sufficiency is enforced at bind time by `SSPRouter._checkDelegation` inside `addCommitteeVaults`
+and does not require a separate verification step.
 
 ## Duration Vault Model (EigenLayer)
 
@@ -70,9 +71,11 @@ Example: to cover `coverageAmount = 100_000_000_000` (1000 USD at 8 decimals), a
 These steps are performed by the curator via `CoverPool.bindPolicyForRequest(...)`, which:
 
 1. calls `StakeManager.addCommitteeVaults(policyId, [durationVaultStrategy])` — registers the
-   vault as a committee vault and calls `EigenAdapter.addStrategiesToOperatorSet` to configure it,
-2. calls `PolicyManager.bindPolicy(...)` — verifies that stake ≥ `coverageAmount` (via
-   `StakeManager.getCommitteeTotalStakeUSD`) and activates the policy.
+   vault as a committee vault, calls `EigenAdapter.addStrategiesToOperatorSet` to configure it,
+   and runs `SSPRouter._checkDelegation` which reverts with `InsufficientDelegationAmount` if
+   `EigenAdapter.getStrategiesStakeUSD(vaults)` < `committeeMaxStake`,
+2. calls `PolicyManager.bindPolicy(...)` — verifies committee has at least one vault and activates
+   the policy.
 
 The `_checkDelegation` call inside `SSPRouter.addCommitteeVaults` computes
 `EigenAdapter.getStrategiesStakeUSD(vaults)` and reverts with
@@ -105,11 +108,6 @@ After policy binding and premium collection, premiums are distributed as follows
 
 **Prerequisite**: admin must call `PremiumManager.approveSpender(token, sspRouter, type(uint256).max)`
 once during initial setup so that SSPRouter has an unlimited allowance to pull tokens.
-
-## Symbiotic Path (Out of Scope for E2E Testing)
-
-Symbiotic integration is supported by the core contracts but is **out of scope for e2e testing**.
-The `PrepareBindPolicy.s.sol` script covers EigenLayer only.
 
 ## Vault Module Registration Prerequisite
 
