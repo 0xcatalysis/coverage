@@ -275,6 +275,13 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function getBoundPolicy(uint96 policyId) external view returns (BoundPolicy memory);
 
     /**
+     * @notice Returns whether a policy identifier is currently bound to this pool.
+     * @param policyId Policy identifier to check.
+     * @return True if the policy is bound, false otherwise.
+     */
+    function hasBoundPolicy(uint96 policyId) external view returns (bool);
+
+    /**
      * @notice Pool fee expressed in basis points that is applied to premiums.
      * @return The pool fee in basis points.
      */

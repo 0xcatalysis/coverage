@@ -166,6 +166,13 @@ interface IPolicyManager is IAccessControl {
     event CoverPoolFactorySet(address indexed coverPoolFactory_);
 
     /**
+     * @notice Emitted when a payout token is added to or removed from the supported whitelist.
+     * @param token ERC20 token address.
+     * @param supported Whether the token is now supported.
+     */
+    event PayoutTokenSet(address indexed token, bool supported);
+
+    /**
      * @notice Reverts when a zero address is provided where not allowed.
      */
     error ZeroAddress();
@@ -271,6 +278,12 @@ interface IPolicyManager is IAccessControl {
      * @notice Reverts when bindPolicyHook is the zero address.
      */
     error InvalidBindPolicyHook();
+
+    /**
+     * @notice Reverts when a payout token is not in the supported whitelist.
+     * @param payoutToken Token address that failed validation.
+     */
+    error UnsupportedPayoutToken(address payoutToken);
 
     /**
      * @notice Reverts when the bound policy duration doesn't match the requested duration.
@@ -380,6 +393,20 @@ interface IPolicyManager is IAccessControl {
      * @notice Returns the configured CoverPoolFactory address.
      */
     function coverPoolFactory() external view returns (address);
+
+    /**
+     * @notice Adds or removes a payout token from the supported whitelist.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param token ERC20 token address.
+     * @param supported True to allow, false to disallow.
+     */
+    function setSupportedPayoutToken(address token, bool supported) external;
+
+    /**
+     * @notice Returns true if the given token is whitelisted as a payout token.
+     * @param token ERC20 token address.
+     */
+    function supportedPayoutTokens(address token) external view returns (bool);
 
     /**
      * @notice Returns policy metadata for a given policy ID.

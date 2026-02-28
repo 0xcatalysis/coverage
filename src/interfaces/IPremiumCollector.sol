@@ -69,6 +69,12 @@ interface IPremiumCollector is IAccessControl {
     event PremiumManagerSet(address indexed premiumManager_);
 
     /**
+     * @notice Emitted when the CoverPoolFactory dependency is set or updated.
+     * @param coverPoolFactory_ Address of the cover pool factory contract.
+     */
+    event CoverPoolFactorySet(address indexed coverPoolFactory_);
+
+    /**
      * @notice Reverts when attempting to register a vault that's already registered.
      * @param vault Address of the vault.
      */
@@ -86,6 +92,12 @@ interface IPremiumCollector is IAccessControl {
      * @param shares Amount of remaining shares.
      */
     error VaultHasShares(address vault, uint256 shares);
+
+    /**
+     * @notice Reverts when the supplied pool is not registered in the CoverPoolFactory.
+     * @param pool Pool address that failed validation.
+     */
+    error InvalidCoverPool(address pool);
 
     /**
      * @notice Reverts when a zero address is provided where not allowed.
@@ -168,6 +180,13 @@ interface IPremiumCollector is IAccessControl {
     function setPremiumManager(address premiumManager_) external;
 
     /**
+     * @notice Sets the CoverPoolFactory contract used for pool validation.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param coverPoolFactory_ Address of the CoverPoolFactory implementation.
+     */
+    function setCoverPoolFactory(address coverPoolFactory_) external;
+
+    /**
      * @notice Returns the list of all registered vaults.
      * @return Array of registered vault addresses.
      */
@@ -200,6 +219,11 @@ interface IPremiumCollector is IAccessControl {
      * @notice Returns the configured PremiumManager address.
      */
     function premiumManager() external view returns (address);
+
+    /**
+     * @notice Returns the configured CoverPoolFactory address.
+     */
+    function coverPoolFactory() external view returns (address);
 
     /**
      * @notice Returns the distribute interval in seconds.

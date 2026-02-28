@@ -98,6 +98,9 @@ contract PolicyManagerTest is Test {
         );
         policyManager = PolicyManager(proxy);
 
+        vm.prank(admin);
+        policyManager.setSupportedPayoutToken(payoutToken, true);
+
         vm.label(address(policyManager), "PolicyManager");
         vm.label(address(coverPool), "CoverPool");
     }
@@ -863,6 +866,56 @@ contract PolicyManagerTest is Test {
         );
     }
 
+    function test_requestCoverage_WhenPayoutTokenNotSupported_Reverts() public {
+        address unsupportedToken = makeAddr("unsupportedToken");
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.UnsupportedPayoutToken.selector, unsupportedToken));
+        vm.prank(buyer);
+        policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            unsupportedToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+    }
+
+    function test_setSupportedPayoutToken_WhenAdmin_SetsToken() public {
+        address newToken = makeAddr("newToken");
+        assertFalse(policyManager.supportedPayoutTokens(newToken), "Should not be supported before");
+
+        vm.expectEmit(true, true, true, true, address(policyManager));
+        emit IPolicyManager.PayoutTokenSet(newToken, true);
+
+        vm.prank(admin);
+        policyManager.setSupportedPayoutToken(newToken, true);
+
+        assertTrue(policyManager.supportedPayoutTokens(newToken), "Should be supported after");
+    }
+
+    function test_setSupportedPayoutToken_WhenAdmin_RemovesToken() public {
+        vm.prank(admin);
+        policyManager.setSupportedPayoutToken(payoutToken, false);
+        assertFalse(policyManager.supportedPayoutTokens(payoutToken), "Should not be supported after removal");
+    }
+
+    function test_setSupportedPayoutToken_WhenNotAdmin_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(buyer);
+        policyManager.setSupportedPayoutToken(payoutToken, false);
+    }
+
+    function test_setSupportedPayoutToken_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(admin);
+        policyManager.setSupportedPayoutToken(address(0), true);
+    }
+
     function test_requestCoverage_WhenCoverageAmountZero_Reverts() public {
         vm.expectRevert(IPolicyManager.InvalidCoverageAmount.selector);
         vm.prank(buyer);
@@ -1041,6 +1094,26 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         vm.prank(buyer);
         policyManager.cancelPolicyDraft(policyId);
+    }
+
+    function test_cancelPolicyDraft_CallsRemoveOperatorFromCommittee() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        assertTrue(mockStakeManager.committeeExists(policyId), "Committee should exist before cancel");
+
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId);
+
+        assertEq(mockStakeManager.getOperatorCommittee(curator), 0, "Operator should be removed from committee");
     }
 
     function test_cancelPolicyDraft_CancelsSuccessfully() public {
@@ -2038,6 +2111,11 @@ contract MockStakeManager {
 
     function committeeExists(uint96 committeeId) external view returns (bool) {
         return _committeeExists[committeeId];
+    }
+
+    function removeOperatorFromCommittee(address operator, uint96 committeeId) external {
+        delete _operatorCommittees[operator];
+        delete _committeeOperators[committeeId];
     }
 }
 

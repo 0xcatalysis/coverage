@@ -9,6 +9,7 @@ import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {PremiumManager} from "../../src/PremiumManager.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
+import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 
 contract PremiumManagerTest is Test {
     uint16 internal constant PLATFORM_FEE_BPS = 50;
@@ -72,8 +73,9 @@ contract PremiumManagerTest is Test {
         vm.label(address(mockPool), "MockPool");
 
         bytes32 collectorRole = premiumManager.PREMIUM_COLLECTOR_ROLE();
-        vm.prank(admin);
+        vm.startPrank(admin);
         premiumManager.grantRole(collectorRole, premiumCollector);
+        vm.stopPrank();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -333,6 +335,13 @@ contract PremiumManagerTest is Test {
         vm.expectRevert(IPremiumManager.InvalidPolicyId.selector);
         vm.prank(premiumCollector);
         premiumManager.distributePremium(pool, 0, address(premiumToken), PREMIUM_AMOUNT);
+    }
+
+    function test_distributePremium_WhenPolicyNotBound_Reverts() public {
+        mockPool.setPermissive(false);
+        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.PolicyNotBound.selector, POLICY_ID, pool));
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
     function test_distributePremium_WhenPoolFeeRecipientZero_Reverts() public {
@@ -874,9 +883,25 @@ contract MockCoverPool {
     address public feeRecipient;
     uint16 public poolFeeBps;
 
+    bool private _permissive = true;
+
     constructor(address owner_, address feeRecipient_, uint16 poolFeeBps_) {
         owner = owner_;
         feeRecipient = feeRecipient_;
         poolFeeBps = poolFeeBps_;
     }
+
+    function setPermissive(bool permissive) external {
+        _permissive = permissive;
+    }
+
+    function hasBoundPolicy(uint96 policyId) external view returns (bool) {
+        return _permissive && policyId != 0;
+    }
+
+    function getBoundPolicy(uint96 policyId) external view returns (ICoverPool.BoundPolicy memory policy) {
+        if (!_permissive) revert ICoverPool.PolicyNotFound(policyId);
+        policy.policyId = policyId;
+    }
 }
+

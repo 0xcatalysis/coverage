@@ -36,6 +36,7 @@ contract PolicyManager is
     mapping(uint96 policyId => PolicyDraft draft) private _policyDrafts;
     mapping(uint96 policyId => IPolicyManager.PolicyMetadata) private _policies;
     mapping(bytes32 policyCommit => bool registered) private _registeredPolicyCommits;
+    mapping(address token => bool supported) public override supportedPayoutTokens;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -118,6 +119,15 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
+    function setSupportedPayoutToken(address token, bool supported) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(token != address(0), ZeroAddress());
+        supportedPayoutTokens[token] = supported;
+        emit PayoutTokenSet(token, supported);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
     function requestCoverage(
         address pool,
         address beneficiary,
@@ -135,6 +145,7 @@ contract PolicyManager is
     {
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
         require(beneficiary != address(0) && claimer != address(0) && payoutToken != address(0), ZeroAddress());
+        require(supportedPayoutTokens[payoutToken], UnsupportedPayoutToken(payoutToken));
         require(coverageAmount != 0, InvalidCoverageAmount());
         require(duration != 0, InvalidDuration());
         require(bindPolicyHook != address(0), InvalidBindPolicyHook());
@@ -180,6 +191,10 @@ contract PolicyManager is
         require(draft.buyer == msg.sender, NotPolicyBuyer(msg.sender));
 
         draft.status = PolicyStatus.Cancelled;
+
+        address curator = ICoverPool(draft.pool).owner();
+        IStakeManager(stakeManager).removeOperatorFromCommittee(curator, policyId);
+
         emit PolicyDraftCancelled(policyId, draft.pool);
     }
 

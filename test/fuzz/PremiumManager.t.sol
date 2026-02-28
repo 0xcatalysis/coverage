@@ -33,6 +33,10 @@ contract FuzzCoverPool {
         feeRecipient = feeRecipient_;
         poolFeeBps = poolFeeBps_;
     }
+
+    function hasBoundPolicy(uint96 policyId) external pure returns (bool) {
+        return policyId != 0;
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -149,6 +149,7 @@ contract PremiumManager is
         require(pool != address(0) && premiumToken != address(0), ZeroAddress());
         require(amount != 0, ZeroAmount());
         require(policyId != 0, InvalidPolicyId());
+        require(ICoverPool(pool).hasBoundPolicy(policyId), PolicyNotBound(policyId, pool));
 
         uint16 poolFeeBps = ICoverPool(pool).poolFeeBps();
         address curator = ICoverPool(pool).owner();

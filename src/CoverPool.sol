@@ -206,6 +206,13 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     }
 
     /**
+     * @inheritdoc ICoverPool
+     */
+    function hasBoundPolicy(uint96 policyId) external view override returns (bool) {
+        return boundPolicies[policyId].policyId != 0;
+    }
+
+    /**
      * @dev See {AccessControlDefaultAdminRulesUpgradeable-grantRole}.
      */
     function grantRole(

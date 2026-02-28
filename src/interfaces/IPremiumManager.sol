@@ -73,6 +73,13 @@ interface IPremiumManager is IAccessControl {
     error InvalidPlatformFeeBps(uint16 feeBps);
 
     /**
+     * @notice Reverts when policyId is not bound to the supplied pool.
+     * @param policyId Policy identifier that was not found in the pool.
+     * @param pool CoverPool address that was queried.
+     */
+    error PolicyNotBound(uint96 policyId, address pool);
+
+    /**
      * @notice Pauses premium processing operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
