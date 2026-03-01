@@ -514,6 +514,99 @@ contract SwapperTest is Test {
         assertFalse(route.enabled, "Route should be disabled");
     }
 
+    function test_setSwapRoute_UpdateExistingRoute_UpdatesTarget() public {
+        address dexTarget2 = makeAddr("dexTarget2");
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
+
+        ISwapper.SwapRoute memory route1 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertEq(route1.swapTarget, dexTarget, "Initial target mismatch");
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget2, true);
+
+        vm.startPrank(swapManager);
+        vm.expectEmit(true, true, false, true);
+        emit SwapRouteSet(address(tokenIn), address(tokenOut), dexTarget2, true);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true, "");
+        vm.stopPrank();
+
+        ISwapper.SwapRoute memory route2 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertEq(route2.swapTarget, dexTarget2, "Updated target mismatch");
+        assertEq(route2.tokenIn, address(tokenIn), "TokenIn should remain same");
+        assertEq(route2.tokenOut, address(tokenOut), "TokenOut should remain same");
+        assertTrue(route2.enabled, "Route should remain enabled");
+    }
+
+    function test_setSwapRoute_UpdateRouteTarget_OldTargetSwapsFail() public {
+        address dexTarget2 = makeAddr("dexTarget2");
+        MockDEX mockDex2 = new MockDEX();
+        dexTarget2 = address(mockDex2);
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget2, true);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true, "");
+
+        uint256 amountIn = 100 ether;
+        uint256 amountOut = 95 ether;
+
+        tokenIn.mint(swapExecutor, amountIn);
+        tokenOut.mint(dexTarget2, amountOut);
+
+        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
+        ISwapper.SwapParams memory params = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: address(tokenOut),
+            amountIn: amountIn,
+            amountOutMin: 90 ether,
+            recipient: recipient,
+            swapCalldata: swapCalldata,
+            deadline: block.timestamp
+        });
+
+        vm.startPrank(swapExecutor);
+        tokenIn.approve(address(swapper), amountIn);
+        uint256 actualOut = swapper.executeSwap(params);
+        vm.stopPrank();
+
+        assertEq(actualOut, amountOut, "Swap should use new target");
+        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient should receive tokens");
+    }
+
+    function test_setSwapRoute_UpdateRouteEnabled_TogglesCorrectly() public {
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        vm.startPrank(swapManager);
+
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
+        ISwapper.SwapRoute memory route1 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertTrue(route1.enabled, "Route should be enabled");
+
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, false, "");
+        ISwapper.SwapRoute memory route2 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertFalse(route2.enabled, "Route should be disabled");
+        assertEq(route2.swapTarget, dexTarget, "Target should remain same");
+
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
+        ISwapper.SwapRoute memory route3 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertTrue(route3.enabled, "Route should be re-enabled");
+
+        vm.stopPrank();
+    }
+
     /*//////////////////////////////////////////////////////////////
                             EXECUTE SWAP
     //////////////////////////////////////////////////////////////*/
@@ -1088,99 +1181,6 @@ contract SwapperTest is Test {
         assertEq(tokenOut.balanceOf(recipient2), amountOut, "Recipient2 balance mismatch");
     }
 
-    function test_setSwapRoute_UpdateExistingRoute_UpdatesTarget() public {
-        address dexTarget2 = makeAddr("dexTarget2");
-
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
-
-        ISwapper.SwapRoute memory route1 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertEq(route1.swapTarget, dexTarget, "Initial target mismatch");
-
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget2, true);
-
-        vm.startPrank(swapManager);
-        vm.expectEmit(true, true, false, true);
-        emit SwapRouteSet(address(tokenIn), address(tokenOut), dexTarget2, true);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true, "");
-        vm.stopPrank();
-
-        ISwapper.SwapRoute memory route2 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertEq(route2.swapTarget, dexTarget2, "Updated target mismatch");
-        assertEq(route2.tokenIn, address(tokenIn), "TokenIn should remain same");
-        assertEq(route2.tokenOut, address(tokenOut), "TokenOut should remain same");
-        assertTrue(route2.enabled, "Route should remain enabled");
-    }
-
-    function test_setSwapRoute_UpdateRouteTarget_OldTargetSwapsFail() public {
-        address dexTarget2 = makeAddr("dexTarget2");
-        MockDEX mockDex2 = new MockDEX();
-        dexTarget2 = address(mockDex2);
-
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
-
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget2, true);
-
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true, "");
-
-        uint256 amountIn = 100 ether;
-        uint256 amountOut = 95 ether;
-
-        tokenIn.mint(swapExecutor, amountIn);
-        tokenOut.mint(dexTarget2, amountOut);
-
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
-        ISwapper.SwapParams memory params = ISwapper.SwapParams({
-            tokenIn: address(tokenIn),
-            tokenOut: address(tokenOut),
-            amountIn: amountIn,
-            amountOutMin: 90 ether,
-            recipient: recipient,
-            swapCalldata: swapCalldata,
-            deadline: block.timestamp
-        });
-
-        vm.startPrank(swapExecutor);
-        tokenIn.approve(address(swapper), amountIn);
-        uint256 actualOut = swapper.executeSwap(params);
-        vm.stopPrank();
-
-        assertEq(actualOut, amountOut, "Swap should use new target");
-        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient should receive tokens");
-    }
-
-    function test_setSwapRoute_UpdateRouteEnabled_TogglesCorrectly() public {
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-
-        vm.startPrank(swapManager);
-
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
-        ISwapper.SwapRoute memory route1 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertTrue(route1.enabled, "Route should be enabled");
-
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, false, "");
-        ISwapper.SwapRoute memory route2 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertFalse(route2.enabled, "Route should be disabled");
-        assertEq(route2.swapTarget, dexTarget, "Target should remain same");
-
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
-        ISwapper.SwapRoute memory route3 = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertTrue(route3.enabled, "Route should be re-enabled");
-
-        vm.stopPrank();
-    }
-
     /*//////////////////////////////////////////////////////////////
                                 UPGRADE
     //////////////////////////////////////////////////////////////*/
@@ -1205,6 +1205,68 @@ contract SwapperTest is Test {
         assertTrue(swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), admin), "Admin role should be preserved");
         assertTrue(swapper.hasRole(swapper.SWAP_MANAGER_ROLE(), swapManager), "SwapManager role should be preserved");
         assertTrue(swapper.hasRole(swapper.SWAP_EXECUTOR_ROLE(), swapExecutor), "SwapExecutor role should be preserved");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                     SET SWAP ROUTE (STORED CALLDATA)
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setSwapRoute_WithNonEmptyCalldata_StoresAndReturnsIt() public {
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        bytes memory storedCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, storedCalldata);
+
+        ISwapper.SwapRoute memory route = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertEq(route.swapCalldata, storedCalldata, "Stored calldata mismatch");
+    }
+
+    function test_getSwapRoute_WhenRouteNotConfigured_ReturnsZeroStruct() public {
+        address unknown1 = makeAddr("unknown1");
+        address unknown2 = makeAddr("unknown2");
+
+        ISwapper.SwapRoute memory route = swapper.getSwapRoute(unknown1, unknown2);
+        assertEq(route.tokenIn, address(0), "tokenIn should be zero");
+        assertEq(route.tokenOut, address(0), "tokenOut should be zero");
+        assertEq(route.swapTarget, address(0), "swapTarget should be zero");
+        assertFalse(route.enabled, "enabled should be false");
+        assertEq(route.swapCalldata.length, 0, "swapCalldata should be empty");
+    }
+
+    function test_executeSwap_WhenParamsCalldataEmpty_UsesStoredRouteCalldata() public {
+        uint256 amountIn = 100 ether;
+        uint256 amountOut = 95 ether;
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        bytes memory storedCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, storedCalldata);
+
+        tokenIn.mint(swapExecutor, amountIn);
+        tokenOut.mint(dexTarget, amountOut);
+
+        ISwapper.SwapParams memory params = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: address(tokenOut),
+            amountIn: amountIn,
+            amountOutMin: 90 ether,
+            recipient: recipient,
+            swapCalldata: "",
+            deadline: block.timestamp
+        });
+
+        vm.startPrank(swapExecutor);
+        tokenIn.approve(address(swapper), amountIn);
+        uint256 actualOut = swapper.executeSwap(params);
+        vm.stopPrank();
+
+        assertEq(actualOut, amountOut, "amountOut mismatch");
+        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient did not receive output");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1267,7 +1329,6 @@ contract MockDEX {
     function swap(address tokenIn, address tokenOut) external {
         require(!shouldRevert, "Mock swap failed");
 
-        // Pull input tokens from caller (mimics real DEX behavior)
         if (tokenIn != address(0)) {
             try MockToken(tokenIn)
                 .transferFrom(
@@ -1278,7 +1339,6 @@ contract MockDEX {
                 catch {}
         }
 
-        // Handle both ERC20 and WETH
         if (tokenOut.code.length > 0) {
             try MockToken(tokenOut).balanceOf(address(this)) returns (uint256 balance) {
                 if (balance > 0) {
@@ -1288,7 +1348,6 @@ contract MockDEX {
             } catch {}
         }
 
-        // If tokenOut is WETH or has ETH balance, wrap and send
         if (address(this).balance > 0) {
             MockWETH(payable(tokenOut)).deposit{value: address(this).balance}();
             uint256 wethBalance = MockWETH(payable(tokenOut)).balanceOf(address(this));
@@ -1332,7 +1391,6 @@ contract MockWETH is ERC20 {
 }
 
 contract RejectEther {
-    // Contract that rejects all ETH transfers
     receive() external payable {
         revert("ETH not accepted");
     }

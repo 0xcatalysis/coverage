@@ -756,6 +756,65 @@ contract CoverPoolTest is Test {
         coverPool.getBoundPolicy(999);
     }
 
+    function test_hasBoundPolicy_WhenPolicyNotBound_ReturnsFalse() public view {
+        assertFalse(coverPool.hasBoundPolicy(999), "Should return false for unknown policy");
+    }
+
+    function test_hasBoundPolicy_WhenPolicyBound_ReturnsTrue() public {
+        uint96 policyId = _createDraft();
+        ICoverPool.Quote memory quote = _defaultQuote();
+        quote.policyId = policyId;
+        quote.beneficiary = beneficiary;
+        bytes memory signature = _signQuote(quote);
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault1");
+        address spec = makeAddr("spec");
+
+        vm.mockCall(
+            specRegistry, abi.encodeWithSignature("registerSpec(bytes32,address)", quote.specId, spec), abi.encode()
+        );
+        vm.mockCall(
+            stakeManager,
+            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encode()
+        );
+
+        assertFalse(coverPool.hasBoundPolicy(policyId), "Should be false before binding");
+
+        vm.prank(curator);
+        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
+
+        assertTrue(coverPool.hasBoundPolicy(policyId), "Should be true after binding");
+    }
+
+    function test_bindPolicyForRequest_WhenSamePolicyCommitReused_Reverts() public {
+        uint96 policyId = _createDraft();
+        ICoverPool.Quote memory quote = _defaultQuote();
+        quote.policyId = policyId;
+        quote.beneficiary = beneficiary;
+        bytes memory signature = _signQuote(quote);
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault1");
+        address spec = makeAddr("spec");
+
+        vm.mockCall(
+            specRegistry, abi.encodeWithSignature("registerSpec(bytes32,address)", quote.specId, spec), abi.encode()
+        );
+        vm.mockCall(
+            stakeManager,
+            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encode()
+        );
+
+        vm.prank(curator);
+        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
+
+        bytes32 policyCommit = _structHash(quote);
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyAlreadyBound.selector, policyCommit));
+        vm.prank(curator);
+        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
+    }
+
     /*//////////////////////////////////////////////////////////////
                              GRANT ROLE
     //////////////////////////////////////////////////////////////*/
@@ -966,9 +1025,6 @@ contract CoverPoolTest is Test {
         vm.stopPrank();
     }
 
-    /*//////////////////////////////////////////////////////////////
-                                HELPERS
-    //////////////////////////////////////////////////////////////*/
     /*//////////////////////////////////////////////////////////////
                                  HELPERS
     //////////////////////////////////////////////////////////////*/

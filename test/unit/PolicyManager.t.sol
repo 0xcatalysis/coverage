@@ -268,10 +268,6 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                             SET POLICY
-    //////////////////////////////////////////////////////////////*/
-
-    /*//////////////////////////////////////////////////////////////
                             BIND POLICY
     //////////////////////////////////////////////////////////////*/
 
@@ -822,7 +818,7 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         CREATE POLICY DRAFT
+                          REQUEST COVERAGE
     //////////////////////////////////////////////////////////////*/
 
     function test_requestCoverage_WhenPoolNotRegistered_Reverts() public {
@@ -891,6 +887,10 @@ contract PolicyManagerTest is Test {
         );
     }
 
+    /*//////////////////////////////////////////////////////////////
+                    SET SUPPORTED PAYOUT TOKEN
+    //////////////////////////////////////////////////////////////*/
+
     function test_setSupportedPayoutToken_WhenAdmin_SetsToken() public {
         address newToken = makeAddr("newToken");
         assertFalse(policyManager.supportedPayoutTokens(newToken), "Should not be supported before");
@@ -927,7 +927,7 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    INITIALIZE WITH PAYOUT TOKENS
+                    INITIALIZE (PAYOUT TOKENS)
     //////////////////////////////////////////////////////////////*/
 
     function test_initialize_SeedsInitialPayoutTokens() public {
@@ -1475,7 +1475,7 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          REQUEST COVERAGE
+                    REQUEST COVERAGE (COMMITTEE)
     //////////////////////////////////////////////////////////////*/
 
     function test_requestCoverage_CreatesCommitteeWithPolicyIdAsCommitteeId() public {
@@ -1705,7 +1705,6 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
 
         IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
-        // Policy uses the startTime provided by CoverPool
         assertEq(metadata.startTime, boundPolicy.startTime, "Start time should match boundPolicy");
         assertEq(metadata.maturityTime, boundPolicy.maturityTime, "Maturity time should match boundPolicy");
     }
@@ -2007,7 +2006,6 @@ contract PolicyManagerTest is Test {
 
         vm.stopPrank();
 
-        // Each policy creates its own unique committee with matching ID
         assertNotEq(policyId1, policyId2, "PolicyIds should be unique");
         assertTrue(mockStakeManager.committeeExists(policyId1), "Committee 1 should exist");
         assertTrue(mockStakeManager.committeeExists(policyId2), "Committee 2 should exist");
@@ -2031,6 +2029,28 @@ contract PolicyManagerTest is Test {
         assertEq(draft.beneficiary, beneficiary, "Beneficiary should be set correctly");
         assertEq(draft.claimer, separateClaimer, "Claimer should be set correctly");
         assertNotEq(draft.beneficiary, draft.claimer, "Beneficiary and claimer can be different addresses");
+    }
+
+    function test_policyMetadata_WhenPolicyNotFound_Reverts() public {
+        uint96 nonExistentPolicyId = 999;
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.PolicyNotFound.selector, nonExistentPolicyId));
+        policyManager.policyMetadata(nonExistentPolicyId);
+    }
+
+    function test_cancelPolicyDraft_WhenStatusIsBound_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, request.coverageAmount, true);
+
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.InvalidPolicyStatus.selector, IPolicyManager.PolicyStatus.Bound)
+        );
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(request.policyId);
     }
 
     /*//////////////////////////////////////////////////////////////

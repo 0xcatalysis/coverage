@@ -165,20 +165,9 @@ contract PremiumCollectorTest is Test {
         premiumCollector.registerVault(vault1, fakePool, POLICY_ID);
     }
 
-    function test_updateVault_WhenPoolNotRegistered_Reverts() public {
-        vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID);
-
-        StrictMockCoverPoolFactory strictFactory = new StrictMockCoverPoolFactory();
-        strictFactory.registerPool(pool);
-        vm.prank(admin);
-        premiumCollector.setCoverPoolFactory(address(strictFactory));
-
-        address fakePool = makeAddr("fakePool");
-        vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.InvalidCoverPool.selector, fakePool));
-        premiumCollector.updateVault(vault1, fakePool, POLICY_ID);
-    }
+    /*//////////////////////////////////////////////////////////////
+                      SET COVER POOL FACTORY
+    //////////////////////////////////////////////////////////////*/
 
     function test_setCoverPoolFactory_WhenAdmin_SetsFactory() public {
         address newFactory = makeAddr("newFactory");
@@ -195,6 +184,31 @@ contract PremiumCollectorTest is Test {
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), bytes32(0))
         );
         premiumCollector.setCoverPoolFactory(makeAddr("factory"));
+    }
+
+    function test_setCoverPoolFactory_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
+        vm.prank(admin);
+        premiumCollector.setCoverPoolFactory(address(0));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           UPDATE VAULT
+    //////////////////////////////////////////////////////////////*/
+
+    function test_updateVault_WhenPoolNotRegistered_Reverts() public {
+        vm.prank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        StrictMockCoverPoolFactory strictFactory = new StrictMockCoverPoolFactory();
+        strictFactory.registerPool(pool);
+        vm.prank(admin);
+        premiumCollector.setCoverPoolFactory(address(strictFactory));
+
+        address fakePool = makeAddr("fakePool");
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.InvalidCoverPool.selector, fakePool));
+        premiumCollector.updateVault(vault1, fakePool, POLICY_ID);
     }
 
     function test_registerVault_WhenAlreadyRegistered_Reverts() public {
@@ -366,6 +380,11 @@ contract PremiumCollectorTest is Test {
         vaults[0] = vault1;
 
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
+        premiumCollector.distributeBatch(vaults);
+    }
+
+    function test_distributeBatch_WhenEmptyArray_Succeeds() public {
+        address[] memory vaults = new address[](0);
         premiumCollector.distributeBatch(vaults);
     }
 
@@ -714,7 +733,7 @@ contract PremiumCollectorTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              PAUSE / UNPAUSE
+                                 PAUSE
     //////////////////////////////////////////////////////////////*/
 
     function test_pause_WhenCalledByAdmin_PausesCollector() public {
@@ -729,6 +748,10 @@ contract PremiumCollectorTest is Test {
         );
         premiumCollector.pause();
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                UNPAUSE
+    //////////////////////////////////////////////////////////////*/
 
     function test_unpause_WhenCalledByAdmin_UnpausesCollector() public {
         vm.startPrank(admin);
@@ -747,6 +770,10 @@ contract PremiumCollectorTest is Test {
         );
         premiumCollector.unpause();
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                 PAUSED
+    //////////////////////////////////////////////////////////////*/
 
     function test_paused_ReturnsCorrectState() public {
         assertFalse(premiumCollector.paused(), "Should start unpaused");

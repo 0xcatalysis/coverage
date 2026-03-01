@@ -79,6 +79,7 @@ contract ClaimManagerTest is Test {
     event SwapperSet(address indexed swapper);
     event PolicyManagerSet(address indexed policyManager);
     event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed);
+    event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
@@ -430,6 +431,126 @@ contract ClaimManagerTest is Test {
         claimManager.setChainlinkPriceFeed(newChainlinkPriceFeed);
 
         assertEq(claimManager.chainlinkPriceFeed(), newChainlinkPriceFeed, "ChainlinkPriceFeed not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                       SET MAX SWAP SLIPPAGE BPS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setMaxSwapSlippageBps_WhenCallerNotAdmin_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                unauthorized,
+                claimManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(unauthorized);
+        claimManager.setMaxSwapSlippageBps(500);
+    }
+
+    function test_setMaxSwapSlippageBps_WhenValueAtMaximum_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.InvalidSlippageBps.selector, uint16(10_000)));
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(10_000);
+    }
+
+    function test_setMaxSwapSlippageBps_WhenValueExceedsMaximum_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.InvalidSlippageBps.selector, uint16(10_001)));
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(10_001);
+    }
+
+    function test_setMaxSwapSlippageBps_WhenValid_UpdatesStateAndEmitsEvent() public {
+        uint16 newSlippage = 500;
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit MaxSwapSlippageBpsSet(newSlippage);
+
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(newSlippage);
+
+        assertEq(claimManager.maxSwapSlippageBps(), newSlippage, "Slippage BPS not updated");
+    }
+
+    function test_setMaxSwapSlippageBps_WhenZero_UpdatesState() public {
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(0);
+        assertEq(claimManager.maxSwapSlippageBps(), 0, "Slippage BPS should be 0");
+    }
+
+    function test_setMaxSwapSlippageBps_WhenMaxMinusOne_Succeeds() public {
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(9999);
+        assertEq(claimManager.maxSwapSlippageBps(), 9999, "Slippage BPS should be 9999");
+    }
+
+    function test_setMaxSwapSlippageBps_AffectsAmountOutMin() public {
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(1000);
+
+        uint256 requestedAmount = 500 ether;
+        uint256 slashAmount = 500 ether;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = slashAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), slashAmount);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+
+        MockSwapperWithTracking trackingSwapper = new MockSwapperWithTracking();
+        uint256 swapOutput = 460 ether; // above amountOutMin of 450 ether
+        trackingSwapper.setSwapOutput(swapOutput);
+        trackingSwapper.setPayoutToken(payoutToken);
+        payoutTokenMock.mint(address(trackingSwapper), swapOutput);
+
+        vm.prank(admin);
+        claimManager.setSwapper(address(trackingSwapper));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        uint256 expectedAmountOutMin = slashAmount * (10_000 - 1000) / 10_000; // 450 ether
+        assertEq(
+            trackingSwapper.lastAmountOutMin(), expectedAmountOutMin, "amountOutMin does not reflect custom slippage"
+        );
+    }
+
+    function test_fileClaim_WhenOraclePriceVerySmall_AmountOutMinFlooredToOne() public {
+        chainlinkPriceFeedMock.setPrice(collateralToken, 1);
+        chainlinkPriceFeedMock.setPrice(payoutToken, 1e30);
+
+        uint256 slashAmount = 1;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = slashAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), slashAmount);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+
+        MockSwapperWithTracking trackingSwapper = new MockSwapperWithTracking();
+        uint256 swapOutput = 1;
+        trackingSwapper.setSwapOutput(swapOutput);
+        trackingSwapper.setPayoutToken(payoutToken);
+        payoutTokenMock.mint(address(trackingSwapper), swapOutput);
+
+        vm.prank(admin);
+        claimManager.setSwapper(address(trackingSwapper));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, 1, evidenceHash, "");
+
+        assertEq(trackingSwapper.lastAmountOutMin(), 1, "amountOutMin should be floored to 1");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1051,12 +1172,10 @@ contract ClaimManagerTest is Test {
     }
 
     function test_fileClaim_BeforeMaturity_Succeeds() public {
-        // Warp to middle of coverage period
         vm.warp(block.timestamp + (COVERAGE_DURATION / 2));
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
-        // Setup slashing to return collateral
         address[] memory assets = new address[](1);
         assets[0] = collateralToken;
         uint256[] memory amounts = new uint256[](1);
@@ -1082,7 +1201,6 @@ contract ClaimManagerTest is Test {
     function test_fileClaim_AtMaturityTime_Succeeds() public {
         IPolicyManager.PolicyMetadata memory metadata = policyMock.policyMetadata(POLICY_ID);
 
-        // Warp to exact maturity time
         vm.warp(metadata.maturityTime);
 
         specMock.setEvaluationResult(true, keccak256("approved"));
@@ -1100,7 +1218,6 @@ contract ClaimManagerTest is Test {
         swapperMock.setPayoutToken(payoutToken);
         swapperMock.setSwapOutput(SLASH_AMOUNT);
 
-        // Should succeed as implementation allows claims AT maturity
         vm.prank(claimer);
         uint256 claimId = claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
 
@@ -1111,7 +1228,6 @@ contract ClaimManagerTest is Test {
     function test_fileClaim_AfterMaturity_Reverts() public {
         IPolicyManager.PolicyMetadata memory metadata = policyMock.policyMetadata(POLICY_ID);
 
-        // Warp past maturity
         vm.warp(metadata.maturityTime + 1 days);
 
         vm.expectRevert(
@@ -1127,18 +1243,13 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
 
-    /*//////////////////////////////////////////////////////////////
-                            FILE CLAIM
-    //////////////////////////////////////////////////////////////*/
-
     function test_fileClaim_MultipleClaimsExhaustCoverage_FinalClaimCapped() public {
         uint256 firstClaimAmount = COVERAGE_LIMIT / 2;
         uint256 secondClaimAmount = COVERAGE_LIMIT / 2;
-        uint256 thirdClaimAmount = COVERAGE_LIMIT / 4; // This should be capped
+        uint256 thirdClaimAmount = COVERAGE_LIMIT / 4;
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
-        // First claim
         address[] memory assets = new address[](1);
         assets[0] = collateralToken;
         uint256[] memory amounts = new uint256[](1);
@@ -1153,7 +1264,6 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, firstClaimAmount, keccak256("evidence1"), "");
 
-        // Second claim
         collateralTokenMock.mint(address(slashingManagerMock), secondClaimAmount);
         payoutTokenMock.mint(address(swapperMock), secondClaimAmount);
         swapperMock.setSwapOutput(secondClaimAmount);
@@ -1161,7 +1271,6 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, secondClaimAmount, keccak256("evidence2"), "");
 
-        // Third claim should be capped to remaining coverage (0)
         vm.expectRevert(
             abi.encodeWithSelector(
                 IClaimManager.RequestedAmountExceedsRemainingCoverage.selector, POLICY_ID, thirdClaimAmount, 0
@@ -1360,7 +1469,6 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.slashingManager(), slashingManager, "SlashingManager should be preserved");
         assertEq(claimManager.swapper(), swapper, "Swapper should be preserved");
         assertEq(claimManager.policyManager(), policy, "PolicyManager should be preserved");
-        // Premium reserve removed from ClaimManager
         assertEq(claimManager.chainlinkPriceFeed(), chainlinkPriceFeed, "ChainlinkPriceFeed should be preserved");
     }
 
@@ -1455,7 +1563,6 @@ contract ClaimManagerTest is Test {
     function _fileAndApproveClaim() private returns (uint256 claimId) {
         specMock.setEvaluationResult(true, keccak256("approved"));
 
-        // Setup slashing for atomic claim flow
         address[] memory assets = new address[](1);
         assets[0] = collateralToken;
         uint256[] memory amounts = new uint256[](1);
@@ -1654,5 +1761,30 @@ contract MockCoverPool {
 
     function owner() external view returns (address) {
         return _owner;
+    }
+}
+
+contract MockSwapperWithTracking {
+    uint256 private _swapOutput;
+    address private _payoutToken;
+    uint256 public lastAmountOutMin;
+
+    function setSwapOutput(uint256 output) external {
+        _swapOutput = output;
+    }
+
+    function setPayoutToken(address token) external {
+        _payoutToken = token;
+    }
+
+    function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
+        lastAmountOutMin = params.amountOutMin;
+        require(
+            MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn), "TransferFrom failed"
+        );
+        if (_payoutToken != address(0)) {
+            MockToken(_payoutToken).mint(params.recipient, _swapOutput);
+        }
+        return _swapOutput;
     }
 }

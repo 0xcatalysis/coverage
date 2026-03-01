@@ -52,7 +52,6 @@ contract CoverPoolFactoryTest is Test {
 
         implementation = new CoverPool();
 
-        // Deploy mock contracts with code for external dependencies
         policyManager = address(new CoverPool());
         stakeManager = address(new CoverPool());
         specRegistry = address(new CoverPool());
@@ -330,6 +329,91 @@ contract CoverPoolFactoryTest is Test {
         assertEq(pool2.owner(), params2.curator, "Second pool curator mismatch");
     }
 
+    function test_createCoverPool_CuratorBecomesPoolOperator() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+
+        uint256 poolCountBefore = factory.totalCoverPools();
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        address poolAddress = factory.coverPoolAt(poolCountBefore);
+        CoverPool pool = CoverPool(poolAddress);
+
+        assertEq(pool.owner(), params.curator, "Curator should be pool owner/operator");
+        assertTrue(pool.hasRole(pool.DEFAULT_ADMIN_ROLE(), params.curator), "Curator should have admin role");
+    }
+
+    function test_createCoverPool_StoresPolicyManagerReference() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+
+        uint256 poolCountBefore = factory.totalCoverPools();
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        address poolAddress = factory.coverPoolAt(poolCountBefore);
+        CoverPool pool = CoverPool(poolAddress);
+
+        assertEq(pool.policyManager(), policyManager, "PolicyManager should be set correctly");
+    }
+
+    function test_createCoverPool_MultipleCuratorsCreateIsolatedPools() public {
+        address curator1 = makeAddr("curator1");
+        address curator2 = makeAddr("curator2");
+
+        ICoverPoolFactory.CreateCoverPoolParams memory params1 = _defaultCreateParams();
+        params1.curator = curator1;
+        params1.quoteSigner = makeAddr("signer1");
+
+        ICoverPoolFactory.CreateCoverPoolParams memory params2 = _defaultCreateParams();
+        params2.curator = curator2;
+        params2.quoteSigner = makeAddr("signer2");
+
+        uint256 poolCountBefore1 = factory.totalCoverPools();
+        vm.prank(creator);
+        factory.createCoverPool(params1);
+        address pool1 = factory.coverPoolAt(poolCountBefore1);
+
+        uint256 poolCountBefore2 = factory.totalCoverPools();
+        vm.prank(creator);
+        factory.createCoverPool(params2);
+        address pool2 = factory.coverPoolAt(poolCountBefore2);
+
+        assertEq(CoverPool(pool1).owner(), curator1, "Curator1 should own pool1");
+        assertEq(CoverPool(pool2).owner(), curator2, "Curator2 should own pool2");
+        assertNotEq(pool1, pool2, "Pools should be distinct");
+
+        vm.expectRevert();
+        vm.prank(curator1);
+        CoverPool(pool2).setPoolFeeBps(200);
+    }
+
+    function test_createCoverPool_WhenImplementationChanges_AllowsRedeployWithSameParams() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+
+        address firstPrediction =
+            _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
+        assertEq(factory.computeCoverPoolAddress(params), firstPrediction, "Prediction mismatch");
+
+        vm.prank(creator);
+        factory.createCoverPool(params);
+        assertEq(factory.coverPoolAt(0), firstPrediction, "First deployment mismatch");
+
+        CoverPool newImplementation = new CoverPool();
+        vm.prank(creator);
+        factory.setCoverPoolImplementation(address(newImplementation));
+
+        address secondPrediction =
+            _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
+        assertEq(factory.computeCoverPoolAddress(params), secondPrediction, "Prediction mismatch");
+        assertNotEq(secondPrediction, firstPrediction, "Implementation change should affect prediction");
+
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        assertEq(factory.totalCoverPools(), 2, "Unexpected total pools after second deployment");
+        assertEq(factory.coverPoolAt(1), secondPrediction, "Second deployment mismatch");
+    }
+
     /*//////////////////////////////////////////////////////////////
                       SET COVER POOL IMPLEMENTATION
     //////////////////////////////////////////////////////////////*/
@@ -591,6 +675,7 @@ contract CoverPoolFactoryTest is Test {
     /*//////////////////////////////////////////////////////////////
                        COMPUTE COVER POOL ADDRESS
     //////////////////////////////////////////////////////////////*/
+
     function test_computeCoverPoolAddress_PredictsDeployment() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
         address expected = _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
@@ -625,33 +710,6 @@ contract CoverPoolFactoryTest is Test {
         assertEq(deployed.policyManager(), newPolicyManager, "Updated policy manager not set");
     }
 
-    function test_createCoverPool_WhenImplementationChanges_AllowsRedeployWithSameParams() public {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
-
-        address firstPrediction =
-            _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
-        assertEq(factory.computeCoverPoolAddress(params), firstPrediction, "Prediction mismatch");
-
-        vm.prank(creator);
-        factory.createCoverPool(params);
-        assertEq(factory.coverPoolAt(0), firstPrediction, "First deployment mismatch");
-
-        CoverPool newImplementation = new CoverPool();
-        vm.prank(creator);
-        factory.setCoverPoolImplementation(address(newImplementation));
-
-        address secondPrediction =
-            _predictCoverPoolAddress(params, factory.coverPoolImplementation(), factory.policyManager());
-        assertEq(factory.computeCoverPoolAddress(params), secondPrediction, "Prediction mismatch");
-        assertNotEq(secondPrediction, firstPrediction, "Implementation change should affect prediction");
-
-        vm.prank(creator);
-        factory.createCoverPool(params);
-
-        assertEq(factory.totalCoverPools(), 2, "Unexpected total pools after second deployment");
-        assertEq(factory.coverPoolAt(1), secondPrediction, "Second deployment mismatch");
-    }
-
     /*//////////////////////////////////////////////////////////////
                                 HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -684,64 +742,6 @@ contract CoverPoolFactoryTest is Test {
         );
     }
 
-    function test_createCoverPool_CuratorBecomesPoolOperator() public {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
-
-        uint256 poolCountBefore = factory.totalCoverPools();
-        vm.prank(creator);
-        factory.createCoverPool(params);
-
-        address poolAddress = factory.coverPoolAt(poolCountBefore);
-        CoverPool pool = CoverPool(poolAddress);
-
-        assertEq(pool.owner(), params.curator, "Curator should be pool owner/operator");
-        assertTrue(pool.hasRole(pool.DEFAULT_ADMIN_ROLE(), params.curator), "Curator should have admin role");
-    }
-
-    function test_createCoverPool_StoresPolicyManagerReference() public {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
-
-        uint256 poolCountBefore = factory.totalCoverPools();
-        vm.prank(creator);
-        factory.createCoverPool(params);
-
-        address poolAddress = factory.coverPoolAt(poolCountBefore);
-        CoverPool pool = CoverPool(poolAddress);
-
-        assertEq(pool.policyManager(), policyManager, "PolicyManager should be set correctly");
-    }
-
-    function test_createCoverPool_MultipleCuratorsCreateIsolatedPools() public {
-        address curator1 = makeAddr("curator1");
-        address curator2 = makeAddr("curator2");
-
-        ICoverPoolFactory.CreateCoverPoolParams memory params1 = _defaultCreateParams();
-        params1.curator = curator1;
-        params1.quoteSigner = makeAddr("signer1");
-
-        ICoverPoolFactory.CreateCoverPoolParams memory params2 = _defaultCreateParams();
-        params2.curator = curator2;
-        params2.quoteSigner = makeAddr("signer2");
-
-        uint256 poolCountBefore1 = factory.totalCoverPools();
-        vm.prank(creator);
-        factory.createCoverPool(params1);
-        address pool1 = factory.coverPoolAt(poolCountBefore1);
-
-        uint256 poolCountBefore2 = factory.totalCoverPools();
-        vm.prank(creator);
-        factory.createCoverPool(params2);
-        address pool2 = factory.coverPoolAt(poolCountBefore2);
-
-        assertEq(CoverPool(pool1).owner(), curator1, "Curator1 should own pool1");
-        assertEq(CoverPool(pool2).owner(), curator2, "Curator2 should own pool2");
-        assertNotEq(pool1, pool2, "Pools should be distinct");
-
-        vm.expectRevert();
-        vm.prank(curator1);
-        CoverPool(pool2).setPoolFeeBps(200);
-    }
-
     function _defaultCreateParams() internal view returns (ICoverPoolFactory.CreateCoverPoolParams memory params) {
         params = ICoverPoolFactory.CreateCoverPoolParams({
             curator: curator, quoteSigner: quoteSigner, poolFeeBps: DEFAULT_POOL_FEE
@@ -759,3 +759,4 @@ contract CoverPoolFactoryTest is Test {
         pool = factory.coverPoolAt(factory.totalCoverPools() - 1);
     }
 }
+
