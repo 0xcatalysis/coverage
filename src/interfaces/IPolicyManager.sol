@@ -43,6 +43,8 @@ interface IPolicyManager is IAccessControl {
         PolicyStatus status;
         /// @notice Callback target invoked when policy is bound (required).
         address bindPolicyHook;
+        /// @notice Pool owner (curator) captured at request time and registered as committee operator.
+        address curator;
     }
 
     /**

@@ -177,6 +177,7 @@ contract PolicyManager is
             beneficiary: beneficiary,
             claimer: claimer,
             payoutToken: payoutToken,
+            curator: curator,
             coverageAmount: coverageAmount,
             duration: duration,
             policyId: policyId,
@@ -202,8 +203,7 @@ contract PolicyManager is
 
         draft.status = PolicyStatus.Cancelled;
 
-        address curator = ICoverPool(draft.pool).owner();
-        IStakeManager(stakeManager).removeOperatorFromCommittee(curator, policyId);
+        IStakeManager(stakeManager).removeOperatorFromCommittee(draft.curator, policyId);
 
         emit PolicyDraftCancelled(policyId, draft.pool);
     }

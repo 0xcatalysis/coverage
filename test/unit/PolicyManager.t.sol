@@ -1041,6 +1041,7 @@ contract PolicyManagerTest is Test {
         assertEq(draft.beneficiary, beneficiary, "Beneficiary mismatch");
         assertEq(draft.claimer, beneficiary, "Claimer mismatch");
         assertEq(draft.payoutToken, payoutToken, "Payout token mismatch");
+        assertEq(draft.curator, curator, "Curator mismatch");
         assertEq(draft.coverageAmount, COVERAGE_AMOUNT, "Coverage amount mismatch");
         assertEq(draft.duration, COVERAGE_DURATION, "Duration mismatch");
         assertEq(draft.policyId, policyId, "Committee ID mismatch");
@@ -1141,6 +1142,131 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         vm.prank(buyer);
         policyManager.cancelPolicyDraft(policyId);
+    }
+
+    function test_cancelPolicyDraft_AfterOwnershipTransfer_UsesOriginalCurator() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        address newOwner = makeAddr("newOwner");
+        coverPool.setCurator(newOwner);
+        assertNotEq(coverPool.owner(), curator, "Ownership should have changed");
+
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId);
+
+        assertEq(mockStakeManager.getOperatorCommittee(curator), 0, "Original curator should be removed from committee");
+        assertEq(mockStakeManager.getOperatorCommittee(newOwner), 0, "New owner was never an operator");
+
+        IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
+        assertTrue(draft.status == IPolicyManager.PolicyStatus.Cancelled, "Status should be Cancelled");
+    }
+
+    function test_cancelPolicyDraft_StoresCorrectCuratorInDraft() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
+        assertEq(draft.curator, curator, "Draft must store the curator captured at request time");
+        assertNotEq(draft.curator, address(0), "Curator must not be zero");
+    }
+
+    function test_cancelPolicyDraft_TwoPoliciesEachStoreTheirOwnCurator() public {
+        address curatorA = curator;
+        MockCoverPool poolB = new MockCoverPool();
+        address curatorB = makeAddr("curatorB");
+        poolB.setCurator(curatorB);
+        mockCoverPoolFactory.registerPool(address(poolB));
+
+        vm.prank(buyer);
+        uint96 policyId1 = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        vm.prank(buyer);
+        uint96 policyId2 = policyManager.requestCoverage(
+            address(poolB),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        IPolicyManager.PolicyDraft memory draft1 = policyManager.getPolicyDraft(policyId1);
+        IPolicyManager.PolicyDraft memory draft2 = policyManager.getPolicyDraft(policyId2);
+        assertEq(draft1.curator, curatorA, "Draft1 should store curatorA");
+        assertEq(draft2.curator, curatorB, "Draft2 should store curatorB");
+        assertNotEq(draft1.curator, draft2.curator, "Each draft must hold its own curator");
+    }
+
+    function test_cancelPolicyDraft_SamePoolOwnershipTransferredBeforeSecondRequest_TwoDifferentCurators() public {
+        address originalCurator = curator;
+
+        vm.prank(buyer);
+        uint96 policyId1 = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        address newCurator = makeAddr("newCurator");
+        coverPool.setCurator(newCurator);
+
+        vm.prank(buyer);
+        uint96 policyId2 = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        assertEq(policyManager.getPolicyDraft(policyId1).curator, originalCurator, "Draft1 must keep original curator");
+        assertEq(
+            policyManager.getPolicyDraft(policyId2).curator,
+            newCurator,
+            "Draft2 must store current curator at request time"
+        );
+
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId1);
+        assertEq(
+            mockStakeManager.getOperatorCommittee(originalCurator), 0, "originalCurator removed after cancel of policy1"
+        );
+
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId2);
+        assertEq(mockStakeManager.getOperatorCommittee(newCurator), 0, "newCurator removed after cancel of policy2");
     }
 
     function test_cancelPolicyDraft_CallsRemoveOperatorFromCommittee() public {
