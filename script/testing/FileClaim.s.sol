@@ -179,7 +179,7 @@ contract FileClaim is Script {
 
         address swapper = claimManagerContract.swapper();
         console.log("Swapper:", swapper);
-        uint16 slippageBps = 0;
+        uint16 slippageBps = claimManagerContract.maxSwapSlippageBps();
 
         address[] memory vaults = stakeManagerContract.getCommitteeVaults(policyId);
         console.log("Committee vaults:", vaults.length);
@@ -349,7 +349,7 @@ contract FileClaim is Script {
         }
 
         console.log("\n[Swap Metrics] Swap path exercised");
-        uint16 slippageBps = 0;
+        uint16 slippageBps = claimManagerContract.maxSwapSlippageBps();
 
         uint256 requestedUSD = priceFeedContract.getUSDValue(metadata.payoutToken, claim.requestedAmount);
         uint256 oracleExpected = priceFeedContract.getTokenAmount(metadata.payoutToken, requestedUSD);
