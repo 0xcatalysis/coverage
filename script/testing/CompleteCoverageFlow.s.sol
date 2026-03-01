@@ -329,17 +329,17 @@ contract CompleteCoverageFlow is Script {
         vm.stopBroadcast();
 
         IPolicyManager.PolicyDraft memory updatedDraft = pm.getPolicyDraft(policyId);
-        require(updatedDraft.status == IPolicyManager.PolicyStatus.Bound, "Phase 5: Not bound");
+        require(updatedDraft.status == IPolicyManager.PolicyStatus.Bound, "Phase 4: Not bound");
 
         IPolicyManager.PolicyMetadata memory metadata = pm.policyMetadata(policyId);
-        require(metadata.buyer != address(0), "Phase 5: Metadata not stored");
-        require(metadata.coverageLimit == coverageLimit, "Phase 5: Coverage limit mismatch");
+        require(metadata.buyer != address(0), "Phase 4: Metadata not stored");
+        require(metadata.coverageLimit == coverageLimit, "Phase 4: Coverage limit mismatch");
 
         ICoverPool.BoundPolicy memory bp = ICoverPool(coverPool).getBoundPolicy(policyId);
-        require(bp.policyId == policyId, "Phase 5: BoundPolicy ID mismatch");
+        require(bp.policyId == policyId, "Phase 4: BoundPolicy ID mismatch");
 
         address[] memory committeeVaults = IStakeManager(stakeManager).getCommitteeVaults(policyId);
-        require(committeeVaults.length > 0, "Phase 5: No vaults in committee");
+        require(committeeVaults.length > 0, "Phase 4: No vaults in committee");
 
         console.log("Policy bound with coverage limit:", coverageLimit);
         console.log("Committee vaults:", committeeVaults.length);
@@ -445,7 +445,7 @@ contract CompleteCoverageFlow is Script {
         console.log("Pre-claim remaining coverage:", remainingBefore);
         console.log("Pre-claim beneficiary balance:", beneficiaryBalanceBefore);
 
-        require(requestedClaimAmount <= remainingBefore, "Phase 8: Exceeds remaining coverage");
+        require(requestedClaimAmount <= remainingBefore, "Phase 7: Exceeds remaining coverage");
 
         if (block.timestamp < metadata.startTime) {
             console.log("Warping to coverage start time...");
