@@ -44,17 +44,20 @@ contract PolicyManager is
     }
 
     /**
-     * @notice Initializes the PolicyManager with role assignments and dependency wiring.
+     * @notice Initializes the PolicyManager with role assignments, dependency wiring, and
+     *         optional initial payout token whitelist.
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
      * @param stakeManager_ Address of the StakeManager contract.
      * @param claimManager_ Address of the ClaimManager contract.
      * @param coverPoolFactory_ Address of the CoverPoolFactory contract.
+     * @param initialPayoutTokens_ Payout tokens marked as supported on deployment.
      */
     function initialize(
         address admin_,
         address stakeManager_,
         address claimManager_,
-        address coverPoolFactory_
+        address coverPoolFactory_,
+        address[] calldata initialPayoutTokens_
     )
         external
         initializer
@@ -73,6 +76,13 @@ contract PolicyManager is
         stakeManager = stakeManager_;
         claimManager = claimManager_;
         coverPoolFactory = coverPoolFactory_;
+
+        uint256 tokensLength = initialPayoutTokens_.length;
+        for (uint256 i = 0; i < tokensLength; ++i) {
+            address token = initialPayoutTokens_[i];
+            require(token != address(0), ZeroAddress());
+            supportedPayoutTokens[token] = true;
+        }
     }
 
     /**

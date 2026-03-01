@@ -185,6 +185,15 @@ abstract contract Deploy is Script {
     }
 
     /**
+     * @notice Returns the initial payout tokens to whitelist on PolicyManager deployment.
+     * @dev Override in network-specific scripts (e.g. DeploySepolia) to return USDC or other tokens.
+     *      Default returns empty array.
+     */
+    function getInitialPayoutTokens() internal view virtual returns (address[] memory) {
+        return new address[](0);
+    }
+
+    /**
      * @notice Orchestrates deployment of all contract proxies and implementations.
      * @dev Deploys contracts in dependency order. Uses deployer as temporary admin to enable
      *      role configuration phase. Final admin receives DEFAULT_ADMIN_ROLE in _grantRoles.
@@ -277,7 +286,8 @@ abstract contract Deploy is Script {
                     roles.deployer,
                     external_.stakeManager,
                     roles.deployer, // Temporary placeholder for claimManager, will be set after ClaimManager deployment
-                    roles.deployer // Temporary placeholder for coverPoolFactory, will be set after factory deployment
+                    roles.deployer, // Temporary placeholder for coverPoolFactory, will be set after factory deployment
+                    getInitialPayoutTokens()
                 )
             ),
             opts

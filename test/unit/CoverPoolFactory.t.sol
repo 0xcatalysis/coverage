@@ -79,14 +79,9 @@ contract CoverPoolFactoryTest is Test {
     //////////////////////////////////////////////////////////////*/
     function test_initialize_WhenAdminZero_Reverts() public {
         CoverPoolFactory factoryImpl = new CoverPoolFactory();
+        CoverPoolFactory freshFactory = CoverPoolFactory(address(new ERC1967Proxy(address(factoryImpl), "")));
         vm.expectRevert(ICoverPoolFactory.ZeroAddress.selector);
-        new ERC1967Proxy(
-            address(factoryImpl),
-            abi.encodeCall(
-                CoverPoolFactory.initialize,
-                (address(0), creator, address(implementation), policyManager, stakeManager, specRegistry)
-            )
-        );
+        freshFactory.initialize(address(0), creator, address(implementation), policyManager, stakeManager, specRegistry);
     }
 
     function test_initialize_WhenCreatorZero_Reverts() public {

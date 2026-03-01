@@ -86,20 +86,26 @@ contract PolicyManagerTest is Test {
         defaultHook = new MockBindPolicyHook();
         vm.label(address(defaultHook), "DefaultHook");
 
+        address[] memory initialTokens = new address[](1);
+        initialTokens[0] = payoutToken;
+
         Options memory deployOpts;
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
             "PolicyManager.sol",
             abi.encodeCall(
                 PolicyManager.initialize,
-                (admin, address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory))
+                (
+                    admin,
+                    address(mockStakeManager),
+                    address(mockClaimManager),
+                    address(mockCoverPoolFactory),
+                    initialTokens
+                )
             ),
             deployOpts
         );
         policyManager = PolicyManager(proxy);
-
-        vm.prank(admin);
-        policyManager.setSupportedPayoutToken(payoutToken, true);
 
         vm.label(address(policyManager), "PolicyManager");
         vm.label(address(coverPool), "CoverPool");
@@ -112,31 +118,35 @@ contract PolicyManagerTest is Test {
     function test_initialize_WhenAdminZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+        address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
         freshManager.initialize(
-            address(0), address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory)
+            address(0), address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory), empty
         );
     }
 
     function test_initialize_WhenStakeManagerZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+        address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(0), address(mockClaimManager), address(mockCoverPoolFactory));
+        freshManager.initialize(admin, address(0), address(mockClaimManager), address(mockCoverPoolFactory), empty);
     }
 
     function test_initialize_WhenClaimManagerZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+        address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(mockStakeManager), address(0), address(mockCoverPoolFactory));
+        freshManager.initialize(admin, address(mockStakeManager), address(0), address(mockCoverPoolFactory), empty);
     }
 
     function test_initialize_WhenCoverPoolFactoryZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+        address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(mockStakeManager), address(mockClaimManager), address(0));
+        freshManager.initialize(admin, address(mockStakeManager), address(mockClaimManager), address(0), empty);
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -914,6 +924,43 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
         vm.prank(admin);
         policyManager.setSupportedPayoutToken(address(0), true);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    INITIALIZE WITH PAYOUT TOKENS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_initialize_SeedsInitialPayoutTokens() public {
+        PolicyManager implementation = new PolicyManager();
+        PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+
+        address tokenA = makeAddr("tokenA");
+        address tokenB = makeAddr("tokenB");
+        address[] memory tokens = new address[](2);
+        tokens[0] = tokenA;
+        tokens[1] = tokenB;
+
+        vm.prank(admin);
+        freshManager.initialize(
+            admin, address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory), tokens
+        );
+
+        assertTrue(freshManager.supportedPayoutTokens(tokenA));
+        assertTrue(freshManager.supportedPayoutTokens(tokenB));
+    }
+
+    function test_initialize_WhenZeroAddressToken_Reverts() public {
+        PolicyManager implementation = new PolicyManager();
+        PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(0);
+
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(admin);
+        freshManager.initialize(
+            admin, address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory), tokens
+        );
     }
 
     function test_requestCoverage_WhenCoverageAmountZero_Reverts() public {
