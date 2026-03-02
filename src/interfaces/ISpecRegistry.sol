@@ -88,10 +88,4 @@ interface ISpecRegistry {
      * @return spec Address of the authorized ISpec implementation contract.
      */
     function resolveSpec(address coverPool, bytes32 specId) external view returns (ISpec spec);
-
-    /**
-     * @notice Returns whether the contract is paused.
-     * @return True if the contract is paused, false otherwise.
-     */
-    function paused() external view returns (bool);
 }

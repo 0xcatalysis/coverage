@@ -10,7 +10,6 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
-import {IStakeManager} from "./interfaces/IStakeManager.sol";
 
 /**
  * @title CoverPoolFactory
@@ -109,8 +108,6 @@ contract CoverPoolFactory is
         _pools.add(coverPool);
 
         emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager, params.poolFeeBps);
-
-        IStakeManager(stakeManager).registerOperatorToNetwork(params.curator, params.deadline, params.signature);
     }
 
     /**

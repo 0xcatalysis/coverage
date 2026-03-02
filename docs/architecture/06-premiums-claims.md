@@ -66,16 +66,19 @@ sequenceDiagram
     participant Treasury as Platform Treasury
     participant PoolRecipient as Pool Fee Recipient
     participant RM as Core RewardsManager
+    participant SSP as SSPRouter
 
     Vault->>PC: management fee shares accrue
     PC->>PC: redeem(shares) -> underlying assets
     PC->>PRM: transfer underlying
     PC->>PRM: distributePremium(pool, policyId, token, amount)
     PRM->>Pool: read poolFeeBps + feeRecipient + owner
-    PRM->>PRM: compute fee splits
+    PRM->>PRM: compute fee splits (retain restaker share)
     PRM->>Treasury: platform fee
     PRM->>PoolRecipient: pool fee
-    PRM->>RM: restaker share + distributeRewards(policyId, operator, amount, token)
+    PRM->>RM: distributeRewards(policyId, operator, amount, token)
+    RM->>SSP: distributeRewards(..., tokenSource=premiumManager)
+    SSP->>PRM: safeTransferFrom(premiumManager, adapter, restakerShare)
 ```
 
 ### Fee Split Logic
@@ -220,6 +223,39 @@ In `_processCollateral(...)`:
 
 This supports heterogeneous slash collateral while preserving payout-token settlement.
 
+## Swapper Configuration for Cross-Token Payouts
+
+When the vault collateral token differs from the policy `payoutToken`, a swap route must be
+configured in the `Swapper` before any claim can be paid out. The `UniswapV3Adapter` bridges
+the Swapper's static-calldata model to Uniswap V3.
+
+**One-time setup per `(tokenIn, tokenOut)` pair:**
+
+```bash
+forge script script/DeployUniswapV3Adapter.s.sol \
+  --rpc-url $RPC_URL --broadcast --slow -vvvv
+```
+
+Required env vars:
+
+| Variable | Description |
+|----------|-------------|
+| `PRIVATE_KEY` | Admin key holding `SWAP_MANAGER_ROLE` on Swapper |
+| `SWAPPER` | Swapper proxy address (from `ClaimManager.swapper()`) |
+| `SWAP_ROUTER` | Uniswap V3 SwapRouter02 (Sepolia: `0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E`) |
+| `TOKEN_IN` | Collateral token (e.g. Uniswap-native WETH on Sepolia: `0xfff9976782d46cc05630d1f6ebab18b2324d6b14`) |
+| `TOKEN_OUT` | Payout token (e.g. Circle Sepolia USDC: `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`) |
+| `POOL_FEE` | Uniswap V3 fee tier (e.g. `3000` = 0.3%, `500` = 0.05%) |
+
+The script deploys the adapter, whitelists it in Swapper, and registers the route in a single
+transaction.
+
+**Verify before filing a claim:**
+
+`FileClaim.s.sol` Phase 2 (Swapper Readiness) automatically checks each committee vault's
+collateral token against the policy payout token and validates that a route is configured and the
+target is whitelisted. It reverts before broadcasting if any route is missing.
+
 ## Risk and Operations
 
 ### Configuration Risks
@@ -261,8 +297,6 @@ The scripts in `script/testing/` map directly to this document:
 
 ## Next Steps
 
+- [Covered Vault Integration](./07-covered-vault-integration.md)
 - [System Overview](./01-system-overview.md)
-- [Smart Contracts Architecture](./02-smart-contracts.md)
-- [Core Integration](./03-core-integration.md)
-- [Covered Vault Integration](./04-covered-vault-integration.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)

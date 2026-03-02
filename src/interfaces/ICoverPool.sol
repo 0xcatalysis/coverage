@@ -104,6 +104,13 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidCoverageWindow();
 
     /**
+     * @notice Reverts when the quote start time is not in the future.
+     * @param startTime Coverage start timestamp from the quote.
+     * @param currentTimestamp Current block timestamp at validation.
+     */
+    error InvalidStartTime(uint32 startTime, uint32 currentTimestamp);
+
+    /**
      * @notice Reverts when a quote has already expired.
      * @param expirationTime Expiration timestamp encoded within the quote.
      * @param currentTimestamp Current block timestamp at validation.
@@ -266,6 +273,13 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @return BoundPolicy metadata describing the allocation.
      */
     function getBoundPolicy(uint96 policyId) external view returns (BoundPolicy memory);
+
+    /**
+     * @notice Returns whether a policy identifier is currently bound to this pool.
+     * @param policyId Policy identifier to check.
+     * @return True if the policy is bound, false otherwise.
+     */
+    function hasBoundPolicy(uint96 policyId) external view returns (bool);
 
     /**
      * @notice Pool fee expressed in basis points that is applied to premiums.

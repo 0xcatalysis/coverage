@@ -18,6 +18,7 @@ graph LR
     PRM[PremiumManager]
     SR[SpecRegistry]
     SW[Swapper]
+    UV3[UniswapV3Adapter]
 
     CPF --> CP
     PM --> CP
@@ -27,13 +28,14 @@ graph LR
     PC --> PRM
     CM --> SR
     CM --> SW
+    SW --> UV3
 ```
 
 ## Core Coverage Contracts
 
 ### 1) CoverPoolFactory
 
-**Role:** Deploys and tracks `CoverPool` clones and bootstraps operator registration in Core.
+**Role:** Deploys and tracks `CoverPool` clones.
 
 **Pattern and state:**
 
@@ -43,10 +45,11 @@ graph LR
 
 **Key functions:**
 
-- `createCoverPool(params)` creates clone, initializes pool, and calls
-  `StakeManager.registerOperatorToNetwork(curator, deadline, signature)`.
+- `createCoverPool(params)` creates and initializes a pool clone, grants curator ownership.
 - `computeCoverPoolAddress(params)` predicts deterministic clone address.
 - `coverPoolExists(pool)` validates whether a pool is factory-created.
+
+Note: On EigenLayer, duration vaults act as operators and are auto-deployed during committee creation.
 
 **Key role:**
 
@@ -94,8 +97,8 @@ graph LR
   - commonly sets `beneficiary` to the cover adapter for atomic shortfall top-ups,
   - validates pool and hook,
   - creates policy draft,
-  - creates Core committee with `committeeId = policyId`,
-  - assigns pool curator as committee operator.
+  - creates Core committee with `committeeId = policyId`
+    (`createCommittee` auto-assigns the pool curator as committee operator).
 - `bindPolicy(request, boundPolicy)`:
   - callable by pool only,
   - validates request/draft/quote consistency,
@@ -134,8 +137,9 @@ graph LR
   - computes split: platform / pool / restaker,
   - transfers platform fee to treasury,
   - transfers pool fee to pool fee recipient,
-  - transfers restaker share to Core `RewardsManager`,
-  - triggers `RewardsManager.distributeRewards(policyId, operator, amount, token)`.
+  - retains restaker share (SSPRouter pulls it directly via allowance),
+  - calls `RewardsManager.distributeRewards(policyId, operator, amount, token)`.
+- `approveSpender(token, spender, amount)` grants SSPRouter an allowance to pull the restaker share.
 - `getFeeSplits(...)` deterministic split helper.
 
 **Key role:**
@@ -200,6 +204,38 @@ graph LR
 - `setSwapRoute(...)`, `setSwapTargetWhitelist(...)` for configuration.
 - `executeSwap(params)` for authorized executors (typically `ClaimManager`).
 
+**Key roles:**
+
+- `SWAP_MANAGER_ROLE` configures routes and whitelisted targets.
+- `SWAP_EXECUTOR_ROLE` calls `executeSwap` (held by `ClaimManager`).
+
+### 9) UniswapV3Adapter
+
+**Role:** Bridges the Swapper's static-calldata pattern to Uniswap V3 `SwapRouter02`.
+
+**Why it exists:** The Swapper stores one static calldata blob per `(tokenIn, tokenOut)` route and
+replays it verbatim on every swap. Uniswap V3's `exactInputSingle` requires the `amountIn` to be
+encoded in each call, making a direct route impossible. The adapter resolves `amountIn` dynamically
+from the allowance the Swapper grants it.
+
+**Integration pattern** (called by `Swapper._performSwap`):
+
+1. Swapper approves adapter for `amountIn` of `tokenIn`.
+2. Swapper calls `adapter.swap(tokenIn, tokenOut, fee)` via stored static calldata.
+3. Adapter reads `allowance(Swapper, adapter)` to obtain `amountIn`.
+4. Adapter pulls `tokenIn` from Swapper via `transferFrom`.
+5. Adapter calls `SwapRouter02.exactInputSingle` with `recipient = Swapper`.
+6. Router delivers `tokenOut` directly to Swapper.
+7. Adapter clears residual approval to the router.
+
+**Deployment:** `script/DeployUniswapV3Adapter.s.sol` deploys the adapter, whitelists it in
+`Swapper`, and configures the route in one transaction.
+
+| Network | SwapRouter02 |
+|---------|-------------|
+| Sepolia | `0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E` |
+| Mainnet | `0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45` |
+
 ## Covered Vault Integration Components (Morpho)
 
 These components typically live outside this repository but are first-class architecture actors.
@@ -247,6 +283,6 @@ Coverage contracts rely on Core interfaces:
 ## Next Steps
 
 - [Core Integration](./03-core-integration.md)
-- [Covered Vault Integration](./04-covered-vault-integration.md)
+- [Covered Vault Integration](./07-covered-vault-integration.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
 - [Premiums and Claims](./06-premiums-claims.md)

@@ -185,6 +185,15 @@ abstract contract Deploy is Script {
     }
 
     /**
+     * @notice Returns the initial payout tokens to whitelist on PolicyManager deployment.
+     * @dev Override in network-specific scripts (e.g. DeploySepolia) to return USDC or other tokens.
+     *      Default returns empty array.
+     */
+    function getInitialPayoutTokens() internal view virtual returns (address[] memory) {
+        return new address[](0);
+    }
+
+    /**
      * @notice Orchestrates deployment of all contract proxies and implementations.
      * @dev Deploys contracts in dependency order. Uses deployer as temporary admin to enable
      *      role configuration phase. Final admin receives DEFAULT_ADMIN_ROLE in _grantRoles.
@@ -222,8 +231,9 @@ abstract contract Deploy is Script {
     /**
      * @notice Deploys PremiumManager and PremiumCollector contracts.
      * @dev PremiumManager handles premium distribution, fee splitting, and reward routing to RewardsManager.
-     *      PremiumCollector accrues ERC-4626 vault shares and redeems them periodically to underlying assets.
-     *      Uses deployer as temporary admin and placeholder for manager roles.
+     *      PremiumCollector is deployed later, after CoverPoolFactory exists, so it can be initialized
+     *      with a valid factory address and avoid placeholder wiring.
+     *      Uses deployer as temporary admin for role configuration.
      * @param contracts DeployedContracts struct to populate with premium contract addresses.
      * @param roles Role configuration containing admin, deployer, and platformTreasury addresses.
      * @param external_ External configuration containing RewardsManager address.
@@ -246,16 +256,6 @@ abstract contract Deploy is Script {
             opts
         );
         contracts.premiumManagerImpl = Upgrades.getImplementationAddress(contracts.premiumManagerProxy);
-
-        uint64 distributeInterval = 86_400; // 24 hours
-        contracts.premiumCollectorProxy = Upgrades.deployUUPSProxy(
-            "PremiumCollector.sol:PremiumCollector",
-            abi.encodeCall(
-                PremiumCollector.initialize, (roles.deployer, contracts.premiumManagerProxy, distributeInterval)
-            ),
-            opts
-        );
-        contracts.premiumCollectorImpl = Upgrades.getImplementationAddress(contracts.premiumCollectorProxy);
     }
 
     /**
@@ -286,7 +286,8 @@ abstract contract Deploy is Script {
                     roles.deployer,
                     external_.stakeManager,
                     roles.deployer, // Temporary placeholder for claimManager, will be set after ClaimManager deployment
-                    roles.deployer // Temporary placeholder for coverPoolFactory, will be set after factory deployment
+                    roles.deployer, // Temporary placeholder for coverPoolFactory, will be set after factory deployment
+                    getInitialPayoutTokens()
                 )
             ),
             opts
@@ -336,6 +337,17 @@ abstract contract Deploy is Script {
 
         PolicyManager(contracts.policyManagerProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
         SpecRegistry(contracts.specRegistryProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
+
+        uint64 distributeInterval = 86_400; // 24 hours
+        contracts.premiumCollectorProxy = Upgrades.deployUUPSProxy(
+            "PremiumCollector.sol:PremiumCollector",
+            abi.encodeCall(
+                PremiumCollector.initialize,
+                (roles.deployer, contracts.premiumManagerProxy, contracts.coverPoolFactoryProxy, distributeInterval)
+            ),
+            opts
+        );
+        contracts.premiumCollectorImpl = Upgrades.getImplementationAddress(contracts.premiumCollectorProxy);
     }
 
     /**

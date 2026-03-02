@@ -22,6 +22,19 @@ contract DeploySepolia is Deploy {
     /// @notice Canonical WETH address on Ethereum Sepolia testnet.
     address internal constant WETH_SEPOLIA = 0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9;
 
+    /// @notice Circle USDC on Sepolia.
+    address internal constant USDC_SEPOLIA = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
+
+    /**
+     * @inheritdoc Deploy
+     * @return initialPayoutTokens Array containing Circle USDC for Sepolia.
+     */
+    function getInitialPayoutTokens() internal pure override returns (address[] memory) {
+        address[] memory tokens = new address[](1);
+        tokens[0] = USDC_SEPOLIA;
+        return tokens;
+    }
+
     /**
      * @inheritdoc Deploy
      * @return DeploymentConfig for Sepolia testnet (chain id 11155111).

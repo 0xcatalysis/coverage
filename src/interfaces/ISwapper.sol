@@ -44,6 +44,8 @@ interface ISwapper is IAccessControl {
         address recipient;
         /// @notice Calldata to execute on the swap target.
         bytes swapCalldata;
+        /// @notice Latest timestamp at which the swap may be executed.
+        uint256 deadline;
     }
 
     /**
@@ -145,6 +147,13 @@ interface ISwapper is IAccessControl {
      * @notice Reverts when native ETH transfer fails.
      */
     error NativeTransferFailed();
+
+    /**
+     * @notice Reverts when the swap deadline has passed.
+     * @param deadline Deadline timestamp from SwapParams.
+     * @param currentTimestamp Current block timestamp.
+     */
+    error SwapDeadlineExpired(uint256 deadline, uint256 currentTimestamp);
 
     /**
      * @notice Reverts when attempting to configure a route using NATIVE_ETH instead of nativeWrapper.

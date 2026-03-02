@@ -86,13 +86,22 @@ contract PolicyManagerTest is Test {
         defaultHook = new MockBindPolicyHook();
         vm.label(address(defaultHook), "DefaultHook");
 
+        address[] memory initialTokens = new address[](1);
+        initialTokens[0] = payoutToken;
+
         Options memory deployOpts;
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
             "PolicyManager.sol",
             abi.encodeCall(
                 PolicyManager.initialize,
-                (admin, address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory))
+                (
+                    admin,
+                    address(mockStakeManager),
+                    address(mockClaimManager),
+                    address(mockCoverPoolFactory),
+                    initialTokens
+                )
             ),
             deployOpts
         );
@@ -109,31 +118,35 @@ contract PolicyManagerTest is Test {
     function test_initialize_WhenAdminZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+        address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
         freshManager.initialize(
-            address(0), address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory)
+            address(0), address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory), empty
         );
     }
 
     function test_initialize_WhenStakeManagerZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+        address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(0), address(mockClaimManager), address(mockCoverPoolFactory));
+        freshManager.initialize(admin, address(0), address(mockClaimManager), address(mockCoverPoolFactory), empty);
     }
 
     function test_initialize_WhenClaimManagerZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+        address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(mockStakeManager), address(0), address(mockCoverPoolFactory));
+        freshManager.initialize(admin, address(mockStakeManager), address(0), address(mockCoverPoolFactory), empty);
     }
 
     function test_initialize_WhenCoverPoolFactoryZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+        address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(mockStakeManager), address(mockClaimManager), address(0));
+        freshManager.initialize(admin, address(mockStakeManager), address(mockClaimManager), address(0), empty);
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -253,10 +266,6 @@ contract PolicyManagerTest is Test {
 
         assertEq(policyManager.claimManager(), address(newManager), "Claim manager not updated");
     }
-
-    /*//////////////////////////////////////////////////////////////
-                             SET POLICY
-    //////////////////////////////////////////////////////////////*/
 
     /*//////////////////////////////////////////////////////////////
                             BIND POLICY
@@ -411,11 +420,11 @@ contract PolicyManagerTest is Test {
 
         address[] memory vaults = new address[](1);
         vaults[0] = makeAddr("vault1");
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8, COVERAGE_DURATION);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, address(coverPool), COVERAGE_DURATION);
         mockStakeManager.addOperatorToCommittee(lowStakeOperator, committeeId);
         mockStakeManager.addCommitteeVaults(committeeId, vaults);
 
-        mockStakeManager.setOperatorCommitteeStake(lowStakeOperator, committeeId, 100e8);
+        mockStakeManager.setOperatorCommitteeStake(committeeId, 100e8);
 
         request.coverageAmount = 500_000e8;
 
@@ -433,12 +442,30 @@ contract PolicyManagerTest is Test {
 
         address[] memory vaults = new address[](1);
         vaults[0] = makeAddr("vault1");
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8, COVERAGE_DURATION);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, address(coverPool), COVERAGE_DURATION);
         mockStakeManager.addOperatorToCommittee(curator, committeeId);
         mockStakeManager.addCommitteeVaults(committeeId, vaults);
 
         request.coverageAmount = 500_000e8;
-        mockStakeManager.setOperatorCommitteeStake(curator, committeeId, 550_000e8);
+        mockStakeManager.setOperatorCommitteeStake(committeeId, 550_000e8);
+
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+    }
+
+    function test_bindPolicy_WhenStakeEqualsAmount_Succeeds() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        uint96 committeeId = request.quote.policyId;
+
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault1");
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, address(coverPool), COVERAGE_DURATION);
+        mockStakeManager.addOperatorToCommittee(curator, committeeId);
+        mockStakeManager.addCommitteeVaults(committeeId, vaults);
+
+        request.coverageAmount = 500_000e8;
+        mockStakeManager.setOperatorCommitteeStake(committeeId, 500_000e8);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
         vm.prank(address(coverPool));
@@ -448,9 +475,9 @@ contract PolicyManagerTest is Test {
     function test_bindPolicy_WhenNoVaultsBound_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint96 committeeId = request.quote.policyId;
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8, COVERAGE_DURATION);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, address(coverPool), COVERAGE_DURATION);
         mockStakeManager.addOperatorToCommittee(curator, committeeId);
-        mockStakeManager.setOperatorCommitteeStake(curator, committeeId, request.coverageAmount);
+        mockStakeManager.setOperatorCommitteeStake(committeeId, request.coverageAmount);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
         vm.expectRevert(abi.encodeWithSelector(IPolicyManager.NoVaultsBound.selector, committeeId));
@@ -791,7 +818,7 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         CREATE POLICY DRAFT
+                          REQUEST COVERAGE
     //////////////////////////////////////////////////////////////*/
 
     function test_requestCoverage_WhenPoolNotRegistered_Reverts() public {
@@ -842,6 +869,97 @@ contract PolicyManagerTest is Test {
             COVERAGE_AMOUNT,
             COVERAGE_DURATION,
             address(defaultHook)
+        );
+    }
+
+    function test_requestCoverage_WhenPayoutTokenNotSupported_Reverts() public {
+        address unsupportedToken = makeAddr("unsupportedToken");
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.UnsupportedPayoutToken.selector, unsupportedToken));
+        vm.prank(buyer);
+        policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            unsupportedToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    SET SUPPORTED PAYOUT TOKEN
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setSupportedPayoutToken_WhenAdmin_SetsToken() public {
+        address newToken = makeAddr("newToken");
+        assertFalse(policyManager.supportedPayoutTokens(newToken), "Should not be supported before");
+
+        vm.expectEmit(true, true, true, true, address(policyManager));
+        emit IPolicyManager.PayoutTokenSet(newToken, true);
+
+        vm.prank(admin);
+        policyManager.setSupportedPayoutToken(newToken, true);
+
+        assertTrue(policyManager.supportedPayoutTokens(newToken), "Should be supported after");
+    }
+
+    function test_setSupportedPayoutToken_WhenAdmin_RemovesToken() public {
+        vm.prank(admin);
+        policyManager.setSupportedPayoutToken(payoutToken, false);
+        assertFalse(policyManager.supportedPayoutTokens(payoutToken), "Should not be supported after removal");
+    }
+
+    function test_setSupportedPayoutToken_WhenNotAdmin_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(buyer);
+        policyManager.setSupportedPayoutToken(payoutToken, false);
+    }
+
+    function test_setSupportedPayoutToken_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(admin);
+        policyManager.setSupportedPayoutToken(address(0), true);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    INITIALIZE (PAYOUT TOKENS)
+    //////////////////////////////////////////////////////////////*/
+
+    function test_initialize_SeedsInitialPayoutTokens() public {
+        PolicyManager implementation = new PolicyManager();
+        PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+
+        address tokenA = makeAddr("tokenA");
+        address tokenB = makeAddr("tokenB");
+        address[] memory tokens = new address[](2);
+        tokens[0] = tokenA;
+        tokens[1] = tokenB;
+
+        vm.prank(admin);
+        freshManager.initialize(
+            admin, address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory), tokens
+        );
+
+        assertTrue(freshManager.supportedPayoutTokens(tokenA));
+        assertTrue(freshManager.supportedPayoutTokens(tokenB));
+    }
+
+    function test_initialize_WhenZeroAddressToken_Reverts() public {
+        PolicyManager implementation = new PolicyManager();
+        PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(0);
+
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(admin);
+        freshManager.initialize(
+            admin, address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory), tokens
         );
     }
 
@@ -923,6 +1041,7 @@ contract PolicyManagerTest is Test {
         assertEq(draft.beneficiary, beneficiary, "Beneficiary mismatch");
         assertEq(draft.claimer, beneficiary, "Claimer mismatch");
         assertEq(draft.payoutToken, payoutToken, "Payout token mismatch");
+        assertEq(draft.curator, curator, "Curator mismatch");
         assertEq(draft.coverageAmount, COVERAGE_AMOUNT, "Coverage amount mismatch");
         assertEq(draft.duration, COVERAGE_DURATION, "Duration mismatch");
         assertEq(draft.policyId, policyId, "Committee ID mismatch");
@@ -1023,6 +1142,151 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         vm.prank(buyer);
         policyManager.cancelPolicyDraft(policyId);
+    }
+
+    function test_cancelPolicyDraft_AfterOwnershipTransfer_UsesOriginalCurator() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        address newOwner = makeAddr("newOwner");
+        coverPool.setCurator(newOwner);
+        assertNotEq(coverPool.owner(), curator, "Ownership should have changed");
+
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId);
+
+        assertEq(mockStakeManager.getOperatorCommittee(curator), 0, "Original curator should be removed from committee");
+        assertEq(mockStakeManager.getOperatorCommittee(newOwner), 0, "New owner was never an operator");
+
+        IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
+        assertTrue(draft.status == IPolicyManager.PolicyStatus.Cancelled, "Status should be Cancelled");
+    }
+
+    function test_cancelPolicyDraft_StoresCorrectCuratorInDraft() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
+        assertEq(draft.curator, curator, "Draft must store the curator captured at request time");
+        assertNotEq(draft.curator, address(0), "Curator must not be zero");
+    }
+
+    function test_cancelPolicyDraft_TwoPoliciesEachStoreTheirOwnCurator() public {
+        address curatorA = curator;
+        MockCoverPool poolB = new MockCoverPool();
+        address curatorB = makeAddr("curatorB");
+        poolB.setCurator(curatorB);
+        mockCoverPoolFactory.registerPool(address(poolB));
+
+        vm.prank(buyer);
+        uint96 policyId1 = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        vm.prank(buyer);
+        uint96 policyId2 = policyManager.requestCoverage(
+            address(poolB),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        IPolicyManager.PolicyDraft memory draft1 = policyManager.getPolicyDraft(policyId1);
+        IPolicyManager.PolicyDraft memory draft2 = policyManager.getPolicyDraft(policyId2);
+        assertEq(draft1.curator, curatorA, "Draft1 should store curatorA");
+        assertEq(draft2.curator, curatorB, "Draft2 should store curatorB");
+        assertNotEq(draft1.curator, draft2.curator, "Each draft must hold its own curator");
+    }
+
+    function test_cancelPolicyDraft_SamePoolOwnershipTransferredBeforeSecondRequest_TwoDifferentCurators() public {
+        address originalCurator = curator;
+
+        vm.prank(buyer);
+        uint96 policyId1 = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        address newCurator = makeAddr("newCurator");
+        coverPool.setCurator(newCurator);
+
+        vm.prank(buyer);
+        uint96 policyId2 = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        assertEq(policyManager.getPolicyDraft(policyId1).curator, originalCurator, "Draft1 must keep original curator");
+        assertEq(
+            policyManager.getPolicyDraft(policyId2).curator,
+            newCurator,
+            "Draft2 must store current curator at request time"
+        );
+
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId1);
+        assertEq(
+            mockStakeManager.getOperatorCommittee(originalCurator), 0, "originalCurator removed after cancel of policy1"
+        );
+
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId2);
+        assertEq(mockStakeManager.getOperatorCommittee(newCurator), 0, "newCurator removed after cancel of policy2");
+    }
+
+    function test_cancelPolicyDraft_CallsRemoveOperatorFromCommittee() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        assertTrue(mockStakeManager.committeeExists(policyId), "Committee should exist before cancel");
+
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId);
+
+        assertEq(mockStakeManager.getOperatorCommittee(curator), 0, "Operator should be removed from committee");
     }
 
     function test_cancelPolicyDraft_CancelsSuccessfully() public {
@@ -1144,7 +1408,7 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
     }
 
-    function test_bindPolicy_WithHookRevert_RevertsTransaction() public {
+    function test_bindPolicy_WithHookRevert_Reverts() public {
         MockBindPolicyHook hook = new MockBindPolicyHook();
         hook.setShouldRevert(true);
 
@@ -1161,10 +1425,6 @@ contract PolicyManagerTest is Test {
         vm.expectRevert("MockBindPolicyHook: intentional revert");
         vm.prank(address(coverPool));
         policyManager.bindPolicy(request, boundPolicy);
-
-        // Verify policy was not bound
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.PolicyNotFound.selector, policyId));
-        policyManager.policyMetadata(policyId);
     }
 
     function test_requestCoverage_WhenBindPolicyHookZero_Reverts() public {
@@ -1215,7 +1475,7 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          REQUEST COVERAGE
+                    REQUEST COVERAGE (COMMITTEE)
     //////////////////////////////////////////////////////////////*/
 
     function test_requestCoverage_CreatesCommitteeWithPolicyIdAsCommitteeId() public {
@@ -1339,10 +1599,8 @@ contract PolicyManagerTest is Test {
 
         IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
         assertEq(metadata.coverageLimit, COVERAGE_LIMIT, "Coverage limit stored in metadata");
-
-        // Verify coverageAmount was used for stake check (not coverageLimit)
         assertTrue(
-            mockStakeManager.getOperatorCommitteeStake(curator, request.quote.policyId) >= request.coverageAmount,
+            mockStakeManager.getCommitteeTotalStakeUSD(request.quote.policyId) >= request.coverageAmount,
             "Stake should cover coverageAmount"
         );
     }
@@ -1351,16 +1609,14 @@ contract PolicyManagerTest is Test {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint96 committeeId = request.quote.policyId;
 
-        // Setup: stake = 500k, coverageAmount = 500k, coverageLimit = 1M
         request.coverageAmount = 500_000e8;
         request.quote.coverageLimit = 1_000_000e18; // Larger limit for economic payouts
 
         _seedCommitteeForTesting(committeeId, curator, request.coverageAmount, true);
-        mockStakeManager.setOperatorCommitteeStake(curator, committeeId, 500_000e8);
+        mockStakeManager.setOperatorCommitteeStake(committeeId, 500_000e8);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
 
-        // Should succeed: stake covers coverageAmount even though coverageLimit is higher
         vm.prank(address(coverPool));
         policyManager.bindPolicy(request, boundPolicy);
 
@@ -1449,7 +1705,6 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
 
         IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
-        // Policy uses the startTime provided by CoverPool
         assertEq(metadata.startTime, boundPolicy.startTime, "Start time should match boundPolicy");
         assertEq(metadata.maturityTime, boundPolicy.maturityTime, "Maturity time should match boundPolicy");
     }
@@ -1751,7 +2006,6 @@ contract PolicyManagerTest is Test {
 
         vm.stopPrank();
 
-        // Each policy creates its own unique committee with matching ID
         assertNotEq(policyId1, policyId2, "PolicyIds should be unique");
         assertTrue(mockStakeManager.committeeExists(policyId1), "Committee 1 should exist");
         assertTrue(mockStakeManager.committeeExists(policyId2), "Committee 2 should exist");
@@ -1775,6 +2029,28 @@ contract PolicyManagerTest is Test {
         assertEq(draft.beneficiary, beneficiary, "Beneficiary should be set correctly");
         assertEq(draft.claimer, separateClaimer, "Claimer should be set correctly");
         assertNotEq(draft.beneficiary, draft.claimer, "Beneficiary and claimer can be different addresses");
+    }
+
+    function test_policyMetadata_WhenPolicyNotFound_Reverts() public {
+        uint96 nonExistentPolicyId = 999;
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.PolicyNotFound.selector, nonExistentPolicyId));
+        policyManager.policyMetadata(nonExistentPolicyId);
+    }
+
+    function test_cancelPolicyDraft_WhenStatusIsBound_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, request.coverageAmount, true);
+
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.InvalidPolicyStatus.selector, IPolicyManager.PolicyStatus.Bound)
+        );
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(request.policyId);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1829,7 +2105,7 @@ contract PolicyManagerTest is Test {
     )
         internal
     {
-        mockStakeManager.createCommittee(committeeId, 1_000_000e8, COVERAGE_DURATION);
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, address(coverPool), COVERAGE_DURATION);
         mockStakeManager.addOperatorToCommittee(committeeOperator, committeeId);
         if (addVaults) {
             address[] memory vaults = new address[](2);
@@ -1837,7 +2113,7 @@ contract PolicyManagerTest is Test {
             vaults[1] = makeAddr("vault2");
             mockStakeManager.addCommitteeVaults(committeeId, vaults);
         }
-        mockStakeManager.setOperatorCommitteeStake(committeeOperator, committeeId, operatorStake);
+        mockStakeManager.setOperatorCommitteeStake(committeeId, operatorStake);
     }
 
     function _getBoundPolicy(IPolicyManager.BindPolicyRequest memory request)
@@ -1957,24 +2233,34 @@ contract MockStakeManager {
     uint256 public createCommitteeCallCount;
     uint96 public lastCommitteeId;
     uint256 public lastMaxStake;
+    address public lastCoverPool;
     uint32 public lastDuration;
-    bool private _shouldFailVaultLocking;
 
     mapping(address => uint96) private _operatorCommittees;
     mapping(uint96 => address) private _committeeOperators;
     mapping(uint96 => address[]) private _committeeVaults;
     mapping(uint96 => bool) private _committeeExists;
-    mapping(uint96 => mapping(address => uint256)) private _operatorStake;
+    mapping(uint96 => uint256) private _committeeStake;
     mapping(uint96 => uint256) private _committeeMaxStake;
-    mapping(uint96 => bool) private _vaultsLocked;
 
-    function createCommittee(uint96 committeeId, uint256 maxStakeForCommittee, uint32 duration) external {
+    function createCommittee(
+        uint96 committeeId,
+        uint256 maxStakeForCommittee,
+        address coverPool,
+        uint32 duration
+    )
+        external
+    {
         createCommitteeCallCount++;
         lastCommitteeId = committeeId;
         lastMaxStake = maxStakeForCommittee;
+        lastCoverPool = coverPool;
         lastDuration = duration;
         _committeeExists[committeeId] = true;
         _committeeMaxStake[committeeId] = maxStakeForCommittee;
+        address curator = ICoverPool(coverPool).owner();
+        _operatorCommittees[curator] = committeeId;
+        _committeeOperators[committeeId] = curator;
     }
 
     function addOperatorToCommittee(address operator, uint96 committeeId) external {
@@ -1996,16 +2282,16 @@ contract MockStakeManager {
         }
     }
 
-    function getOperatorCommitteeStake(address operator, uint96 committeeId) external view returns (uint256) {
-        if (_committeeOperators[committeeId] == operator && _committeeExists[committeeId]) {
-            uint256 stake = _operatorStake[committeeId][operator];
+    function getCommitteeTotalStakeUSD(uint96 committeeId) external view returns (uint256 totalStakeUSD) {
+        if (_committeeExists[committeeId]) {
+            uint256 stake = _committeeStake[committeeId];
             return stake > 0 ? stake : 1_000_000e8;
         }
         return 0;
     }
 
-    function setOperatorCommitteeStake(address operator, uint96 committeeId, uint256 stake) external {
-        _operatorStake[committeeId][operator] = stake;
+    function setOperatorCommitteeStake(uint96 committeeId, uint256 stake) external {
+        _committeeStake[committeeId] = stake;
     }
 
     function getCommitteeMaxStake(uint96 committeeId) external view returns (uint256) {
@@ -2020,19 +2306,9 @@ contract MockStakeManager {
         return _committeeExists[committeeId];
     }
 
-    function lockVaults(uint96 committeeId) external {
-        if (_shouldFailVaultLocking) {
-            revert("Vault locking failed");
-        }
-        _vaultsLocked[committeeId] = true;
-    }
-
-    function areVaultsLocked(uint96 committeeId) external view returns (bool) {
-        return _vaultsLocked[committeeId];
-    }
-
-    function setShouldFailVaultLocking(bool shouldFail) external {
-        _shouldFailVaultLocking = shouldFail;
+    function removeOperatorFromCommittee(address operator, uint96 committeeId) external {
+        delete _operatorCommittees[operator];
+        delete _committeeOperators[committeeId];
     }
 }
 
@@ -2120,3 +2396,4 @@ contract MockRevertingHook {
         revert("supportsInterface: always reverts");
     }
 }
+

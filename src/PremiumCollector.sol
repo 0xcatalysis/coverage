@@ -10,6 +10,7 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPremiumCollector} from "./interfaces/IPremiumCollector.sol";
 import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
+import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 
 /**
  * @title PremiumCollector
@@ -33,6 +34,7 @@ contract PremiumCollector is
 
     address public override premiumManager;
     uint64 public override distributeInterval;
+    address public override coverPoolFactory;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -43,10 +45,19 @@ contract PremiumCollector is
      * @notice Initializes the PremiumCollector with role assignments and configuration.
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
      * @param premiumManager_ Address of the PremiumManager contract for premium distribution.
+     * @param coverPoolFactory_ Address of the CoverPoolFactory used for pool validation.
      * @param distributeInterval_ Minimum seconds between distributions per vault (default: 86400 = 24h).
      */
-    function initialize(address admin_, address premiumManager_, uint64 distributeInterval_) external initializer {
-        require(admin_ != address(0) && premiumManager_ != address(0), ZeroAddress());
+    function initialize(
+        address admin_,
+        address premiumManager_,
+        address coverPoolFactory_,
+        uint64 distributeInterval_
+    )
+        external
+        initializer
+    {
+        require(admin_ != address(0) && premiumManager_ != address(0) && coverPoolFactory_ != address(0), ZeroAddress());
         require(distributeInterval_ > 0, InvalidDistributeInterval(distributeInterval_));
 
         __AccessControl_init();
@@ -55,6 +66,7 @@ contract PremiumCollector is
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
 
         premiumManager = premiumManager_;
+        coverPoolFactory = coverPoolFactory_;
         distributeInterval = distributeInterval_;
     }
 
@@ -87,6 +99,7 @@ contract PremiumCollector is
     {
         require(vault != address(0) && pool != address(0), ZeroAddress());
         require(policyId != 0, ZeroAmount());
+        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
         require(!_vaultConfigs[vault].registered, VaultAlreadyRegistered(vault));
 
         address underlying = IERC4626(vault).asset();
@@ -135,6 +148,7 @@ contract PremiumCollector is
         require(_vaultConfigs[vault].registered, VaultNotRegistered(vault));
         require(pool != address(0), ZeroAddress());
         require(policyId != 0, ZeroAmount());
+        require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
 
         VaultConfig storage config = _vaultConfigs[vault];
         config.pool = pool;
@@ -169,6 +183,15 @@ contract PremiumCollector is
         require(premiumManager_ != address(0), ZeroAddress());
         premiumManager = premiumManager_;
         emit PremiumManagerSet(premiumManager_);
+    }
+
+    /**
+     * @inheritdoc IPremiumCollector
+     */
+    function setCoverPoolFactory(address coverPoolFactory_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(coverPoolFactory_ != address(0), ZeroAddress());
+        coverPoolFactory = coverPoolFactory_;
+        emit CoverPoolFactorySet(coverPoolFactory_);
     }
 
     /**

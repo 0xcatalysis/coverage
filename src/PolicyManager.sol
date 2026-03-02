@@ -36,6 +36,7 @@ contract PolicyManager is
     mapping(uint96 policyId => PolicyDraft draft) private _policyDrafts;
     mapping(uint96 policyId => IPolicyManager.PolicyMetadata) private _policies;
     mapping(bytes32 policyCommit => bool registered) private _registeredPolicyCommits;
+    mapping(address token => bool supported) public override supportedPayoutTokens;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -43,17 +44,20 @@ contract PolicyManager is
     }
 
     /**
-     * @notice Initializes the PolicyManager with role assignments and dependency wiring.
+     * @notice Initializes the PolicyManager with role assignments, dependency wiring, and
+     *         optional initial payout token whitelist.
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
      * @param stakeManager_ Address of the StakeManager contract.
      * @param claimManager_ Address of the ClaimManager contract.
      * @param coverPoolFactory_ Address of the CoverPoolFactory contract.
+     * @param initialPayoutTokens_ Payout tokens marked as supported on deployment.
      */
     function initialize(
         address admin_,
         address stakeManager_,
         address claimManager_,
-        address coverPoolFactory_
+        address coverPoolFactory_,
+        address[] calldata initialPayoutTokens_
     )
         external
         initializer
@@ -72,6 +76,13 @@ contract PolicyManager is
         stakeManager = stakeManager_;
         claimManager = claimManager_;
         coverPoolFactory = coverPoolFactory_;
+
+        uint256 tokensLength = initialPayoutTokens_.length;
+        for (uint256 i = 0; i < tokensLength; ++i) {
+            address token = initialPayoutTokens_[i];
+            require(token != address(0), ZeroAddress());
+            supportedPayoutTokens[token] = true;
+        }
     }
 
     /**
@@ -118,6 +129,15 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
+    function setSupportedPayoutToken(address token, bool supported) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(token != address(0), ZeroAddress());
+        supportedPayoutTokens[token] = supported;
+        emit PayoutTokenSet(token, supported);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
     function requestCoverage(
         address pool,
         address beneficiary,
@@ -135,6 +155,7 @@ contract PolicyManager is
     {
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
         require(beneficiary != address(0) && claimer != address(0) && payoutToken != address(0), ZeroAddress());
+        require(supportedPayoutTokens[payoutToken], UnsupportedPayoutToken(payoutToken));
         require(coverageAmount != 0, InvalidCoverageAmount());
         require(duration != 0, InvalidDuration());
         require(bindPolicyHook != address(0), InvalidBindPolicyHook());
@@ -156,6 +177,7 @@ contract PolicyManager is
             beneficiary: beneficiary,
             claimer: claimer,
             payoutToken: payoutToken,
+            curator: curator,
             coverageAmount: coverageAmount,
             duration: duration,
             policyId: policyId,
@@ -166,7 +188,7 @@ contract PolicyManager is
         emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount, duration);
 
         // Create committee in core contracts using policyId as committeeId (1:1 mapping).
-        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, duration);
+        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, pool, duration);
         IStakeManager(stakeManager).addOperatorToCommittee(curator, policyId);
     }
 
@@ -180,6 +202,9 @@ contract PolicyManager is
         require(draft.buyer == msg.sender, NotPolicyBuyer(msg.sender));
 
         draft.status = PolicyStatus.Cancelled;
+
+        IStakeManager(stakeManager).removeOperatorFromCommittee(draft.curator, policyId);
+
         emit PolicyDraftCancelled(policyId, draft.pool);
     }
 
@@ -223,8 +248,7 @@ contract PolicyManager is
         // Query core contracts using policyId as committeeId (1:1 mapping).
         require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));
 
-        address curator = ICoverPool(quote.pool).owner();
-        uint256 totalStake = IStakeManager(stakeManager).getOperatorCommitteeStake(curator, policyId);
+        uint256 totalStake = IStakeManager(stakeManager).getCommitteeTotalStakeUSD(policyId);
         require(totalStake >= request.coverageAmount, InsufficientStake(policyId, request.coverageAmount, totalStake));
 
         bytes32 policyCommit = boundPolicy.policyCommit;

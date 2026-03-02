@@ -144,6 +144,12 @@ interface IClaimManager is IAccessControl {
     event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed);
 
     /**
+     * @notice Emitted when the maximum swap slippage tolerance is updated.
+     * @param maxSwapSlippageBps New slippage tolerance in basis points.
+     */
+    event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -222,6 +228,12 @@ interface IClaimManager is IAccessControl {
     error RequestedAmountExceedsRemainingCoverage(uint96 policyId, uint256 requestedAmount, uint256 remainingCoverage);
 
     /**
+     * @notice Reverts when the slippage tolerance exceeds the maximum allowed (10000 bps).
+     * @param slippageBps The invalid slippage value provided.
+     */
+    error InvalidSlippageBps(uint16 slippageBps);
+
+    /**
      * @notice Pauses claim operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
@@ -267,6 +279,13 @@ interface IClaimManager is IAccessControl {
      * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
      */
     function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
+
+    /**
+     * @notice Sets the maximum allowed slippage for collateral-to-payout swaps.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Must be less than 10000 bps (100%).
+     * @param maxSwapSlippageBps_ Slippage tolerance in basis points (e.g., 200 = 2%).
+     */
+    function setMaxSwapSlippageBps(uint16 maxSwapSlippageBps_) external;
 
     /**
      * @notice Files and resolves a claim atomically in a single transaction.
@@ -343,4 +362,9 @@ interface IClaimManager is IAccessControl {
      * @notice Returns the ChainlinkPriceFeed address.
      */
     function chainlinkPriceFeed() external view returns (address);
+
+    /**
+     * @notice Returns the maximum swap slippage tolerance in basis points.
+     */
+    function maxSwapSlippageBps() external view returns (uint16);
 }

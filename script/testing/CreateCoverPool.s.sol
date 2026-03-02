@@ -8,10 +8,14 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 
 /**
  * @title CreateCoverPool
- * @notice Creates a CoverPool via CoverPoolFactory and registers the curator as an operator.
+ * @notice Creates a CoverPool via CoverPoolFactory.
  * @dev Corresponds to Document Flow 1 – CoverPool Creation:
  *      1a. Curator creates a CoverPool from CoverPoolFactory
- *      1b. CoverPool curator registers itself as the operator of Catalysis AVS/Network
+ *
+ *      On EigenLayer, duration vaults act as operators -- the curator does NOT need to call
+ *      registerAsOperator. Duration vaults are auto-deployed by SSPRouter.createCommittee()
+ *      and register themselves as EigenLayer operators during deployment.
+ *      Symbiotic operator registration (out of scope for e2e testing) is handled separately.
  *
  * Usage:
  *   forge script script/testing/CreateCoverPool.s.sol:CreateCoverPool \
@@ -22,13 +26,9 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  *   - COVER_POOL_FACTORY: CoverPoolFactory proxy address
  *   - QUOTE_SIGNER: Address authorized to sign coverage quotes
  *   - POOL_FEE_BPS: Pool fee in basis points (e.g. 1000 = 10%, max 2000 = 20%)
- *   - OPERATOR_DEADLINE: Deadline timestamp for operator registration signature
- *   - OPERATOR_SIGNATURE: Hex-encoded operator registration signature for StakeManager
  *
  * Prerequisites:
  *   - Curator must have CREATOR_ROLE on CoverPoolFactory (or caller must be the CREATOR)
- *   - Curator must be registered as an operator on Symbiotic/EigenLayer
- *   - Operator signature must be valid for StakeManager.registerOperatorToNetwork()
  */
 contract CreateCoverPool is Script {
     /// @notice Curator address derived from private key
@@ -46,12 +46,6 @@ contract CreateCoverPool is Script {
     /// @notice Pool fee in basis points
     uint16 public poolFeeBps;
 
-    /// @notice Operator registration deadline
-    uint48 public operatorDeadline;
-
-    /// @notice Operator registration signature
-    bytes public operatorSignature;
-
     /// @notice CoverPoolFactory contract instance
     ICoverPoolFactory public factoryContract;
 
@@ -65,8 +59,6 @@ contract CreateCoverPool is Script {
         coverPoolFactory = vm.envAddress("COVER_POOL_FACTORY");
         quoteSigner = vm.envAddress("QUOTE_SIGNER");
         poolFeeBps = uint16(vm.envUint("POOL_FEE_BPS"));
-        operatorDeadline = uint48(vm.envUint("OPERATOR_DEADLINE"));
-        operatorSignature = vm.envBytes("OPERATOR_SIGNATURE");
 
         factoryContract = ICoverPoolFactory(coverPoolFactory);
     }
@@ -78,12 +70,11 @@ contract CreateCoverPool is Script {
         console.log("Quote Signer:", quoteSigner);
         console.log("Pool Fee BPS:", poolFeeBps);
 
+        // ------------------------------------------------------------------
+        // Create the CoverPool
+        // ------------------------------------------------------------------
         ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: quoteSigner,
-            poolFeeBps: poolFeeBps,
-            deadline: operatorDeadline,
-            signature: operatorSignature
+            curator: curator, quoteSigner: quoteSigner, poolFeeBps: poolFeeBps
         });
 
         // Predict the deterministic address before creation
@@ -104,6 +95,10 @@ contract CreateCoverPool is Script {
         console.log("\n=== COVER POOL CREATION COMPLETED ===");
         emit CoverPoolCreated(predictedPool, curator, quoteSigner, poolFeeBps);
     }
+
+    // ------------------------------------------------------------------
+    // Internal helpers
+    // ------------------------------------------------------------------
 
     function _verifyCreation(address predictedPool, uint256 totalPoolsBefore) internal view {
         console.log("\n--- Verification ---");

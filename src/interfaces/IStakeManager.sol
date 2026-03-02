@@ -3,56 +3,69 @@ pragma solidity 0.8.28;
 
 /**
  * @title IStakeManager
- * @notice Interface for Catalysis Core's StakeManager contract.
- * @dev Coverage contracts interact with StakeManager to register operators and query stake information.
+ * @notice Minimal interface for Catalysis Core's StakeManager contract.
+ * @dev Coverage contracts use only the committee lifecycle and stake query surfaces.
+ *      Admin functions (setRouter, setCoverPoolFactory, etc.) are not called by coverage contracts.
  */
 interface IStakeManager {
-    /**
-     * @notice Registers an operator to the Symbiotic network.
-     * @dev This function is specifically for Symbiotic protocol operator registration.
-     * @param operator The address of the operator to register.
-     * @param deadline The deadline for the registration signature.
-     * @param signature The operator's signature for registration.
-     */
-    function registerOperatorToNetwork(address operator, uint48 deadline, bytes calldata signature) external;
+    /// @notice Thrown when committee ID 0 is used (reserved as sentinel value)
+    error InvalidCommitteeId();
 
-    /**
-     * @notice Creates a committee by setting up operator sets and network limits across protocols.
-     * @param committeeId The committee ID.
-     * @param maxStakeForCommittee The maximum stake limit for Symbiotic vaults.
-     * @param duration The duration in seconds for the vault lock period.
-     */
-    function createCommittee(uint96 committeeId, uint256 maxStakeForCommittee, uint32 duration) external;
+    /// @notice Thrown when attempting to create a committee that already exists
+    error CommitteeAlreadyExists();
 
-    /**
-     * @notice Associates vaults with a committee.
-     * @dev Can only be called by a registered cover pool.
-     * @param committeeId The ID of the committee.
-     * @param vaults The array of vault addresses to associate.
-     */
-    function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external;
+    /// @notice Thrown when an invalid amount is provided (zero)
+    error InvalidAmount();
 
-    /**
-     * @notice Adds an operator to a committee.
-     * @dev Enforces one-operator-per-committee model.
-     * @param operator The address of the operator.
-     * @param committeeId The ID of the committee to add the operator to.
-     */
+    /// @notice Thrown when an invalid duration is provided (zero)
+    error InvalidDuration();
+
+    /// @notice Thrown when attempting to add an operator that is already in a committee
+    error OperatorAlreadyInCommittee();
+
+    /// @notice Thrown when attempting to add an operator to a committee that already has an operator
+    error CommitteeAlreadyHasOperator();
+
+    /// @notice Thrown when attempting to interact with a committee that has no operator assigned
+    error OperatorNotInCommittee();
+
+    /// @notice Creates a committee by setting up operator sets and network limits across protocols.
+    /// @param committeeId The committee ID (1:1 with policyId).
+    /// @param maxStakeForCommittee The maximum stake limit in USD (8 decimals).
+    /// @param duration The duration in seconds for the vault lock period.
+    function createCommittee(
+        uint96 committeeId,
+        uint256 maxStakeForCommittee,
+        address coverPool,
+        uint32 duration
+    )
+        external;
+
+    /// @notice Adds an operator to a committee (one operator per committee).
+    /// @dev Requires POLICY_MANAGER_ROLE. The curator (CoverPool owner) is used as the committee operator.
+    /// @param operator The address of the operator (curator).
+    /// @param committeeId The ID of the committee to add the operator to.
     function addOperatorToCommittee(address operator, uint96 committeeId) external;
 
-    /**
-     * @notice Returns the total stake of an operator in a specific committee across all vaults (in USD with 8
-     * decimals).
-     * @param operator The address of the operator.
-     * @param committeeId The ID of the committee.
-     * @return The total stake of the operator in the committee in USD.
-     */
-    function getOperatorCommitteeStake(address operator, uint96 committeeId) external view returns (uint256);
+    /// @notice Removes an operator from a committee.
+    /// @dev Called by the operator themselves or by POLICY_MANAGER_ROLE to free the slot.
+    /// @param operator The address of the operator to remove.
+    /// @param committeeId The ID of the committee to remove the operator from.
+    function removeOperatorFromCommittee(address operator, uint96 committeeId) external;
 
-    /**
-     * @notice Returns all the vault addresses associated with a committee.
-     * @param committeeId The ID of the committee to check.
-     * @return The array of vault addresses associated with the committee.
-     */
+    /// @notice Associates vaults with a committee and configures them in the appropriate adapters.
+    /// @param committeeId The ID of the committee.
+    /// @param vaults The array of vault addresses to associate.
+    function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external;
+
+    /// @notice Returns the total stake for a committee across all registered vaults (USD, 8 decimals).
+    /// @dev Called by PolicyManager.bindPolicy to enforce stake sufficiency before policy activation.
+    /// @param committeeId The ID of the committee.
+    /// @return totalStakeUSD The total stake for the committee in USD (8 decimals).
+    function getCommitteeTotalStakeUSD(uint96 committeeId) external view returns (uint256 totalStakeUSD);
+
+    /// @notice Returns all vault addresses associated with a committee.
+    /// @param committeeId The ID of the committee to check.
+    /// @return The array of vault addresses associated with the committee.
     function getCommitteeVaults(uint96 committeeId) external view returns (address[] memory);
 }

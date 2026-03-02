@@ -13,4 +13,12 @@ interface IChainlinkPriceFeed {
      * @return USD value with 8 decimals.
      */
     function getUSDValue(address token, uint256 amount) external view returns (uint256);
+
+    /**
+     * @notice Returns the token amount for a given USD value.
+     * @param token ERC20 token address.
+     * @param usdValue USD value with 8 decimals.
+     * @return Token amount in token's native decimals.
+     */
+    function getTokenAmount(address token, uint256 usdValue) external view returns (uint256);
 }
