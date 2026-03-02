@@ -209,7 +209,7 @@ contract CatalysisCoverAdapter is
         onlyParentVaultWithEmptyData(data)
         returns (bytes32[] memory, int256)
     {
-        uint256 shares;
+        uint256 shares = 0;
         if (assets > 0) {
             // Approve exact amount before depositing into underlying vault
             IERC20(asset).forceApprove(underlyingVault, assets);
@@ -490,7 +490,7 @@ contract CatalysisCoverAdapter is
         totalPrincipal -= userPrincipalForWithdrawal > totalPrincipal ? totalPrincipal : userPrincipalForWithdrawal;
 
         // Per-user insurance: only if sender has tracked principal and policy is active
-        uint256 insurancePayout;
+        uint256 insurancePayout = 0;
         if (userPrincipalForWithdrawal > 0 && _isPolicyActive()) {
             uint256 shortfall = userPrincipalForWithdrawal > assets ? userPrincipalForWithdrawal - assets : 0;
             if (shortfall > 0) {
