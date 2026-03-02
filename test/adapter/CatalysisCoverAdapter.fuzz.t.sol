@@ -11,6 +11,7 @@ import { IEvents as IE } from "../../src/adapter/interfaces/IEvents.sol";
 import { MockERC20, MockVaultV2 } from "./mocks/Mocks.sol";
 import { ISpec } from "coverage/interfaces/ISpec.sol";
 import { RealCoverageSetup } from "./helpers/RealCoverageSetup.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /// @title CatalysisCoverAdapterFuzzTest
 /// @notice Fuzz tests for CatalysisCoverAdapter to verify invariants and edge cases
@@ -51,8 +52,8 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
         // Deploy real PolicyManager + CoverPool + peripheral mocks
         _deployRealCoverage(curator, curator);
 
-        // Deploy adapter first (no policyId — set via onPolicyBound hook)
-        adapter = new CatalysisCoverAdapter(
+        // Deploy adapter behind UUPS proxy (no policyId — set via onPolicyBound hook)
+        adapter = _deployAdapterProxy(
             address(parentVault),
             address(underlyingVault),
             address(claimManager),
@@ -497,16 +498,19 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
                    CONSTRUCTOR FUZZ TESTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Fuzz test: constructor validates maxCoverableLossBps
-    function testFuzz_constructor_validatesMaxCoverableLoss(
+    /// @notice Fuzz test: initialize validates maxCoverableLossBps
+    function testFuzz_initialize_validatesMaxCoverableLoss(
         uint16 maxLossBps
     ) public {
+        // Deploy uninitialized proxy to test initialize revert paths
+        CatalysisCoverAdapter impl = new CatalysisCoverAdapter();
+        CatalysisCoverAdapter proxy = CatalysisCoverAdapter(address(new ERC1967Proxy(address(impl), "")));
         // Valid range: 1 - 10000
         if (maxLossBps == 0 || maxLossBps > 10_000) {
             vm.expectRevert(IA.InvalidMaxCoverableLoss.selector);
         }
 
-        new CatalysisCoverAdapter(
+        proxy.initialize(
             address(parentVault), address(underlyingVault), address(claimManager), address(coverPool), maxLossBps
         );
     }
@@ -521,8 +525,8 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
         depositAmount = bound(depositAmount, 1 ether, type(uint64).max);
         lossPercent = bound(lossPercent, 50, 99); // Ensure loss > maxLossBps in most cases
 
-        // Deploy adapter with custom maxLossBps
-        CatalysisCoverAdapter customAdapter = new CatalysisCoverAdapter(
+        // Deploy adapter behind UUPS proxy with custom maxLossBps
+        CatalysisCoverAdapter customAdapter = _deployAdapterProxy(
             address(parentVault), address(underlyingVault), address(claimManager), address(coverPool), maxLossBps
         );
 
@@ -783,8 +787,8 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     ) public {
         vm.assume(caller != address(policyManager));
 
-        // Deploy fresh adapter (not yet bound)
-        CatalysisCoverAdapter freshAdapter = new CatalysisCoverAdapter(
+        // Deploy fresh adapter behind UUPS proxy (not yet bound)
+        CatalysisCoverAdapter freshAdapter = _deployAdapterProxy(
             address(parentVault),
             address(underlyingVault),
             address(claimManager),

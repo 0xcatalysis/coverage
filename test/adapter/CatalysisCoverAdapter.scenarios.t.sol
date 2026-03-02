@@ -54,8 +54,8 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
     function _deployAdapter(
         uint16 maxCoverableLossBps
     ) internal {
-        // Deploy adapter first (no policyId — set via onPolicyBound hook)
-        adapter = new CatalysisCoverAdapter(
+        // Deploy adapter behind UUPS proxy (no policyId — set via onPolicyBound hook)
+        adapter = _deployAdapterProxy(
             address(parentVault),
             address(underlyingVault),
             address(claimManager),

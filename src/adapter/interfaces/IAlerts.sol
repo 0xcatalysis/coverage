@@ -82,4 +82,7 @@ interface IAlerts {
      *  - Share redemption for valid users.
      */
     error UnsupportedDeallocation(uint256 assets, bytes4 selector, address sender);
+
+    /// @notice Thrown when not owner of Covered Vault tries to upgrade adapter.
+    error NotAuthorizedUpgrader(address account);
 }

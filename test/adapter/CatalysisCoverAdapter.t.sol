@@ -11,6 +11,7 @@ import { IEvents as IE } from "../../src/adapter/interfaces/IEvents.sol";
 import { MockERC20, MockVaultV2 } from "./mocks/Mocks.sol";
 import { ISpec } from "coverage/interfaces/ISpec.sol";
 import { RealCoverageSetup } from "./helpers/RealCoverageSetup.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract CatalysisCoverAdapterTest is RealCoverageSetup {
     CatalysisCoverAdapter adapter;
@@ -51,8 +52,8 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
         // Deploy real PolicyManager + CoverPool + peripheral mocks
         _deployRealCoverage(curator, curator);
 
-        // Deploy adapter first (no policyId — set via onPolicyBound hook)
-        adapter = new CatalysisCoverAdapter(
+        // Deploy adapter behind UUPS proxy (no policyId — set via onPolicyBound hook)
+        adapter = _deployAdapterProxy(
             address(parentVault),
             address(underlyingVault),
             address(claimManager),
@@ -89,33 +90,36 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         CONSTRUCTOR TESTS
+                         INITIALIZATION TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_constructor_setsImmutables() public view {
+    function test_initialize_setsState() public view {
         assertEq(adapter.parentVault(), address(parentVault));
         assertEq(adapter.underlyingVault(), address(underlyingVault));
         assertEq(adapter.asset(), address(asset));
         assertNotEq(adapter.adapterId(), bytes32(0));
     }
 
-    function test_constructor_revertsOnZeroParentVault() public {
+    function test_initialize_revertsOnZeroParentVault() public {
+        CatalysisCoverAdapter proxy = _deployUninitializedProxy();
         vm.expectRevert(IA.ZeroAddress.selector);
-        new CatalysisCoverAdapter(
+        proxy.initialize(
             address(0), address(underlyingVault), address(claimManager), address(coverPool), MAX_COVERABLE_LOSS_BPS
         );
     }
 
-    function test_constructor_revertsOnZeroUnderlyingVault() public {
+    function test_initialize_revertsOnZeroUnderlyingVault() public {
+        CatalysisCoverAdapter proxy = _deployUninitializedProxy();
         vm.expectRevert(IA.ZeroAddress.selector);
-        new CatalysisCoverAdapter(
+        proxy.initialize(
             address(parentVault), address(0), address(claimManager), address(coverPool), MAX_COVERABLE_LOSS_BPS
         );
     }
 
-    function test_constructor_revertsOnInvalidMaxCoverableLoss() public {
+    function test_initialize_revertsOnInvalidMaxCoverableLoss() public {
+        CatalysisCoverAdapter proxy = _deployUninitializedProxy();
         vm.expectRevert(IA.InvalidMaxCoverableLoss.selector);
-        new CatalysisCoverAdapter(
+        proxy.initialize(
             address(parentVault),
             address(underlyingVault),
             address(claimManager),
@@ -124,7 +128,7 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
         );
     }
 
-    function test_constructor_setsMaxCoverableLossBps() public view {
+    function test_initialize_setsMaxCoverableLossBps() public view {
         assertEq(adapter.maxCoverableLossBps(), MAX_COVERABLE_LOSS_BPS);
     }
 
@@ -660,14 +664,15 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
         adapter.deallocate(abi.encode(123), DEPOSIT_AMOUNT, WITHDRAW_SELECTOR, user1);
     }
 
-    /// @notice Test constructor reverts when assets mismatch
-    function test_constructor_revertsOnAssetMismatch() public {
+    /// @notice Test initialize reverts when assets mismatch
+    function test_initialize_revertsOnAssetMismatch() public {
         // Create underlying vault with different asset
         MockERC20 differentAsset = new MockERC20();
         MockVaultV2 mismatchedVault = new MockVaultV2(address(differentAsset), "Different", "DIFF");
 
+        CatalysisCoverAdapter proxy = _deployUninitializedProxy();
         vm.expectRevert(CatalysisCoverAdapter.AssetMismatch.selector);
-        new CatalysisCoverAdapter(
+        proxy.initialize(
             address(parentVault),
             address(mismatchedVault),
             address(claimManager),
@@ -695,8 +700,8 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
     }
 
     function test_onPolicyBound_revertsIfNotPolicyManager() public {
-        // Deploy fresh adapter (not yet bound)
-        CatalysisCoverAdapter freshAdapter = new CatalysisCoverAdapter(
+        // Deploy fresh adapter behind UUPS proxy (not yet bound)
+        CatalysisCoverAdapter freshAdapter = _deployAdapterProxy(
             address(parentVault),
             address(underlyingVault),
             address(claimManager),
@@ -721,7 +726,7 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
         MockVaultV2 pv2 = new MockVaultV2(address(asset), "PV2", "PV2");
         pv2.setOwner(address(0xBEEF)); // different from curator
 
-        CatalysisCoverAdapter freshAdapter = new CatalysisCoverAdapter(
+        CatalysisCoverAdapter freshAdapter = _deployAdapterProxy(
             address(pv2), address(underlyingVault), address(claimManager), address(coverPool), MAX_COVERABLE_LOSS_BPS
         );
 
@@ -761,7 +766,7 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
             address(mockBindPolicyHook)
         );
 
-        CatalysisCoverAdapter freshAdapter = new CatalysisCoverAdapter(
+        CatalysisCoverAdapter freshAdapter = _deployAdapterProxy(
             address(parentVault),
             address(underlyingVault),
             address(claimManager),
@@ -792,8 +797,8 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
             pv.setOwner(curator); // buyer must match parentVault.owner
             MockVaultV2 uv = new MockVaultV2(address(asset), "UV", "UV");
 
-            // Deploy adapter first
-            CatalysisCoverAdapter a = new CatalysisCoverAdapter(
+            // Deploy adapter behind UUPS proxy
+            CatalysisCoverAdapter a = _deployAdapterProxy(
                 address(pv), address(uv), address(claimManager), address(coverPool), bpsValues[i]
             );
 
@@ -831,10 +836,17 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
         assertEq(adapter.policyManager(), address(policyManager));
     }
 
-    function test_constructor_setsPolicyBoundExecutedFalse() public view {
+    function test_initialize_setsPolicyBoundExecutedFalse() public view {
         // Deploy a fresh adapter without binding to verify initial state
         // (main adapter has policyBoundExecuted=true from setUp)
         // We verify the main adapter is bound as expected
         assertTrue(adapter.policyBoundExecuted());
+    }
+
+    /// @dev Deploys an uninitialized ERC1967 proxy pointing to CatalysisCoverAdapter implementation.
+    ///      Used to test initialize() revert paths (calling initialize directly on the proxy).
+    function _deployUninitializedProxy() internal returns (CatalysisCoverAdapter) {
+        CatalysisCoverAdapter impl = new CatalysisCoverAdapter();
+        return CatalysisCoverAdapter(address(new ERC1967Proxy(address(impl), "")));
     }
 }

@@ -1,25 +1,26 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { ICatalysisCoverAdapter } from "../../interfaces/ICatalysisCoverAdapter.sol";
+import {ICatalysisCoverAdapter} from "../../interfaces/ICatalysisCoverAdapter.sol";
 // aderyn-fp-next-line(unused-import) IAdapter is inherited via ICatalysisCoverAdapter
-import { IAdapter } from "../../interfaces/Morpho/IAdapter.sol";
-import { IVaultV2 } from "../../interfaces/Morpho/IVaultV2.sol";
-import { BasePolicyInteractions } from "../../base/BasePolicyInteractions.sol";
-import { ISpec } from "coverage/interfaces/ISpec.sol";
-import { IPolicyManager } from "coverage/interfaces/IPolicyManager.sol";
-import { IClaimManager } from "coverage/interfaces/IClaimManager.sol";
-import { IBindPolicyHook } from "coverage/interfaces/IBindPolicyHook.sol";
-import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {IAdapter} from "../../interfaces/Morpho/IAdapter.sol";
+import {IVaultV2} from "../../interfaces/Morpho/IVaultV2.sol";
+import {BasePolicyInteractions} from "../../base/BasePolicyInteractions.sol";
+import {ISpec} from "coverage/interfaces/ISpec.sol";
+import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
+import {IClaimManager} from "coverage/interfaces/IClaimManager.sol";
+import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import { IAlerts as IA } from "../../interfaces/IAlerts.sol";
-import { IEvents as IE } from "../../interfaces/IEvents.sol";
+import {IAlerts as IA} from "../../interfaces/IAlerts.sol";
+import {IEvents as IE} from "../../interfaces/IEvents.sol";
 
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
-import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /// @title CatalysisCoverAdapter
 /// @notice Morpho Vault V2 adapter that provides NAV-based insurance coverage
@@ -42,7 +43,13 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
 ///      - realAssets() returns pure currentValue() — no insurance baked into share price
 ///      - Insurance is paid directly to the user on withdrawal, not via vault share price
 ///      - Maximum coverage is capped at maxCoverableLossBps percent of user's principal
-contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions, ReentrancyGuard, IBindPolicyHook {
+contract CatalysisCoverAdapter is
+    ICatalysisCoverAdapter,
+    BasePolicyInteractions,
+    UUPSUpgradeable,
+    ReentrancyGuard,
+    IBindPolicyHook
+{
     using SafeERC20 for IERC20;
     using Math for uint256;
 
@@ -67,26 +74,26 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
     bytes4 private constant ALLOCATE_SELECTOR = 0x5c9ce04d;
 
     /*//////////////////////////////////////////////////////////////
-                           IMMUTABLES
+                         ADAPTER STORAGE
     //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc ICatalysisCoverAdapter
-    address public immutable override parentVault;
+    address public override parentVault;
 
     /// @inheritdoc ICatalysisCoverAdapter
-    address public immutable override underlyingVault;
+    address public override underlyingVault;
 
     /// @inheritdoc ICatalysisCoverAdapter
-    address public immutable override asset;
+    address public override asset;
 
     /// @inheritdoc ICatalysisCoverAdapter
-    bytes32 public immutable override adapterId;
+    bytes32 public override adapterId;
 
     /// @notice Deployment timestamp, included in adapterId for uniqueness
-    uint256 public immutable override deployTimestamp;
+    uint256 public override deployTimestamp;
 
     /// @notice Maximum loss percentage that can be covered (in basis points, e.g., 1000 = 10%)
-    uint16 public immutable maxCoverableLossBps;
+    uint16 public maxCoverableLossBps;
 
     /*//////////////////////////////////////////////////////////////
                              STATE
@@ -127,30 +134,38 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Validates that caller is parent vault and data is empty
-    modifier onlyParentVaultWithEmptyData(
-        bytes memory data
-    ) {
+    modifier onlyParentVaultWithEmptyData(bytes memory data) {
         if (msg.sender != parentVault) revert NotAuthorized();
         if (data.length != 0) revert InvalidData();
         _;
     }
 
     /*//////////////////////////////////////////////////////////////
-                           CONSTRUCTOR
+                           INITIALIZER
     //////////////////////////////////////////////////////////////*/
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
 
     /// @param _parentVault The Covered Vault (Morpho V2)
     /// @param _underlyingVault The Underlying Vault (Morpho V1 or V2)
     /// @param _claimManager The ClaimManager contract (policyManager is derived from it)
     /// @param _coverPool The CoverPool contract
     /// @param _maxCoverableLossBps Maximum loss percentage coverable (in basis points, e.g., 1000 = 10%)
-    constructor(
+    function initialize(
         address _parentVault,
         address _underlyingVault,
         address _claimManager,
         address _coverPool,
         uint16 _maxCoverableLossBps
-    ) BasePolicyInteractions(IClaimManager(_claimManager).policyManager(), _claimManager, _coverPool) {
+    )
+        external
+        initializer
+    {
+        __BasePolicyInteractions_init(IClaimManager(_claimManager).policyManager(), _claimManager, _coverPool);
+
         require(_parentVault != address(0), IA.ZeroAddress());
         require(_underlyingVault != address(0), IA.ZeroAddress());
         if (_parentVault == _underlyingVault) revert SameVault();
@@ -187,7 +202,13 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         uint256 assets,
         bytes4 selector,
         address sender
-    ) external override nonReentrant onlyParentVaultWithEmptyData(data) returns (bytes32[] memory, int256) {
+    )
+        external
+        override
+        nonReentrant
+        onlyParentVaultWithEmptyData(data)
+        returns (bytes32[] memory, int256)
+    {
         uint256 shares;
         if (assets > 0) {
             // Approve exact amount before depositing into underlying vault
@@ -228,7 +249,13 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         uint256 assets,
         bytes4 selector,
         address sender
-    ) external override nonReentrant onlyParentVaultWithEmptyData(data) returns (bytes32[] memory, int256) {
+    )
+        external
+        override
+        nonReentrant
+        onlyParentVaultWithEmptyData(data)
+        returns (bytes32[] memory, int256)
+    {
         if (assets > 0 && currentValue() > 0) {
             // aderyn-fp-next-line(reentrancy-state-change) Only called by trusted parentVault via nonReentrant +
             // onlyParentVaultWithEmptyData
@@ -295,7 +322,10 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
     function onPolicyBound(
         uint96 _policyId,
         uint256 coverageLimit
-    ) external override(IBindPolicyHook, ICatalysisCoverAdapter) {
+    )
+        external
+        override (IBindPolicyHook, ICatalysisCoverAdapter)
+    {
         if (msg.sender != address(_policyManager)) revert NotAuthorized();
         if (policyBoundExecuted) revert PolicyBoundAlreadyExecuted();
 
@@ -329,9 +359,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
     }
 
     /// @inheritdoc IERC165
-    function supportsInterface(
-        bytes4 interfaceId
-    ) external pure returns (bool) {
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
         return interfaceId == type(IBindPolicyHook).interfaceId || interfaceId == type(IERC165).interfaceId;
     }
 
@@ -374,9 +402,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
 
     /// @inheritdoc ICatalysisCoverAdapter
     // slither-disable-next-line incorrect-equality
-    function userShortfall(
-        address user
-    ) external view override returns (uint256) {
+    function userShortfall(address user) external view override returns (uint256) {
         if (userUnderlyingShares[user] == 0) return 0;
         uint256 userCurrentValue = IERC4626(underlyingVault).convertToAssets(userUnderlyingShares[user]);
         if (userPrincipal[user] > userCurrentValue) {
@@ -389,9 +415,12 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
 
     /// @notice Called by ClaimManager to evaluate a claim
     /// @dev Part of ISpec implementation
-    function evaluate(
-        ISpec.EvaluationContext calldata context
-    ) external view override returns (ISpec.EvaluationResult memory result) {
+    function evaluate(ISpec.EvaluationContext calldata context)
+        external
+        view
+        override
+        returns (ISpec.EvaluationResult memory result)
+    {
         (uint256 pendingClaimAmount, bool hasPendingClaim) = _getPendingClaim();
         (address claimant, uint256 claimedAmount) = abi.decode(context.additionalData, (address, uint256));
 
@@ -444,10 +473,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
     ///      transfers payout directly to sender (not through the vault).
     ///      Returns assetsFromUnderlying — the vault pulls this amount via pre-approval.
     // slither-disable-next-line reentrancy-no-eth,reentrancy-benign,incorrect-equality
-    function _withdraw(
-        uint256 assets,
-        address sender
-    ) internal {
+    function _withdraw(uint256 assets, address sender) internal {
         // Burn pro-rata shares from underlying vault based on currentValue (not protected value)
         // Use withdraw(assets) rather than redeem(sharesToBurn) to guarantee the adapter
         // receives exactly `assets` tokens.  redeem(sharesToBurn) applies two consecutive
@@ -487,10 +513,7 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
     /// @param shortfall The shortfall amount
     /// @param sender Address for coverage payment
     /// @return payout The insurance payout amount
-    function _claimInsurance(
-        uint256 shortfall,
-        address sender
-    ) internal returns (uint256 payout) {
+    function _claimInsurance(uint256 shortfall, address sender) internal returns (uint256 payout) {
         (uint256 coverageLimit, address payoutToken) = _getCoverageParams(policyId);
 
         // Calculate remaining coverage (coverageLimit - already paid out)
@@ -555,5 +578,12 @@ contract CatalysisCoverAdapter is ICatalysisCoverAdapter, BasePolicyInteractions
         assembly {
             tstore(PENDING_CLAIM_AMOUNT_SLOT, 0)
         }
+    }
+
+    /**
+     * @notice Restricts UUPS upgrade authorization to DEFAULT_ADMIN_ROLE holders.
+     */
+    function _authorizeUpgrade(address) internal view override {
+        require(msg.sender == IVaultV2(parentVault).owner(), IA.NotAuthorizedUpgrader(msg.sender));
     }
 }

@@ -8,9 +8,11 @@ import { CoverPool } from "coverage/CoverPool.sol";
 import { ICoverPool } from "coverage/interfaces/ICoverPool.sol";
 import { IPolicyManager } from "coverage/interfaces/IPolicyManager.sol";
 import { IClaimManager } from "coverage/interfaces/IClaimManager.sol";
+import { CatalysisCoverAdapter } from "../../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
 
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
+import { Options, Upgrades } from "@openzeppelin/upgrades/Upgrades.sol";
 import { EfficientHashLib } from "@solady/utils/EfficientHashLib.sol";
 
 import { MockClaimManager } from "../mocks/Mocks.sol";
@@ -216,5 +218,26 @@ abstract contract RealCoverageSetup is Test {
             uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );
+    }
+
+    /// @notice Deploys CatalysisCoverAdapter behind a UUPS proxy using the Upgrades library
+    function _deployAdapterProxy(
+        address parentVault_,
+        address underlyingVault_,
+        address claimManager_,
+        address coverPool_,
+        uint16 maxCoverableLossBps_
+    ) internal returns (CatalysisCoverAdapter) {
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "CatalysisCoverAdapter.sol",
+            abi.encodeCall(
+                CatalysisCoverAdapter.initialize,
+                (parentVault_, underlyingVault_, claimManager_, coverPool_, maxCoverableLossBps_)
+            ),
+            deployOpts
+        );
+        return CatalysisCoverAdapter(proxy);
     }
 }

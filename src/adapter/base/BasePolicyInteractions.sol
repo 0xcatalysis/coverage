@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { IPolicyManager } from "coverage/interfaces/IPolicyManager.sol";
 import { IClaimManager } from "coverage/interfaces/IClaimManager.sol";
 import { ICoverPool } from "coverage/interfaces/ICoverPool.sol";
@@ -8,23 +9,23 @@ import { ISpec } from "coverage/interfaces/ISpec.sol";
 
 /**
  * @title BasePolicyInteractions
- * @notice Non-upgradeable base contract for interacting with Catalysis policy and claim management.
+ * @notice Upgradeable base contract for interacting with Catalysis policy and claim management.
  * @dev This is a simpler version of PolicyInteractions without the upgradeable pattern.
  *      Designed for use in non-proxy contracts like Bundler3 adapters.
  */
-abstract contract BasePolicyInteractions is ISpec {
+abstract contract BasePolicyInteractions is Initializable, ISpec {
     // ========================================
-    // Immutable Storage
+    // Storage
     // ========================================
 
     /// @notice ClaimManager contract for filing and resolving claims.
-    IClaimManager internal immutable claimManager;
+    IClaimManager internal claimManager;
 
     /// @notice PolicyManager contract for querying policy metadata.
-    IPolicyManager internal immutable _policyManager;
+    IPolicyManager internal _policyManager;
 
     /// @notice The address of cover pool corresponding to the Adapter.
-    address internal immutable coverPool;
+    address internal coverPool;
 
     // ========================================
     // Errors
@@ -46,7 +47,7 @@ abstract contract BasePolicyInteractions is ISpec {
     error InvalidEvidenceHash();
 
     // ========================================
-    // Constructor
+    // Initializer
     // ========================================
 
     /**
@@ -55,11 +56,11 @@ abstract contract BasePolicyInteractions is ISpec {
      * @param claimManager_ Address of the ClaimManager contract.
      * @param pool_ Address of the CoverPool contract.
      */
-    constructor(
+    function __BasePolicyInteractions_init(
         address policyManager_,
         address claimManager_,
         address pool_
-    ) {
+    ) internal onlyInitializing {
         if (policyManager_ == address(0) || claimManager_ == address(0) || pool_ == address(0)) {
             revert ZeroAddress();
         }

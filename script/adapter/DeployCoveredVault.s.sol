@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import { Script, console } from "forge-std/Script.sol";
 import { CatalysisCoverAdapter } from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
 import { IVaultV2 } from "../../src/adapter/interfaces/Morpho/IVaultV2.sol";
+import { Options, Upgrades } from "@openzeppelin/upgrades/Upgrades.sol";
 
 /// @notice Minimal interface for Morpho VaultV2Factory
 interface IVaultV2Factory {
@@ -184,10 +185,18 @@ contract DeployCoveredVault is Script {
         Config memory cfg,
         address coveredVault
     ) internal returns (CatalysisCoverAdapter adapter) {
-        adapter = new CatalysisCoverAdapter(
-            coveredVault, cfg.underlyingVault, cfg.claimManager, cfg.coverPool, cfg.maxCoverableLossBps
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "CatalysisCoverAdapter.sol",
+            abi.encodeCall(
+                CatalysisCoverAdapter.initialize,
+                (coveredVault, cfg.underlyingVault, cfg.claimManager, cfg.coverPool, cfg.maxCoverableLossBps)
+            ),
+            deployOpts
         );
-        console.log("Step 2: Adapter deployed at:", address(adapter));
+        adapter = CatalysisCoverAdapter(proxy);
+        console.log("Step 2: Adapter (UUPS proxy) deployed at:", address(adapter));
     }
 
     /*//////////////////////////////////////////////////////////////
