@@ -21,8 +21,9 @@ This separation keeps restaking platform complexity out of Coverage contracts.
 | `ClaimManager` | `ChainlinkPriceFeed` | `getUSDValue(token, amount)` | Normalize requested payout to USD slash target |
 | `ClaimManager` | `SlashingManager` | `executeSlashing(policyId, operator, slashAmountUSD, taskId)` | Execute policy-scoped slashing and retrieve collateral |
 
-> **Note:** EigenLayer operator setup (depositing stake, allocating magnitude, and registering to the
-> committee's operator set) is performed off-chain by the restaker before bind. See
+> **Note:** Before a policy can be bound, restakers must deposit collateral into the committee's
+> duration vault. Duration vaults act as EigenLayer operators and handle magnitude allocation and
+> operator-set registration internally — no separate EigenLayer setup is needed. See
 > [Restaker Setup](./04-restaker-setup.md) for the full sequence.
 
 ## Committee and Policy Identity
