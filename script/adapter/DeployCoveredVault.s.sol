@@ -141,13 +141,7 @@ contract DeployCoveredVault is Script {
                      STEP 1: DEPLOY COVERED VAULT
     //////////////////////////////////////////////////////////////*/
 
-    function _step1_deployCoveredVault(
-        Config memory cfg,
-        address deployer
-    )
-        internal
-        returns (address coveredVault)
-    {
+    function _step1_deployCoveredVault(Config memory cfg, address deployer) internal returns (address coveredVault) {
         // 1a. Get underlying asset
         address asset = IVaultV2(cfg.underlyingVault).asset();
         console.log("Asset:", asset);
@@ -203,13 +197,7 @@ contract DeployCoveredVault is Script {
               STEP 3: CURATOR & ALLOCATOR SETTINGS
     //////////////////////////////////////////////////////////////*/
 
-    function _step3_configureCuratorSettings(
-        Config memory cfg,
-        address coveredVault,
-        address adapter
-    )
-        internal
-    {
+    function _step3_configureCuratorSettings(Config memory cfg, address coveredVault, address adapter) internal {
         console.log("Step 3: Configuring curator settings...");
 
         // 3a. Register adapter

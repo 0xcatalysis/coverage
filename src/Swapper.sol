@@ -110,14 +110,7 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
     /**
      * @inheritdoc ISwapper
      */
-    function setSwapTargetWhitelist(
-        address target,
-        bool whitelisted
-    )
-        external
-        override
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function setSwapTargetWhitelist(address target, bool whitelisted) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(target != address(0), ZeroAddress());
         whitelistedTargets[target] = whitelisted;
         emit SwapTargetWhitelistSet(target, whitelisted);
@@ -135,15 +128,7 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
     /**
      * @inheritdoc ISwapper
      */
-    function recoverTokens(
-        address token,
-        address to,
-        uint256 amount
-    )
-        external
-        override
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function recoverTokens(address token, address to, uint256 amount) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(token != address(0) && to != address(0), ZeroAddress());
         require(amount != 0, ZeroAmount());
 

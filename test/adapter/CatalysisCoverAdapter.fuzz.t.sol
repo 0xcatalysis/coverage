@@ -317,12 +317,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: shortfall equals raw loss when loss <= maxCoverable
-    function testFuzz_calculateShortfall_equalsRawLossWhenSmall(
-        uint256 depositAmount,
-        uint256 lossPercent
-    )
-        public
-    {
+    function testFuzz_calculateShortfall_equalsRawLossWhenSmall(uint256 depositAmount, uint256 lossPercent) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint128).max / 2);
         // Keep loss within maxCoverableLossBps (10%)
         lossPercent = bound(lossPercent, 1, MAX_COVERABLE_LOSS_BPS / 100);

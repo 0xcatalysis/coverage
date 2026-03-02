@@ -45,14 +45,7 @@ contract PremiumCollector is
      * @param premiumManager_ Address of the PremiumManager contract for premium distribution.
      * @param distributeInterval_ Minimum seconds between distributions per vault (default: 86400 = 24h).
      */
-    function initialize(
-        address admin_,
-        address premiumManager_,
-        uint64 distributeInterval_
-    )
-        external
-        initializer
-    {
+    function initialize(address admin_, address premiumManager_, uint64 distributeInterval_) external initializer {
         require(admin_ != address(0) && premiumManager_ != address(0), ZeroAddress());
         require(distributeInterval_ > 0, InvalidDistributeInterval(distributeInterval_));
 
@@ -138,15 +131,7 @@ contract PremiumCollector is
     /**
      * @inheritdoc IPremiumCollector
      */
-    function updateVault(
-        address vault,
-        address pool,
-        uint96 policyId
-    )
-        external
-        override
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function updateVault(address vault, address pool, uint96 policyId) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(_vaultConfigs[vault].registered, VaultNotRegistered(vault));
         require(pool != address(0), ZeroAddress());
         require(policyId != 0, ZeroAmount());

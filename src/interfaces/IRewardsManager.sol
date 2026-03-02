@@ -16,11 +16,5 @@ interface IRewardsManager {
      * @param rewardAmount Amount of reward token to distribute.
      * @param rewardToken The ERC20 token used for rewards.
      */
-    function distributeRewards(
-        uint96 policyId,
-        address operator,
-        uint256 rewardAmount,
-        IERC20 rewardToken
-    )
-        external;
+    function distributeRewards(uint96 policyId, address operator, uint256 rewardAmount, IERC20 rewardToken) external;
 }

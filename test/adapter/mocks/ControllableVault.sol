@@ -115,15 +115,7 @@ contract ControllableVault is IERC4626 {
         _totalShares += shares_;
     }
 
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address owner_
-    )
-        external
-        override
-        returns (uint256 shares_)
-    {
+    function withdraw(uint256 assets, address receiver, address owner_) external override returns (uint256 shares_) {
         shares_ = convertToShares(assets);
         if (msg.sender != owner_) _allowances[owner_][msg.sender] -= shares_;
         _shares[owner_] -= shares_;

@@ -124,13 +124,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Fuzz test for multiple deposits and withdrawals
-    function testFuzz_multipleDepositsWithdrawals(
-        uint256 deposit1,
-        uint256 deposit2,
-        uint8 lossPercent
-    )
-        public
-    {
+    function testFuzz_multipleDepositsWithdrawals(uint256 deposit1, uint256 deposit2, uint8 lossPercent) public {
         deposit1 = bound(deposit1, 1 ether, 10_000 ether);
         deposit2 = bound(deposit2, 1 ether, 10_000 ether);
         lossPercent = uint8(bound(lossPercent, 0, 50));
@@ -664,7 +658,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
 
         uint256 actualLoss = (initialDeposit + additionalAmount) * 10 / 100; // 150
         uint256 maxCoverableLoss = principalAfter * 1000 / 10_000; // 10% of principal
-            // With correct principal tracking, maxCoverableLoss covers the actual loss
+        // With correct principal tracking, maxCoverableLoss covers the actual loss
         assertGe(maxCoverableLoss, actualLoss, "Coverage should be sufficient for actual loss");
     }
 

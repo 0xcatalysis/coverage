@@ -1087,7 +1087,7 @@ contract CatalysisCoverAdapterForkTest is Test {
         // existing value
         {
             deal(USDC, address(xferCtrlVault), IERC20(USDC).balanceOf(address(xferCtrlVault)) + 200e6); // Increase
-                // price
+            // price
             skip(365 days);
 
             deal(USDC, alice, 500e6);
