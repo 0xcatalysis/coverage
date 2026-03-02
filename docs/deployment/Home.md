@@ -5,9 +5,10 @@
 - [System Overview](01-system-overview)
 - [Smart Contracts Architecture](02-smart-contracts)
 - [Core Integration](03-core-integration)
-- [Covered Vault Integration](04-covered-vault-integration)
+- [Restaker Setup and EigenLayer Operator Lifecycle](04-restaker-setup)
 - [Policy Lifecycle](05-policy-lifecycle)
 - [Premiums and Claims](06-premiums-claims)
+- [Covered Vault Integration](07-covered-vault-integration)
 
 ## Deployment
 

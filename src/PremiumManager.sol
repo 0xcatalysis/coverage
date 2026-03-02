@@ -37,6 +37,8 @@ contract PremiumManager is
     address public override platformTreasury;
     uint16 public override platformFeeBps;
 
+    uint256 private _distributionNonce;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -97,6 +99,23 @@ contract PremiumManager is
     /**
      * @inheritdoc IPremiumManager
      */
+    function approveSpender(
+        address token,
+        address spender,
+        uint256 amount
+    )
+        external
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        require(token != address(0) && spender != address(0), ZeroAddress());
+        IERC20(token).forceApprove(spender, amount);
+        emit SpenderApproved(token, spender, amount);
+    }
+
+    /**
+     * @inheritdoc IPremiumManager
+     */
     function setPlatformTreasury(address platformTreasury_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(platformTreasury_ != address(0), ZeroAddress());
         platformTreasury = platformTreasury_;
@@ -130,6 +149,7 @@ contract PremiumManager is
         require(pool != address(0) && premiumToken != address(0), ZeroAddress());
         require(amount != 0, ZeroAmount());
         require(policyId != 0, InvalidPolicyId());
+        require(ICoverPool(pool).hasBoundPolicy(policyId), PolicyNotBound(policyId, pool));
 
         uint16 poolFeeBps = ICoverPool(pool).poolFeeBps();
         address curator = ICoverPool(pool).owner();
@@ -153,9 +173,8 @@ contract PremiumManager is
         }
 
         if (restakerSplit > 0) {
-            token.safeTransfer(rewardsManager, restakerSplit);
-            // Distribute rewards to committee in core contracts using policyId as committeeId (1:1 mapping).
-            IRewardsManager(rewardsManager).distributeRewards(policyId, curator, restakerSplit, token);
+            bytes32 taskId = keccak256(abi.encodePacked(policyId, ++_distributionNonce));
+            IRewardsManager(rewardsManager).distributeRewards(policyId, curator, restakerSplit, token, taskId);
         }
 
         emit PremiumDistributed(pool, policyId, amount);

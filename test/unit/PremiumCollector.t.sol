@@ -10,6 +10,7 @@ import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {PremiumCollector} from "../../src/PremiumCollector.sol";
 import {IPremiumCollector} from "../../src/interfaces/IPremiumCollector.sol";
+import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
 
 contract PremiumCollectorTest is Test {
     uint64 internal constant DEFAULT_DISTRIBUTE_INTERVAL = 86_400; // 24 hours
@@ -24,6 +25,7 @@ contract PremiumCollectorTest is Test {
     PremiumCollector internal premiumCollector;
     MockPremiumManager internal premiumManager;
     MockCoverPool internal mockPool;
+    PermissiveMockCoverPoolFactory internal mockFactory;
     MockERC4626 internal mockVault1;
     MockERC4626 internal mockVault2;
     MockToken internal underlying1;
@@ -48,6 +50,8 @@ contract PremiumCollectorTest is Test {
         mockPool = new MockCoverPool(operator);
         pool = address(mockPool);
 
+        mockFactory = new PermissiveMockCoverPoolFactory();
+
         vm.label(pool, "Pool");
 
         underlying1 = new MockToken("Underlying1", "U1");
@@ -63,7 +67,10 @@ contract PremiumCollectorTest is Test {
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
             "PremiumCollector.sol",
-            abi.encodeCall(PremiumCollector.initialize, (admin, address(premiumManager), DEFAULT_DISTRIBUTE_INTERVAL)),
+            abi.encodeCall(
+                PremiumCollector.initialize,
+                (admin, address(premiumManager), address(mockFactory), DEFAULT_DISTRIBUTE_INTERVAL)
+            ),
             deployOpts
         );
         premiumCollector = PremiumCollector(proxy);
@@ -84,25 +91,35 @@ contract PremiumCollectorTest is Test {
         PremiumCollector implementation = new PremiumCollector();
         PremiumCollector freshCollector = PremiumCollector(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
-        freshCollector.initialize(address(0), address(premiumManager), DEFAULT_DISTRIBUTE_INTERVAL);
+        freshCollector.initialize(
+            address(0), address(premiumManager), address(mockFactory), DEFAULT_DISTRIBUTE_INTERVAL
+        );
     }
 
     function test_initialize_WhenPremiumManagerZero_Reverts() public {
         PremiumCollector implementation = new PremiumCollector();
         PremiumCollector freshCollector = PremiumCollector(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
-        freshCollector.initialize(admin, address(0), DEFAULT_DISTRIBUTE_INTERVAL);
+        freshCollector.initialize(admin, address(0), address(mockFactory), DEFAULT_DISTRIBUTE_INTERVAL);
+    }
+
+    function test_initialize_WhenCoverPoolFactoryZero_Reverts() public {
+        PremiumCollector implementation = new PremiumCollector();
+        PremiumCollector freshCollector = PremiumCollector(address(new ERC1967Proxy(address(implementation), "")));
+        vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
+        freshCollector.initialize(admin, address(premiumManager), address(0), DEFAULT_DISTRIBUTE_INTERVAL);
     }
 
     function test_initialize_WhenIntervalZero_Reverts() public {
         PremiumCollector implementation = new PremiumCollector();
         PremiumCollector freshCollector = PremiumCollector(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.InvalidDistributeInterval.selector, 0));
-        freshCollector.initialize(admin, address(premiumManager), 0);
+        freshCollector.initialize(admin, address(premiumManager), address(mockFactory), 0);
     }
 
     function test_initialize_Success() public view {
         assertEq(premiumCollector.premiumManager(), address(premiumManager));
+        assertEq(premiumCollector.coverPoolFactory(), address(mockFactory));
         assertEq(premiumCollector.distributeInterval(), DEFAULT_DISTRIBUTE_INTERVAL);
         assertTrue(premiumCollector.hasRole(bytes32(0), admin));
     }
@@ -134,6 +151,64 @@ contract PremiumCollectorTest is Test {
         vm.prank(admin);
         vm.expectRevert(IPremiumCollector.ZeroAmount.selector);
         premiumCollector.registerVault(vault1, pool, 0);
+    }
+
+    function test_registerVault_WhenPoolNotRegistered_Reverts() public {
+        StrictMockCoverPoolFactory strictFactory = new StrictMockCoverPoolFactory();
+        strictFactory.registerPool(pool);
+        vm.prank(admin);
+        premiumCollector.setCoverPoolFactory(address(strictFactory));
+
+        address fakePool = makeAddr("fakePool");
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.InvalidCoverPool.selector, fakePool));
+        premiumCollector.registerVault(vault1, fakePool, POLICY_ID);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                      SET COVER POOL FACTORY
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setCoverPoolFactory_WhenAdmin_SetsFactory() public {
+        address newFactory = makeAddr("newFactory");
+        vm.prank(admin);
+        vm.expectEmit(true, true, true, true, address(premiumCollector));
+        emit IPremiumCollector.CoverPoolFactorySet(newFactory);
+        premiumCollector.setCoverPoolFactory(newFactory);
+
+        assertEq(premiumCollector.coverPoolFactory(), newFactory);
+    }
+
+    function test_setCoverPoolFactory_WhenNotAdmin_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), bytes32(0))
+        );
+        premiumCollector.setCoverPoolFactory(makeAddr("factory"));
+    }
+
+    function test_setCoverPoolFactory_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
+        vm.prank(admin);
+        premiumCollector.setCoverPoolFactory(address(0));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           UPDATE VAULT
+    //////////////////////////////////////////////////////////////*/
+
+    function test_updateVault_WhenPoolNotRegistered_Reverts() public {
+        vm.prank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        StrictMockCoverPoolFactory strictFactory = new StrictMockCoverPoolFactory();
+        strictFactory.registerPool(pool);
+        vm.prank(admin);
+        premiumCollector.setCoverPoolFactory(address(strictFactory));
+
+        address fakePool = makeAddr("fakePool");
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.InvalidCoverPool.selector, fakePool));
+        premiumCollector.updateVault(vault1, fakePool, POLICY_ID);
     }
 
     function test_registerVault_WhenAlreadyRegistered_Reverts() public {
@@ -305,6 +380,11 @@ contract PremiumCollectorTest is Test {
         vaults[0] = vault1;
 
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
+        premiumCollector.distributeBatch(vaults);
+    }
+
+    function test_distributeBatch_WhenEmptyArray_Succeeds() public {
+        address[] memory vaults = new address[](0);
         premiumCollector.distributeBatch(vaults);
     }
 
@@ -653,7 +733,7 @@ contract PremiumCollectorTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              PAUSE / UNPAUSE
+                                 PAUSE
     //////////////////////////////////////////////////////////////*/
 
     function test_pause_WhenCalledByAdmin_PausesCollector() public {
@@ -668,6 +748,10 @@ contract PremiumCollectorTest is Test {
         );
         premiumCollector.pause();
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                UNPAUSE
+    //////////////////////////////////////////////////////////////*/
 
     function test_unpause_WhenCalledByAdmin_UnpausesCollector() public {
         vm.startPrank(admin);
@@ -686,6 +770,10 @@ contract PremiumCollectorTest is Test {
         );
         premiumCollector.unpause();
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                 PAUSED
+    //////////////////////////////////////////////////////////////*/
 
     function test_paused_ReturnsCorrectState() public {
         assertFalse(premiumCollector.paused(), "Should start unpaused");
@@ -736,6 +824,7 @@ contract PremiumCollectorTest is Test {
         premiumCollector.upgradeToAndCall(address(newImpl), "");
 
         assertEq(premiumCollector.premiumManager(), address(premiumManager), "PremiumManager should be preserved");
+        assertEq(premiumCollector.coverPoolFactory(), address(mockFactory), "CoverPoolFactory should be preserved");
         assertEq(premiumCollector.distributeInterval(), DEFAULT_DISTRIBUTE_INTERVAL, "Interval should be preserved");
         assertTrue(premiumCollector.hasRole(bytes32(0), admin), "Admin role should be preserved");
     }
@@ -874,6 +963,26 @@ contract MockCoverPool {
 
     function owner() external view returns (address) {
         return _owner;
+    }
+}
+
+/// @dev Permissive factory stub that accepts any non-zero pool address.
+contract PermissiveMockCoverPoolFactory {
+    function coverPoolExists(address pool) external pure returns (bool) {
+        return pool != address(0);
+    }
+}
+
+/// @dev Strict factory stub that only accepts explicitly registered pools.
+contract StrictMockCoverPoolFactory {
+    mapping(address => bool) private _pools;
+
+    function registerPool(address pool) external {
+        _pools[pool] = true;
+    }
+
+    function coverPoolExists(address pool) external view returns (bool) {
+        return _pools[pool];
     }
 }
 

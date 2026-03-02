@@ -183,6 +183,7 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
         onlyRole(SWAP_EXECUTOR_ROLE)
         returns (uint256 amountOut)
     {
+        require(block.timestamp <= params.deadline, SwapDeadlineExpired(params.deadline, block.timestamp));
         require(
             params.tokenIn != address(0) && params.tokenOut != address(0) && params.recipient != address(0),
             ZeroAddress()

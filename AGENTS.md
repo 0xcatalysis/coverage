@@ -15,15 +15,23 @@ Coverage contracts live in `src/`. Tests in `test/unit`, `test/fuzz`, and `test/
 | `CoverPool.sol` | Curator-controlled pool for quote validation and policy binding; deployed as minimal proxy clones. |
 | `CoverPoolFactory.sol` | Creates CoverPool clones and assigns PolicyManager role to each new pool. |
 | `PolicyManager.sol` | Entrypoint for policy binding; coordinates premium collection and mints Policy NFTs. |
-| `Policy.sol` | Soulbound ERC-721 representing bound coverage policies. |
 | `PremiumManager.sol` | Collects premiums and distributes fees to curators and platform treasury. |
-| `PremiumReserve.sol` | Escrow holding restaker premiums; releases on maturity or locks for claims. |
+| `PremiumCollector.sol` | Redeems ERC-4626 vault shares and forwards underlying assets to PremiumManager for distribution. |
 | `ClaimManager.sol` | Processes parametric/discretionary claims; orchestrates slashing and payouts. |
 | `Swapper.sol` | Converts slashed collateral via configured swap routes. |
+| `SpecRegistry.sol` | Registry mapping (pool, specId) pairs to ISpec evaluation implementations. |
 
 ### Interfaces (`src/interfaces/`)
 
 Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus external Catalysis Core dependencies (`ISpecRegistry`, `ISlashingManager`, `IRewardsManager`, `IChainlinkPriceFeed`, `IStakeManager`).
+
+### Adapters (`src/adapters/`)
+
+Thin integration contracts connecting Coverage contracts to external protocols:
+
+| Adapter | Purpose |
+|---------|---------|
+| `UniswapV3Adapter.sol` | Bridges the Swapper's static-calldata pattern to Uniswap V3 SwapRouter02; deployed as `swapTarget` for Swapper routes when collateral must be swapped to payout token. |
 
 ### Mock Contracts (`src/mocks/`)
 
@@ -55,6 +63,14 @@ Mock implementations of external dependencies for testnet deployments:
 
 **Inspection:**
 - `Show.s.sol`, `ShowSepolia.s.sol`, `ShowEthereum.s.sol` – inspect deployment metadata
+
+**Testing Scripts (`script/testing/`):**
+- `CreateCoverPool.s.sol` – Flow 1: creates a CoverPool via CoverPoolFactory
+- `RequestCoverage.s.sol` – Flows 2–3: requests coverage, creates policy draft and committee
+- `BindPolicy.s.sol` – Flow 5: signs quote, binds policy, associates vaults
+- `DistributePremium.s.sol` – Flows 6–7: collects and distributes premiums from vault shares
+- `FileClaim.s.sol` – Flow 8: files claim; includes Swapper readiness check (route/target verification, oracle preview) and post-claim swap metrics (effective rate vs oracle)
+- `CompleteCoverageFlow.s.sol` – end-to-end lifecycle from pool creation through claim settlement; Phase 8 includes lightweight Swapper readiness logging
 
 ## Build, Test, and Development Commands
 

@@ -18,10 +18,6 @@ interface ICoverPoolFactory is IAccessControl {
         address quoteSigner;
         /// @notice Basis points routed to the curator on premium settlement.
         uint16 poolFeeBps;
-        /// @notice Deadline for the operator registration signature.
-        uint48 deadline;
-        /// @notice Operator's signature for network registration.
-        bytes signature;
     }
 
     /**

@@ -103,13 +103,6 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
     }
 
     /**
-     * @inheritdoc ISpecRegistry
-     */
-    function paused() public view override (ISpecRegistry, PausableUpgradeable) returns (bool) {
-        return super.paused();
-    }
-
-    /**
      * @notice Restricts UUPS upgrade authorization to DEFAULT_ADMIN_ROLE holders.
      */
     function _authorizeUpgrade(address newImplementation) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {

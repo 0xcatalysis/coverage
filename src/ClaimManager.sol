@@ -42,11 +42,14 @@ contract ClaimManager is
 {
     using SafeERC20 for IERC20;
 
+    uint16 private constant _MAX_SLIPPAGE_BPS = 10_000;
+
     address public override specRegistry;
     address public override slashingManager;
     address public override swapper;
     address public override policyManager;
     address public override chainlinkPriceFeed;
+    uint16 public override maxSwapSlippageBps;
 
     mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
     mapping(uint96 policyId => PolicyClaim) private _policyClaims;
@@ -92,6 +95,7 @@ contract ClaimManager is
         swapper = swapper_;
         policyManager = policyManager_;
         chainlinkPriceFeed = chainlinkPriceFeed_;
+        maxSwapSlippageBps = 200; // 2%
     }
 
     /**
@@ -151,6 +155,15 @@ contract ClaimManager is
         require(chainlinkPriceFeed_ != address(0), ZeroAddress());
         chainlinkPriceFeed = chainlinkPriceFeed_;
         emit ChainlinkPriceFeedSet(chainlinkPriceFeed_);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
+    function setMaxSwapSlippageBps(uint16 maxSwapSlippageBps_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(maxSwapSlippageBps_ < _MAX_SLIPPAGE_BPS, InvalidSlippageBps(maxSwapSlippageBps_));
+        maxSwapSlippageBps = maxSwapSlippageBps_;
+        emit MaxSwapSlippageBpsSet(maxSwapSlippageBps_);
     }
 
     /**
@@ -333,9 +346,15 @@ contract ClaimManager is
             IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(metadata.payoutToken, requestedAmount);
 
         // Slash committee in core contracts using policyId as committeeId (1:1 mapping).
+        // taskId (inlined) is deterministic per (policyId, claimId) pair to prevent replay attacks.
         // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) = ISlashingManager(slashingManager)
-            .executeSlashing(metadata.policyId, ICoverPool(metadata.pool).owner(), slashAmountUSD);
+            .executeSlashing(
+                metadata.policyId,
+                ICoverPool(metadata.pool).owner(),
+                slashAmountUSD,
+                keccak256(abi.encodePacked(metadata.policyId, claimId))
+            );
 
         uint256 tokensLength = collateralTokens.length;
         // slither-disable-next-line incorrect-equality
@@ -372,6 +391,7 @@ contract ClaimManager is
      * @param remainingPayout Maximum payout amount still needed.
      * @return amountOut Amount of payout token delivered (capped at remainingPayout).
      */
+    // slither-disable-start calls-loop
     function _processCollateral(
         uint96 policyId,
         uint256 claimId,
@@ -391,16 +411,25 @@ contract ClaimManager is
         } else {
             IERC20(collateralToken).forceApprove(swapper, collateralAmount);
 
+            uint256 collateralUSD =
+                IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(collateralToken, collateralAmount);
+            uint256 expectedOut = IChainlinkPriceFeed(chainlinkPriceFeed).getTokenAmount(payoutToken, collateralUSD);
+            uint256 slippageBps = maxSwapSlippageBps;
+            uint256 amountOutMin = expectedOut * (10_000 - slippageBps) / 10_000;
+            if (amountOutMin == 0) {
+                amountOutMin = 1;
+            }
+
             ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
                 tokenIn: collateralToken,
                 tokenOut: payoutToken,
                 amountIn: collateralAmount,
-                amountOutMin: 1,
+                amountOutMin: amountOutMin,
                 recipient: address(this),
-                swapCalldata: ""
+                swapCalldata: "",
+                deadline: block.timestamp
             });
 
-            // slither-disable-next-line calls-loop
             uint256 swapOutput = ISwapper(swapper).executeSwap(swapParams);
 
             amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
@@ -411,6 +440,8 @@ contract ClaimManager is
 
         emit CollateralSwapped(policyId, claimId, collateralToken, collateralAmount, payoutToken, amountOut);
     }
+
+    // slither-disable-end calls-loop
 
     /**
      * @notice Evaluates the Spec for a given policy.
