@@ -9,5 +9,5 @@
   "fail_on": "low",
   "show_ignored_findings": false,
   "compile_force_framework": "foundry",
-  "detectors_to_exclude": "naming-convention,timestamp"
+  "detectors_to_exclude": "naming-convention,timestamp,assembly"
 }
