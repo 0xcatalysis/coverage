@@ -89,10 +89,9 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   - EVIDENCE_HASH: Evidence hash (bytes32)
  *
  * Prerequisites for Phase 8 (Claim):
- *   EigenLayer operator setup (magnitude allocation + operatorSet registration) is a
- *   restaker/core responsibility and must be completed before running this script.
- *   Use script/testing/PrepareEigenLayer.s.sol and wait for ALLOCATION_CONFIGURATION_DELAY
- *   blocks (~15 min on Sepolia) before filing a claim.
+ *   Restakers must have deposited into the committee's duration vault before filing claims.
+ *   Duration vaults act as EigenLayer operators and handle magnitude allocation and
+ *   operator-set registration internally — no separate EigenLayer setup is needed.
  */
 contract CompleteCoverageFlow is Script {
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
