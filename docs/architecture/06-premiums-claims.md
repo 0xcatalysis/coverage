@@ -223,6 +223,13 @@ In `_processCollateral(...)`:
 
 This supports heterogeneous slash collateral while preserving payout-token settlement.
 
+### Slippage Buffer
+
+To guarantee the beneficiary receives the full requested payout, `ClaimManager` slashes slightly
+more collateral than the oracle fair value — enough to absorb worst-case DEX slippage. The extra
+is controlled by `maxSwapSlippageBps` (default 2%). Any unused buffer that remains after the swap
+stays in `ClaimManager` and can be recovered by an admin via `recoverTokens`.
+
 ## Swapper Configuration for Cross-Token Payouts
 
 When the vault collateral token differs from the policy `payoutToken`, a swap route must be

@@ -169,6 +169,16 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
+    function recoverTokens(address token, address to, uint256 amount) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(token != address(0) && to != address(0), ZeroAddress());
+        require(amount != 0, ZeroAmount());
+        IERC20(token).safeTransfer(to, amount);
+        emit TokensRecovered(token, to, amount);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
     function fileClaim(
         uint96 policyId,
         uint256 requestedAmount,
@@ -344,6 +354,10 @@ contract ClaimManager is
         // slither-disable-next-line calls-loop
         uint256 slashAmountUSD =
             IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(metadata.payoutToken, requestedAmount);
+
+        if (maxSwapSlippageBps > 0) {
+            slashAmountUSD = slashAmountUSD * 10_000 / (10_000 - maxSwapSlippageBps);
+        }
 
         // Slash committee in core contracts using policyId as committeeId (1:1 mapping).
         // taskId (inlined) is deterministic per (policyId, claimId) pair to prevent replay attacks.

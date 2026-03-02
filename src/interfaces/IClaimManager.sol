@@ -150,6 +150,14 @@ interface IClaimManager is IAccessControl {
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
 
     /**
+     * @notice Emitted when tokens are recovered from the contract.
+     * @param token Address of the recovered token.
+     * @param to Recipient of the recovered tokens.
+     * @param amount Amount of tokens recovered.
+     */
+    event TokensRecovered(address indexed token, address indexed to, uint256 amount);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -286,6 +294,16 @@ interface IClaimManager is IAccessControl {
      * @param maxSwapSlippageBps_ Slippage tolerance in basis points (e.g., 200 = 2%).
      */
     function setMaxSwapSlippageBps(uint16 maxSwapSlippageBps_) external;
+
+    /**
+     * @notice Recovers tokens held by this contract to a given address.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Intended for sweeping surplus payout tokens that accumulate
+     *      when the slippage buffer inflates the slash amount beyond actual DEX slippage.
+     * @param token Address of the ERC-20 token to recover.
+     * @param to Recipient address.
+     * @param amount Amount of tokens to transfer.
+     */
+    function recoverTokens(address token, address to, uint256 amount) external;
 
     /**
      * @notice Files and resolves a claim atomically in a single transaction.

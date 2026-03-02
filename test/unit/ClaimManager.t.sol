@@ -1142,8 +1142,11 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, customRequestedAmount, evidenceHash, "");
 
+        uint256 expectedSlashAmount = customRequestedAmount * 10_000 / (10_000 - 200);
         assertEq(
-            slashingManagerMock.lastSlashAmount(), customRequestedAmount, "Should use requested amount for slashing"
+            slashingManagerMock.lastSlashAmount(),
+            expectedSlashAmount,
+            "Slash amount should be inflated by slippage bps"
         );
     }
 
@@ -1470,6 +1473,205 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.swapper(), swapper, "Swapper should be preserved");
         assertEq(claimManager.policyManager(), policy, "PolicyManager should be preserved");
         assertEq(claimManager.chainlinkPriceFeed(), chainlinkPriceFeed, "ChainlinkPriceFeed should be preserved");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    SLIPPAGE BUFFER (INFLATED SLASH) TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_fileClaim_SlashAmountInflatedBySlippageBps() public {
+        uint256 requestedAmount = 500 ether;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        collateralTokenMock.mint(address(slashingManagerMock), requestedAmount);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount);
+        payoutTokenMock.mint(address(swapperMock), requestedAmount);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        uint256 expectedSlashUSD = requestedAmount * 10_000 / (10_000 - 200);
+        assertEq(
+            slashingManagerMock.lastSlashAmount(), expectedSlashUSD, "Slash amount must be inflated by slippage bps"
+        );
+    }
+
+    function test_fileClaim_BeneficiaryReceivesFullAmount_DespiteSlippage() public {
+        uint256 requestedAmount = 500 ether;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount * 10_000 / (10_000 - 200);
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        collateralTokenMock.mint(address(slashingManagerMock), amounts[0]);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount);
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        uint256 balanceAfter = payoutTokenMock.balanceOf(beneficiary);
+        assertEq(balanceAfter - balanceBefore, requestedAmount, "Beneficiary must receive full requestedAmount");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(record.payoutAmount, requestedAmount, "payoutAmount must equal requestedAmount");
+    }
+
+    function test_fileClaim_DirectTransferCollateral_SurplusStaysInContract() public {
+        uint256 requestedAmount = 300 ether;
+        uint256 inflatedCollateral = requestedAmount * 10_000 / (10_000 - 200);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = inflatedCollateral;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        payoutTokenMock.mint(address(slashingManagerMock), inflatedCollateral);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+        uint256 contractBefore = payoutTokenMock.balanceOf(address(claimManager));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        uint256 beneficiaryAfter = payoutTokenMock.balanceOf(beneficiary);
+        uint256 contractAfter = payoutTokenMock.balanceOf(address(claimManager));
+
+        assertEq(
+            beneficiaryAfter - beneficiaryBefore, requestedAmount, "Beneficiary must receive exactly requestedAmount"
+        );
+        assertEq(
+            contractAfter - contractBefore,
+            inflatedCollateral - requestedAmount,
+            "Surplus must remain in ClaimManager for admin recovery"
+        );
+    }
+
+    function test_fileClaim_WhenZeroSlippage_SlashAmountNotInflated() public {
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(0);
+
+        uint256 requestedAmount = 400 ether;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        collateralTokenMock.mint(address(slashingManagerMock), requestedAmount);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount);
+        payoutTokenMock.mint(address(swapperMock), requestedAmount);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            slashingManagerMock.lastSlashAmount(),
+            requestedAmount,
+            "Zero slippage bps must leave slash amount unchanged"
+        );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                         RECOVER TOKENS TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_recoverTokens_WhenAdmin_TransfersTokensAndEmitsEvent() public {
+        uint256 amount = 50 ether;
+        payoutTokenMock.mint(address(claimManager), amount);
+        address recipient = makeAddr("recipient");
+
+        vm.expectEmit(true, true, false, true, address(claimManager));
+        emit IClaimManager.TokensRecovered(payoutToken, recipient, amount);
+
+        vm.prank(admin);
+        claimManager.recoverTokens(payoutToken, recipient, amount);
+
+        assertEq(payoutTokenMock.balanceOf(recipient), amount, "Recipient must receive tokens");
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "ClaimManager balance must be zero");
+    }
+
+    function test_recoverTokens_WhenCallerNotAdmin_Reverts() public {
+        payoutTokenMock.mint(address(claimManager), 10 ether);
+
+        vm.prank(unauthorized);
+        vm.expectRevert();
+        claimManager.recoverTokens(payoutToken, unauthorized, 10 ether);
+    }
+
+    function test_recoverTokens_WhenTokenZeroAddress_Reverts() public {
+        vm.prank(admin);
+        vm.expectRevert(IClaimManager.ZeroAddress.selector);
+        claimManager.recoverTokens(address(0), admin, 1 ether);
+    }
+
+    function test_recoverTokens_WhenRecipientZeroAddress_Reverts() public {
+        vm.prank(admin);
+        vm.expectRevert(IClaimManager.ZeroAddress.selector);
+        claimManager.recoverTokens(payoutToken, address(0), 1 ether);
+    }
+
+    function test_recoverTokens_WhenAmountZero_Reverts() public {
+        vm.prank(admin);
+        vm.expectRevert(IClaimManager.ZeroAmount.selector);
+        claimManager.recoverTokens(payoutToken, admin, 0);
+    }
+
+    function test_recoverTokens_CanSweepSurplusAfterDirectTransferClaim() public {
+        uint256 requestedAmount = 200 ether;
+        uint256 inflatedCollateral = requestedAmount * 10_000 / (10_000 - 200);
+        uint256 surplus = inflatedCollateral - requestedAmount;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = inflatedCollateral;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        payoutTokenMock.mint(address(slashingManagerMock), inflatedCollateral);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), surplus, "Surplus must be held before recovery");
+
+        address treasury = makeAddr("treasury");
+        vm.prank(admin);
+        claimManager.recoverTokens(payoutToken, treasury, surplus);
+
+        assertEq(payoutTokenMock.balanceOf(treasury), surplus, "Treasury must receive recovered surplus");
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "ClaimManager must be empty after recovery");
     }
 
     /*//////////////////////////////////////////////////////////////
