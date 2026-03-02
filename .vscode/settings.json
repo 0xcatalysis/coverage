@@ -15,11 +15,12 @@
   "solidity.packageDefaultDependenciesDirectory": "lib",
   "solidity.remappings": [
     "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
-    "@openzeppelin/=lib/openzeppelin-contracts/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
     "@openzeppelin/upgrades/=lib/openzeppelin-foundry-upgrades/src/",
     "@solady/=lib/solady/src/",
     "@solarity/=lib/solidity-lib/",
-    "forge-std/=lib/forge-std/src/"
+    "forge-std/=lib/forge-std/src/",
+    "coverage/=src/"
   ],
   "[solidity]": {
     "editor.defaultFormatter": "JuanBlanco.solidity",
