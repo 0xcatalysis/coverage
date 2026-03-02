@@ -161,4 +161,6 @@ abstract contract BasePolicyInteractions is Initializable, ISpec {
         virtual
         override
         returns (ISpec.EvaluationResult memory result);
+
+    uint256[50] private __gap;
 }
