@@ -1,21 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { Script, console } from "forge-std/Script.sol";
-import { CatalysisCoverAdapter } from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
-import { IVaultV2 } from "../../src/adapter/interfaces/Morpho/IVaultV2.sol";
-import { Options, Upgrades } from "@openzeppelin/upgrades/Upgrades.sol";
+import {Script, console} from "forge-std/Script.sol";
+import {CatalysisCoverAdapter} from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
+import {IVaultV2} from "../../src/adapter/interfaces/Morpho/IVaultV2.sol";
+import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 
 /// @notice Minimal interface for Morpho VaultV2Factory
 interface IVaultV2Factory {
-    function createVaultV2(
-        address owner,
-        address asset,
-        bytes32 salt
-    ) external returns (address);
-    function isVaultV2(
-        address vault
-    ) external view returns (bool);
+    function createVaultV2(address owner, address asset, bytes32 salt) external returns (address);
+    function isVaultV2(address vault) external view returns (bool);
 }
 
 /// @title DeployCoveredVault
@@ -150,7 +144,10 @@ contract DeployCoveredVault is Script {
     function _step1_deployCoveredVault(
         Config memory cfg,
         address deployer
-    ) internal returns (address coveredVault) {
+    )
+        internal
+        returns (address coveredVault)
+    {
         // 1a. Get underlying asset
         address asset = IVaultV2(cfg.underlyingVault).asset();
         console.log("Asset:", asset);
@@ -184,7 +181,10 @@ contract DeployCoveredVault is Script {
     function _step2_deployAdapter(
         Config memory cfg,
         address coveredVault
-    ) internal returns (CatalysisCoverAdapter adapter) {
+    )
+        internal
+        returns (CatalysisCoverAdapter adapter)
+    {
         Options memory deployOpts;
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
@@ -207,7 +207,9 @@ contract DeployCoveredVault is Script {
         Config memory cfg,
         address coveredVault,
         address adapter
-    ) internal {
+    )
+        internal
+    {
         console.log("Step 3: Configuring curator settings...");
 
         // 3a. Register adapter
@@ -258,9 +260,7 @@ contract DeployCoveredVault is Script {
                  STEP 4: ABDICATE SETTER FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    function _step4_abdicateSetters(
-        address coveredVault
-    ) internal {
+    function _step4_abdicateSetters(address coveredVault) internal {
         console.log("Step 4: Abdicating setter functions...");
 
         // 4a. Abdicate setPerformanceFeeRecipient
@@ -288,7 +288,9 @@ contract DeployCoveredVault is Script {
         address coveredVault,
         address deployer,
         address adapter
-    ) internal {
+    )
+        internal
+    {
         console.log("Step 5: Renouncing roles and transferring ownership...");
 
         // 5a. Renounce allocator role
@@ -310,19 +312,13 @@ contract DeployCoveredVault is Script {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev Submit timelocked data then execute it (timelock=0 on fresh vault)
-    function _submitAndExec(
-        address vault,
-        bytes memory data
-    ) internal {
+    function _submitAndExec(address vault, bytes memory data) internal {
         _call(vault, abi.encodeWithSignature("submit(bytes)", data));
         _call(vault, data);
     }
 
     /// @dev Low-level call with revert forwarding
-    function _call(
-        address target,
-        bytes memory data
-    ) internal {
+    function _call(address target, bytes memory data) internal {
         (bool ok, bytes memory ret) = target.call(data);
         if (!ok) {
             assembly {
@@ -352,9 +348,7 @@ contract DeployCoveredVault is Script {
         cfg.maxRate = vm.envOr("MAX_RATE", uint256(0));
     }
 
-    function _validateConfig(
-        Config memory cfg
-    ) internal pure {
+    function _validateConfig(Config memory cfg) internal pure {
         require(cfg.vaultV2Factory != address(0), "VAULT_V2_FACTORY not set");
         require(cfg.underlyingVault != address(0), "UNDERLYING_VAULT not set");
         require(cfg.claimManager != address(0), "CLAIM_MANAGER not set");

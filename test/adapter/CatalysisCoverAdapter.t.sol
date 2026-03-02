@@ -2,16 +2,16 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import { CatalysisCoverAdapter } from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
-import { ICatalysisCoverAdapter } from "../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
-import { IAdapter } from "../../src/adapter/interfaces/Morpho/IAdapter.sol";
-import { IAlerts as IA } from "../../src/adapter/interfaces/IAlerts.sol";
-import { IEvents as IE } from "../../src/adapter/interfaces/IEvents.sol";
+import {CatalysisCoverAdapter} from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
+import {ICatalysisCoverAdapter} from "../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
+import {IAdapter} from "../../src/adapter/interfaces/Morpho/IAdapter.sol";
+import {IAlerts as IA} from "../../src/adapter/interfaces/IAlerts.sol";
+import {IEvents as IE} from "../../src/adapter/interfaces/IEvents.sol";
 
-import { MockERC20, MockVaultV2 } from "./mocks/Mocks.sol";
-import { ISpec } from "coverage/interfaces/ISpec.sol";
-import { RealCoverageSetup } from "./helpers/RealCoverageSetup.sol";
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {MockERC20, MockVaultV2} from "./mocks/Mocks.sol";
+import {ISpec} from "coverage/interfaces/ISpec.sol";
+import {RealCoverageSetup} from "./helpers/RealCoverageSetup.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract CatalysisCoverAdapterTest is RealCoverageSetup {
     CatalysisCoverAdapter adapter;
@@ -798,9 +798,8 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
             MockVaultV2 uv = new MockVaultV2(address(asset), "UV", "UV");
 
             // Deploy adapter behind UUPS proxy
-            CatalysisCoverAdapter a = _deployAdapterProxy(
-                address(pv), address(uv), address(claimManager), address(coverPool), bpsValues[i]
-            );
+            CatalysisCoverAdapter a =
+                _deployAdapterProxy(address(pv), address(uv), address(claimManager), address(coverPool), bpsValues[i]);
 
             // Set adapter as curator so onPolicyBound can call submit + increaseAbsoluteCap
             pv.setCurator(address(a));

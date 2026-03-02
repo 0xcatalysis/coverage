@@ -3,25 +3,20 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 
-import { PolicyManager } from "coverage/PolicyManager.sol";
-import { CoverPool } from "coverage/CoverPool.sol";
-import { ICoverPool } from "coverage/interfaces/ICoverPool.sol";
-import { IPolicyManager } from "coverage/interfaces/IPolicyManager.sol";
-import { IClaimManager } from "coverage/interfaces/IClaimManager.sol";
-import { CatalysisCoverAdapter } from "../../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
+import {PolicyManager} from "coverage/PolicyManager.sol";
+import {CoverPool} from "coverage/CoverPool.sol";
+import {ICoverPool} from "coverage/interfaces/ICoverPool.sol";
+import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
+import {IClaimManager} from "coverage/interfaces/IClaimManager.sol";
+import {CatalysisCoverAdapter} from "../../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
 
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
-import { Options, Upgrades } from "@openzeppelin/upgrades/Upgrades.sol";
-import { EfficientHashLib } from "@solady/utils/EfficientHashLib.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
+import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 
-import { MockClaimManager } from "../mocks/Mocks.sol";
-import {
-    MockStakeManager,
-    MockCoverPoolFactory,
-    MockSpecRegistry,
-    MockBindPolicyHook
-} from "../mocks/CoverageMocks.sol";
+import {MockClaimManager} from "../mocks/Mocks.sol";
+import {MockStakeManager, MockCoverPoolFactory, MockSpecRegistry, MockBindPolicyHook} from "../mocks/CoverageMocks.sol";
 
 /// @title RealCoverageSetup
 /// @notice Abstract base contract that deploys real PolicyManager + real CoverPool for adapter tests
@@ -55,10 +50,7 @@ abstract contract RealCoverageSetup is Test {
     /// @notice Deploys the real PolicyManager (behind ERC1967Proxy) and real CoverPool (via Clones)
     /// @param admin Address that receives DEFAULT_ADMIN_ROLE on PolicyManager
     /// @param curator_ Address that owns the CoverPool (acts as operator)
-    function _deployRealCoverage(
-        address admin,
-        address curator_
-    ) internal {
+    function _deployRealCoverage(address admin, address curator_) internal {
         // ── Peripheral mocks ──
         mockStakeManager = new MockStakeManager();
         mockCoverPoolFactory = new MockCoverPoolFactory();
@@ -130,7 +122,10 @@ abstract contract RealCoverageSetup is Test {
         uint32 maturityTime,
         address buyer,
         address bindPolicyHook_
-    ) internal returns (uint96 policyId_) {
+    )
+        internal
+        returns (uint96 policyId_)
+    {
         // 1. Request coverage (creates draft) — uses claimer, payoutToken, buyer (freed after this call)
         vm.prank(buyer);
         policyId_ = policyManager.requestCoverage(
@@ -155,7 +150,9 @@ abstract contract RealCoverageSetup is Test {
         uint256 coverageLimit,
         uint32 startTime,
         uint32 maturityTime
-    ) private {
+    )
+        private
+    {
         // 2. Build quote
         ICoverPool.Quote memory quote = ICoverPool.Quote({
             pool: address(coverPool),
@@ -192,9 +189,7 @@ abstract contract RealCoverageSetup is Test {
     }
 
     /// @notice Signs a CoverPool quote using the quoteSignerKey
-    function _signQuote(
-        ICoverPool.Quote memory quote
-    ) internal view returns (bytes memory) {
+    function _signQuote(ICoverPool.Quote memory quote) internal view returns (bytes memory) {
         bytes32 structHash = _hashQuote(quote);
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", coverPool.quoteDomainSeparator(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(quoteSignerKey, digest);
@@ -202,9 +197,7 @@ abstract contract RealCoverageSetup is Test {
     }
 
     /// @notice Replicates CoverPool._hashQuote using EfficientHashLib (matches CoverPool._QUOTE_TYPEHASH)
-    function _hashQuote(
-        ICoverPool.Quote memory quote
-    ) internal pure returns (bytes32) {
+    function _hashQuote(ICoverPool.Quote memory quote) internal pure returns (bytes32) {
         return EfficientHashLib.hash(
             uint256(QUOTE_TYPEHASH),
             uint256(uint160(quote.pool)),
@@ -227,7 +220,10 @@ abstract contract RealCoverageSetup is Test {
         address claimManager_,
         address coverPool_,
         uint16 maxCoverableLossBps_
-    ) internal returns (CatalysisCoverAdapter) {
+    )
+        internal
+        returns (CatalysisCoverAdapter)
+    {
         Options memory deployOpts;
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(

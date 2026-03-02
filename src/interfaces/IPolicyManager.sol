@@ -352,7 +352,11 @@ interface IPolicyManager is IAccessControl {
      * @param request Struct containing all binding parameters and signed quote.
      * @param boundPolicy Bound policy metadata from the pool.
      */
-    function bindPolicy(BindPolicyRequest calldata request, ICoverPool.BoundPolicy calldata boundPolicy) external;
+    function bindPolicy(
+        BindPolicyRequest calldata request,
+        ICoverPool.BoundPolicy calldata boundPolicy
+    )
+        external;
 
     /**
      * @notice Returns draft data for a policyId.

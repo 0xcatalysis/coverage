@@ -2,14 +2,14 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import { CatalysisCoverAdapter } from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
-import { ICatalysisCoverAdapter } from "../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
-import { IAdapter } from "../../src/adapter/interfaces/Morpho/IAdapter.sol";
-import { IAlerts as IA } from "../../src/adapter/interfaces/IAlerts.sol";
-import { IEvents as IE } from "../../src/adapter/interfaces/IEvents.sol";
+import {CatalysisCoverAdapter} from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
+import {ICatalysisCoverAdapter} from "../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
+import {IAdapter} from "../../src/adapter/interfaces/Morpho/IAdapter.sol";
+import {IAlerts as IA} from "../../src/adapter/interfaces/IAlerts.sol";
+import {IEvents as IE} from "../../src/adapter/interfaces/IEvents.sol";
 
-import { MockERC20, MockVaultV2 } from "./mocks/Mocks.sol";
-import { RealCoverageSetup } from "./helpers/RealCoverageSetup.sol";
+import {MockERC20, MockVaultV2} from "./mocks/Mocks.sol";
+import {RealCoverageSetup} from "./helpers/RealCoverageSetup.sol";
 
 /// @title CatalysisCoverAdapterScenarios
 /// @notice Comprehensive scenario tests for CatalysisCoverAdapter
@@ -51,9 +51,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
     }
 
     /// @notice Deploy adapter with specific maxCoverableLossBps
-    function _deployAdapter(
-        uint16 maxCoverableLossBps
-    ) internal {
+    function _deployAdapter(uint16 maxCoverableLossBps) internal {
         // Deploy adapter behind UUPS proxy (no policyId — set via onPolicyBound hook)
         adapter = _deployAdapterProxy(
             address(parentVault),
@@ -89,9 +87,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
 
     /// @dev Simulates a user deposit via allocate with DEPOSIT_SELECTOR (triggers per-user tracking)
     /// @param amount The amount to allocate
-    function _allocate(
-        uint256 amount
-    ) internal {
+    function _allocate(uint256 amount) internal {
         vm.prank(address(parentVault));
         asset.transfer(address(adapter), amount);
         vm.prank(address(parentVault));
@@ -101,10 +97,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
     /// @dev Simulates a user deposit via allocate with DEPOSIT_SELECTOR for a specific sender
     /// @param sender The address to track principal for
     /// @param amount The amount to allocate
-    function _allocateFor(
-        address sender,
-        uint256 amount
-    ) internal {
+    function _allocateFor(address sender, uint256 amount) internal {
         vm.prank(address(parentVault));
         asset.transfer(address(adapter), amount);
         vm.prank(address(parentVault));
@@ -113,9 +106,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
 
     /// @dev Simulates a user withdrawal via deallocate with WITHDRAW_SELECTOR (triggers per-user insurance)
     /// @param amount The amount to deallocate
-    function _deallocate(
-        uint256 amount
-    ) internal {
+    function _deallocate(uint256 amount) internal {
         vm.prank(address(parentVault));
         adapter.deallocate("", amount, WITHDRAW_SELECTOR, allocator);
     }
@@ -123,10 +114,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
     /// @dev Simulates a user withdrawal via deallocate with WITHDRAW_SELECTOR for a specific sender
     /// @param sender The address withdrawing
     /// @param amount The amount to deallocate
-    function _deallocateFor(
-        address sender,
-        uint256 amount
-    ) internal {
+    function _deallocateFor(address sender, uint256 amount) internal {
         vm.prank(address(parentVault));
         adapter.deallocate("", amount, WITHDRAW_SELECTOR, sender);
     }
@@ -140,7 +128,9 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
         uint256 deposit1,
         uint256 deposit2,
         uint8 lossPercent
-    ) public {
+    )
+        public
+    {
         deposit1 = bound(deposit1, 1 ether, 10_000 ether);
         deposit2 = bound(deposit2, 1 ether, 10_000 ether);
         lossPercent = uint8(bound(lossPercent, 0, 50));
@@ -674,7 +664,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
 
         uint256 actualLoss = (initialDeposit + additionalAmount) * 10 / 100; // 150
         uint256 maxCoverableLoss = principalAfter * 1000 / 10_000; // 10% of principal
-        // With correct principal tracking, maxCoverableLoss covers the actual loss
+            // With correct principal tracking, maxCoverableLoss covers the actual loss
         assertGe(maxCoverableLoss, actualLoss, "Coverage should be sufficient for actual loss");
     }
 

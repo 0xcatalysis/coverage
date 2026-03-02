@@ -92,7 +92,15 @@ contract MockSpecRegistry is ISpecRegistry {
      * @param specId Identifier for the spec (e.g., keccak256("MorphoSpec")).
      * @param spec Address of the ISpec implementation.
      */
-    function registerSpecForPool(address coverPool, bytes32 specId, address spec) external onlyOwner whenNotPaused {
+    function registerSpecForPool(
+        address coverPool,
+        bytes32 specId,
+        address spec
+    )
+        external
+        onlyOwner
+        whenNotPaused
+    {
         _specs[coverPool][specId] = ISpec(spec);
         emit SpecRegistered(coverPool, specId, spec);
     }

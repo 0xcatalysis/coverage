@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { ISpec } from "coverage/interfaces/ISpec.sol";
-import { IPolicyManager } from "coverage/interfaces/IPolicyManager.sol";
-import { MockPolicyManager } from "./Mocks.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ISpec} from "coverage/interfaces/ISpec.sol";
+import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
+import {MockPolicyManager} from "./Mocks.sol";
 
 /// @title ForkClaimManager
 /// @notice Claim manager for fork tests that pays insurance from pre-funded USDC balance
@@ -22,23 +22,16 @@ contract ForkClaimManager {
 
     mapping(uint96 => PolicyClaim) private _policyClaims;
 
-    constructor(
-        address policyManager_,
-        address usdc_
-    ) {
+    constructor(address policyManager_, address usdc_) {
         policyManager = policyManager_;
         usdc = IERC20(usdc_);
     }
 
-    function policyClaim(
-        uint96 policyId
-    ) external view returns (PolicyClaim memory) {
+    function policyClaim(uint96 policyId) external view returns (PolicyClaim memory) {
         return _policyClaims[policyId];
     }
 
-    function totalPaidOut(
-        uint96 policyId
-    ) external view returns (uint256) {
+    function totalPaidOut(uint96 policyId) external view returns (uint256) {
         return _policyClaims[policyId].totalPaidOut;
     }
 
@@ -47,7 +40,10 @@ contract ForkClaimManager {
         uint256 claimAmount,
         bytes32 evidenceHash,
         bytes memory additionalData
-    ) external returns (uint256) {
+    )
+        external
+        returns (uint256)
+    {
         IPolicyManager.PolicyMetadata memory meta = MockPolicyManager(policyManager).policyMetadata(policyId);
 
         ISpec.EvaluationContext memory context = ISpec.EvaluationContext({

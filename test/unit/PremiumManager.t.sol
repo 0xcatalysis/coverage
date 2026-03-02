@@ -636,7 +636,14 @@ contract MockRewardsManager {
 
     DistributeRewardsCall private _lastCall;
 
-    function distributeRewards(uint96 policyId, address curator, uint256 rewardAmount, IERC20 rewardToken) external {
+    function distributeRewards(
+        uint96 policyId,
+        address curator,
+        uint256 rewardAmount,
+        IERC20 rewardToken
+    )
+        external
+    {
         distributeRewardsCallCount++;
         _lastCall = DistributeRewardsCall({
             policyId: policyId, curator: curator, rewardAmount: rewardAmount, rewardToken: rewardToken

@@ -2,16 +2,16 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import { CatalysisCoverAdapter } from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
-import { ICatalysisCoverAdapter } from "../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
-import { IAdapter } from "../../src/adapter/interfaces/Morpho/IAdapter.sol";
-import { IAlerts as IA } from "../../src/adapter/interfaces/IAlerts.sol";
-import { IEvents as IE } from "../../src/adapter/interfaces/IEvents.sol";
+import {CatalysisCoverAdapter} from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
+import {ICatalysisCoverAdapter} from "../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
+import {IAdapter} from "../../src/adapter/interfaces/Morpho/IAdapter.sol";
+import {IAlerts as IA} from "../../src/adapter/interfaces/IAlerts.sol";
+import {IEvents as IE} from "../../src/adapter/interfaces/IEvents.sol";
 
-import { MockERC20, MockVaultV2 } from "./mocks/Mocks.sol";
-import { ISpec } from "coverage/interfaces/ISpec.sol";
-import { RealCoverageSetup } from "./helpers/RealCoverageSetup.sol";
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {MockERC20, MockVaultV2} from "./mocks/Mocks.sol";
+import {ISpec} from "coverage/interfaces/ISpec.sol";
+import {RealCoverageSetup} from "./helpers/RealCoverageSetup.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /// @title CatalysisCoverAdapterFuzzTest
 /// @notice Fuzz tests for CatalysisCoverAdapter to verify invariants and edge cases
@@ -92,9 +92,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Fuzz test: allocate should always increase principal for user deposits
-    function testFuzz_allocate_increasesPrincipal(
-        uint256 amount
-    ) public {
+    function testFuzz_allocate_increasesPrincipal(uint256 amount) public {
         // Bound to reasonable amounts (avoid overflow and zero)
         amount = bound(amount, 1, type(uint128).max / 2);
 
@@ -114,9 +112,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: allocate tracks per-user principal correctly
-    function testFuzz_userPrincipal_tracksDeposit(
-        uint256 amount
-    ) public {
+    function testFuzz_userPrincipal_tracksDeposit(uint256 amount) public {
         amount = bound(amount, 1, type(uint128).max / 2);
 
         uint256 userPrincipalBefore = adapter.userPrincipal(user1);
@@ -134,9 +130,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: allocate with mint selector should increase principal
-    function testFuzz_allocate_mintSelector(
-        uint256 amount
-    ) public {
+    function testFuzz_allocate_mintSelector(uint256 amount) public {
         amount = bound(amount, 1, type(uint128).max / 2);
 
         uint256 principalBefore = adapter.totalPrincipal();
@@ -152,10 +146,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
 
     /// @notice Fuzz test: allocate with non-user selector SHOULD increase principal
     /// @dev All allocated capital needs insurance coverage
-    function testFuzz_allocate_nonUserSelector(
-        uint256 amount,
-        bytes4 selector
-    ) public {
+    function testFuzz_allocate_nonUserSelector(uint256 amount, bytes4 selector) public {
         amount = bound(amount, 1, type(uint128).max / 2);
 
         // Ensure selector is not a user selector (doesn't matter anymore)
@@ -176,11 +167,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: multiple allocations should accumulate principal correctly
-    function testFuzz_allocate_multiple(
-        uint256 amount1,
-        uint256 amount2,
-        uint256 amount3
-    ) public {
+    function testFuzz_allocate_multiple(uint256 amount1, uint256 amount2, uint256 amount3) public {
         amount1 = bound(amount1, 1, type(uint128).max / 4);
         amount2 = bound(amount2, 1, type(uint128).max / 4);
         amount3 = bound(amount3, 1, type(uint128).max / 4);
@@ -207,10 +194,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Fuzz test: deallocate should decrease principal proportionally
-    function testFuzz_deallocate_decreasesPrincipal(
-        uint256 depositAmount,
-        uint256 withdrawPercent
-    ) public {
+    function testFuzz_deallocate_decreasesPrincipal(uint256 depositAmount, uint256 withdrawPercent) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint128).max / 2);
         withdrawPercent = bound(withdrawPercent, 1, 100);
 
@@ -238,10 +222,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: deallocate with redeem selector should work correctly
-    function testFuzz_deallocate_redeemSelector(
-        uint256 depositAmount,
-        uint256 withdrawPercent
-    ) public {
+    function testFuzz_deallocate_redeemSelector(uint256 depositAmount, uint256 withdrawPercent) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint128).max / 2);
         withdrawPercent = bound(withdrawPercent, 1, 100);
 
@@ -267,7 +248,9 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
         uint256 depositAmount,
         uint256 withdrawPercent,
         bytes4 selector
-    ) public {
+    )
+        public
+    {
         depositAmount = bound(depositAmount, 1 ether, type(uint128).max / 2);
         withdrawPercent = bound(withdrawPercent, 1, 100);
 
@@ -296,10 +279,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Fuzz test: shortfall calculation should be capped by maxCoverableLossBps
-    function testFuzz_calculateShortfall_cappedByMax(
-        uint256 depositAmount,
-        uint256 lossPercent
-    ) public {
+    function testFuzz_calculateShortfall_cappedByMax(uint256 depositAmount, uint256 lossPercent) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint128).max / 2);
         lossPercent = bound(lossPercent, 1, 99);
 
@@ -324,9 +304,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: shortfall is 0 when no loss
-    function testFuzz_calculateShortfall_zeroWhenNoLoss(
-        uint256 depositAmount
-    ) public {
+    function testFuzz_calculateShortfall_zeroWhenNoLoss(uint256 depositAmount) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint128).max / 2);
 
         vm.prank(address(parentVault));
@@ -342,7 +320,9 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     function testFuzz_calculateShortfall_equalsRawLossWhenSmall(
         uint256 depositAmount,
         uint256 lossPercent
-    ) public {
+    )
+        public
+    {
         depositAmount = bound(depositAmount, 1 ether, type(uint128).max / 2);
         // Keep loss within maxCoverableLossBps (10%)
         lossPercent = bound(lossPercent, 1, MAX_COVERABLE_LOSS_BPS / 100);
@@ -367,10 +347,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Fuzz test: currentValue reflects deposits and losses accurately
-    function testFuzz_currentValue_reflectsState(
-        uint256 depositAmount,
-        uint256 lossPercent
-    ) public {
+    function testFuzz_currentValue_reflectsState(uint256 depositAmount, uint256 lossPercent) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint128).max / 2);
         lossPercent = bound(lossPercent, 0, 99);
 
@@ -391,10 +368,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: currentValue reflects profits
-    function testFuzz_currentValue_reflectsProfit(
-        uint256 depositAmount,
-        uint256 profitPercent
-    ) public {
+    function testFuzz_currentValue_reflectsProfit(uint256 depositAmount, uint256 profitPercent) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint64).max);
         profitPercent = bound(profitPercent, 1, 100);
 
@@ -416,10 +390,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Fuzz test: realAssets() always equals currentValue() regardless of loss
-    function testFuzz_realAssets_alwaysEqualsCurrentValue(
-        uint256 depositAmount,
-        uint256 lossPercent
-    ) public {
+    function testFuzz_realAssets_alwaysEqualsCurrentValue(uint256 depositAmount, uint256 lossPercent) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint64).max);
         lossPercent = bound(lossPercent, 0, 99);
 
@@ -439,10 +410,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: realAssets >= currentValue when in profit (trivially true)
-    function testFuzz_realAssets_inProfit(
-        uint256 depositAmount,
-        uint256 profitPercent
-    ) public {
+    function testFuzz_realAssets_inProfit(uint256 depositAmount, uint256 profitPercent) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint64).max);
         profitPercent = bound(profitPercent, 1, 100);
 
@@ -463,10 +431,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: direct insurance payout is bounded by userPrincipal * maxCoverableLossBps
-    function testFuzz_directInsurance_boundedByPrincipal(
-        uint256 depositAmount,
-        uint256 lossPercent
-    ) public {
+    function testFuzz_directInsurance_boundedByPrincipal(uint256 depositAmount, uint256 lossPercent) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint64).max);
         lossPercent = bound(lossPercent, 1, 99);
 
@@ -499,9 +464,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Fuzz test: initialize validates maxCoverableLossBps
-    function testFuzz_initialize_validatesMaxCoverableLoss(
-        uint16 maxLossBps
-    ) public {
+    function testFuzz_initialize_validatesMaxCoverableLoss(uint16 maxLossBps) public {
         // Deploy uninitialized proxy to test initialize revert paths
         CatalysisCoverAdapter impl = new CatalysisCoverAdapter();
         CatalysisCoverAdapter proxy = CatalysisCoverAdapter(address(new ERC1967Proxy(address(impl), "")));
@@ -520,7 +483,9 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
         uint16 maxLossBps,
         uint256 depositAmount,
         uint256 lossPercent
-    ) public {
+    )
+        public
+    {
         maxLossBps = uint16(bound(maxLossBps, 1, 10_000));
         depositAmount = bound(depositAmount, 1 ether, type(uint64).max);
         lossPercent = bound(lossPercent, 50, 99); // Ensure loss > maxLossBps in most cases
@@ -571,7 +536,9 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
         uint256 deposit2,
         uint256 withdrawPercent1,
         uint256 withdrawPercent2
-    ) public {
+    )
+        public
+    {
         deposit1 = bound(deposit1, 0.1 ether, type(uint64).max);
         deposit2 = bound(deposit2, 0.1 ether, type(uint64).max);
         withdrawPercent1 = bound(withdrawPercent1, 0, 50);
@@ -621,10 +588,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: currentValue >= 0 always
-    function testFuzz_invariant_currentValueNonNegative(
-        uint256 depositAmount,
-        uint256 lossPercent
-    ) public {
+    function testFuzz_invariant_currentValueNonNegative(uint256 depositAmount, uint256 lossPercent) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint64).max);
         lossPercent = bound(lossPercent, 0, 99);
 
@@ -640,9 +604,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: shares tracking consistency
-    function testFuzz_invariant_sharesConsistency(
-        uint256 depositAmount
-    ) public {
+    function testFuzz_invariant_sharesConsistency(uint256 depositAmount) public {
         depositAmount = bound(depositAmount, 1 ether, type(uint64).max);
 
         vm.prank(address(parentVault));
@@ -663,10 +625,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: userPrincipal sum <= totalPrincipal after multi-user deposits
-    function testFuzz_invariant_userPrincipalConsistency(
-        uint256 amount1,
-        uint256 amount2
-    ) public {
+    function testFuzz_invariant_userPrincipalConsistency(uint256 amount1, uint256 amount2) public {
         address user2 = address(0x2222);
         amount1 = bound(amount1, 1 ether, type(uint64).max / 2);
         amount2 = bound(amount2, 1 ether, type(uint64).max / 2);
@@ -694,9 +653,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Fuzz test: very small amounts
-    function testFuzz_edge_smallAmounts(
-        uint256 amount
-    ) public {
+    function testFuzz_edge_smallAmounts(uint256 amount) public {
         amount = bound(amount, 1, 1000); // wei amounts
 
         vm.prank(address(parentVault));
@@ -710,9 +667,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: allocate then immediately deallocate full amount
-    function testFuzz_edge_fullCycle(
-        uint256 amount
-    ) public {
+    function testFuzz_edge_fullCycle(uint256 amount) public {
         amount = bound(amount, 1 ether, type(uint64).max);
 
         vm.prank(address(parentVault));
@@ -735,7 +690,10 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
         uint256 policyIdInput,
         uint256 coverageLimit,
         uint256 claimAmount
-    ) public view {
+    )
+        public
+        view
+    {
         policyIdInput = bound(policyIdInput, 1, type(uint96).max);
         coverageLimit = bound(coverageLimit, 1 ether, type(uint128).max);
         claimAmount = bound(claimAmount, 1, coverageLimit);
@@ -762,9 +720,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Fuzz test: onPolicyBound cap calculation has no precision loss for clean bps values
-    function testFuzz_onPolicyBound_capPrecision(
-        uint256 coverageLimit
-    ) public {
+    function testFuzz_onPolicyBound_capPrecision(uint256 coverageLimit) public {
         // Bound coverage limit to reasonable range
         coverageLimit = bound(coverageLimit, 1 ether, type(uint128).max);
 
@@ -782,9 +738,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: onPolicyBound reverts for non-policyManager callers
-    function testFuzz_onPolicyBound_revertsIfNotPolicyManager(
-        address caller
-    ) public {
+    function testFuzz_onPolicyBound_revertsIfNotPolicyManager(address caller) public {
         vm.assume(caller != address(policyManager));
 
         // Deploy fresh adapter behind UUPS proxy (not yet bound)
@@ -802,9 +756,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     }
 
     /// @notice Fuzz test: onPolicyBound reverts when already executed
-    function testFuzz_onPolicyBound_revertsIfAlreadyExecuted(
-        uint96 anyPolicyId
-    ) public {
+    function testFuzz_onPolicyBound_revertsIfAlreadyExecuted(uint96 anyPolicyId) public {
         // Adapter already bound during setUp
         vm.expectRevert(CatalysisCoverAdapter.PolicyBoundAlreadyExecuted.selector);
         vm.prank(address(policyManager));

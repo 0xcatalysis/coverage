@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { Script } from "forge-std/Script.sol";
-import { console } from "forge-std/console.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { ICatalysisCoverAdapter } from "../../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
-import { IVaultV2 } from "../../../src/adapter/interfaces/Morpho/IVaultV2.sol";
+import {Script} from "forge-std/Script.sol";
+import {console} from "forge-std/console.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ICatalysisCoverAdapter} from "../../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
+import {IVaultV2} from "../../../src/adapter/interfaces/Morpho/IVaultV2.sol";
 
 /**
  * @title DepositFlow
@@ -126,7 +126,10 @@ contract DepositFlow is Script {
         uint256 userPrincipalBefore,
         uint256 userUnderlyingSharesBefore,
         uint256 totalPrincipalBefore
-    ) internal view {
+    )
+        internal
+        view
+    {
         console.log("\n--- Post-Deposit Verification ---");
 
         uint256 userAssetBalanceAfter = IERC20(asset).balanceOf(user);

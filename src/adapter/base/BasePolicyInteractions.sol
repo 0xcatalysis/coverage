@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { IPolicyManager } from "coverage/interfaces/IPolicyManager.sol";
-import { IClaimManager } from "coverage/interfaces/IClaimManager.sol";
-import { ICoverPool } from "coverage/interfaces/ICoverPool.sol";
-import { ISpec } from "coverage/interfaces/ISpec.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
+import {IClaimManager} from "coverage/interfaces/IClaimManager.sol";
+import {ICoverPool} from "coverage/interfaces/ICoverPool.sol";
+import {ISpec} from "coverage/interfaces/ISpec.sol";
 
 /**
  * @title BasePolicyInteractions
@@ -60,7 +60,10 @@ abstract contract BasePolicyInteractions is Initializable, ISpec {
         address policyManager_,
         address claimManager_,
         address pool_
-    ) internal onlyInitializing {
+    )
+        internal
+        onlyInitializing
+    {
         if (policyManager_ == address(0) || claimManager_ == address(0) || pool_ == address(0)) {
             revert ZeroAddress();
         }
@@ -98,7 +101,10 @@ abstract contract BasePolicyInteractions is Initializable, ISpec {
         uint256 requestedAmount,
         bytes32 evidenceHash,
         bytes memory additionalData
-    ) internal returns (uint256 claimId) {
+    )
+        internal
+        returns (uint256 claimId)
+    {
         if (evidenceHash == bytes32(0)) {
             revert InvalidEvidenceHash();
         }
@@ -118,9 +124,7 @@ abstract contract BasePolicyInteractions is Initializable, ISpec {
      * @return coverageLimit The maximum coverage amount in payout token terms.
      * @return payoutToken The token address used for claim payouts.
      */
-    function _getCoverageParams(
-        uint96 policyId
-    ) internal view returns (uint256 coverageLimit, address payoutToken) {
+    function _getCoverageParams(uint96 policyId) internal view returns (uint256 coverageLimit, address payoutToken) {
         IPolicyManager.PolicyMetadata memory metadata = _policyManager.policyMetadata(policyId);
 
         if (metadata.buyer == address(0)) {
@@ -136,9 +140,7 @@ abstract contract BasePolicyInteractions is Initializable, ISpec {
      * @param policyId The policy ID to query.
      * @return paidAmount The total amount paid out in payout token terms.
      */
-    function _getPaidCover(
-        uint96 policyId
-    ) internal view returns (uint256 paidAmount) {
+    function _getPaidCover(uint96 policyId) internal view returns (uint256 paidAmount) {
         IClaimManager.PolicyClaim memory policyClaim = claimManager.policyClaim(policyId);
         paidAmount = policyClaim.totalPaidOut;
     }
@@ -153,7 +155,10 @@ abstract contract BasePolicyInteractions is Initializable, ISpec {
      * @param context Evaluation parameters including policy details and evidence.
      * @return result The evaluation result.
      */
-    function evaluate(
-        ISpec.EvaluationContext calldata context
-    ) external view virtual override returns (ISpec.EvaluationResult memory result);
+    function evaluate(ISpec.EvaluationContext calldata context)
+        external
+        view
+        virtual
+        override
+        returns (ISpec.EvaluationResult memory result);
 }

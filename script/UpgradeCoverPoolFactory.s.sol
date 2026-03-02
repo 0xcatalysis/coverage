@@ -93,7 +93,14 @@ abstract contract UpgradeCoverPoolFactory is Script {
      * @param deployer Address that performed the upgrade.
      * @param result Upgrade result containing all relevant addresses.
      */
-    function _logUpgrade(UpgradeConfig memory config, address deployer, UpgradeResult memory result) private pure {
+    function _logUpgrade(
+        UpgradeConfig memory config,
+        address deployer,
+        UpgradeResult memory result
+    )
+        private
+        pure
+    {
         console2.log("");
         console2.log(string.concat("=== CoverPoolFactory Upgrade on ", config.networkName, " ==="));
         console2.log("Chain ID:", config.chainId);

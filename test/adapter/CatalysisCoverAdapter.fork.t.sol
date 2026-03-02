@@ -2,31 +2,25 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import { CatalysisCoverAdapter } from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
-import { ICatalysisCoverAdapter } from "../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
-import { IVaultV2 } from "../../src/adapter/interfaces/Morpho/IVaultV2.sol";
+import {CatalysisCoverAdapter} from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
+import {ICatalysisCoverAdapter} from "../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
+import {IVaultV2} from "../../src/adapter/interfaces/Morpho/IVaultV2.sol";
 
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import { Options, Upgrades } from "@openzeppelin/upgrades/Upgrades.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 
-import { ISpec } from "coverage/interfaces/ISpec.sol";
-import { IPolicyManager } from "coverage/interfaces/IPolicyManager.sol";
+import {ISpec} from "coverage/interfaces/ISpec.sol";
+import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
 
-import { MockPolicyManager, MockClaimManager, MockCoverPool } from "./mocks/Mocks.sol";
-import { ControllableVault } from "./mocks/ControllableVault.sol";
-import { ForkClaimManager } from "./mocks/ForkClaimManager.sol";
+import {MockPolicyManager, MockClaimManager, MockCoverPool} from "./mocks/Mocks.sol";
+import {ControllableVault} from "./mocks/ControllableVault.sol";
+import {ForkClaimManager} from "./mocks/ForkClaimManager.sol";
 
 /// @notice Minimal interface for Morpho VaultV2Factory
 interface IVaultV2Factory {
-    function createVaultV2(
-        address owner,
-        address asset,
-        bytes32 salt
-    ) external returns (address);
-    function isVaultV2(
-        address vault
-    ) external view returns (bool);
+    function createVaultV2(address owner, address asset, bytes32 salt) external returns (address);
+    function isVaultV2(address vault) external view returns (bool);
 }
 
 /// @title CatalysisCoverAdapterForkTest
@@ -178,9 +172,7 @@ contract CatalysisCoverAdapterForkTest is Test {
         require(ok, "setLiquidityAdapterAndData failed");
     }
 
-    function _setupParentWithMockUnderlyingVault(
-        uint96 newPolicyId
-    )
+    function _setupParentWithMockUnderlyingVault(uint96 newPolicyId)
         internal
         returns (
             IVaultV2 parentVault,
@@ -276,7 +268,10 @@ contract CatalysisCoverAdapterForkTest is Test {
         address claimManager_,
         address coverPool_,
         uint16 maxCoverableLossBps_
-    ) internal returns (CatalysisCoverAdapter) {
+    )
+        internal
+        returns (CatalysisCoverAdapter)
+    {
         Options memory deployOpts;
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
@@ -290,9 +285,7 @@ contract CatalysisCoverAdapterForkTest is Test {
         return CatalysisCoverAdapter(proxy);
     }
 
-    function _curatorSubmitExec(
-        bytes memory data
-    ) internal {
+    function _curatorSubmitExec(bytes memory data) internal {
         vm.prank(curatorAddr);
         (bool ok,) = address(parentVault).call(abi.encodeWithSignature("submit(bytes)", data));
         require(ok, "submit failed");
@@ -302,11 +295,7 @@ contract CatalysisCoverAdapterForkTest is Test {
     }
 
     /// @dev Same as _curatorSubmitExec but against an arbitrary V2 vault
-    function _curatorSubmitExecOn(
-        address vault,
-        address curator,
-        bytes memory data
-    ) internal {
+    function _curatorSubmitExecOn(address vault, address curator, bytes memory data) internal {
         vm.prank(curator);
         (bool ok,) = vault.call(abi.encodeWithSignature("submit(bytes)", data));
         require(ok, "submit failed");
@@ -316,10 +305,7 @@ contract CatalysisCoverAdapterForkTest is Test {
     }
 
     /// @dev Deal USDC to user, deposit into parent vault (auto-allocates via liquidity adapter)
-    function _userDeposit(
-        address user,
-        uint256 amount
-    ) internal returns (uint256 shares) {
+    function _userDeposit(address user, uint256 amount) internal returns (uint256 shares) {
         deal(USDC, user, amount);
         vm.startPrank(user);
         IERC20(USDC).approve(address(parentVault), amount);
@@ -1101,7 +1087,7 @@ contract CatalysisCoverAdapterForkTest is Test {
         // existing value
         {
             deal(USDC, address(xferCtrlVault), IERC20(USDC).balanceOf(address(xferCtrlVault)) + 200e6); // Increase
-            // price
+                // price
             skip(365 days);
 
             deal(USDC, alice, 500e6);
@@ -1693,13 +1679,8 @@ contract CatalysisCoverAdapterForkTest is Test {
         {
             address cycleAllocator;
             {
-                (
-                    IVaultV2 v,,
-                    CatalysisCoverAdapter a,
-                    ControllableVault c,
-                    ForkClaimManager f,,
-                    address alloc
-                ) = _setupParentWithMockUnderlyingVault(102);
+                (IVaultV2 v,, CatalysisCoverAdapter a, ControllableVault c, ForkClaimManager f,, address alloc) =
+                    _setupParentWithMockUnderlyingVault(102);
                 vault = v;
                 cycleAdapter = a;
                 cycleCtrlVault = c;
@@ -1763,7 +1744,9 @@ contract CatalysisCoverAdapterForkTest is Test {
                 vm.prank(bob);
                 vault.redeem(bobShares, bob, bob);
 
-                assertApproxEqAbs(IERC20(USDC).balanceOf(alice), 1000e6, ALLOWED_DUST_2_WEI, "Alice got ~1000 USDC back");
+                assertApproxEqAbs(
+                    IERC20(USDC).balanceOf(alice), 1000e6, ALLOWED_DUST_2_WEI, "Alice got ~1000 USDC back"
+                );
                 assertApproxEqAbs(IERC20(USDC).balanceOf(bob), 1000e6, ALLOWED_DUST_2_WEI, "Bob got ~1000 USDC back");
                 assertEq(vault.balanceOf(alice), 0, "Alice has 0 parent shares");
                 assertEq(vault.balanceOf(bob), 0, "Bob has 0 parent shares");
@@ -1784,7 +1767,11 @@ contract CatalysisCoverAdapterForkTest is Test {
             aliceNewShares = vault.deposit(aliceNewDepositValue, alice);
 
             // Ghost principal (1000) + new deposit (2000) = 3000
-            assertEq(cycleAdapter.userPrincipal(alice), 1000e6 + aliceNewDepositValue, "Alice principal = ghost 1000 + new 2000 = 3000");
+            assertEq(
+                cycleAdapter.userPrincipal(alice),
+                1000e6 + aliceNewDepositValue,
+                "Alice principal = ghost 1000 + new 2000 = 3000"
+            );
             // Ghost shares (1000e6) + new shares (2000e6 at P=1.00) = 3000e6
             assertEq(cycleAdapter.userUnderlyingShares(alice), 3000e6, "Alice shares = ghost + new");
             assertEq(cycleAdapter.totalPrincipal(), aliceNewDepositValue, "totalPrincipal = 2000 (only new deposit)");
@@ -1797,7 +1784,11 @@ contract CatalysisCoverAdapterForkTest is Test {
         // ctrlVault: 2000e6 - 200e6 = 1800e6 / 2000e6 shares, P = 0.90
         {
             cycleCtrlVault.simulateLoss(200e6);
-            assertEq(cycleAdapter.currentValue(), aliceNewDepositValue * (10_000 - 1000) / 10_000, "currentValue = 1800 USDC after 10% loss");
+            assertEq(
+                cycleAdapter.currentValue(),
+                aliceNewDepositValue * (10_000 - 1000) / 10_000,
+                "currentValue = 1800 USDC after 10% loss"
+            );
         }
 
         // STEP 7: Alice redeems all — insurance should cover her shortfall
@@ -1810,7 +1801,11 @@ contract CatalysisCoverAdapterForkTest is Test {
             uint256 aliceReceived = IERC20(USDC).balanceOf(alice) - aliceBefore;
 
             assertEq(aliceReceived, expectedReceived, "Alice received principle - deductible");
-            assertEq(cycleClaimMgr.totalPaidOut(102), maxCoverable - (maxCoverable * 100 / 10_000), "Insurance was paid after cycle");
+            assertEq(
+                cycleClaimMgr.totalPaidOut(102),
+                maxCoverable - (maxCoverable * 100 / 10_000),
+                "Insurance was paid after cycle"
+            );
             assertEq(cycleAdapter.totalPrincipal(), 0, "Total principle empty after full withdrawal");
             assertEq(cycleAdapter.userPrincipal(alice), 1000e6, "Ghost state persists in principal");
             assertEq(cycleAdapter.userUnderlyingShares(alice), 1000e6, "Ghost state persists in shares");
@@ -1923,12 +1918,8 @@ contract CatalysisCoverAdapterForkTest is Test {
         ControllableVault donCtrlVault;
         ForkClaimManager donClaimMgr;
         {
-            (
-                IVaultV2 v,,
-                CatalysisCoverAdapter a,
-                ControllableVault c,
-                ForkClaimManager f,,
-            ) = _setupParentWithMockUnderlyingVault(donPolicyId);
+            (IVaultV2 v,, CatalysisCoverAdapter a, ControllableVault c, ForkClaimManager f,,) =
+                _setupParentWithMockUnderlyingVault(donPolicyId);
             vault = v;
             donAdapter = a;
             donCtrlVault = c;
@@ -1961,13 +1952,26 @@ contract CatalysisCoverAdapterForkTest is Test {
             assertEq(donAdapter.currentValue(), depositAmount, "currentValue stays the same");
             assertEq(donAdapter.totalPrincipal(), depositAmount, "totalPrincipal still 1000 (unchanged)");
             assertEq(donAdapter.userShortfall(alice), 0, "No shortfall");
-            assertApproxEqAbs(vault.previewRedeem(aliceShares), depositAmount + donation, ALLOWED_DUST_2_WEI, "Donation included in profit");
+            assertApproxEqAbs(
+                vault.previewRedeem(aliceShares),
+                depositAmount + donation,
+                ALLOWED_DUST_2_WEI,
+                "Donation included in profit"
+            );
         }
 
         // STEP 3: Simulate loss 20%
         donCtrlVault.simulateLoss(depositAmount * 2000 / 10_000);
-        assertEq(donAdapter.currentValue(), depositAmount * (10_000 - 2000) / 10_000, "currentValue = 800 USDC after 20% loss");
-        assertEq(vault.previewRedeem(aliceShares), donAdapter.currentValue() + donation, "Donation still included even in case of loss");
+        assertEq(
+            donAdapter.currentValue(),
+            depositAmount * (10_000 - 2000) / 10_000,
+            "currentValue = 800 USDC after 20% loss"
+        );
+        assertEq(
+            vault.previewRedeem(aliceShares),
+            donAdapter.currentValue() + donation,
+            "Donation still included even in case of loss"
+        );
 
         // STEP 4: Alice redeems -- gets the donation and covered loss
         uint256 maxCoverable = depositAmount * 1000 / 10_000;
@@ -1977,8 +1981,14 @@ contract CatalysisCoverAdapterForkTest is Test {
         vault.redeem(aliceShares, alice, alice);
         uint256 aliceReceived = IERC20(USDC).balanceOf(alice) - aliceBefore;
 
-        assertApproxEqAbs(aliceReceived, expectedReceived + donation, ALLOWED_DUST_2_WEI, "Alice receives ~1200 USDC (incl. donation)");
-        assertEq(donClaimMgr.totalPaidOut(donPolicyId), maxCoverable - (maxCoverable * 100 / 10_000), "No insurance paid (phantom profit)");
+        assertApproxEqAbs(
+            aliceReceived, expectedReceived + donation, ALLOWED_DUST_2_WEI, "Alice receives ~1200 USDC (incl. donation)"
+        );
+        assertEq(
+            donClaimMgr.totalPaidOut(donPolicyId),
+            maxCoverable - (maxCoverable * 100 / 10_000),
+            "No insurance paid (phantom profit)"
+        );
 
         emit log_named_uint("Alice received with donation", aliceReceived);
         emit log_string("Donation to ctrlVault: adapter sees phantom profit, user benefits");
@@ -1996,13 +2006,8 @@ contract CatalysisCoverAdapterForkTest is Test {
         ControllableVault donCtrlVault;
         ForkClaimManager donClaimMgr;
         {
-            (
-                IVaultV2 v,,
-                CatalysisCoverAdapter a,
-                ControllableVault c,
-                ForkClaimManager f,,
-                address na
-            ) = _setupParentWithMockUnderlyingVault(donPolicyId);
+            (IVaultV2 v,, CatalysisCoverAdapter a, ControllableVault c, ForkClaimManager f,, address na) =
+                _setupParentWithMockUnderlyingVault(donPolicyId);
             vault = v;
             donAdapter = a;
             donCtrlVault = c;

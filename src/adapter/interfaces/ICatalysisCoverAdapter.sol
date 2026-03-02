@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { IAdapter } from "./Morpho/IAdapter.sol";
+import {IAdapter} from "./Morpho/IAdapter.sol";
 
 /// @title ICatalysisCoverAdapter
 /// @notice Interface for CatalysisCoverAdapter - Vault V2 adapter with NAV-based insurance coverage
@@ -72,22 +72,16 @@ interface ICatalysisCoverAdapter is IAdapter {
 
     /// @notice Returns the principal tracked for a specific user
     /// @param user The user address
-    function userPrincipal(
-        address user
-    ) external view returns (uint256);
+    function userPrincipal(address user) external view returns (uint256);
 
     /// @notice Returns the underlying vault shares tracked for a specific user
     /// @param user The user address
-    function userUnderlyingShares(
-        address user
-    ) external view returns (uint256);
+    function userUnderlyingShares(address user) external view returns (uint256);
 
     /// @notice Returns the insurance-eligible shortfall for a specific user
     /// @dev Returns the raw shortfall capped by maxCoverableLossBps
     /// @param user The user address
-    function userShortfall(
-        address user
-    ) external view returns (uint256);
+    function userShortfall(address user) external view returns (uint256);
 
     /*//////////////////////////////////////////////////////////////
                         EXTERNAL FUNCTIONS
@@ -100,8 +94,5 @@ interface ICatalysisCoverAdapter is IAdapter {
     ///      Formula: absoluteCap = (BPS_DENOMINATOR / maxCoverableLossBps) * coverageLimit
     /// @param _policyId The policy ID being bound
     /// @param coverageLimit The coverage limit of the bound policy
-    function onPolicyBound(
-        uint96 _policyId,
-        uint256 coverageLimit
-    ) external;
+    function onPolicyBound(uint96 _policyId, uint256 coverageLimit) external;
 }

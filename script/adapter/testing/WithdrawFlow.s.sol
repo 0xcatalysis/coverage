@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { Script } from "forge-std/Script.sol";
-import { console } from "forge-std/console.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import { ICatalysisCoverAdapter } from "../../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
-import { IVaultV2 } from "../../../src/adapter/interfaces/Morpho/IVaultV2.sol";
+import {Script} from "forge-std/Script.sol";
+import {console} from "forge-std/console.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {ICatalysisCoverAdapter} from "../../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
+import {IVaultV2} from "../../../src/adapter/interfaces/Morpho/IVaultV2.sol";
 
 /// @dev Minimal interface for querying cumulative coverage payouts from ClaimManager
 interface IClaimManager {
@@ -152,7 +152,11 @@ contract WithdrawFlow is Script {
     function _takeSnapshot(
         ICatalysisCoverAdapter adapterContract,
         uint96 policyId
-    ) internal view returns (Snapshot memory s) {
+    )
+        internal
+        view
+        returns (Snapshot memory s)
+    {
         s.userAssetBalance = IERC20(asset).balanceOf(user);
         s.userVaultShares = IVaultV2(parentVault).balanceOf(user);
         s.userPrincipal = adapterContract.userPrincipal(user);
@@ -176,7 +180,11 @@ contract WithdrawFlow is Script {
         uint256 userPrincipalBefore,
         uint256 userUnderlyingSharesBefore,
         uint16 maxCoverableLossBps
-    ) internal view returns (uint256 estInsurance) {
+    )
+        internal
+        view
+        returns (uint256 estInsurance)
+    {
         console.log("\n--- Coverage Preview (before withdrawal) ---");
 
         address underlyingVault = adapterContract.underlyingVault();
@@ -218,10 +226,7 @@ contract WithdrawFlow is Script {
         console.log("Estimated coverage payout:", estInsurance);
     }
 
-    function _logWithdrawal(
-        Snapshot memory before,
-        Snapshot memory afterSnap
-    ) internal view {
+    function _logWithdrawal(Snapshot memory before, Snapshot memory afterSnap) internal view {
         console.log("\n--- Post-Withdrawal Verification ---");
 
         uint256 actualInsurancePayout = afterSnap.coveragePaidOut - before.coveragePaidOut;
@@ -240,6 +245,5 @@ contract WithdrawFlow is Script {
         console.log("Vault payout (withdrawAmount):", withdrawAmount);
         console.log("Insurance payout (coverage delta):", actualInsurancePayout);
         console.log("Total received by user:", totalReceived);
-
     }
 }

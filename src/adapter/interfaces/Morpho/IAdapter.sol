@@ -23,7 +23,9 @@ interface IAdapter {
         uint256 assets,
         bytes4 selector,
         address sender
-    ) external returns (bytes32[] memory ids, int256 change);
+    )
+        external
+        returns (bytes32[] memory ids, int256 change);
 
     /// @notice Deallocates assets from external protocol
     /// @dev Called by parent vault to withdraw assets
@@ -38,7 +40,9 @@ interface IAdapter {
         uint256 assets,
         bytes4 selector,
         address sender
-    ) external returns (bytes32[] memory ids, int256 change);
+    )
+        external
+        returns (bytes32[] memory ids, int256 change);
 
     /// @notice Returns current value of adapter's investments
     /// @dev Used by vault to calculate total assets
