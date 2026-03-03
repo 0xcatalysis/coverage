@@ -1330,13 +1330,9 @@ contract MockDEX {
         require(!shouldRevert, "Mock swap failed");
 
         if (tokenIn != address(0)) {
-            try MockToken(tokenIn)
-                .transferFrom(
-                    msg.sender, address(this), MockToken(tokenIn).allowance(msg.sender, address(this))
-                ) returns (
-                bool
-            ) {}
-                catch {}
+            try MockToken(tokenIn).transferFrom(
+                msg.sender, address(this), MockToken(tokenIn).allowance(msg.sender, address(this))
+            ) returns (bool) {} catch {}
         }
 
         if (tokenOut.code.length > 0) {

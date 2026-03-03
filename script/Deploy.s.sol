@@ -386,13 +386,13 @@ abstract contract Deploy is Script {
             IAccessControl(contracts.specRegistryProxy).grantRole(defaultAdminRole, roles.admin);
         }
 
-        IAccessControl(contracts.swapperProxy)
-            .grantRole(Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), contracts.claimManagerProxy);
+        IAccessControl(contracts.swapperProxy).grantRole(
+            Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), contracts.claimManagerProxy
+        );
 
-        IAccessControl(contracts.premiumManagerProxy)
-            .grantRole(
-                PremiumManager(contracts.premiumManagerProxy).PREMIUM_COLLECTOR_ROLE(), contracts.premiumCollectorProxy
-            );
+        IAccessControl(contracts.premiumManagerProxy).grantRole(
+            PremiumManager(contracts.premiumManagerProxy).PREMIUM_COLLECTOR_ROLE(), contracts.premiumCollectorProxy
+        );
     }
 
     /**
@@ -411,8 +411,9 @@ abstract contract Deploy is Script {
 
         bytes32 defaultAdminRole = bytes32(0);
 
-        IAccessControl(contracts.swapperProxy)
-            .revokeRole(Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), roles.deployer);
+        IAccessControl(contracts.swapperProxy).revokeRole(
+            Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), roles.deployer
+        );
 
         IAccessControl(contracts.swapperProxy).revokeRole(defaultAdminRole, roles.deployer);
         IAccessControl(contracts.premiumCollectorProxy).revokeRole(defaultAdminRole, roles.deployer);

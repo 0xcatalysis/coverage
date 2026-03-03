@@ -16,7 +16,9 @@ import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 
 import {MockClaimManager} from "../mocks/Mocks.sol";
-import {MockStakeManager, MockCoverPoolFactory, MockSpecRegistry, MockBindPolicyHook} from "../mocks/CoverageMocks.sol";
+import {
+    MockStakeManager, MockCoverPoolFactory, MockSpecRegistry, MockBindPolicyHook
+} from "../mocks/CoverageMocks.sol";
 
 /// @title RealCoverageSetup
 /// @notice Abstract base contract that deploys real PolicyManager + real CoverPool for adapter tests

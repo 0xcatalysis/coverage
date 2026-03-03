@@ -244,7 +244,7 @@ interface ISwapper is IAccessControl {
      *      - ClaimManager receives slashed collateral (ETH or WETH) from SlashingManager
      *      - For ERC20: ClaimManager approves Swapper for collateral amount
      *      - For native ETH: ClaimManager sends ETH via msg.value
-     *      - ClaimManager calls executeSwap with recipient as PremiumReserve or beneficiary
+     *      - ClaimManager calls executeSwap with recipient as beneficiary
      *      - Swapper converts collateral → payout token and sends to recipient
      *
      * @param params Swap parameters including tokens, amounts, slippage limits, recipient, and DEX calldata.

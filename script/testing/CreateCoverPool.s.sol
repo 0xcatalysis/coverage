@@ -74,7 +74,9 @@ contract CreateCoverPool is Script {
         // Create the CoverPool
         // ------------------------------------------------------------------
         ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator, quoteSigner: quoteSigner, poolFeeBps: poolFeeBps
+            curator: curator,
+            quoteSigner: quoteSigner,
+            poolFeeBps: poolFeeBps
         });
 
         // Predict the deterministic address before creation

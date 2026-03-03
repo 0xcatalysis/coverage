@@ -185,7 +185,7 @@ contract CatalysisCoverAdapter is
         // Generate unique adapter ID (includes deploy timestamp for cross-deployment uniqueness)
         adapterId =
         // aderyn-fp-next-line(weak-randomness) Deterministic adapter ID, not used for randomness
-        keccak256(abi.encodePacked("CatalysisCoverAdapter", _parentVault, _underlyingVault, block.timestamp));
+         keccak256(abi.encodePacked("CatalysisCoverAdapter", _parentVault, _underlyingVault, block.timestamp));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -426,7 +426,8 @@ contract CatalysisCoverAdapter is
 
         if (!hasPendingClaim || policyId != context.policyId) {
             return ISpec.EvaluationResult({
-                isPayable: false, notesHash: keccak256(abi.encodePacked("No pending claim from adapter"))
+                isPayable: false,
+                notesHash: keccak256(abi.encodePacked("No pending claim from adapter"))
             });
         }
 

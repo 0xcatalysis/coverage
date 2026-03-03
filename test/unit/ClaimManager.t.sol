@@ -1660,8 +1660,7 @@ contract MockSlashingManager {
         }
         if (_token2ToTransfer != address(0)) {
             require(
-                MockToken(_token2ToTransfer)
-                    .transfer(msg.sender, MockToken(_token2ToTransfer).balanceOf(address(this))),
+                MockToken(_token2ToTransfer).transfer(msg.sender, MockToken(_token2ToTransfer).balanceOf(address(this))),
                 "Transfer failed"
             );
         }

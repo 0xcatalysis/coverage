@@ -124,7 +124,9 @@ contract PrepareEigenLayer is Script {
             uint64[] memory magnitudes = new uint64[](1);
             magnitudes[0] = newMagnitude;
             params[0] = IAllocationManagerPrepare.AllocateParams({
-                operatorSet: opSet, strategies: strategies, newMagnitudes: magnitudes
+                operatorSet: opSet,
+                strategies: strategies,
+                newMagnitudes: magnitudes
             });
             allocationManager.modifyAllocations(operator, params);
             console.log("[OK] modifyAllocations submitted");

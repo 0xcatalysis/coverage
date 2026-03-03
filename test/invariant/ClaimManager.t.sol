@@ -165,9 +165,7 @@ contract ClaimManagerHandler is Test {
         vm.prank(claimer);
         try claimManager.fileClaim(
             POLICY_ID, requestedAmount, keccak256(abi.encodePacked(requestedAmount, remaining)), ""
-        ) returns (
-            uint256
-        ) {
+        ) returns (uint256) {
             uint256 paidOut = payoutToken.balanceOf(claimer) - beneficiaryBefore;
             ghost_totalPaidOut += paidOut;
         } catch {}
