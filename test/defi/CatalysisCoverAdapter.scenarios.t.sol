@@ -48,6 +48,10 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
 
         // Deploy real PolicyManager + CoverPool + peripheral mocks
         _deployRealCoverage(curator, curator);
+
+        // Register asset as supported payout token
+        vm.prank(curator);
+        policyManager.setSupportedPayoutToken(address(asset), true);
     }
 
     /// @notice Deploy adapter with specific maxCoverableLossBps

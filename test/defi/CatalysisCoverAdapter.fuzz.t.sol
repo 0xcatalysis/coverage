@@ -52,6 +52,10 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
         // Deploy real PolicyManager + CoverPool + peripheral mocks
         _deployRealCoverage(curator, curator);
 
+        // Register asset as supported payout token
+        vm.prank(curator);
+        policyManager.setSupportedPayoutToken(address(asset), true);
+
         // Deploy adapter behind UUPS proxy (no policyId — set via onPolicyBound hook)
         adapter = _deployAdapterProxy(
             address(parentVault),
