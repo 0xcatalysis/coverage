@@ -5,8 +5,8 @@ import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import {ICatalysisCoverAdapter} from "../../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
-import {IVaultV2} from "../../../src/adapter/interfaces/Morpho/IVaultV2.sol";
+import {ICatalysisCoverAdapter} from "../../../src/defi/interfaces/ICatalysisCoverAdapter.sol";
+import {IVaultV2} from "../../../src/defi/interfaces/Morpho/IVaultV2.sol";
 
 /// @dev Minimal interface for querying cumulative coverage payouts from ClaimManager
 interface IClaimManager {

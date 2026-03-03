@@ -2,11 +2,11 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import {CatalysisCoverAdapter} from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
-import {ICatalysisCoverAdapter} from "../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
-import {IAdapter} from "../../src/adapter/interfaces/Morpho/IAdapter.sol";
-import {IAlerts as IA} from "../../src/adapter/interfaces/IAlerts.sol";
-import {IEvents as IE} from "../../src/adapter/interfaces/IEvents.sol";
+import {CatalysisCoverAdapter} from "../../src/defi/adapters/morpho/CatalysisCoverAdapter.sol";
+import {ICatalysisCoverAdapter} from "../../src/defi/interfaces/ICatalysisCoverAdapter.sol";
+import {IAdapter} from "../../src/defi/interfaces/Morpho/IAdapter.sol";
+import {IAlerts as IA} from "../../src/defi/interfaces/IAlerts.sol";
+import {IEvents as IE} from "../../src/defi/interfaces/IEvents.sol";
 
 import {MockERC20, MockVaultV2} from "./mocks/Mocks.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
@@ -51,6 +51,10 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
 
         // Deploy real PolicyManager + CoverPool + peripheral mocks
         _deployRealCoverage(curator, curator);
+
+        // Register asset as supported payout token
+        vm.prank(curator);
+        policyManager.setSupportedPayoutToken(address(asset), true);
 
         // Deploy adapter behind UUPS proxy (no policyId — set via onPolicyBound hook)
         adapter = _deployAdapterProxy(

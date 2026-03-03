@@ -14,7 +14,7 @@ contract MockStakeManager {
     mapping(uint96 => address[]) private _committeeVaults;
     mapping(bytes32 => uint256) private _operatorStakes;
 
-    function createCommittee(uint96, uint256, uint32) external {
+    function createCommittee(uint96, uint256, address, uint32) external {
         // No-op: just accept the call from PolicyManager.requestCoverage
     }
 
@@ -34,6 +34,10 @@ contract MockStakeManager {
 
     function getOperatorCommitteeStake(address operator, uint96 committeeId) external view returns (uint256) {
         return _operatorStakes[keccak256(abi.encode(operator, committeeId))];
+    }
+
+    function getCommitteeTotalStakeUSD(uint96) external pure returns (uint256) {
+        return type(uint256).max; // Return maximum value to avoid InsufficientStake errors
     }
 
     /// @notice Test helper to set the stake for an operator in a committee

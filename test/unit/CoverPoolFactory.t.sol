@@ -759,4 +759,3 @@ contract CoverPoolFactoryTest is Test {
         pool = factory.coverPoolAt(factory.totalCoverPools() - 1);
     }
 }
-

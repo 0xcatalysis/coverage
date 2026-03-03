@@ -2396,4 +2396,3 @@ contract MockRevertingHook {
         revert("supportsInterface: always reverts");
     }
 }
-
