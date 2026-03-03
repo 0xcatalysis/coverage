@@ -237,9 +237,7 @@ contract CompleteCoverageFlow is Script {
         ICoverPoolFactory factory = ICoverPoolFactory(coverPoolFactory);
 
         ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: quoteSigner,
-            poolFeeBps: poolFeeBps
+            curator: curator, quoteSigner: quoteSigner, poolFeeBps: poolFeeBps
         });
 
         coverPool = factory.computeCoverPoolAddress(params);

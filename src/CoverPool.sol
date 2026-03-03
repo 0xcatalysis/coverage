@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {AccessControlDefaultAdminRulesUpgradeable} from
-    "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol";
+import {
+    AccessControlDefaultAdminRulesUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
@@ -173,19 +174,20 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         // Add vaults to committee in core contracts using policyId as committeeId (1:1 mapping).
         IStakeManager(stakeManager).addCommitteeVaults(draft.policyId, vaults);
 
-        IPolicyManager(policyManager).bindPolicy(
-            IPolicyManager.BindPolicyRequest({
-                policyId: policyId,
-                buyer: draft.buyer,
-                beneficiary: draft.beneficiary,
-                claimer: draft.claimer,
-                payoutToken: draft.payoutToken,
-                coverageAmount: draft.coverageAmount,
-                quote: quote,
-                signature: signature
-            }),
-            boundPolicy
-        );
+        IPolicyManager(policyManager)
+            .bindPolicy(
+                IPolicyManager.BindPolicyRequest({
+                    policyId: policyId,
+                    buyer: draft.buyer,
+                    beneficiary: draft.beneficiary,
+                    claimer: draft.claimer,
+                    payoutToken: draft.payoutToken,
+                    coverageAmount: draft.coverageAmount,
+                    quote: quote,
+                    signature: signature
+                }),
+                boundPolicy
+            );
     }
 
     /**

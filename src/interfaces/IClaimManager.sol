@@ -18,7 +18,6 @@ interface IClaimManager is IAccessControl {
         Filed, // Claim filed, evaluation pending
         Approved, // Claim approved, payout executed
         Rejected // Claim rejected, no payout
-
     }
 
     /**

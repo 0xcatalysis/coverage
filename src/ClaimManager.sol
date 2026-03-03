@@ -350,11 +350,11 @@ contract ClaimManager is
         // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) = ISlashingManager(slashingManager)
             .executeSlashing(
-            metadata.policyId,
-            ICoverPool(metadata.pool).owner(),
-            slashAmountUSD,
-            keccak256(abi.encodePacked(metadata.policyId, claimId))
-        );
+                metadata.policyId,
+                ICoverPool(metadata.pool).owner(),
+                slashAmountUSD,
+                keccak256(abi.encodePacked(metadata.policyId, claimId))
+            );
 
         uint256 tokensLength = collateralTokens.length;
         // slither-disable-next-line incorrect-equality

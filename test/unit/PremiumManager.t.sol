@@ -869,10 +869,7 @@ contract MockRewardsManager {
     {
         distributeRewardsCallCount++;
         _lastCall = DistributeRewardsCall({
-            policyId: policyId,
-            curator: curator,
-            rewardAmount: rewardAmount,
-            rewardToken: rewardToken
+            policyId: policyId, curator: curator, rewardAmount: rewardAmount, rewardToken: rewardToken
         });
     }
 

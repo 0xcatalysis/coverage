@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {IAccessControlDefaultAdminRules} from
-    "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
+import {
+    IAccessControlDefaultAdminRules
+} from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";

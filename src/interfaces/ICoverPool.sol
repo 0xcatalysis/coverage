@@ -2,8 +2,9 @@
 pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {IAccessControlDefaultAdminRules} from
-    "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
+import {
+    IAccessControlDefaultAdminRules
+} from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
 import {IERC5313} from "@openzeppelin/contracts/interfaces/IERC5313.sol";
 
 /**

@@ -744,9 +744,7 @@ contract CoverPoolFactoryTest is Test {
 
     function _defaultCreateParams() internal view returns (ICoverPoolFactory.CreateCoverPoolParams memory params) {
         params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: curator,
-            quoteSigner: quoteSigner,
-            poolFeeBps: DEFAULT_POOL_FEE
+            curator: curator, quoteSigner: quoteSigner, poolFeeBps: DEFAULT_POOL_FEE
         });
     }
 

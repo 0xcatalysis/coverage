@@ -106,11 +106,7 @@ contract PremiumCollector is
         require(underlying != address(0), ZeroAddress());
 
         _vaultConfigs[vault] = VaultConfig({
-            underlying: underlying,
-            pool: pool,
-            policyId: policyId,
-            lastDistributeTime: 0,
-            registered: true
+            underlying: underlying, pool: pool, policyId: policyId, lastDistributeTime: 0, registered: true
         });
 
         _vaultIndex[vault] = _registeredVaults.length;

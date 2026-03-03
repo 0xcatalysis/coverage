@@ -167,9 +167,8 @@ contract CatalysisCoverAdapterForkTest is Test {
         //       User deposit() auto-allocates with deposit selector (tracks principal)
         //       User withdraw/redeem() auto-deallocates with withdraw/redeem selector (triggers insurance)
         vm.prank(allocatorAddr);
-        (ok,) = address(parentVault).call(
-            abi.encodeWithSignature("setLiquidityAdapterAndData(address,bytes)", address(adapter), "")
-        );
+        (ok,) = address(parentVault)
+            .call(abi.encodeWithSignature("setLiquidityAdapterAndData(address,bytes)", address(adapter), ""));
         require(ok, "setLiquidityAdapterAndData failed");
     }
 
@@ -242,9 +241,8 @@ contract CatalysisCoverAdapterForkTest is Test {
         );
 
         vm.prank(newAllocator);
-        (ok,) = address(parentVault).call(
-            abi.encodeWithSignature("setLiquidityAdapterAndData(address,bytes)", address(adapterRef), "")
-        );
+        (ok,) = address(parentVault)
+            .call(abi.encodeWithSignature("setLiquidityAdapterAndData(address,bytes)", address(adapterRef), ""));
         require(ok, "setLiquidityAdapterAndData failed");
 
         vm.prank(newAllocator);
@@ -841,12 +839,10 @@ contract CatalysisCoverAdapterForkTest is Test {
 
         // Setup: deploy contracts
         (
-            IVaultV2 vault,
-            ,
+            IVaultV2 vault,,
             CatalysisCoverAdapter twoUserAdapter,
             ControllableVault ctrlVault,
-            ForkClaimManager forkClaimMgr,
-            ,
+            ForkClaimManager forkClaimMgr,,
         ) = _setupParentWithMockUnderlyingVault(newPolicyId);
 
         // STEP 1: Alice deposits 1000 USDC at price P1 = 1.00
@@ -973,12 +969,10 @@ contract CatalysisCoverAdapterForkTest is Test {
 
         // Setup: deploy contracts
         (
-            IVaultV2 parentVault,
-            ,
+            IVaultV2 parentVault,,
             CatalysisCoverAdapter xferAdapter,
             ControllableVault xferCtrlVault,
-            ForkClaimManager xferClaimMgr,
-            ,
+            ForkClaimManager xferClaimMgr,,
         ) = _setupParentWithMockUnderlyingVault(xferPolicyId);
 
         // STEP 1: Alice deposits 1000 USDC at P = 1.00
@@ -1166,12 +1160,10 @@ contract CatalysisCoverAdapterForkTest is Test {
 
         // Setup: deploy contracts
         (
-            IVaultV2 parentVault,
-            ,
+            IVaultV2 parentVault,,
             CatalysisCoverAdapter dpAdapter,
             ControllableVault dpCtrlVault,
-            ForkClaimManager dpClaimMgr,
-            ,
+            ForkClaimManager dpClaimMgr,,
         ) = _setupParentWithMockUnderlyingVault(dpPolicyId);
 
         // STEP 1: Alice deposits 1000 USDC at P = 1.00
@@ -1260,12 +1252,10 @@ contract CatalysisCoverAdapterForkTest is Test {
 
         // Setup: deploy contracts
         (
-            IVaultV2 parentVault,
-            ,
+            IVaultV2 parentVault,,
             CatalysisCoverAdapter baAdapter,
             ControllableVault baCtrlVault,
-            ForkClaimManager baClaimMgr,
-            ,
+            ForkClaimManager baClaimMgr,,
         ) = _setupParentWithMockUnderlyingVault(baPolicyId);
 
         // STEP 1: Alice deposits 1000 USDC at P = 1.00
@@ -1404,12 +1394,10 @@ contract CatalysisCoverAdapterForkTest is Test {
 
         // Setup: deploy contracts
         (
-            IVaultV2 parentVault,
-            ,
+            IVaultV2 parentVault,,
             CatalysisCoverAdapter ukAdapter,
             ControllableVault ukCtrlVault,
-            ForkClaimManager ukClaimMgr,
-            ,
+            ForkClaimManager ukClaimMgr,,
         ) = _setupParentWithMockUnderlyingVault(ukPolicyId);
 
         // STEP 1: Alice deposits 1000 USDC
@@ -1501,8 +1489,7 @@ contract CatalysisCoverAdapterForkTest is Test {
 
         // Setup: deploy contracts
         (
-            IVaultV2 parentVault,
-            ,
+            IVaultV2 parentVault,,
             CatalysisCoverAdapter feeAdapter,
             ControllableVault feeCtrlVault,
             ForkClaimManager feeClaimMgr,
