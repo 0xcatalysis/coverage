@@ -75,7 +75,13 @@ abstract contract RealCoverageSetup is Test {
                     address(pmImpl),
                     abi.encodeCall(
                         PolicyManager.initialize,
-                        (admin, address(mockStakeManager), address(claimManager), address(mockCoverPoolFactory), new address[](0))
+                        (
+                            admin,
+                            address(mockStakeManager),
+                            address(claimManager),
+                            address(mockCoverPoolFactory),
+                            new address[](0)
+                        )
                     )
                 )
             )
