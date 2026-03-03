@@ -2,9 +2,9 @@
 pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
-import {CatalysisCoverAdapter} from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
-import {ICatalysisCoverAdapter} from "../../src/adapter/interfaces/ICatalysisCoverAdapter.sol";
-import {IVaultV2} from "../../src/adapter/interfaces/Morpho/IVaultV2.sol";
+import {CatalysisCoverAdapter} from "../../src/defi/adapters/morpho/CatalysisCoverAdapter.sol";
+import {ICatalysisCoverAdapter} from "../../src/defi/interfaces/ICatalysisCoverAdapter.sol";
+import {IVaultV2} from "../../src/defi/interfaces/Morpho/IVaultV2.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";

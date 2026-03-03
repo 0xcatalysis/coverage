@@ -5,6 +5,7 @@ keystores/
 node_modules/
 out/
 
+.idea
 *.log
 .DS_Store
 .env

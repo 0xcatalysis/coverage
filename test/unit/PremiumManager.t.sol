@@ -904,4 +904,3 @@ contract MockCoverPool {
         policy.policyId = policyId;
     }
 }
-

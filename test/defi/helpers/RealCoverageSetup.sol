@@ -8,7 +8,7 @@ import {CoverPool} from "coverage/CoverPool.sol";
 import {ICoverPool} from "coverage/interfaces/ICoverPool.sol";
 import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
 import {IClaimManager} from "coverage/interfaces/IClaimManager.sol";
-import {CatalysisCoverAdapter} from "../../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
+import {CatalysisCoverAdapter} from "../../../src/defi/adapters/morpho/CatalysisCoverAdapter.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
@@ -75,7 +75,13 @@ abstract contract RealCoverageSetup is Test {
                     address(pmImpl),
                     abi.encodeCall(
                         PolicyManager.initialize,
-                        (admin, address(mockStakeManager), address(claimManager), address(mockCoverPoolFactory))
+                        (
+                            admin,
+                            address(mockStakeManager),
+                            address(claimManager),
+                            address(mockCoverPoolFactory),
+                            new address[](0)
+                        )
                     )
                 )
             )

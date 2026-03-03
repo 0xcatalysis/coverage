@@ -2,8 +2,8 @@
 pragma solidity 0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {CatalysisCoverAdapter} from "../../src/adapter/adapters/vault/CatalysisCoverAdapter.sol";
-import {IVaultV2} from "../../src/adapter/interfaces/Morpho/IVaultV2.sol";
+import {CatalysisCoverAdapter} from "../../src/defi/adapters/morpho/CatalysisCoverAdapter.sol";
+import {IVaultV2} from "../../src/defi/interfaces/Morpho/IVaultV2.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 
 /// @notice Minimal interface for Morpho VaultV2Factory

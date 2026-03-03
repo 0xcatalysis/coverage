@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {UniswapV3Adapter} from "../src/adapters/UniswapV3Adapter.sol";
+import {UniswapV3Adapter} from "../src/swappers/UniswapV3Adapter.sol";
 import {ISwapper} from "../src/interfaces/ISwapper.sol";
 
 /**
