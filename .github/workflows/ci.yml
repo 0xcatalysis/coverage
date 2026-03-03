@@ -25,6 +25,9 @@ jobs:
         with:
           version: stable
 
+      - name: Show Forge version
+        run: forge --version
+
       - name: Setup python
         uses: actions/setup-python@v5
         with:
