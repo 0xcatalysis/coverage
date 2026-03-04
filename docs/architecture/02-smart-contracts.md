@@ -168,11 +168,18 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 **Slashing and payout mechanics:**
 
-- Converts requested payout token amount to USD via Core `ChainlinkPriceFeed`.
-- Calls Core `SlashingManager.executeSlashing(committeeId, operator, slashAmountUSD)`.
-- Processes returned collateral token arrays:
-  - direct transfer if already payout token,
-  - otherwise swap through `Swapper`.
+1. Converts requested payout amount to USD via `ChainlinkPriceFeed`.
+2. Previews real-time swap slippage via `SlashingManager.previewSlashing` + `Swapper.quoteSwap`
+   (delegated to `UniswapV3Adapter.quote` → `QuoterV2`) — computes slippage bps from oracle vs quoted.
+3. Inflates the USD slash target by the real-time slippage bps before calling `executeSlashing`,
+   ensuring enough collateral is requested to cover swap loss.
+4. Calls `SlashingManager.executeSlashing(committeeId, operator, inflatedSlashAmountUSD, taskId)`.
+5. Processes returned collateral arrays via `_distributeCollateralPayout`:
+   - direct transfer if already payout token,
+   - otherwise swap through `Swapper.executeSwap` with `amountOutMin` derived from `maxSwapSlippageBps`.
+
+`maxSwapSlippageBps` is used only as the `amountOutMin` execution guard (MEV protection).
+Slash amount inflation uses the live QuoterV2 preview, not this value.
 
 ### 7) SpecRegistry
 
@@ -203,6 +210,8 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 - `setSwapRoute(...)`, `setSwapTargetWhitelist(...)` for configuration.
 - `executeSwap(params)` for authorized executors (typically `ClaimManager`).
+- `quoteSwap(tokenIn, tokenOut, amountIn)` — non-privileged, delegates to the route's
+  `swapTarget` via `ISwapAdapter.quote`; used by `ClaimManager` for pre-slashing slippage preview.
 
 **Key roles:**
 
@@ -211,14 +220,15 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 ### 9) UniswapV3Adapter
 
-**Role:** Bridges the Swapper's static-calldata pattern to Uniswap V3 `SwapRouter02`.
+**Role:** Bridges the Swapper's static-calldata pattern to Uniswap V3 `SwapRouter02`; also
+implements `ISwapAdapter.quote` for real-time slippage preview via `QuoterV2`.
 
 **Why it exists:** The Swapper stores one static calldata blob per `(tokenIn, tokenOut)` route and
 replays it verbatim on every swap. Uniswap V3's `exactInputSingle` requires the `amountIn` to be
 encoded in each call, making a direct route impossible. The adapter resolves `amountIn` dynamically
 from the allowance the Swapper grants it.
 
-**Integration pattern** (called by `Swapper._performSwap`):
+**Swap execution pattern** (called by `Swapper._performSwap`):
 
 1. Swapper approves adapter for `amountIn` of `tokenIn`.
 2. Swapper calls `adapter.swap(tokenIn, tokenOut, fee)` via stored static calldata.
@@ -228,13 +238,21 @@ from the allowance the Swapper grants it.
 6. Router delivers `tokenOut` directly to Swapper.
 7. Adapter clears residual approval to the router.
 
-**Deployment:** `script/DeployUniswapV3Adapter.s.sol` deploys the adapter, whitelists it in
-`Swapper`, and configures the route in one transaction.
+**Quoting pattern** (called by `Swapper.quoteSwap` → `ISwapAdapter.quote`):
 
-| Network | SwapRouter02 |
-|---------|-------------|
-| Sepolia | `0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E` |
-| Mainnet | `0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45` |
+1. Caller passes the same route calldata stored for the route.
+2. Adapter decodes `(tokenIn, tokenOut, fee)` from calldata (skip 4-byte selector).
+3. Delegates to `QuoterV2.quoteExactInputSingle` — simulates the swap without state changes.
+4. Returns expected `amountOut` for `ClaimManager` to compute dynamic slippage before slashing.
+
+**Deployment:** `script/DeployUniswapV3Adapter.s.sol` deploys the adapter (accepting both
+`SWAP_ROUTER` and `QUOTER` addresses), whitelists it in `Swapper`, and configures the route in
+one transaction.
+
+| Network | SwapRouter02 | QuoterV2 |
+|---------|-------------|----------|
+| Sepolia | `0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E` | `0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3` |
+| Mainnet | `0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45` | `0x61fFE014bA17989E743c5F6cB21bF9697530B21e` |
 
 ## Covered Vault Integration Components (Morpho)
 
@@ -277,8 +295,13 @@ Coverage contracts rely on Core interfaces:
 
 - `IStakeManager` for committee create/operator/vault and stake reads,
 - `IRewardsManager` for reward fan-out trigger,
-- `ISlashingManager` for committee slashing execution,
-- `IChainlinkPriceFeed` for payout-to-USD conversion.
+- `ISlashingManager` for committee slashing execution (`executeSlashing`) and pre-slashing preview (`previewSlashing`),
+- `IChainlinkPriceFeed` for payout-to-USD and USD-to-token conversions.
+
+Coverage adapter interfaces:
+
+- `ISwapAdapter` — implemented by `UniswapV3Adapter`; exposes `quote(routeCalldata, amountIn)` for slippage preview,
+- `IQuoterV2` — thin wrapper around Uniswap V3 `QuoterV2.quoteExactInputSingle`.
 
 ## Next Steps
 

@@ -99,9 +99,10 @@ Guardrail:
 
 - `ClaimManager` - claim intake, evaluation, and settlement.
 - `SpecRegistry` + `ISpec` - payability decision logic.
-- Core `ChainlinkPriceFeed` - payout token amount -> USD slash target.
-- Core `SlashingManager` - committee slashing execution.
-- `Swapper` - collateral token conversion.
+- Core `ChainlinkPriceFeed` - payout token amount ↔ USD conversion.
+- Core `SlashingManager` - committee slashing execution and preview.
+- `Swapper` - collateral token conversion and real-time swap quoting.
+- `UniswapV3Adapter` + `IQuoterV2` - on-chain slippage preview before slashing.
 
 ### Claim Settlement Sequence
 
@@ -114,6 +115,8 @@ sequenceDiagram
     participant PF as Core ChainlinkPriceFeed
     participant SLM as Core SlashingManager
     participant SW as Swapper
+    participant UV3 as UniswapV3Adapter
+    participant QV2 as QuoterV2
     participant Beneficiary
 
     Claimer->>CM: fileClaim(policyId, requestedAmount, evidenceHash, data)
@@ -127,20 +130,40 @@ sequenceDiagram
         CM-->>Claimer: claim rejected
     else payable
         CM->>PF: getUSDValue(payoutToken, requestedAmount)
-        PF-->>CM: slashAmountUSD
-        CM->>SLM: executeSlashing(policyId, operator, slashAmountUSD)
+        PF-->>CM: baseSlashAmountUSD
+
+        Note over CM,QV2: Real-time slippage preview (try/catch — 0 on any failure)
+        CM->>SLM: previewSlashing(policyId, operator, baseSlashAmountUSD)
+        SLM-->>CM: collateralTokens[], slashAmountsUSD[]
+        loop each collateral token
+            CM->>PF: getTokenAmount(collateralToken, slashUSD)
+            PF-->>CM: collateralAmount
+            CM->>SW: quoteSwap(collateralToken, payoutToken, collateralAmount)
+            SW->>UV3: quote(routeCalldata, amountIn)
+            UV3->>QV2: quoteExactInputSingle(params)
+            QV2-->>UV3: quotedAmountOut
+            UV3-->>SW: quotedAmountOut
+            SW-->>CM: quotedAmountOut
+        end
+        CM->>CM: slippageBps = (oracleExpected - totalQuoted) * 10_000 / oracleExpected
+        CM->>CM: inflatedSlashUSD = baseSlashAmountUSD * 10_000 / (10_000 - slippageBps)
+
+        CM->>SLM: executeSlashing(policyId, operator, inflatedSlashUSD, taskId)
         SLM-->>CM: collateralTokens[], collateralAmounts[]
         loop each collateral token
             alt token == payoutToken
                 CM->>Beneficiary: transfer payout token
             else token != payoutToken
-                CM->>SW: executeSwap(tokenIn -> payoutToken)
+                CM->>SW: executeSwap(tokenIn -> payoutToken, amountOutMin)
                 SW-->>CM: payoutToken amountOut
                 CM->>Beneficiary: transfer payout token
             end
         end
     end
 ```
+
+`amountOutMin` in `executeSwap` is derived from `maxSwapSlippageBps` — this is a MEV / sandwich
+protection floor on the actual swap, separate from the pre-slashing inflation.
 
 ### Withdrawal (No Shortfall / Happy Path)
 
@@ -217,11 +240,24 @@ In `_processCollateral(...)`:
   - transfer directly up to remaining payout target.
 - Else:
   - approve `Swapper`,
+  - build `amountOutMin` from oracle price minus `maxSwapSlippageBps` (execution guard only),
   - execute configured route,
   - cap delivered amount to remaining payout target,
   - clear approval.
 
 This supports heterogeneous slash collateral while preserving payout-token settlement.
+
+### Slash Amount Inflation vs. Swap Execution Guard
+
+Two separate slippage controls exist and serve different purposes:
+
+| Control | Where | Purpose |
+|---------|-------|---------|
+| `_previewSlippageBps` | before `executeSlashing` | Inflates the USD slash target so enough collateral is requested to cover real Uniswap slippage. Uses `SlashingManager.previewSlashing` + `Swapper.quoteSwap` → `UniswapV3Adapter.quote` → `QuoterV2`. |
+| `maxSwapSlippageBps` | inside `_processCollateral` | Sets `amountOutMin` on the actual `executeSwap` call — protection against MEV / sandwich attacks between preview and execution. Configurable by admin. |
+
+If the slippage preview fails (e.g. QuoterV2 unavailable, route not configured), inflation is 0
+and no fallback to `maxSwapSlippageBps` is applied for the slash target.
 
 ## Swapper Configuration for Cross-Token Payouts
 
@@ -242,7 +278,8 @@ Required env vars:
 |----------|-------------|
 | `PRIVATE_KEY` | Admin key holding `SWAP_MANAGER_ROLE` on Swapper |
 | `SWAPPER` | Swapper proxy address (from `ClaimManager.swapper()`) |
-| `SWAP_ROUTER` | Uniswap V3 SwapRouter02 (Sepolia: `0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E`) |
+| `SWAP_ROUTER` | Uniswap V3 SwapRouter02 (Sepolia: `0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E`, Mainnet: `0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45`) |
+| `QUOTER` | Uniswap V3 QuoterV2 (Sepolia: `0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3`, Mainnet: `0x61fFE014bA17989E743c5F6cB21bF9697530B21e`) |
 | `TOKEN_IN` | Collateral token (e.g. Uniswap-native WETH on Sepolia: `0xfff9976782d46cc05630d1f6ebab18b2324d6b14`) |
 | `TOKEN_OUT` | Payout token (e.g. Circle Sepolia USDC: `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`) |
 | `POOL_FEE` | Uniswap V3 fee tier (e.g. `3000` = 0.3%, `500` = 0.05%) |
@@ -269,6 +306,8 @@ target is whitelisted. It reverts before broadcasting if any route is missing.
 - If Core slashing returns no collateral, payout path reverts.
 - If price conversion fails, slash target cannot be computed.
 - Claim timing outside coverage window always reverts.
+- If `previewSlashing` or `quoteSwap` reverts (e.g. QuoterV2 unavailable), slippage inflation
+  is silently skipped — the slash proceeds at the base USD amount with no buffer for slippage.
 
 ### Operational Controls
 

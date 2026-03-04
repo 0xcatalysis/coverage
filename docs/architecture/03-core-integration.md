@@ -19,6 +19,8 @@ This separation keeps restaking platform complexity out of Coverage contracts.
 | `PolicyManager` | `StakeManager` | `getCommitteeVaults(policyId)` | Verify vault backing exists before bind finalization |
 | `PremiumManager` | `RewardsManager` | `distributeRewards(policyId, operator, amount, token, taskId)` | Trigger Core reward fan-out; SSPRouter pulls restaker share from PremiumManager |
 | `ClaimManager` | `ChainlinkPriceFeed` | `getUSDValue(token, amount)` | Normalize requested payout to USD slash target |
+| `ClaimManager` | `ChainlinkPriceFeed` | `getTokenAmount(token, usdAmount)` | Convert USD amounts back to token amounts for slippage preview |
+| `ClaimManager` | `SlashingManager` | `previewSlashing(policyId, operator, slashAmountUSD)` | Preview per-vault collateral distribution without executing; used to compute real-time swap slippage before inflating slash target |
 | `ClaimManager` | `SlashingManager` | `executeSlashing(policyId, operator, slashAmountUSD, taskId)` | Execute policy-scoped slashing and retrieve collateral |
 
 > **Note:** EigenLayer operator setup (depositing stake, allocating magnitude, and registering to the
@@ -103,15 +105,21 @@ Outcome:
 Sequence:
 
 1. During covered-vault withdrawal, adapter detects shortfall and files claim.
-2. `ClaimManager` converts requested payout amount to USD via Core price feed.
-3. `ClaimManager` calls `SlashingManager.executeSlashing(policyId, operator, slashAmountUSD)`.
-4. Core returns collateral token arrays.
-5. Coverage swaps or directly transfers to beneficiary (adapter in this integration model).
+2. `ClaimManager` converts requested payout amount to USD via Core price feed (`getUSDValue`).
+3. `ClaimManager` calls `SlashingManager.previewSlashing(policyId, operator, baseSlashAmountUSD)`
+   (in a `try/catch`) to obtain the expected per-vault collateral distribution.
+4. For each vault, `ClaimManager` fetches a live Uniswap quote via `Swapper.quoteSwap` →
+   `UniswapV3Adapter.quote` → `QuoterV2.quoteExactInputSingle` (also in a `try/catch`).
+5. Real-time slippage bps is computed as `(oracleExpected − totalQuoted) × 10_000 / oracleExpected`;
+   the USD slash target is inflated by this factor before slashing.
+6. `ClaimManager` calls `SlashingManager.executeSlashing(policyId, operator, inflatedSlashAmountUSD, taskId)`.
+7. Core returns actual collateral token arrays; Coverage swaps or directly transfers to beneficiary.
 
 Outcome:
 
 - Core performs SSP slashing mechanics.
 - Coverage performs beneficiary-facing settlement, then adapter completes make-whole transfer flow.
+- Slash amount is inflated by real on-chain slippage, minimising shortfall due to swap price impact.
 
 No-shortfall withdrawal path:
 
