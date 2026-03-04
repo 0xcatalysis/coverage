@@ -5,7 +5,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Test} from "forge-std/Test.sol";
 import {UniswapV3Adapter} from "../../src/swappers/UniswapV3Adapter.sol";
 import {IQuoterV2} from "../../src/interfaces/IQuoterV2.sol";
-import {ISwapAdapter} from "../../src/interfaces/ISwapAdapter.sol";
+import {IQuotableAdapter} from "../../src/interfaces/IQuotableAdapter.sol";
 
 contract UniswapV3AdapterTest is Test {
     address internal swapRouter;
@@ -141,14 +141,14 @@ contract UniswapV3AdapterTest is Test {
         adapter.quote(shortCalldata, 1 ether);
     }
 
-    function test_quote_AdapterImplementsISwapAdapter() public {
+    function test_quote_AdapterImplementsIQuotableAdapter() public {
         uint256 amountIn = 1 ether;
         uint256 expectedOut = 1500e6;
         mockQuoter.setAmountOut(expectedOut);
 
         bytes memory routeCalldata = _buildRouteCalldata(tokenIn, tokenOut, FEE);
-        uint256 amountOut = ISwapAdapter(address(adapter)).quote(routeCalldata, amountIn);
-        assertEq(amountOut, expectedOut, "ISwapAdapter.quote should delegate to adapter");
+        uint256 amountOut = IQuotableAdapter(address(adapter)).quote(routeCalldata, amountIn);
+        assertEq(amountOut, expectedOut, "IQuotableAdapter.quote should delegate to adapter");
     }
 
     function test_quote_DifferentFeeTiers() public {

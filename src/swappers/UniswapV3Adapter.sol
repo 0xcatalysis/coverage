@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ISwapAdapter} from "../interfaces/ISwapAdapter.sol";
+import {IQuotableAdapter} from "../interfaces/IQuotableAdapter.sol";
 import {IQuoterV2} from "../interfaces/IQuoterV2.sol";
 
 /**
@@ -41,7 +41,7 @@ interface IV3SwapRouter {
  *      Mainnet SwapRouter02: 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45
  *      Mainnet QuoterV2:     0x61fFE014bA17989E743c5F6cB21bF9697530B21e
  */
-contract UniswapV3Adapter is ISwapAdapter {
+contract UniswapV3Adapter is IQuotableAdapter {
     using SafeERC20 for IERC20;
 
     /// @notice Emitted when a swap is executed through the adapter.
@@ -124,7 +124,7 @@ contract UniswapV3Adapter is ISwapAdapter {
     }
 
     /**
-     * @inheritdoc ISwapAdapter
+     * @inheritdoc IQuotableAdapter
      * @notice Quotes the expected output for a swap without executing it.
      * @param routeCalldata The stored calldata for the route (ABI-encoded swap selector + params).
      * @param amountIn Amount of tokenIn to quote for.

@@ -9,7 +9,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
-import {ISwapAdapter} from "./interfaces/ISwapAdapter.sol";
+import {IQuotableAdapter} from "./interfaces/IQuotableAdapter.sol";
 import {IWETH} from "./interfaces/IWETH.sol";
 
 /**
@@ -224,7 +224,7 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
         bytes32 routeKey = _getRouteKey(tokenIn, tokenOut);
         SwapRoute storage route = _swapRoutes[routeKey];
         require(route.enabled, SwapRouteNotEnabled(tokenIn, tokenOut));
-        amountOut = ISwapAdapter(route.swapTarget).quote(route.swapCalldata, amountIn);
+        amountOut = IQuotableAdapter(route.swapTarget).quote(route.swapCalldata, amountIn);
     }
 
     /**

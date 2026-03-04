@@ -532,6 +532,7 @@ contract ClaimManager is
 
         return (oracleExpected, quoted);
     }
+
     // slither-disable-end calls-loop
 
     /**
