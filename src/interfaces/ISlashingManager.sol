@@ -24,4 +24,21 @@ interface ISlashingManager {
     )
         external
         returns (address[] memory collateralTokens, uint256[] memory collateralAmounts);
+
+    /**
+     * @notice Previews the per-vault slash distribution without executing slashing.
+     * @param committeeId The restaking committee identifier (1:1 with policyId).
+     * @param operator Operator address whose stake backs the committee.
+     * @param slashAmountUSD The USD slash amount to distribute (8 decimals).
+     * @return collateralTokens Array of underlying collateral token addresses per vault.
+     * @return slashAmountsUSD Array of USD slash amounts per vault (8 decimals), parallel to collateralTokens.
+     */
+    function previewSlashing(
+        uint96 committeeId,
+        address operator,
+        uint256 slashAmountUSD
+    )
+        external
+        view
+        returns (address[] memory collateralTokens, uint256[] memory slashAmountsUSD);
 }

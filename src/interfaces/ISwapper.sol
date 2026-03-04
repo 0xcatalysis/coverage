@@ -222,31 +222,17 @@ interface ISwapper is IAccessControl {
         external;
 
     /**
+     * @notice Returns the expected output for a swap without executing it.
+     * @param tokenIn Source token address.
+     * @param tokenOut Destination token address.
+     * @param amountIn Amount of tokenIn to quote for.
+     * @return amountOut Expected amount of tokenOut.
+     */
+    function quoteSwap(address tokenIn, address tokenOut, uint256 amountIn) external returns (uint256 amountOut);
+
+    /**
      * @notice Executes a token swap using a configured route.
      * @dev Requires SWAP_EXECUTOR_ROLE (typically granted to ClaimManager).
-     *
-     *      Native ETH Handling:
-     *      - Use NATIVE_ETH (0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) for tokenIn or tokenOut
-     *      - When tokenIn is NATIVE_ETH, send ETH via msg.value (wraps to WETH automatically)
-     *      - When tokenOut is NATIVE_ETH, recipient receives unwrapped ETH
-     *      - Routes must be configured using nativeWrapper address (WETH), not NATIVE_ETH
-     *
-     *      Execution Flow:
-     *      1. Validates route configuration and whitelist status
-     *      2. If tokenIn is NATIVE_ETH, wraps msg.value to WETH; else pulls ERC20 via transferFrom
-     *      3. Approves swapTarget for the input amount
-     *      4. Executes swap via external call with provided swapCalldata
-     *      5. Verifies output amount via balance diff (trustless verification)
-     *      6. Clears approval to minimize attack surface
-     *      7. If tokenOut is NATIVE_ETH, unwraps WETH and sends ETH; else transfers ERC20
-     *
-     *      Typical ClaimManager Usage:
-     *      - ClaimManager receives slashed collateral (ETH or WETH) from SlashingManager
-     *      - For ERC20: ClaimManager approves Swapper for collateral amount
-     *      - For native ETH: ClaimManager sends ETH via msg.value
-     *      - ClaimManager calls executeSwap with recipient as beneficiary
-     *      - Swapper converts collateral → payout token and sends to recipient
-     *
      * @param params Swap parameters including tokens, amounts, slippage limits, recipient, and DEX calldata.
      * @return amountOut Actual amount of tokenOut received and transferred to recipient.
      */

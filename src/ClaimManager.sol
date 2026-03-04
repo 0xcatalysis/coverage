@@ -325,12 +325,13 @@ contract ClaimManager is
     }
 
     /**
-     * @notice Executes slashing and collateral swapping for payout directly.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim.
-     * @param metadata Policy metadata containing policyId and payout details.
-     * @param requestedAmount Maximum amount to disburse (in payout token terms).
-     * @return totalPayout Total amount paid out from slashing.
+     * @notice Inflates the slash amount by real-time Uniswap slippage, executes slashing, then
+     *         distributes collateral proceeds to the beneficiary.
+     * @param policyId Policy / committee identifier.
+     * @param claimId Claim identifier used to build the unique taskId.
+     * @param metadata Policy metadata for payout token, beneficiary, and committee info.
+     * @param requestedAmount Maximum payout amount in payout token terms.
+     * @return Total amount delivered to the beneficiary.
      */
     function _executeSlashingAndPayout(
         uint96 policyId,
@@ -339,28 +340,59 @@ contract ClaimManager is
         uint256 requestedAmount
     )
         private
+        returns (uint256)
+    {
+        address payoutToken_ = metadata.payoutToken;
+        address beneficiary_ = metadata.beneficiary;
+        address operator = ICoverPool(metadata.pool).owner();
+
+        // slither-disable-next-line calls-loop
+        uint256 slashAmountUSD = IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(payoutToken_, requestedAmount);
+
+        {
+            uint16 slippageBps = _previewSlippageBps(policyId, operator, payoutToken_, slashAmountUSD);
+            if (slippageBps > 0) {
+                slashAmountUSD = slashAmountUSD * 10_000 / (10_000 - slippageBps);
+            }
+        }
+
+        (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
+            _executeSlash(metadata.policyId, operator, claimId, slashAmountUSD, policyId);
+
+        uint256 totalPayout = _distributeCollateralPayout(
+            policyId, claimId, collateralTokens, collateralAmounts, payoutToken_, beneficiary_, requestedAmount
+        );
+
+        require(totalPayout > 0, ZeroPayoutAmount(policyId));
+        return totalPayout;
+    }
+
+    /**
+     * @notice Iterates over slashed collateral tokens and routes each to _processCollateral.
+     * @param policyId Policy identifier (for events and errors).
+     * @param claimId Claim identifier (for events).
+     * @param collateralTokens Collateral token addresses returned by executeSlashing.
+     * @param collateralAmounts Collateral amounts returned by executeSlashing.
+     * @param payoutToken Payout token the beneficiary receives.
+     * @param beneficiary Address that receives the payout.
+     * @param requestedAmount Maximum total payout requested.
+     * @return totalPayout Total payout delivered across all collateral tokens.
+     */
+    function _distributeCollateralPayout(
+        uint96 policyId,
+        uint256 claimId,
+        address[] memory collateralTokens,
+        uint256[] memory collateralAmounts,
+        address payoutToken,
+        address beneficiary,
+        uint256 requestedAmount
+    )
+        private
         returns (uint256 totalPayout)
     {
-        // slither-disable-next-line calls-loop
-        uint256 slashAmountUSD =
-            IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(metadata.payoutToken, requestedAmount);
-
-        // Slash committee in core contracts using policyId as committeeId (1:1 mapping).
-        // taskId (inlined) is deterministic per (policyId, claimId) pair to prevent replay attacks.
-        // slither-disable-next-line calls-loop
-        (address[] memory collateralTokens, uint256[] memory collateralAmounts) = ISlashingManager(slashingManager)
-            .executeSlashing(
-                metadata.policyId,
-                ICoverPool(metadata.pool).owner(),
-                slashAmountUSD,
-                keccak256(abi.encodePacked(metadata.policyId, claimId))
-            );
-
-        uint256 tokensLength = collateralTokens.length;
-        // slither-disable-next-line incorrect-equality
-        require(tokensLength > 0 && tokensLength == collateralAmounts.length, NoCollateralSlashed(policyId));
-
         uint256 remainingPayout = requestedAmount;
+        uint256 tokensLength = collateralTokens.length;
+
         for (uint256 i = 0; i < tokensLength && remainingPayout > 0; ++i) {
             if (collateralAmounts[i] > 0) {
                 uint256 amountOut = _processCollateral(
@@ -368,16 +400,136 @@ contract ClaimManager is
                     claimId,
                     collateralTokens[i],
                     collateralAmounts[i],
-                    metadata.payoutToken,
-                    metadata.beneficiary,
+                    payoutToken,
+                    beneficiary,
                     remainingPayout
                 );
                 totalPayout += amountOut;
                 remainingPayout = remainingPayout > amountOut ? remainingPayout - amountOut : 0;
             }
         }
+    }
 
-        require(totalPayout > 0, ZeroPayoutAmount(policyId));
+    /**
+     * @notice Calls SlashingManager.executeSlashing, validating the returned arrays.
+     */
+    function _executeSlash(
+        uint96 metadataPolicyId,
+        address operator,
+        uint256 claimId,
+        uint256 slashAmountUSD,
+        uint96 policyId
+    )
+        private
+        returns (address[] memory collateralTokens, uint256[] memory collateralAmounts)
+    {
+        // slither-disable-next-line calls-loop
+        (collateralTokens, collateralAmounts) = ISlashingManager(slashingManager)
+            .executeSlashing(
+                metadataPolicyId, operator, slashAmountUSD, keccak256(abi.encodePacked(metadataPolicyId, claimId))
+            );
+        // slither-disable-next-line incorrect-equality
+        require(
+            collateralTokens.length > 0 && collateralTokens.length == collateralAmounts.length,
+            NoCollateralSlashed(policyId)
+        );
+    }
+
+    /**
+     * @notice Previews real-time swap slippage for collateral by querying Uniswap QuoterV2.
+     * @dev Calls SlashingManager.previewSlashing (which resolves collateral tokens via SSPRouter)
+     *      to get the pro-rata distribution, then quotes each swap via Swapper.quoteSwap.
+     * @param policyId Committee ID (1:1 with policyId) used to query vault distribution.
+     * @param operator Operator address whose stake backs the committee.
+     * @param payoutToken The token the beneficiary receives; used to skip same-token vaults.
+     * @param baseSlashAmountUSD Base USD slash amount before inflation (8 decimals).
+     * @return slippageBps Real-time slippage in basis points.
+     */
+    function _previewSlippageBps(
+        uint96 policyId,
+        address operator,
+        address payoutToken,
+        uint256 baseSlashAmountUSD
+    )
+        private
+        returns (uint16)
+    {
+        address[] memory collateralTokens;
+        uint256[] memory slashAmountsUSD;
+        try ISlashingManager(slashingManager).previewSlashing(policyId, operator, baseSlashAmountUSD) returns (
+            address[] memory t, uint256[] memory a
+        ) {
+            collateralTokens = t;
+            slashAmountsUSD = a;
+        } catch {
+            return 0;
+        }
+
+        uint256 tokensLength = collateralTokens.length;
+        if (tokensLength == 0) {
+            return 0;
+        }
+
+        uint256 totalOracleExpected = 0;
+        uint256 totalQuoted = 0;
+
+        for (uint256 i = 0; i < tokensLength; ++i) {
+            if (slashAmountsUSD[i] == 0 || collateralTokens[i] == address(0)) continue;
+
+            (uint256 oracle, uint256 quoted) = _quoteVaultSlippage(collateralTokens[i], payoutToken, slashAmountsUSD[i]);
+            totalOracleExpected += oracle;
+            totalQuoted += quoted;
+        }
+
+        if (totalOracleExpected == 0 || totalQuoted >= totalOracleExpected) {
+            return 0;
+        }
+
+        uint256 computedBps = (totalOracleExpected - totalQuoted) * 10_000 / totalOracleExpected;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return uint16(computedBps);
+    }
+
+    /**
+     * @notice Quotes the expected swap output for a single vault's slash allocation.
+     * @dev collateralToken is resolved by the core (SlashingManager.previewSlashing via
+     *      SSPRouter.getVaultToken) before this function is called, so no protocol-specific
+     *      vault introspection is required here.
+     * @param collateralToken Underlying collateral token for this vault (resolved by core).
+     * @param payoutToken Payout token address.
+     * @param slashUSD USD slash amount for this vault (8 decimals).
+     * @return Oracle-priced expected payout token amount.
+     * @return Uniswap-quoted expected payout token amount.
+     */
+    function _quoteVaultSlippage(
+        address collateralToken,
+        address payoutToken,
+        uint256 slashUSD
+    )
+        private
+        returns (uint256, uint256)
+    {
+        if (collateralToken == payoutToken) {
+            uint256 amount = IChainlinkPriceFeed(chainlinkPriceFeed).getTokenAmount(payoutToken, slashUSD);
+            return (amount, amount);
+        }
+
+        uint256 collateralAmount = IChainlinkPriceFeed(chainlinkPriceFeed).getTokenAmount(collateralToken, slashUSD);
+        if (collateralAmount == 0) {
+            return (0, 0);
+        }
+
+        uint256 oracleExpected = IChainlinkPriceFeed(chainlinkPriceFeed)
+            .getTokenAmount(
+                payoutToken, IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(collateralToken, collateralAmount)
+            );
+
+        uint256 quoted = oracleExpected;
+        try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 q) {
+            quoted = q;
+        } catch {}
+
+        return (oracleExpected, quoted);
     }
 
     /**

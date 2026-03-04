@@ -9,6 +9,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
+import {ISwapAdapter} from "./interfaces/ISwapAdapter.sol";
 import {IWETH} from "./interfaces/IWETH.sol";
 
 /**
@@ -206,6 +207,24 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
         _handleTokenOutput(params.tokenOut, amountOut, params.recipient);
 
         emit SwapExecuted(params.tokenIn, params.tokenOut, params.amountIn, amountOut, params.recipient);
+    }
+
+    /**
+     * @inheritdoc ISwapper
+     */
+    function quoteSwap(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn
+    )
+        external
+        override
+        returns (uint256 amountOut)
+    {
+        bytes32 routeKey = _getRouteKey(tokenIn, tokenOut);
+        SwapRoute storage route = _swapRoutes[routeKey];
+        require(route.enabled, SwapRouteNotEnabled(tokenIn, tokenOut));
+        amountOut = ISwapAdapter(route.swapTarget).quote(route.swapCalldata, amountIn);
     }
 
     /**

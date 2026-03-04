@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ISwapAdapter} from "../interfaces/ISwapAdapter.sol";
+import {IQuoterV2} from "../interfaces/IQuoterV2.sol";
 
 /**
  * @notice Minimal Uniswap V3 SwapRouter02 interface.
@@ -34,23 +36,12 @@ interface IV3SwapRouter {
  *      calldata encodes `swap(tokenIn, tokenOut, fee)` — all static per route. At execution
  *      time, the adapter dynamically resolves `amountIn` from the Swapper's ERC-20 approval.
  *
- *      Integration pattern (called by Swapper._performSwap):
- *        1. Swapper approves adapter for `amountIn` of tokenIn
- *        2. Swapper calls `swap(tokenIn, tokenOut, fee)` via stored calldata
- *        3. Adapter reads allowance to obtain amountIn
- *        4. Adapter pulls tokenIn from Swapper via transferFrom
- *        5. Adapter approves SwapRouter02 for amountIn
- *        6. Adapter calls exactInputSingle with recipient = Swapper (msg.sender)
- *        7. SwapRouter02 sends tokenOut directly to Swapper
- *        8. Swapper measures balance diff to determine amountOut
- *        9. Adapter clears residual approval to SwapRouter02
- *
- *      Deployment: deployed separately from the main Coverage suite; configured via
- *      Swapper.setSwapTargetWhitelist() and Swapper.setSwapRoute() by SWAP_MANAGER_ROLE.
- *
  *      Sepolia SwapRouter02: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E
+ *      Sepolia QuoterV2:     0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3
+ *      Mainnet SwapRouter02: 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45
+ *      Mainnet QuoterV2:     0x61fFE014bA17989E743c5F6cB21bF9697530B21e
  */
-contract UniswapV3Adapter {
+contract UniswapV3Adapter is ISwapAdapter {
     using SafeERC20 for IERC20;
 
     /// @notice Emitted when a swap is executed through the adapter.
@@ -64,18 +55,28 @@ contract UniswapV3Adapter {
     /// @notice Reverts when the allowance read from the caller is zero.
     error ZeroAllowance();
 
+    /// @notice Reverts when routeCalldata passed to quote() is too short to decode.
+    error InvalidRouteCalldata();
+
     /// @notice Uniswap V3 SwapRouter02 address (immutable, set at construction).
     IV3SwapRouter public immutable SWAP_ROUTER;
 
+    /// @notice Uniswap V3 QuoterV2 address (immutable, set at construction).
+    IQuoterV2 public immutable QUOTER;
+
     /**
-     * @notice Deploys the adapter pointing at a specific SwapRouter02 instance.
+     * @notice Deploys the adapter pointing at specific SwapRouter02 and QuoterV2 instances.
      * @param swapRouter_ Uniswap V3 SwapRouter02 address.
      *                    Sepolia: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E
      *                    Mainnet: 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45
+     * @param quoter_     Uniswap V3 QuoterV2 address.
+     *                    Sepolia: 0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3
+     *                    Mainnet: 0x61fFE014bA17989E743c5F6cB21bF9697530B21e
      */
-    constructor(address swapRouter_) {
-        require(swapRouter_ != address(0), ZeroAddress());
+    constructor(address swapRouter_, address quoter_) {
+        require(swapRouter_ != address(0) && quoter_ != address(0), ZeroAddress());
         SWAP_ROUTER = IV3SwapRouter(swapRouter_);
+        QUOTER = IQuoterV2(quoter_);
     }
 
     /**
@@ -120,5 +121,24 @@ contract UniswapV3Adapter {
 
         // slither-disable-next-line reentrancy-events
         emit AdapterSwapExecuted(tokenIn, tokenOut, fee, amountIn, amountOut);
+    }
+
+    /**
+     * @inheritdoc ISwapAdapter
+     * @notice Quotes the expected output for a swap without executing it.
+     * @param routeCalldata The stored calldata for the route (ABI-encoded swap selector + params).
+     * @param amountIn Amount of tokenIn to quote for.
+     * @return amountOut Expected amount of tokenOut.
+     */
+    function quote(bytes calldata routeCalldata, uint256 amountIn) external override returns (uint256 amountOut) {
+        // routeCalldata = selector (4 bytes) + abi.encode(address tokenIn, address tokenOut, uint24 fee)
+        require(routeCalldata.length >= 4 + 96, InvalidRouteCalldata());
+        (address tokenIn, address tokenOut, uint24 fee) = abi.decode(routeCalldata[4:], (address, address, uint24));
+
+        IQuoterV2.QuoteExactInputSingleParams memory params = IQuoterV2.QuoteExactInputSingleParams({
+            tokenIn: tokenIn, tokenOut: tokenOut, amountIn: amountIn, fee: fee, sqrtPriceLimitX96: 0
+        });
+
+        (amountOut,,,) = QUOTER.quoteExactInputSingle(params);
     }
 }
