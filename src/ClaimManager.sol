@@ -454,8 +454,8 @@ contract ClaimManager is
         private
         returns (uint16)
     {
-        address[] memory collateralTokens;
-        uint256[] memory slashAmountsUSD;
+        address[] memory collateralTokens = new address[](0);
+        uint256[] memory slashAmountsUSD = new uint256[](0);
         try ISlashingManager(slashingManager).previewSlashing(policyId, operator, baseSlashAmountUSD) returns (
             address[] memory t, uint256[] memory a
         ) {
@@ -501,6 +501,7 @@ contract ClaimManager is
      * @return Oracle-priced expected payout token amount.
      * @return Uniswap-quoted expected payout token amount.
      */
+    // slither-disable-start calls-loop
     function _quoteVaultSlippage(
         address collateralToken,
         address payoutToken,
@@ -531,6 +532,7 @@ contract ClaimManager is
 
         return (oracleExpected, quoted);
     }
+    // slither-disable-end calls-loop
 
     /**
      * @notice Processes collateral by swapping or transferring directly with cap.

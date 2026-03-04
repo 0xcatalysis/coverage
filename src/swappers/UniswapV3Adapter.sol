@@ -139,6 +139,7 @@ contract UniswapV3Adapter is ISwapAdapter {
             tokenIn: tokenIn, tokenOut: tokenOut, amountIn: amountIn, fee: fee, sqrtPriceLimitX96: 0
         });
 
+        // slither-disable-next-line unused-return
         (amountOut,,,) = QUOTER.quoteExactInputSingle(params);
     }
 }
