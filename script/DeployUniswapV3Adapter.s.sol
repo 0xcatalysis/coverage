@@ -18,6 +18,10 @@ import {ISwapper} from "../src/interfaces/ISwapper.sol";
  *   - SWAPPER: Swapper proxy address (read from ClaimManager.swapper() if unknown)
  *   - SWAP_ROUTER: Uniswap V3 SwapRouter02 address
  *                  Sepolia default: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E
+ *                  Mainnet:         0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45
+ *   - QUOTER: Uniswap V3 QuoterV2 address
+ *             Sepolia default: 0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3
+ *             Mainnet:         0x61fFE014bA17989E743c5F6cB21bF9697530B21e
  *   - TOKEN_IN: Collateral token address (e.g. Uniswap-native WETH on Sepolia:
  * 0xfff9976782d46cc05630d1f6ebab18b2324d6b14)
  *   - TOKEN_OUT: Payout token address (e.g. Circle Sepolia USDC: 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238)
@@ -30,6 +34,7 @@ contract DeployUniswapV3Adapter is Script {
 
         address swapper = vm.envAddress("SWAPPER");
         address swapRouter = vm.envOr("SWAP_ROUTER", address(0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E));
+        address quoter = vm.envOr("QUOTER", address(0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3));
         address tokenIn = vm.envAddress("TOKEN_IN");
         address tokenOut = vm.envAddress("TOKEN_OUT");
         uint24 poolFee = uint24(vm.envUint("POOL_FEE"));
@@ -38,13 +43,14 @@ contract DeployUniswapV3Adapter is Script {
         console.log("Deployer:", deployer);
         console.log("Swapper:", swapper);
         console.log("SwapRouter:", swapRouter);
+        console.log("QuoterV2:", quoter);
         console.log("TokenIn (collateral):", tokenIn);
         console.log("TokenOut (payout):", tokenOut);
         console.log("Pool fee tier:", poolFee);
 
         vm.startBroadcast(deployerKey);
 
-        UniswapV3Adapter adapter = new UniswapV3Adapter(swapRouter);
+        UniswapV3Adapter adapter = new UniswapV3Adapter(swapRouter, quoter);
         console.log("UniswapV3Adapter deployed at:", address(adapter));
 
         ISwapper(swapper).setSwapTargetWhitelist(address(adapter), true);
