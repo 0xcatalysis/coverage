@@ -1270,6 +1270,72 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                             QUOTE SWAP
+    //////////////////////////////////////////////////////////////*/
+
+    function test_quoteSwap_ReturnsAdapterQuote() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedOut = 1800e6;
+        MockQuotingDEX quotingDex = new MockQuotingDEX();
+        quotingDex.setQuoteOut(expectedOut);
+        address quotingTarget = address(quotingDex);
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(quotingTarget, true);
+
+        bytes memory routeCalldata =
+            abi.encodeWithSignature("swap(address,address,uint24)", address(tokenIn), address(tokenOut), 3000);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), quotingTarget, true, routeCalldata);
+
+        uint256 amountOut = swapper.quoteSwap(address(tokenIn), address(tokenOut), amountIn);
+        assertEq(amountOut, expectedOut, "quoteSwap should return adapter quote");
+    }
+
+    function test_quoteSwap_RouteNotEnabled_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(ISwapper.SwapRouteNotEnabled.selector, address(tokenIn), address(tokenOut))
+        );
+        swapper.quoteSwap(address(tokenIn), address(tokenOut), 1 ether);
+    }
+
+    function test_quoteSwap_DisabledRoute_Reverts() public {
+        MockQuotingDEX quotingDex = new MockQuotingDEX();
+        address quotingTarget = address(quotingDex);
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(quotingTarget, true);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), quotingTarget, false, "");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ISwapper.SwapRouteNotEnabled.selector, address(tokenIn), address(tokenOut))
+        );
+        swapper.quoteSwap(address(tokenIn), address(tokenOut), 1 ether);
+    }
+
+    function test_quoteSwap_PassesRouteCalldataToAdapter() public {
+        uint256 amountIn = 500e6;
+        MockQuotingDEX quotingDex = new MockQuotingDEX();
+        quotingDex.setQuoteOut(0.24 ether);
+        address quotingTarget = address(quotingDex);
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(quotingTarget, true);
+
+        bytes memory routeCalldata =
+            abi.encodeWithSignature("swap(address,address,uint24)", address(tokenIn), address(tokenOut), 500);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), quotingTarget, true, routeCalldata);
+
+        swapper.quoteSwap(address(tokenIn), address(tokenOut), amountIn);
+
+        assertEq(quotingDex.lastCalldata(), routeCalldata, "Route calldata not forwarded");
+        assertEq(quotingDex.lastAmountIn(), amountIn, "amountIn not forwarded");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                               HELPERS
     //////////////////////////////////////////////////////////////*/
 
@@ -1393,5 +1459,21 @@ contract MockWETH is ERC20 {
 contract RejectEther {
     receive() external payable {
         revert("ETH not accepted");
+    }
+}
+
+contract MockQuotingDEX {
+    uint256 private _quoteOut;
+    bytes public lastCalldata;
+    uint256 public lastAmountIn;
+
+    function setQuoteOut(uint256 quoteOut_) external {
+        _quoteOut = quoteOut_;
+    }
+
+    function quote(bytes calldata routeCalldata, uint256 amountIn) external returns (uint256) {
+        lastCalldata = routeCalldata;
+        lastAmountIn = amountIn;
+        return _quoteOut;
     }
 }
