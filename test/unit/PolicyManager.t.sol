@@ -2363,18 +2363,17 @@ contract MockInvalidHook is ERC165 {
 
 // Hook that queries policy metadata during callback
 contract MockBindPolicyHookWithQuery is IBindPolicyHook, ERC165 {
-    address private immutable policyManager;
+    address private immutable POLICY_MANAGER;
     bool public metadataQuerySucceeded;
     address public queriedBeneficiary;
     uint256 public queriedCoverageLimit;
 
     constructor(address policyManager_) {
-        policyManager = policyManager_;
+        POLICY_MANAGER = policyManager_;
     }
 
     function onPolicyBound(uint96 policyId, uint256) external override {
-        // Query policy metadata during the callback
-        try IPolicyManager(policyManager).policyMetadata(policyId) returns (
+        try IPolicyManager(POLICY_MANAGER).policyMetadata(policyId) returns (
             IPolicyManager.PolicyMetadata memory metadata
         ) {
             metadataQuerySucceeded = true;
