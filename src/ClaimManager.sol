@@ -514,19 +514,24 @@ contract ClaimManager is
         returns (uint256, uint256)
     {
         if (collateralToken == payoutToken) {
-            uint256 amount = IChainlinkPriceFeed(chainlinkPriceFeed).getTokenAmount(payoutToken, slashUSD);
+            uint256 amount = _getTokenAmount(payoutToken, slashUSD);
             return (amount, amount);
         }
 
-        uint256 collateralAmount = IChainlinkPriceFeed(chainlinkPriceFeed).getTokenAmount(collateralToken, slashUSD);
+        uint256 collateralAmount = _getTokenAmount(collateralToken, slashUSD);
         if (collateralAmount == 0) {
             return (0, 0);
         }
 
-        uint256 oracleExpected = IChainlinkPriceFeed(chainlinkPriceFeed)
-            .getTokenAmount(
-                payoutToken, IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(collateralToken, collateralAmount)
-            );
+        uint256 usdValue = _getUSDValue(collateralToken, collateralAmount);
+        if (usdValue == 0) {
+            return (0, 0);
+        }
+
+        uint256 oracleExpected = _getTokenAmount(payoutToken, usdValue);
+        if (oracleExpected == 0) {
+            return (0, 0);
+        }
 
         uint256 quoted = oracleExpected;
         try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 q) {
@@ -534,6 +539,24 @@ contract ClaimManager is
         } catch {}
 
         return (oracleExpected, quoted);
+    }
+
+    /// @dev Delegates to ChainlinkPriceFeed.getTokenAmount; returns 0 on revert.
+    function _getTokenAmount(address token, uint256 usdValue) private returns (uint256) {
+        try IChainlinkPriceFeed(chainlinkPriceFeed).getTokenAmount(token, usdValue) returns (uint256 amount) {
+            return amount;
+        } catch {
+            return 0;
+        }
+    }
+
+    /// @dev Delegates to ChainlinkPriceFeed.getUSDValue; returns 0 on revert.
+    function _getUSDValue(address token, uint256 amount) private returns (uint256) {
+        try IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(token, amount) returns (uint256 usdValue) {
+            return usdValue;
+        } catch {
+            return 0;
+        }
     }
 
     // slither-disable-end calls-loop

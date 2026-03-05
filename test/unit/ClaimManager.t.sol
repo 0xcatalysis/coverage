@@ -1897,6 +1897,165 @@ contract ClaimManagerTest is Test {
         );
     }
 
+    function test_fileClaim_DynamicSlippage_ZeroWhenOracleGetTokenAmountRevertsForCollateral() public {
+        uint256 requestedAmount = 300 ether;
+
+        MockSlashingManagerWithPreview previewMock = new MockSlashingManagerWithPreview();
+        MockSwapperWithQuote quotingSwapper = new MockSwapperWithQuote();
+        MockChainlinkPriceFeedSelectiveRevert revertingFeed = new MockChainlinkPriceFeedSelectiveRevert();
+        revertingFeed.setRevertGetTokenAmountForToken(collateralToken);
+
+        address[] memory previewTokens = new address[](1);
+        previewTokens[0] = collateralToken;
+        uint256[] memory previewAmounts = new uint256[](1);
+        previewAmounts[0] = requestedAmount;
+        previewMock.setPreviewResult(previewTokens, previewAmounts);
+
+        address[] memory assets = new address[](1);
+        assets[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        previewMock.setSlashResult(assets, amounts);
+        payoutTokenMock.mint(address(previewMock), requestedAmount);
+        previewMock.setTokenToTransfer(payoutToken);
+
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "ClaimManager.sol",
+            abi.encodeCall(
+                ClaimManager.initialize,
+                (
+                    admin,
+                    address(specRegistryMock),
+                    address(previewMock),
+                    address(quotingSwapper),
+                    address(policyMock),
+                    address(revertingFeed)
+                )
+            ),
+            deployOpts
+        );
+        ClaimManager cm = ClaimManager(proxy);
+        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        cm.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            previewMock.lastSlashAmount(),
+            requestedAmount,
+            "Oracle getTokenAmount revert for collateral should yield zero inflation"
+        );
+    }
+
+    function test_fileClaim_DynamicSlippage_ZeroWhenOracleGetUSDValueRevertsForCollateral() public {
+        uint256 requestedAmount = 300 ether;
+
+        MockSlashingManagerWithPreview previewMock = new MockSlashingManagerWithPreview();
+        MockSwapperWithQuote quotingSwapper = new MockSwapperWithQuote();
+        MockChainlinkPriceFeedSelectiveRevert revertingFeed = new MockChainlinkPriceFeedSelectiveRevert();
+        revertingFeed.setRevertGetUSDValueForToken(collateralToken);
+
+        address[] memory previewTokens = new address[](1);
+        previewTokens[0] = collateralToken;
+        uint256[] memory previewAmounts = new uint256[](1);
+        previewAmounts[0] = requestedAmount;
+        previewMock.setPreviewResult(previewTokens, previewAmounts);
+
+        address[] memory assets = new address[](1);
+        assets[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        previewMock.setSlashResult(assets, amounts);
+        payoutTokenMock.mint(address(previewMock), requestedAmount);
+        previewMock.setTokenToTransfer(payoutToken);
+
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "ClaimManager.sol",
+            abi.encodeCall(
+                ClaimManager.initialize,
+                (
+                    admin,
+                    address(specRegistryMock),
+                    address(previewMock),
+                    address(quotingSwapper),
+                    address(policyMock),
+                    address(revertingFeed)
+                )
+            ),
+            deployOpts
+        );
+        ClaimManager cm = ClaimManager(proxy);
+        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        cm.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            previewMock.lastSlashAmount(),
+            requestedAmount,
+            "Oracle getUSDValue revert for collateral should yield zero inflation"
+        );
+    }
+
+    function test_fileClaim_DynamicSlippage_ZeroWhenOracleGetTokenAmountRevertsForSameTokenVault() public {
+        uint256 requestedAmount = 300 ether;
+
+        MockSlashingManagerWithPreview previewMock = new MockSlashingManagerWithPreview();
+        MockSwapperWithQuote quotingSwapper = new MockSwapperWithQuote();
+        MockChainlinkPriceFeedSelectiveRevert revertingFeed = new MockChainlinkPriceFeedSelectiveRevert();
+        revertingFeed.setRevertGetTokenAmountForToken(payoutToken);
+
+        address[] memory previewTokens = new address[](1);
+        previewTokens[0] = payoutToken;
+        uint256[] memory previewAmounts = new uint256[](1);
+        previewAmounts[0] = requestedAmount;
+        previewMock.setPreviewResult(previewTokens, previewAmounts);
+
+        address[] memory assets = new address[](1);
+        assets[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        previewMock.setSlashResult(assets, amounts);
+        payoutTokenMock.mint(address(previewMock), requestedAmount);
+        previewMock.setTokenToTransfer(payoutToken);
+
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "ClaimManager.sol",
+            abi.encodeCall(
+                ClaimManager.initialize,
+                (
+                    admin,
+                    address(specRegistryMock),
+                    address(previewMock),
+                    address(quotingSwapper),
+                    address(policyMock),
+                    address(revertingFeed)
+                )
+            ),
+            deployOpts
+        );
+        ClaimManager cm = ClaimManager(proxy);
+        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        cm.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            previewMock.lastSlashAmount(),
+            requestedAmount,
+            "Oracle getTokenAmount revert in same-token branch should yield zero inflation"
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                                HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -2316,6 +2475,29 @@ contract MockSwapperRevertingQuote {
 
     function quoteSwap(address, address, uint256) external pure returns (uint256) {
         revert("quoteSwap: no route");
+    }
+}
+
+contract MockChainlinkPriceFeedSelectiveRevert {
+    address private _revertGetTokenAmountForToken;
+    address private _revertGetUSDValueForToken;
+
+    function setRevertGetTokenAmountForToken(address token) external {
+        _revertGetTokenAmountForToken = token;
+    }
+
+    function setRevertGetUSDValueForToken(address token) external {
+        _revertGetUSDValueForToken = token;
+    }
+
+    function getUSDValue(address token, uint256 amount) external view returns (uint256) {
+        require(token != _revertGetUSDValueForToken, "MockChainlink: getUSDValue reverts");
+        return amount;
+    }
+
+    function getTokenAmount(address token, uint256 usdValue) external view returns (uint256) {
+        require(token != _revertGetTokenAmountForToken, "MockChainlink: getTokenAmount reverts");
+        return usdValue;
     }
 }
 
