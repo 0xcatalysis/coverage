@@ -364,7 +364,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              SET POLICY
+                          SET POLICY MANAGER
     //////////////////////////////////////////////////////////////*/
 
     function test_setPolicyManager_WhenCallerNotAdmin_Reverts() public {
@@ -399,7 +399,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            SET PRICE FEED
+                       SET CHAINLINK PRICE FEED
     //////////////////////////////////////////////////////////////*/
 
     function test_setChainlinkPriceFeed_WhenCallerNotAdmin_Reverts() public {
