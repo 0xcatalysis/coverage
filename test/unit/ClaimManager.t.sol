@@ -1549,41 +1549,12 @@ contract ClaimManagerTest is Test {
         quotingSwapper.setPayoutToken(payoutToken);
         quotingSwapper.setSwapOutput(requestedAmount);
 
-        address[] memory previewTokens = new address[](1);
-        previewTokens[0] = collateralToken;
-        uint256[] memory previewAmounts = new uint256[](1);
-        previewAmounts[0] = requestedAmount;
-        previewSlashingMock.setPreviewResult(previewTokens, previewAmounts);
-
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        previewSlashingMock.setSlashResult(assets, amounts);
+        _setPreviewAndSlash(previewSlashingMock, collateralToken, requestedAmount, collateralToken, requestedAmount);
         collateralTokenMock.mint(address(previewSlashingMock), requestedAmount);
-        previewSlashingMock.setTokenToTransfer(collateralToken);
         payoutTokenMock.mint(address(quotingSwapper), requestedAmount);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewSlashingMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(chainlinkPriceFeedMock)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager dynamicCM = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager dynamicCM =
+            _deployClaimManager(address(previewSlashingMock), address(quotingSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
         dynamicCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -1607,41 +1578,12 @@ contract ClaimManagerTest is Test {
         quotingSwapper.setPayoutToken(payoutToken);
         quotingSwapper.setSwapOutput(requestedAmount);
 
-        address[] memory previewTokens = new address[](1);
-        previewTokens[0] = collateralToken;
-        uint256[] memory previewAmounts = new uint256[](1);
-        previewAmounts[0] = requestedAmount;
-        previewSlashingMock.setPreviewResult(previewTokens, previewAmounts);
-
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        previewSlashingMock.setSlashResult(assets, amounts);
+        _setPreviewAndSlash(previewSlashingMock, collateralToken, requestedAmount, collateralToken, requestedAmount);
         collateralTokenMock.mint(address(previewSlashingMock), requestedAmount);
-        previewSlashingMock.setTokenToTransfer(collateralToken);
         payoutTokenMock.mint(address(quotingSwapper), requestedAmount);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewSlashingMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(chainlinkPriceFeedMock)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager cappedCM = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager cappedCM =
+            _deployClaimManager(address(previewSlashingMock), address(quotingSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
         cappedCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -1660,41 +1602,12 @@ contract ClaimManagerTest is Test {
         quotingSwapper.setPayoutToken(payoutToken);
         quotingSwapper.setSwapOutput(requestedAmount);
 
-        address[] memory previewTokens = new address[](1);
-        previewTokens[0] = collateralToken;
-        uint256[] memory previewAmounts = new uint256[](1);
-        previewAmounts[0] = requestedAmount;
-        previewSlashingMock.setPreviewResult(previewTokens, previewAmounts);
-
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        previewSlashingMock.setSlashResult(assets, amounts);
+        _setPreviewAndSlash(previewSlashingMock, collateralToken, requestedAmount, collateralToken, requestedAmount);
         collateralTokenMock.mint(address(previewSlashingMock), requestedAmount);
-        previewSlashingMock.setTokenToTransfer(collateralToken);
         payoutTokenMock.mint(address(quotingSwapper), requestedAmount);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewSlashingMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(chainlinkPriceFeedMock)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager extremeCM = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager extremeCM =
+            _deployClaimManager(address(previewSlashingMock), address(quotingSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
         extremeCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -1724,26 +1637,8 @@ contract ClaimManagerTest is Test {
         revertingMock.setTokenToTransfer(collateralToken);
         payoutTokenMock.mint(address(quotingSwapper), requestedAmount);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(revertingMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(chainlinkPriceFeedMock)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager nofallbackCM = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager nofallbackCM =
+            _deployClaimManager(address(revertingMock), address(quotingSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
         nofallbackCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -1757,43 +1652,14 @@ contract ClaimManagerTest is Test {
         MockSlashingManagerWithPreview previewMock = new MockSlashingManagerWithPreview();
         MockSwapperRevertingQuote revertingQuoteSwapper = new MockSwapperRevertingQuote();
 
-        address[] memory previewTokens = new address[](1);
-        previewTokens[0] = collateralToken;
-        uint256[] memory previewAmounts = new uint256[](1);
-        previewAmounts[0] = requestedAmount;
-        previewMock.setPreviewResult(previewTokens, previewAmounts);
-
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        previewMock.setSlashResult(assets, amounts);
+        _setPreviewAndSlash(previewMock, collateralToken, requestedAmount, collateralToken, requestedAmount);
         collateralTokenMock.mint(address(previewMock), requestedAmount);
-        previewMock.setTokenToTransfer(collateralToken);
         revertingQuoteSwapper.setPayoutToken(payoutToken);
         revertingQuoteSwapper.setSwapOutput(requestedAmount);
         payoutTokenMock.mint(address(revertingQuoteSwapper), requestedAmount);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewMock),
-                    address(revertingQuoteSwapper),
-                    address(policyMock),
-                    address(chainlinkPriceFeedMock)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager nofallbackCM = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager nofallbackCM =
+            _deployClaimManager(address(previewMock), address(revertingQuoteSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
         nofallbackCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -1807,40 +1673,11 @@ contract ClaimManagerTest is Test {
         MockSlashingManagerWithPreview previewMock = new MockSlashingManagerWithPreview();
         MockSwapperWithQuote quotingSwapper = new MockSwapperWithQuote();
 
-        address[] memory previewTokens = new address[](1);
-        previewTokens[0] = payoutToken;
-        uint256[] memory previewAmounts = new uint256[](1);
-        previewAmounts[0] = requestedAmount;
-        previewMock.setPreviewResult(previewTokens, previewAmounts);
-
-        address[] memory assets = new address[](1);
-        assets[0] = payoutToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        previewMock.setSlashResult(assets, amounts);
+        _setPreviewAndSlash(previewMock, payoutToken, requestedAmount, payoutToken, requestedAmount);
         payoutTokenMock.mint(address(previewMock), requestedAmount);
-        previewMock.setTokenToTransfer(payoutToken);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(chainlinkPriceFeedMock)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager zeroSlippageCM = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager zeroSlippageCM =
+            _deployClaimManager(address(previewMock), address(quotingSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
         zeroSlippageCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -1854,43 +1691,14 @@ contract ClaimManagerTest is Test {
         MockSlashingManagerWithPreview previewMock = new MockSlashingManagerWithPreview();
         MockSwapperWithQuote quotingSwapper = new MockSwapperWithQuote();
 
-        address[] memory previewTokens = new address[](1);
-        previewTokens[0] = address(0);
-        uint256[] memory previewAmounts = new uint256[](1);
-        previewAmounts[0] = requestedAmount;
-        previewMock.setPreviewResult(previewTokens, previewAmounts);
-
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        previewMock.setSlashResult(assets, amounts);
+        _setPreviewAndSlash(previewMock, address(0), requestedAmount, collateralToken, requestedAmount);
         collateralTokenMock.mint(address(previewMock), requestedAmount);
-        previewMock.setTokenToTransfer(collateralToken);
         quotingSwapper.setPayoutToken(payoutToken);
         quotingSwapper.setSwapOutput(requestedAmount);
         payoutTokenMock.mint(address(quotingSwapper), requestedAmount);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(chainlinkPriceFeedMock)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager skipCM = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager skipCM =
+            _deployClaimManager(address(previewMock), address(quotingSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
         skipCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -1908,41 +1716,12 @@ contract ClaimManagerTest is Test {
         zeroQuoteSwapper.setPayoutToken(payoutToken);
         zeroQuoteSwapper.setSwapOutput(requestedAmount);
 
-        address[] memory previewTokens = new address[](1);
-        previewTokens[0] = collateralToken;
-        uint256[] memory previewAmounts = new uint256[](1);
-        previewAmounts[0] = requestedAmount;
-        previewMock.setPreviewResult(previewTokens, previewAmounts);
-
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        previewMock.setSlashResult(assets, amounts);
+        _setPreviewAndSlash(previewMock, collateralToken, requestedAmount, collateralToken, requestedAmount);
         collateralTokenMock.mint(address(previewMock), requestedAmount);
-        previewMock.setTokenToTransfer(collateralToken);
         payoutTokenMock.mint(address(zeroQuoteSwapper), requestedAmount);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewMock),
-                    address(zeroQuoteSwapper),
-                    address(policyMock),
-                    address(chainlinkPriceFeedMock)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager zeroQuoteCM = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager zeroQuoteCM =
+            _deployClaimManager(address(previewMock), address(zeroQuoteSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
         zeroQuoteCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -1962,40 +1741,10 @@ contract ClaimManagerTest is Test {
         MockChainlinkPriceFeedSelectiveRevert revertingFeed = new MockChainlinkPriceFeedSelectiveRevert();
         revertingFeed.setRevertGetTokenAmountForToken(collateralToken);
 
-        address[] memory previewTokens = new address[](1);
-        previewTokens[0] = collateralToken;
-        uint256[] memory previewAmounts = new uint256[](1);
-        previewAmounts[0] = requestedAmount;
-        previewMock.setPreviewResult(previewTokens, previewAmounts);
-
-        address[] memory assets = new address[](1);
-        assets[0] = payoutToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        previewMock.setSlashResult(assets, amounts);
+        _setPreviewAndSlash(previewMock, collateralToken, requestedAmount, payoutToken, requestedAmount);
         payoutTokenMock.mint(address(previewMock), requestedAmount);
-        previewMock.setTokenToTransfer(payoutToken);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(revertingFeed)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager cm = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager cm = _deployClaimManager(address(previewMock), address(quotingSwapper), address(revertingFeed));
 
         vm.prank(claimer);
         cm.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -2015,40 +1764,10 @@ contract ClaimManagerTest is Test {
         MockChainlinkPriceFeedSelectiveRevert revertingFeed = new MockChainlinkPriceFeedSelectiveRevert();
         revertingFeed.setRevertGetUSDValueForToken(collateralToken);
 
-        address[] memory previewTokens = new address[](1);
-        previewTokens[0] = collateralToken;
-        uint256[] memory previewAmounts = new uint256[](1);
-        previewAmounts[0] = requestedAmount;
-        previewMock.setPreviewResult(previewTokens, previewAmounts);
-
-        address[] memory assets = new address[](1);
-        assets[0] = payoutToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        previewMock.setSlashResult(assets, amounts);
+        _setPreviewAndSlash(previewMock, collateralToken, requestedAmount, payoutToken, requestedAmount);
         payoutTokenMock.mint(address(previewMock), requestedAmount);
-        previewMock.setTokenToTransfer(payoutToken);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(revertingFeed)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager cm = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager cm = _deployClaimManager(address(previewMock), address(quotingSwapper), address(revertingFeed));
 
         vm.prank(claimer);
         cm.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -2068,40 +1787,10 @@ contract ClaimManagerTest is Test {
         MockChainlinkPriceFeedSelectiveRevert revertingFeed = new MockChainlinkPriceFeedSelectiveRevert();
         revertingFeed.setRevertGetTokenAmountForToken(payoutToken);
 
-        address[] memory previewTokens = new address[](1);
-        previewTokens[0] = payoutToken;
-        uint256[] memory previewAmounts = new uint256[](1);
-        previewAmounts[0] = requestedAmount;
-        previewMock.setPreviewResult(previewTokens, previewAmounts);
-
-        address[] memory assets = new address[](1);
-        assets[0] = payoutToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        previewMock.setSlashResult(assets, amounts);
+        _setPreviewAndSlash(previewMock, payoutToken, requestedAmount, payoutToken, requestedAmount);
         payoutTokenMock.mint(address(previewMock), requestedAmount);
-        previewMock.setTokenToTransfer(payoutToken);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(revertingFeed)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager cm = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager cm = _deployClaimManager(address(previewMock), address(quotingSwapper), address(revertingFeed));
 
         vm.prank(claimer);
         cm.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -2142,26 +1831,8 @@ contract ClaimManagerTest is Test {
         previewMock.setTokenToTransfer(collateralToken);
         payoutTokenMock.mint(address(proportionalSwapper), requestedAmount);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewMock),
-                    address(proportionalSwapper),
-                    address(policyMock),
-                    address(chainlinkPriceFeedMock)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager multiVaultCM = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager multiVaultCM =
+            _deployClaimManager(address(previewMock), address(proportionalSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
         multiVaultCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -2198,26 +1869,8 @@ contract ClaimManagerTest is Test {
         previewMock.setTokenToTransfer(collateralToken);
         payoutTokenMock.mint(address(quotingSwapper), requestedAmount);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(chainlinkPriceFeedMock)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager skipZeroCM = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager skipZeroCM =
+            _deployClaimManager(address(previewMock), address(quotingSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
         skipZeroCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -2248,26 +1901,8 @@ contract ClaimManagerTest is Test {
         previewMock.setTokenToTransfer(collateralToken);
         payoutTokenMock.mint(address(quotingSwapper), requestedAmount);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(chainlinkPriceFeedMock)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager emptyPreviewCM = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager emptyPreviewCM =
+            _deployClaimManager(address(previewMock), address(quotingSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
         emptyPreviewCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -2285,40 +1920,10 @@ contract ClaimManagerTest is Test {
         MockChainlinkPriceFeedSelectiveRevert revertingFeed = new MockChainlinkPriceFeedSelectiveRevert();
         revertingFeed.setRevertGetTokenAmountForToken(payoutToken);
 
-        address[] memory previewTokens = new address[](1);
-        previewTokens[0] = collateralToken;
-        uint256[] memory previewAmounts = new uint256[](1);
-        previewAmounts[0] = requestedAmount;
-        previewMock.setPreviewResult(previewTokens, previewAmounts);
-
-        address[] memory assets = new address[](1);
-        assets[0] = payoutToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        previewMock.setSlashResult(assets, amounts);
+        _setPreviewAndSlash(previewMock, collateralToken, requestedAmount, payoutToken, requestedAmount);
         payoutTokenMock.mint(address(previewMock), requestedAmount);
-        previewMock.setTokenToTransfer(payoutToken);
 
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize,
-                (
-                    admin,
-                    address(specRegistryMock),
-                    address(previewMock),
-                    address(quotingSwapper),
-                    address(policyMock),
-                    address(revertingFeed)
-                )
-            ),
-            deployOpts
-        );
-        ClaimManager cm = ClaimManager(proxy);
-        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-        specMock.setEvaluationResult(true, keccak256("approved"));
+        ClaimManager cm = _deployClaimManager(address(previewMock), address(quotingSwapper), address(revertingFeed));
 
         vm.prank(claimer);
         cm.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -2374,6 +1979,46 @@ contract ClaimManagerTest is Test {
 
         vm.prank(claimer);
         claimId = claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
+    function _deployClaimManager(address slashingMgr, address swapper_, address feed) private returns (ClaimManager) {
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "ClaimManager.sol",
+            abi.encodeCall(
+                ClaimManager.initialize,
+                (admin, address(specRegistryMock), slashingMgr, swapper_, address(policyMock), feed)
+            ),
+            deployOpts
+        );
+        ClaimManager cm = ClaimManager(proxy);
+        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
+        specMock.setEvaluationResult(true, keccak256("approved"));
+        return cm;
+    }
+
+    function _setPreviewAndSlash(
+        MockSlashingManagerWithPreview mock,
+        address previewToken,
+        uint256 previewAmount,
+        address slashToken,
+        uint256 slashAmount
+    )
+        private
+    {
+        address[] memory previewTokens = new address[](1);
+        previewTokens[0] = previewToken;
+        uint256[] memory previewAmounts = new uint256[](1);
+        previewAmounts[0] = previewAmount;
+        mock.setPreviewResult(previewTokens, previewAmounts);
+
+        address[] memory assets = new address[](1);
+        assets[0] = slashToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = slashAmount;
+        mock.setSlashResult(assets, amounts);
+        mock.setTokenToTransfer(slashToken);
     }
 }
 
