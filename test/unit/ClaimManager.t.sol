@@ -2113,6 +2113,223 @@ contract ClaimManagerTest is Test {
         );
     }
 
+    function test_fileClaim_DynamicSlippage_MultiVaultAggregation() public {
+        uint256 vault1USD = 200 ether;
+        uint256 vault2USD = 100 ether;
+        uint256 requestedAmount = vault1USD + vault2USD;
+
+        MockSlashingManagerWithPreview previewMock = new MockSlashingManagerWithPreview();
+        MockSwapperWithProportionalQuote proportionalSwapper = new MockSwapperWithProportionalQuote();
+
+        proportionalSwapper.setQuoteRatioBps(9850);
+        proportionalSwapper.setPayoutToken(payoutToken);
+        proportionalSwapper.setSwapOutput(requestedAmount);
+
+        address[] memory previewTokens = new address[](2);
+        previewTokens[0] = collateralToken;
+        previewTokens[1] = collateralToken;
+        uint256[] memory previewAmounts = new uint256[](2);
+        previewAmounts[0] = vault1USD;
+        previewAmounts[1] = vault2USD;
+        previewMock.setPreviewResult(previewTokens, previewAmounts);
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        previewMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(previewMock), requestedAmount);
+        previewMock.setTokenToTransfer(collateralToken);
+        payoutTokenMock.mint(address(proportionalSwapper), requestedAmount);
+
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "ClaimManager.sol",
+            abi.encodeCall(
+                ClaimManager.initialize,
+                (
+                    admin,
+                    address(specRegistryMock),
+                    address(previewMock),
+                    address(proportionalSwapper),
+                    address(policyMock),
+                    address(chainlinkPriceFeedMock)
+                )
+            ),
+            deployOpts
+        );
+        ClaimManager multiVaultCM = ClaimManager(proxy);
+        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        multiVaultCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        uint256 actualSlash = previewMock.lastSlashAmount();
+        uint256 expectedSlash = requestedAmount * 10_000 / (10_000 - 150);
+        assertEq(actualSlash, expectedSlash, "Multi-vault slippage should be the weighted aggregate");
+    }
+
+    function test_fileClaim_DynamicSlippage_ZeroUsdAmountVaultIsSkipped() public {
+        uint256 requestedAmount = 300 ether;
+
+        MockSlashingManagerWithPreview previewMock = new MockSlashingManagerWithPreview();
+        MockSwapperWithQuote quotingSwapper = new MockSwapperWithQuote();
+
+        quotingSwapper.setQuoteOut(requestedAmount * 985 / 1000);
+        quotingSwapper.setPayoutToken(payoutToken);
+        quotingSwapper.setSwapOutput(requestedAmount);
+
+        address[] memory previewTokens = new address[](2);
+        previewTokens[0] = collateralToken;
+        previewTokens[1] = collateralToken;
+        uint256[] memory previewAmounts = new uint256[](2);
+        previewAmounts[0] = 0;
+        previewAmounts[1] = requestedAmount;
+        previewMock.setPreviewResult(previewTokens, previewAmounts);
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        previewMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(previewMock), requestedAmount);
+        previewMock.setTokenToTransfer(collateralToken);
+        payoutTokenMock.mint(address(quotingSwapper), requestedAmount);
+
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "ClaimManager.sol",
+            abi.encodeCall(
+                ClaimManager.initialize,
+                (
+                    admin,
+                    address(specRegistryMock),
+                    address(previewMock),
+                    address(quotingSwapper),
+                    address(policyMock),
+                    address(chainlinkPriceFeedMock)
+                )
+            ),
+            deployOpts
+        );
+        ClaimManager skipZeroCM = ClaimManager(proxy);
+        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        skipZeroCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        uint256 actualSlash = previewMock.lastSlashAmount();
+        uint256 expectedSlash = requestedAmount * 10_000 / (10_000 - 150);
+        assertEq(actualSlash, expectedSlash, "Zero-USD vault should be skipped; non-zero vault should drive inflation");
+    }
+
+    function test_fileClaim_DynamicSlippage_ZeroWhenPreviewReturnsEmptyArray() public {
+        uint256 requestedAmount = 300 ether;
+
+        MockSlashingManagerWithPreview previewMock = new MockSlashingManagerWithPreview();
+        MockSwapperWithQuote quotingSwapper = new MockSwapperWithQuote();
+        quotingSwapper.setPayoutToken(payoutToken);
+        quotingSwapper.setSwapOutput(requestedAmount);
+
+        address[] memory emptyTokens = new address[](0);
+        uint256[] memory emptyAmounts = new uint256[](0);
+        previewMock.setPreviewResult(emptyTokens, emptyAmounts);
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        previewMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(previewMock), requestedAmount);
+        previewMock.setTokenToTransfer(collateralToken);
+        payoutTokenMock.mint(address(quotingSwapper), requestedAmount);
+
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "ClaimManager.sol",
+            abi.encodeCall(
+                ClaimManager.initialize,
+                (
+                    admin,
+                    address(specRegistryMock),
+                    address(previewMock),
+                    address(quotingSwapper),
+                    address(policyMock),
+                    address(chainlinkPriceFeedMock)
+                )
+            ),
+            deployOpts
+        );
+        ClaimManager emptyPreviewCM = ClaimManager(proxy);
+        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        emptyPreviewCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            previewMock.lastSlashAmount(), requestedAmount, "Empty previewSlashing result should yield zero inflation"
+        );
+    }
+
+    function test_fileClaim_DynamicSlippage_ZeroWhenOracleGetTokenAmountRevertsForPayoutToken() public {
+        uint256 requestedAmount = 300 ether;
+
+        MockSlashingManagerWithPreview previewMock = new MockSlashingManagerWithPreview();
+        MockSwapperWithQuote quotingSwapper = new MockSwapperWithQuote();
+        MockChainlinkPriceFeedSelectiveRevert revertingFeed = new MockChainlinkPriceFeedSelectiveRevert();
+        revertingFeed.setRevertGetTokenAmountForToken(payoutToken);
+
+        address[] memory previewTokens = new address[](1);
+        previewTokens[0] = collateralToken;
+        uint256[] memory previewAmounts = new uint256[](1);
+        previewAmounts[0] = requestedAmount;
+        previewMock.setPreviewResult(previewTokens, previewAmounts);
+
+        address[] memory assets = new address[](1);
+        assets[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        previewMock.setSlashResult(assets, amounts);
+        payoutTokenMock.mint(address(previewMock), requestedAmount);
+        previewMock.setTokenToTransfer(payoutToken);
+
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "ClaimManager.sol",
+            abi.encodeCall(
+                ClaimManager.initialize,
+                (
+                    admin,
+                    address(specRegistryMock),
+                    address(previewMock),
+                    address(quotingSwapper),
+                    address(policyMock),
+                    address(revertingFeed)
+                )
+            ),
+            deployOpts
+        );
+        ClaimManager cm = ClaimManager(proxy);
+        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        cm.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            previewMock.lastSlashAmount(),
+            requestedAmount,
+            "Oracle getTokenAmount revert for payout token should yield zero inflation"
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                                HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -2532,6 +2749,38 @@ contract MockSwapperRevertingQuote {
 
     function quoteSwap(address, address, uint256) external pure returns (uint256) {
         revert("quoteSwap: no route");
+    }
+}
+
+contract MockSwapperWithProportionalQuote {
+    uint256 private _swapOutput;
+    uint256 private _quoteRatioBps;
+    address private _payoutToken;
+
+    function setSwapOutput(uint256 output) external {
+        _swapOutput = output;
+    }
+
+    function setQuoteRatioBps(uint256 ratioBps) external {
+        _quoteRatioBps = ratioBps;
+    }
+
+    function setPayoutToken(address token) external {
+        _payoutToken = token;
+    }
+
+    function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
+        require(
+            MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn), "TransferFrom failed"
+        );
+        if (_payoutToken != address(0)) {
+            MockToken(_payoutToken).mint(params.recipient, _swapOutput);
+        }
+        return _swapOutput;
+    }
+
+    function quoteSwap(address, address, uint256 amountIn) external view returns (uint256) {
+        return amountIn * _quoteRatioBps / 10_000;
     }
 }
 

@@ -357,7 +357,7 @@ contract ClaimManager is
         }
 
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) =
-            _executeSlash(metadata.policyId, operator, claimId, slashAmountUSD, policyId);
+            _executeSlash(policyId, operator, claimId, slashAmountUSD);
 
         uint256 totalPayout = _distributeCollateralPayout(
             policyId, claimId, collateralTokens, collateralAmounts, payoutToken_, beneficiary_, requestedAmount
@@ -414,20 +414,17 @@ contract ClaimManager is
      * @notice Calls SlashingManager.executeSlashing, validating the returned arrays.
      */
     function _executeSlash(
-        uint96 metadataPolicyId,
+        uint96 policyId,
         address operator,
         uint256 claimId,
-        uint256 slashAmountUSD,
-        uint96 policyId
+        uint256 slashAmountUSD
     )
         private
         returns (address[] memory collateralTokens, uint256[] memory collateralAmounts)
     {
         // slither-disable-next-line calls-loop
         (collateralTokens, collateralAmounts) = ISlashingManager(slashingManager)
-            .executeSlashing(
-                metadataPolicyId, operator, slashAmountUSD, keccak256(abi.encodePacked(metadataPolicyId, claimId))
-            );
+            .executeSlashing(policyId, operator, slashAmountUSD, keccak256(abi.encodePacked(policyId, claimId)));
         // slither-disable-next-line incorrect-equality
         require(
             collateralTokens.length > 0 && collateralTokens.length == collateralAmounts.length,
