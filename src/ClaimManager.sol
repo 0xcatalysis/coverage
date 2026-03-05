@@ -501,6 +501,12 @@ contract ClaimManager is
      * @dev collateralToken is resolved by the core (SlashingManager.previewSlashing via
      *      SSPRouter.getVaultToken) before this function is called, so no protocol-specific
      *      vault introspection is required here.
+     *
+     *      The USD -> collateral -> USD round-trip (slashUSD -> collateralAmount -> usdValue)
+     *      is intentional: converting to the collateral token's native decimals and back
+     *      normalises precision to the amount the swap will actually process. Skipping it
+     *      (i.e. using slashUSD directly as oracleExpected) would compare against a higher-
+     *      precision USD figure that the swap can never fully realise, inflating slippage.
      * @param collateralToken Underlying collateral token for this vault (resolved by core).
      * @param payoutToken Payout token address.
      * @param slashUSD USD slash amount for this vault (8 decimals).

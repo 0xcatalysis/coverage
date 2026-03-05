@@ -13,6 +13,9 @@ interface IQuotableAdapter {
     /**
      * @notice Returns the expected output amount for a swap without executing it.
      * @dev Decodes the same routeCalldata format used by the adapter's swap function.
+     *      Not declared `view` because Uniswap V3 QuoterV2 simulates the swap via a
+     *      state-modifying call that it then reverts internally; this requires a non-view
+     *      context even though no persistent state is changed.
      * @param routeCalldata The pre-stored calldata for the swap route (same format as swap execution).
      * @param amountIn The amount of input token to quote for.
      * @return amountOut The expected amount of output token.
