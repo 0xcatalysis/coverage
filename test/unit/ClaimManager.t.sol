@@ -1843,6 +1843,60 @@ contract ClaimManagerTest is Test {
         );
     }
 
+    function test_fileClaim_DynamicSlippage_ZeroWhenQuoteReturnsZero() public {
+        uint256 requestedAmount = 300 ether;
+
+        MockSlashingManagerWithPreview previewMock = new MockSlashingManagerWithPreview();
+        MockSwapperWithQuote zeroQuoteSwapper = new MockSwapperWithQuote();
+        zeroQuoteSwapper.setPayoutToken(payoutToken);
+        zeroQuoteSwapper.setSwapOutput(requestedAmount);
+
+        address[] memory previewTokens = new address[](1);
+        previewTokens[0] = collateralToken;
+        uint256[] memory previewAmounts = new uint256[](1);
+        previewAmounts[0] = requestedAmount;
+        previewMock.setPreviewResult(previewTokens, previewAmounts);
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        previewMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(previewMock), requestedAmount);
+        previewMock.setTokenToTransfer(collateralToken);
+        payoutTokenMock.mint(address(zeroQuoteSwapper), requestedAmount);
+
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "ClaimManager.sol",
+            abi.encodeCall(
+                ClaimManager.initialize,
+                (
+                    admin,
+                    address(specRegistryMock),
+                    address(previewMock),
+                    address(zeroQuoteSwapper),
+                    address(policyMock),
+                    address(chainlinkPriceFeedMock)
+                )
+            ),
+            deployOpts
+        );
+        ClaimManager zeroQuoteCM = ClaimManager(proxy);
+        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        zeroQuoteCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            previewMock.lastSlashAmount(),
+            requestedAmount,
+            "Zero quote should be treated as preview failure: no inflation"
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                                HELPERS
     //////////////////////////////////////////////////////////////*/

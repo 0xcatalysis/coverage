@@ -486,6 +486,9 @@ contract ClaimManager is
         }
 
         uint256 computedBps = (totalOracleExpected - totalQuoted) * 10_000 / totalOracleExpected;
+        if (computedBps >= 10_000) {
+            return 0;
+        }
         // forge-lint: disable-next-line(unsafe-typecast)
         return uint16(computedBps);
     }
