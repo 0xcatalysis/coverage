@@ -52,10 +52,6 @@ optimizer_runs = 1_000
 via_ir = false
 gas_reports = ["*"]
 
-# Fork tests require --isolate to reset VaultV2's transient storage
-# (`firstTotalAssets`) between calls so accrueInterest() recalculates
-# _totalAssets correctly within a single Foundry test.
-# Usage: FOUNDRY_PROFILE=fork forge test --match-path "test/adapter/CatalysisCoverAdapter.fork.t.sol"
 [profile.fork]
 isolate = true
 
