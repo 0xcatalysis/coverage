@@ -489,6 +489,12 @@ contract ClaimManager is
         if (computedBps >= 10_000) {
             return 0;
         }
+
+        uint16 cap = maxSwapSlippageBps;
+        if (computedBps >= cap) {
+            return cap;
+        }
+
         // forge-lint: disable-next-line(unsafe-typecast)
         return uint16(computedBps);
     }

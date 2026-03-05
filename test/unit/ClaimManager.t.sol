@@ -1597,7 +1597,7 @@ contract ClaimManagerTest is Test {
         assertEq(actualSlash, expectedDynamicSlash, "Slash amount should match 150 bps real slippage");
     }
 
-    function test_fileClaim_DynamicSlippage_UsesRealSlippageAbovePreviousStaticCap() public {
+    function test_fileClaim_DynamicSlippage_CapsAtMaxSwapSlippageBpsWhenRealSlippageExceedsCap() public {
         uint256 requestedAmount = 300 ether;
 
         MockSlashingManagerWithPreview previewSlashingMock = new MockSlashingManagerWithPreview();
@@ -1646,8 +1646,65 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         cappedCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        uint256 expectedSlash = requestedAmount * 10_000 / (10_000 - 300);
-        assertEq(previewSlashingMock.lastSlashAmount(), expectedSlash, "Should use real 300 bps slippage");
+        uint256 expectedSlash = requestedAmount * 10_000 / (10_000 - 200);
+        assertEq(previewSlashingMock.lastSlashAmount(), expectedSlash, "Should cap inflation at maxSwapSlippageBps");
+    }
+
+    function test_fileClaim_DynamicSlippage_ExtremeSlippageCappedAtMaxSwapSlippageBps() public {
+        uint256 requestedAmount = 300 ether;
+
+        MockSlashingManagerWithPreview previewSlashingMock = new MockSlashingManagerWithPreview();
+        MockSwapperWithQuote quotingSwapper = new MockSwapperWithQuote();
+
+        quotingSwapper.setQuoteOut(requestedAmount * 1 / 100);
+        quotingSwapper.setPayoutToken(payoutToken);
+        quotingSwapper.setSwapOutput(requestedAmount);
+
+        address[] memory previewTokens = new address[](1);
+        previewTokens[0] = collateralToken;
+        uint256[] memory previewAmounts = new uint256[](1);
+        previewAmounts[0] = requestedAmount;
+        previewSlashingMock.setPreviewResult(previewTokens, previewAmounts);
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        previewSlashingMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(previewSlashingMock), requestedAmount);
+        previewSlashingMock.setTokenToTransfer(collateralToken);
+        payoutTokenMock.mint(address(quotingSwapper), requestedAmount);
+
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "ClaimManager.sol",
+            abi.encodeCall(
+                ClaimManager.initialize,
+                (
+                    admin,
+                    address(specRegistryMock),
+                    address(previewSlashingMock),
+                    address(quotingSwapper),
+                    address(policyMock),
+                    address(chainlinkPriceFeedMock)
+                )
+            ),
+            deployOpts
+        );
+        ClaimManager extremeCM = ClaimManager(proxy);
+        policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        extremeCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        uint256 actualSlash = previewSlashingMock.lastSlashAmount();
+
+        uint256 cappedSlash = requestedAmount * 10_000 / (10_000 - 200);
+        uint256 unboundedSlash = requestedAmount * 10_000 / (10_000 - 9900);
+        assertEq(actualSlash, cappedSlash, "Extreme slippage must be capped at maxSwapSlippageBps");
+        assertLt(actualSlash, unboundedSlash, "Must not allow unbounded slash inflation from pool manipulation");
     }
 
     function test_fileClaim_DynamicSlippage_ZeroWhenPreviewReverts() public {
