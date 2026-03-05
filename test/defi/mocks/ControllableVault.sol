@@ -37,7 +37,8 @@ contract ControllableVault is IERC4626 {
     mapping(address => uint256) private _shares;
     mapping(address => mapping(address => uint256)) private _allowances;
 
-    // ── Events ────────────────────────────────────────────────────────────────
+    // ── Events
+    // ────────────────────────────────────────────────────────────────
 
     /**
      * @notice Emitted when assets are drained to simulate a loss event.
@@ -68,7 +69,8 @@ contract ControllableVault is IERC4626 {
      */
     event AdminTransferAccepted(address indexed newAdmin);
 
-    // ── Errors ────────────────────────────────────────────────────────────────
+    // ── Errors
+    // ────────────────────────────────────────────────────────────────
 
     /// @notice Thrown when caller is not the admin.
     error NotAdmin();
@@ -85,14 +87,16 @@ contract ControllableVault is IERC4626 {
     /// @notice Thrown when the requested loss amount exceeds available assets.
     error InsufficientAssets(uint256 requested, uint256 available);
 
-    // ── Modifiers ─────────────────────────────────────────────────────────────
+    // ── Modifiers
+    // ─────────────────────────────────────────────────────────────
 
     modifier onlyAdmin() {
         if (msg.sender != admin) revert NotAdmin();
         _;
     }
 
-    // ── Constructor ───────────────────────────────────────────────────────────
+    // ── Constructor
+    // ───────────────────────────────────────────────────────────
 
     /**
      * @notice Deploy a new ControllableVault.
@@ -106,7 +110,8 @@ contract ControllableVault is IERC4626 {
         admin = msg.sender;
     }
 
-    // ── Loss / profit controls ─────────────────────────────────────────────────
+    // ── Loss / profit controls
+    // ─────────────────────────────────────────────────
 
     /**
      * @notice Drain `amount` of the underlying asset to simulate a hack or loss event.
@@ -137,7 +142,8 @@ contract ControllableVault is IERC4626 {
         emit ProfitSimulated(msg.sender, amount, totalAssets());
     }
 
-    // ── Admin rotation ────────────────────────────────────────────────────────
+    // ── Admin rotation
+    // ────────────────────────────────────────────────────────
 
     /**
      * @notice Nominate a new admin. The nominee must call `acceptAdmin()` to take effect.
@@ -161,7 +167,8 @@ contract ControllableVault is IERC4626 {
         emit AdminTransferAccepted(msg.sender);
     }
 
-    // ── ERC-4626 ──────────────────────────────────────────────────────────────
+    // ── ERC-4626
+    // ──────────────────────────────────────────────────────────────
 
     function asset() external view override returns (address) {
         return address(_assetToken);
@@ -253,15 +260,7 @@ contract ControllableVault is IERC4626 {
         emit Deposit(msg.sender, receiver, assets, shares_);
     }
 
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address owner_
-    )
-        external
-        override
-        returns (uint256 shares_)
-    {
+    function withdraw(uint256 assets, address receiver, address owner_) external override returns (uint256 shares_) {
         shares_ = convertToShares(assets);
         if (msg.sender != owner_) _allowances[owner_][msg.sender] -= shares_;
         _shares[owner_] -= shares_;
@@ -270,15 +269,7 @@ contract ControllableVault is IERC4626 {
         emit Withdraw(msg.sender, receiver, owner_, assets, shares_);
     }
 
-    function redeem(
-        uint256 shares_,
-        address receiver,
-        address owner_
-    )
-        external
-        override
-        returns (uint256 assets)
-    {
+    function redeem(uint256 shares_, address receiver, address owner_) external override returns (uint256 assets) {
         assets = convertToAssets(shares_);
         if (msg.sender != owner_) _allowances[owner_][msg.sender] -= shares_;
         _shares[owner_] -= shares_;
@@ -287,7 +278,8 @@ contract ControllableVault is IERC4626 {
         emit Withdraw(msg.sender, receiver, owner_, assets, shares_);
     }
 
-    // ── ERC-20 (share token) ──────────────────────────────────────────────────
+    // ── ERC-20 (share token)
+    // ──────────────────────────────────────────────────
 
     function transfer(address to, uint256 amount) external override returns (bool) {
         _shares[msg.sender] -= amount;
