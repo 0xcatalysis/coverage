@@ -1335,6 +1335,98 @@ contract SwapperTest is Test {
         assertEq(quotingDex.lastAmountIn(), amountIn, "amountIn not forwarded");
     }
 
+    function test_quoteSwap_WithNativeETHTokenIn_ResolvesToNativeWrapper() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedOut = 1800e6;
+        MockQuotingDEX quotingDex = new MockQuotingDEX();
+        quotingDex.setQuoteOut(expectedOut);
+        address quotingTarget = address(quotingDex);
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(quotingTarget, true);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(nativeWrapper, address(tokenOut), quotingTarget, true, "");
+
+        uint256 amountOut = swapper.quoteSwap(swapper.NATIVE_ETH(), address(tokenOut), amountIn);
+        assertEq(amountOut, expectedOut, "Should find nativeWrapper->tokenOut route via NATIVE_ETH sentinel");
+    }
+
+    function test_quoteSwap_WithNativeETHTokenOut_ResolvesToNativeWrapper() public {
+        uint256 amountIn = 100 ether;
+        uint256 expectedOut = 0.05 ether;
+        MockQuotingDEX quotingDex = new MockQuotingDEX();
+        quotingDex.setQuoteOut(expectedOut);
+        address quotingTarget = address(quotingDex);
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(quotingTarget, true);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), nativeWrapper, quotingTarget, true, "");
+
+        uint256 amountOut = swapper.quoteSwap(address(tokenIn), swapper.NATIVE_ETH(), amountIn);
+        assertEq(amountOut, expectedOut, "Should find tokenIn->nativeWrapper route via NATIVE_ETH sentinel");
+    }
+
+    function test_quoteSwap_WithNativeETH_ErrorPreservesOriginalSentinelAddress() public {
+        address nativeEth = swapper.NATIVE_ETH();
+        vm.expectRevert(abi.encodeWithSelector(ISwapper.SwapRouteNotEnabled.selector, nativeEth, address(tokenOut)));
+        swapper.quoteSwap(nativeEth, address(tokenOut), 1 ether);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                   GET SWAP ROUTE - NATIVE ETH
+    //////////////////////////////////////////////////////////////*/
+
+    function test_getSwapRoute_WithNativeETHTokenIn_ResolvesToNativeWrapper() public {
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(nativeWrapper, address(tokenOut), dexTarget, true, "");
+
+        ISwapper.SwapRoute memory route = swapper.getSwapRoute(swapper.NATIVE_ETH(), address(tokenOut));
+        assertTrue(route.enabled, "Should find nativeWrapper->tokenOut route via NATIVE_ETH sentinel");
+        assertEq(route.swapTarget, dexTarget, "SwapTarget should match");
+    }
+
+    function test_getSwapRoute_WithNativeETHTokenOut_ResolvesToNativeWrapper() public {
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), nativeWrapper, dexTarget, true, "");
+
+        ISwapper.SwapRoute memory route = swapper.getSwapRoute(address(tokenIn), swapper.NATIVE_ETH());
+        assertTrue(route.enabled, "Should find tokenIn->nativeWrapper route via NATIVE_ETH sentinel");
+        assertEq(route.swapTarget, dexTarget, "SwapTarget should match");
+    }
+
+    function test_getSwapRoute_WithNativeETH_MatchesNativeWrapperLookup() public {
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        bytes memory routeCalldata = abi.encodeWithSignature("swap(address,address)", nativeWrapper, address(tokenOut));
+        vm.prank(swapManager);
+        swapper.setSwapRoute(nativeWrapper, address(tokenOut), dexTarget, true, routeCalldata);
+
+        ISwapper.SwapRoute memory byNativeEth = swapper.getSwapRoute(swapper.NATIVE_ETH(), address(tokenOut));
+        ISwapper.SwapRoute memory byWrapper = swapper.getSwapRoute(nativeWrapper, address(tokenOut));
+
+        assertEq(byNativeEth.tokenIn, byWrapper.tokenIn, "tokenIn mismatch");
+        assertEq(byNativeEth.tokenOut, byWrapper.tokenOut, "tokenOut mismatch");
+        assertEq(byNativeEth.swapTarget, byWrapper.swapTarget, "swapTarget mismatch");
+        assertEq(byNativeEth.enabled, byWrapper.enabled, "enabled mismatch");
+        assertEq(byNativeEth.swapCalldata, byWrapper.swapCalldata, "swapCalldata mismatch");
+    }
+
+    function test_getSwapRoute_WithUnknownNativeETH_ReturnsEmptyStruct() public view {
+        ISwapper.SwapRoute memory route = swapper.getSwapRoute(swapper.NATIVE_ETH(), address(tokenOut));
+        assertEq(route.swapTarget, address(0), "swapTarget should be zero for missing route");
+        assertFalse(route.enabled, "enabled should be false for missing route");
+    }
+
     /*//////////////////////////////////////////////////////////////
                               HELPERS
     //////////////////////////////////////////////////////////////*/

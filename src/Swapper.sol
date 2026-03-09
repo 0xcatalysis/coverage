@@ -191,8 +191,8 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
         );
         require(params.amountIn != 0 && params.amountOutMin != 0, ZeroAmount());
 
-        address actualTokenIn = params.tokenIn == NATIVE_ETH ? nativeWrapper : params.tokenIn;
-        address actualTokenOut = params.tokenOut == NATIVE_ETH ? nativeWrapper : params.tokenOut;
+        address actualTokenIn = _resolveToken(params.tokenIn);
+        address actualTokenOut = _resolveToken(params.tokenOut);
 
         (address swapTarget, bytes memory routeCalldata) =
             _validateAndGetSwapTarget(actualTokenIn, actualTokenOut, params.tokenIn, params.tokenOut);
@@ -221,7 +221,7 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
         override
         returns (uint256 amountOut)
     {
-        bytes32 routeKey = _getRouteKey(tokenIn, tokenOut);
+        bytes32 routeKey = _getRouteKey(_resolveToken(tokenIn), _resolveToken(tokenOut));
         SwapRoute storage route = _swapRoutes[routeKey];
         require(route.enabled, SwapRouteNotEnabled(tokenIn, tokenOut));
         amountOut = IQuotableAdapter(route.swapTarget).quote(route.swapCalldata, amountIn);
@@ -231,8 +231,7 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
      * @inheritdoc ISwapper
      */
     function getSwapRoute(address tokenIn, address tokenOut) external view override returns (SwapRoute memory) {
-        bytes32 routeKey = _getRouteKey(tokenIn, tokenOut);
-        return _swapRoutes[routeKey];
+        return _swapRoutes[_getRouteKey(_resolveToken(tokenIn), _resolveToken(tokenOut))];
     }
 
     /**
@@ -341,6 +340,15 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
         swapTarget = route.swapTarget;
         routeCalldata = route.swapCalldata;
         require(whitelistedTargets[swapTarget], SwapTargetNotWhitelisted(swapTarget));
+    }
+
+    /**
+     * @notice Resolves the NATIVE_ETH sentinel to nativeWrapper; returns all other addresses unchanged.
+     * @param token Token address that may be the NATIVE_ETH sentinel.
+     * @return The ERC-20 address to use for route lookups and balance accounting.
+     */
+    function _resolveToken(address token) private view returns (address) {
+        return token == NATIVE_ETH ? nativeWrapper : token;
     }
 
     /**
