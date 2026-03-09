@@ -162,8 +162,9 @@ sequenceDiagram
     end
 ```
 
-`amountOutMin` in `executeSwap` is derived from `maxSwapSlippageBps` — this is a MEV / sandwich
-protection floor on the actual swap, separate from the pre-slashing inflation.
+`amountOutMin` in `executeSwap` is derived from a live `Swapper.quoteSwap` quote minus
+`maxSwapSlippageBps` tolerance — this is a MEV / sandwich protection floor on the actual swap,
+separate from the pre-slashing inflation. Falls back to `amountOutMin = 1` if the quote reverts.
 
 ### Withdrawal (No Shortfall / Happy Path)
 
@@ -240,7 +241,7 @@ In `_processCollateral(...)`:
   - transfer directly up to remaining payout target.
 - Else:
   - approve `Swapper`,
-  - build `amountOutMin` from oracle price minus `maxSwapSlippageBps` (execution guard only),
+  - build `amountOutMin` from live `quoteSwap` quote minus `maxSwapSlippageBps` (MEV guard),
   - execute configured route,
   - cap delivered amount to remaining payout target,
   - clear approval.
@@ -254,10 +255,11 @@ Two separate slippage controls exist and serve different purposes:
 | Control | Where | Purpose |
 |---------|-------|---------|
 | `_previewSlippageBps` | before `executeSlashing` | Inflates the USD slash target so enough collateral is requested to cover real Uniswap slippage. Uses `SlashingManager.previewSlashing` + `Swapper.quoteSwap` → `UniswapV3Adapter.quote` → `QuoterV2`. |
-| `maxSwapSlippageBps` | inside `_processCollateral` | Sets `amountOutMin` on the actual `executeSwap` call — protection against MEV / sandwich attacks between preview and execution. Configurable by admin. |
+| `maxSwapSlippageBps` | inside `_processCollateral` | Applied as tolerance around a live `quoteSwap` quote to set `amountOutMin` on `executeSwap` — protection against MEV / sandwich attacks between quote and execution. Configurable by admin. Falls back to `amountOutMin = 1` if the quote reverts or returns zero. |
 
 If the slippage preview fails (e.g. QuoterV2 unavailable, route not configured), inflation is 0
-and no fallback to `maxSwapSlippageBps` is applied for the slash target.
+and no fallback to `maxSwapSlippageBps` is applied for the slash target. Similarly, if `quoteSwap`
+fails during `_processCollateral`, `amountOutMin` falls back to 1 (the swap itself reverts on zero output).
 
 ## Swapper Configuration for Cross-Token Payouts
 

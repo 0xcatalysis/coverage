@@ -176,10 +176,11 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 4. Calls `SlashingManager.executeSlashing(committeeId, operator, inflatedSlashAmountUSD, taskId)`.
 5. Processes returned collateral arrays via `_distributeCollateralPayout`:
    - direct transfer if already payout token,
-   - otherwise swap through `Swapper.executeSwap` with `amountOutMin` derived from `maxSwapSlippageBps`.
+   - otherwise swap through `Swapper.executeSwap` with `amountOutMin` derived from a live
+     `Swapper.quoteSwap` quote minus `maxSwapSlippageBps` tolerance.
 
-`maxSwapSlippageBps` is used only as the `amountOutMin` execution guard (MEV protection).
-Slash amount inflation uses the live QuoterV2 preview, not this value.
+`maxSwapSlippageBps` is a configurable tolerance applied to the live Uniswap quote for MEV/sandwich
+protection on swap execution. Slash amount inflation uses a separate QuoterV2 preview.
 
 ### 7) SpecRegistry
 
