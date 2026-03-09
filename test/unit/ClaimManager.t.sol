@@ -1373,7 +1373,7 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
 
-    function test_fileClaim_WhenCustomSlippageSet_UsesCorrectAmountOutMin() public {
+    function test_fileClaim_WhenCustomSlippageSet_UsesQuoteBasedAmountOutMin() public {
         vm.prank(admin);
         claimManager.setMaxSwapSlippageBps(1000);
 
@@ -1392,6 +1392,8 @@ contract ClaimManagerTest is Test {
         slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
 
         MockSwapperWithTracking trackingSwapper = new MockSwapperWithTracking();
+        uint256 quoteOut = 480 ether;
+        trackingSwapper.setQuoteOut(quoteOut);
         uint256 swapOutput = 460 ether;
         trackingSwapper.setSwapOutput(swapOutput);
         trackingSwapper.setPayoutToken(payoutToken);
@@ -1403,16 +1405,15 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        uint256 expectedAmountOutMin = slashAmount * (10_000 - 1000) / 10_000;
+        uint256 expectedAmountOutMin = quoteOut * (10_000 - 1000) / 10_000;
         assertEq(
-            trackingSwapper.lastAmountOutMin(), expectedAmountOutMin, "amountOutMin does not reflect custom slippage"
+            trackingSwapper.lastAmountOutMin(),
+            expectedAmountOutMin,
+            "amountOutMin should be quote minus maxSwapSlippageBps tolerance"
         );
     }
 
-    function test_fileClaim_WhenOraclePriceVerySmall_AmountOutMinFlooredToOne() public {
-        chainlinkPriceFeedMock.setPrice(collateralToken, 1);
-        chainlinkPriceFeedMock.setPrice(payoutToken, 1e30);
-
+    function test_fileClaim_WhenQuoteReturnsZero_AmountOutMinFlooredToOne() public {
         uint256 slashAmount = 1;
 
         specMock.setEvaluationResult(true, keccak256("approved"));
@@ -1438,7 +1439,38 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, 1, evidenceHash, "");
 
-        assertEq(trackingSwapper.lastAmountOutMin(), 1, "amountOutMin should be floored to 1");
+        assertEq(trackingSwapper.lastAmountOutMin(), 1, "amountOutMin should be floored to 1 when quote is zero");
+    }
+
+    function test_fileClaim_WhenQuoteSwapReverts_AmountOutMinFallsBackToOne() public {
+        uint256 requestedAmount = 500 ether;
+        uint256 slashAmount = 500 ether;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = slashAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), slashAmount);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+
+        MockSwapperWithTracking trackingSwapper = new MockSwapperWithTracking();
+        trackingSwapper.setRevertQuote(true);
+        uint256 swapOutput = 460 ether;
+        trackingSwapper.setSwapOutput(swapOutput);
+        trackingSwapper.setPayoutToken(payoutToken);
+        payoutTokenMock.mint(address(trackingSwapper), swapOutput);
+
+        vm.prank(admin);
+        claimManager.setSwapper(address(trackingSwapper));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(trackingSwapper.lastAmountOutMin(), 1, "amountOutMin should fall back to 1 when quoteSwap reverts");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1476,7 +1508,7 @@ contract ClaimManagerTest is Test {
                           ATTACK SCENARIO TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_attack_SlippageGuardCalculatedFromOracle() public {
+    function test_attack_ClaimSucceedsWithReducedSwapOutput() public {
         uint256 requestedAmount = 500 ether;
         uint256 swapOutput = 450 ether;
 
@@ -1497,7 +1529,9 @@ contract ClaimManagerTest is Test {
         uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
-        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim must succeed within tolerance");
+        assertEq(
+            uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim must succeed with reduced output"
+        );
     }
 
     function test_attack_MultiCollateralSlashingPaysoutCorrectly() public {
@@ -2224,6 +2258,8 @@ contract MockCoverPool {
 contract MockSwapperWithTracking {
     uint256 private _swapOutput;
     address private _payoutToken;
+    uint256 private _quoteOut;
+    bool private _revertQuote;
     uint256 public lastAmountOutMin;
 
     function setSwapOutput(uint256 output) external {
@@ -2232,6 +2268,14 @@ contract MockSwapperWithTracking {
 
     function setPayoutToken(address token) external {
         _payoutToken = token;
+    }
+
+    function setQuoteOut(uint256 quoteOut_) external {
+        _quoteOut = quoteOut_;
+    }
+
+    function setRevertQuote(bool revert_) external {
+        _revertQuote = revert_;
     }
 
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
@@ -2243,6 +2287,11 @@ contract MockSwapperWithTracking {
             MockToken(_payoutToken).mint(params.recipient, _swapOutput);
         }
         return _swapOutput;
+    }
+
+    function quoteSwap(address, address, uint256) external view returns (uint256) {
+        require(!_revertQuote, "quoteSwap: reverted");
+        return _quoteOut;
     }
 }
 

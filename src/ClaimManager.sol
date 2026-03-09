@@ -567,6 +567,9 @@ contract ClaimManager is
 
     /**
      * @notice Processes collateral by swapping or transferring directly with cap.
+     * @dev When a swap is required, `amountOutMin` is derived from a live Uniswap QuoterV2
+     *      quote minus `maxSwapSlippageBps` tolerance (MEV/sandwich protection).
+     *      Falls back to `amountOutMin = 1` if the quote reverts or returns zero.
      * @param policyId Identifier of the policy (for events).
      * @param claimId Identifier of the claim (for events).
      * @param collateralToken Address of the slashed collateral token.
@@ -596,14 +599,13 @@ contract ClaimManager is
         } else {
             IERC20(collateralToken).forceApprove(swapper, collateralAmount);
 
-            uint256 collateralUSD =
-                IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(collateralToken, collateralAmount);
-            uint256 expectedOut = IChainlinkPriceFeed(chainlinkPriceFeed).getTokenAmount(payoutToken, collateralUSD);
-            uint256 slippageBps = maxSwapSlippageBps;
-            uint256 amountOutMin = expectedOut * (10_000 - slippageBps) / 10_000;
-            if (amountOutMin == 0) {
-                amountOutMin = 1;
-            }
+            uint256 amountOutMin = 1;
+            try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 quoted) {
+                if (quoted > 0) {
+                    amountOutMin = quoted * (10_000 - maxSwapSlippageBps) / 10_000;
+                    if (amountOutMin == 0) amountOutMin = 1;
+                }
+            } catch {}
 
             ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
                 tokenIn: collateralToken,
