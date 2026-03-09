@@ -1568,7 +1568,7 @@ contract ClaimManagerTest is Test {
         assertEq(actualSlash, expectedDynamicSlash, "Slash amount should match 150 bps real slippage");
     }
 
-    function test_fileClaim_DynamicSlippage_CapsAtMaxSwapSlippageBpsWhenRealSlippageExceedsCap() public {
+    function test_fileClaim_DynamicSlippage_UsesFullLiveSlippageWhenAboveMaxSwapSlippageBps() public {
         uint256 requestedAmount = 300 ether;
 
         MockSlashingManagerWithPreview previewSlashingMock = new MockSlashingManagerWithPreview();
@@ -1582,17 +1582,21 @@ contract ClaimManagerTest is Test {
         collateralTokenMock.mint(address(previewSlashingMock), requestedAmount);
         payoutTokenMock.mint(address(quotingSwapper), requestedAmount);
 
-        ClaimManager cappedCM =
+        ClaimManager liveSlippageCM =
             _deployClaimManager(address(previewSlashingMock), address(quotingSwapper), address(chainlinkPriceFeedMock));
 
         vm.prank(claimer);
-        cappedCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+        liveSlippageCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        uint256 expectedSlash = requestedAmount * 10_000 / (10_000 - 200);
-        assertEq(previewSlashingMock.lastSlashAmount(), expectedSlash, "Should cap inflation at maxSwapSlippageBps");
+        uint256 expectedSlash = requestedAmount * 10_000 / (10_000 - 300);
+        assertEq(
+            previewSlashingMock.lastSlashAmount(),
+            expectedSlash,
+            "Should inflate using live 300 bps slippage, not capped at maxSwapSlippageBps"
+        );
     }
 
-    function test_fileClaim_DynamicSlippage_ExtremeSlippageCappedAtMaxSwapSlippageBps() public {
+    function test_fileClaim_DynamicSlippage_ExtremeSlippageInflatesAtLiveQuoterRate() public {
         uint256 requestedAmount = 300 ether;
 
         MockSlashingManagerWithPreview previewSlashingMock = new MockSlashingManagerWithPreview();
@@ -1613,11 +1617,10 @@ contract ClaimManagerTest is Test {
         extremeCM.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
         uint256 actualSlash = previewSlashingMock.lastSlashAmount();
-
-        uint256 cappedSlash = requestedAmount * 10_000 / (10_000 - 200);
-        uint256 unboundedSlash = requestedAmount * 10_000 / (10_000 - 9900);
-        assertEq(actualSlash, cappedSlash, "Extreme slippage must be capped at maxSwapSlippageBps");
-        assertLt(actualSlash, unboundedSlash, "Must not allow unbounded slash inflation from pool manipulation");
+        uint256 expectedSlash = requestedAmount * 10_000 / (10_000 - 9900);
+        assertEq(
+            actualSlash, expectedSlash, "Extreme slippage inflates at live quoter rate, uncapped by maxSwapSlippageBps"
+        );
     }
 
     function test_fileClaim_DynamicSlippage_ZeroWhenPreviewReverts() public {

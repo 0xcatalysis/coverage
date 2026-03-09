@@ -487,11 +487,6 @@ contract ClaimManager is
             return 0;
         }
 
-        uint16 cap = maxSwapSlippageBps;
-        if (computedBps >= cap) {
-            return cap;
-        }
-
         // forge-lint: disable-next-line(unsafe-typecast)
         return uint16(computedBps);
     }
@@ -551,7 +546,7 @@ contract ClaimManager is
     }
 
     /// @dev Delegates to ChainlinkPriceFeed.getTokenAmount; returns 0 on revert.
-    function _getTokenAmount(address token, uint256 usdValue) private returns (uint256) {
+    function _getTokenAmount(address token, uint256 usdValue) private view returns (uint256) {
         try IChainlinkPriceFeed(chainlinkPriceFeed).getTokenAmount(token, usdValue) returns (uint256 amount) {
             return amount;
         } catch {
@@ -560,7 +555,7 @@ contract ClaimManager is
     }
 
     /// @dev Delegates to ChainlinkPriceFeed.getUSDValue; returns 0 on revert.
-    function _getUSDValue(address token, uint256 amount) private returns (uint256) {
+    function _getUSDValue(address token, uint256 amount) private view returns (uint256) {
         try IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(token, amount) returns (uint256 usdValue) {
             return usdValue;
         } catch {
