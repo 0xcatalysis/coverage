@@ -309,8 +309,7 @@ abstract contract Deploy is Script {
                     contracts.specRegistryProxy,
                     external_.slashingManager,
                     contracts.swapperProxy,
-                    contracts.policyManagerProxy,
-                    external_.chainlinkPriceFeed
+                    contracts.policyManagerProxy
                 )
             ),
             opts
@@ -337,6 +336,7 @@ abstract contract Deploy is Script {
         contracts.coverPoolFactoryImpl = Upgrades.getImplementationAddress(contracts.coverPoolFactoryProxy);
 
         PolicyManager(contracts.policyManagerProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
+        PolicyManager(contracts.policyManagerProxy).setChainlinkPriceFeed(external_.chainlinkPriceFeed);
         SpecRegistry(contracts.specRegistryProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
 
         uint64 distributeInterval = 86_400; // 24 hours
@@ -456,6 +456,7 @@ abstract contract Deploy is Script {
         console2.log("--- External Dependencies ---");
         console2.log("Native Wrapper (WETH):", external_.nativeWrapper);
         console2.log("SlashingManager:", external_.slashingManager);
+        console2.log("ChainlinkPriceFeed:", external_.chainlinkPriceFeed);
         console2.log("StakeManager:", external_.stakeManager);
         console2.log("RewardsManager:", external_.rewardsManager);
         console2.log("");

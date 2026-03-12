@@ -6,7 +6,6 @@ import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IClaimManager} from "../../src/interfaces/IClaimManager.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
-import {IChainlinkPriceFeed} from "../../src/interfaces/IChainlinkPriceFeed.sol";
 import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 import {ISwapper} from "../../src/interfaces/ISwapper.sol";
 
@@ -34,7 +33,6 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   - CLAIM_MANAGER: ClaimManager proxy address
  *   - POLICY_MANAGER: PolicyManager proxy address
  *   - STAKE_MANAGER: StakeManager proxy address (from core)
- *   - CHAINLINK_PRICE_FEED: ChainlinkPriceFeed proxy address (from core)
  *   - POLICY_ID: Policy ID to file claim against
  *   - REQUESTED_AMOUNT: Requested payout amount in payout token terms
  *   - EVIDENCE_HASH: Hash of claim evidence (bytes32 hex, e.g. IPFS CID hash)
@@ -64,9 +62,6 @@ contract FileClaim is Script {
     /// @notice StakeManager proxy address
     address public stakeManager;
 
-    /// @notice ChainlinkPriceFeed proxy address
-    address public chainlinkPriceFeed;
-
     /// @notice Policy ID to claim against
     uint96 public policyId;
 
@@ -83,7 +78,6 @@ contract FileClaim is Script {
     IClaimManager public claimManagerContract;
     IPolicyManager public policyManagerContract;
     IStakeManager public stakeManagerContract;
-    IChainlinkPriceFeed public priceFeedContract;
 
     /// @notice Emitted when claim is filed and processed
     event ClaimProcessed(
@@ -97,7 +91,6 @@ contract FileClaim is Script {
         claimManager = vm.envAddress("CLAIM_MANAGER");
         policyManager = vm.envAddress("POLICY_MANAGER");
         stakeManager = vm.envAddress("STAKE_MANAGER");
-        chainlinkPriceFeed = vm.envAddress("CHAINLINK_PRICE_FEED");
         policyId = uint96(vm.envUint("POLICY_ID"));
         requestedAmount = vm.envUint("REQUESTED_AMOUNT");
         evidenceHash = vm.envBytes32("EVIDENCE_HASH");
@@ -106,7 +99,6 @@ contract FileClaim is Script {
         claimManagerContract = IClaimManager(claimManager);
         policyManagerContract = IPolicyManager(policyManager);
         stakeManagerContract = IStakeManager(stakeManager);
-        priceFeedContract = IChainlinkPriceFeed(chainlinkPriceFeed);
     }
 
     function run() external {
@@ -157,9 +149,6 @@ contract FileClaim is Script {
         require(requestedAmount <= remaining, "Requested exceeds remaining coverage");
         console.log("[OK] Requested amount within remaining coverage");
 
-        uint256 requestedUSD = priceFeedContract.getUSDValue(metadata.payoutToken, requestedAmount);
-        console.log("Requested payout USD value:", requestedUSD);
-
         console.log("[OK] Prerequisites verified");
     }
 
@@ -170,11 +159,11 @@ contract FileClaim is Script {
     /**
      * @notice Checks whether the Swapper is configured for the collateral-to-payout swap.
      * @dev Probes each committee vault's collateral token and verifies a swap route exists
-     *      for any token that differs from the policy's payout token. Surfaces
-     *      misconfigurations (missing/disabled route, unwhitelisted target) before the
-     *      broadcast so the operator can fix them without wasting gas.
+     *      for any token that differs from the policy's payout token. Also calls quoteSwap
+     *      to get a token-native estimate of expected output. Surfaces misconfigurations
+     *      before broadcast so the operator can fix them without wasting gas.
      */
-    function _checkSwapperReadiness(IPolicyManager.PolicyMetadata memory metadata) internal view {
+    function _checkSwapperReadiness(IPolicyManager.PolicyMetadata memory metadata) internal {
         console.log("\n--- Phase 2: Swapper Readiness ---");
 
         address swapper = claimManagerContract.swapper();
@@ -225,14 +214,9 @@ contract FileClaim is Script {
 
             console.log("    [OK] Swap route enabled, target whitelisted:", route.swapTarget);
 
-            uint256 payoutUSD = priceFeedContract.getUSDValue(metadata.payoutToken, requestedAmount);
-            uint256 collateralNeeded = priceFeedContract.getTokenAmount(collateralToken, payoutUSD);
-            uint256 expectedOut = priceFeedContract.getTokenAmount(
-                metadata.payoutToken, priceFeedContract.getUSDValue(collateralToken, collateralNeeded)
-            );
-            uint256 amountOutMin = expectedOut * (10_000 - slippageBps) / 10_000;
-            console.log("    Collateral to slash (oracle est.)    :", collateralNeeded);
-            console.log("    Oracle-expected output (payout token):", expectedOut);
+            uint256 quotedOut = ISwapper(swapper).quoteSwap(collateralToken, metadata.payoutToken, requestedAmount);
+            uint256 amountOutMin = quotedOut > 0 ? quotedOut * (10_000 - slippageBps) / 10_000 : 0;
+            console.log("    QuoteSwap output (estimate)          :", quotedOut);
             console.log("    Min output after slippage            :", amountOutMin);
         }
 
@@ -323,15 +307,15 @@ contract FileClaim is Script {
 
     /**
      * @notice Logs effective exchange rate and realized slippage for the swap path.
-     * @dev Only meaningful when at least one vault collateral differs from payout token.
-     *      Shows oracle-predicted output vs actual payout to quantify DEX slippage.
+     * @dev Uses quoteSwap to get a token-native estimate of expected output and compares it
+     *      against the actual payout to quantify DEX slippage. Only meaningful when at least
+     *      one vault collateral differs from payout token.
      */
     function _logSwapMetrics(
         IPolicyManager.PolicyMetadata memory metadata,
         IClaimManager.ClaimRecord memory claim
     )
         internal
-        view
     {
         address[] memory vaults = stakeManagerContract.getCommitteeVaults(policyId);
         bool swapOccurred = false;
@@ -349,24 +333,36 @@ contract FileClaim is Script {
         }
 
         console.log("\n[Swap Metrics] Swap path exercised");
+        address swapper = claimManagerContract.swapper();
         uint16 slippageBps = claimManagerContract.maxSwapSlippageBps();
 
-        uint256 requestedUSD = priceFeedContract.getUSDValue(metadata.payoutToken, claim.requestedAmount);
-        uint256 oracleExpected = priceFeedContract.getTokenAmount(metadata.payoutToken, requestedUSD);
-        uint256 minExpected = oracleExpected * (10_000 - slippageBps) / 10_000;
+        address[] memory vaultsForMetrics = stakeManagerContract.getCommitteeVaults(policyId);
+        address collateralTokenForMetrics = address(0);
+        for (uint256 i = 0; i < vaultsForMetrics.length; i++) {
+            address ct = _getVaultCollateralToken(vaultsForMetrics[i]);
+            if (ct != address(0) && ct != metadata.payoutToken) {
+                collateralTokenForMetrics = ct;
+                break;
+            }
+        }
+
+        uint256 quotedExpected = collateralTokenForMetrics != address(0)
+            ? ISwapper(swapper).quoteSwap(collateralTokenForMetrics, metadata.payoutToken, claim.requestedAmount)
+            : 0;
+        uint256 minExpected = quotedExpected > 0 ? quotedExpected * (10_000 - slippageBps) / 10_000 : 0;
 
         console.log("  Requested amount         :", claim.requestedAmount);
-        console.log("  Oracle-expected output   :", oracleExpected);
+        console.log("  Quote-expected output    :", quotedExpected);
         console.log("  Min after slippage       :", minExpected);
         console.log("  Slippage BPS             :", slippageBps);
         console.log("  Actual payout            :", claim.payoutAmount);
 
-        if (claim.payoutAmount >= oracleExpected) {
-            console.log("  [OK] Payout >= oracle expected (favorable swap)");
-        } else if (claim.payoutAmount >= minExpected) {
+        if (claim.payoutAmount >= claim.requestedAmount) {
+            console.log("  [OK] Payout >= requested amount (favorable swap)");
+        } else if (minExpected > 0 && claim.payoutAmount >= minExpected) {
             console.log("  [OK] Payout within slippage tolerance");
         } else {
-            console.log("  [WARNING] Payout below minimum slippage tolerance -- check price feed accuracy");
+            console.log("  [WARNING] Payout may be below expected -- verify swap configuration");
         }
     }
 
