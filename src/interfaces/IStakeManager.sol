@@ -14,9 +14,6 @@ interface IStakeManager {
     /// @notice Thrown when attempting to create a committee that already exists
     error CommitteeAlreadyExists();
 
-    /// @notice Thrown when an invalid amount is provided (zero)
-    error InvalidAmount();
-
     /// @notice Thrown when an invalid duration is provided (zero)
     error InvalidDuration();
 
@@ -30,16 +27,11 @@ interface IStakeManager {
     error OperatorNotInCommittee();
 
     /// @notice Creates a committee by setting up operator sets and network limits across protocols.
+    /// @dev No maximum stake cap — capacity is determined by the curator-assigned vaults at bind time.
     /// @param committeeId The committee ID (1:1 with policyId).
-    /// @param maxStakeForCommitteeUSD The maximum stake limit in USD (8 decimals).
+    /// @param coverPool The CoverPool address associated with this committee.
     /// @param duration The duration in seconds for the vault lock period.
-    function createCommittee(
-        uint96 committeeId,
-        uint256 maxStakeForCommitteeUSD,
-        address coverPool,
-        uint32 duration
-    )
-        external;
+    function createCommittee(uint96 committeeId, address coverPool, uint32 duration) external;
 
     /// @notice Adds an operator to a committee (one operator per committee).
     /// @dev Requires POLICY_MANAGER_ROLE. The curator (CoverPool owner) is used as the committee operator.
@@ -58,11 +50,17 @@ interface IStakeManager {
     /// @param vaults The array of vault addresses to associate.
     function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external;
 
-    /// @notice Returns the total stake for a committee across all registered vaults (USD, 8 decimals).
+    /// @notice Returns per-vault token stakes for a committee in token-native units.
     /// @dev Called by PolicyManager.bindPolicy to enforce stake sufficiency before policy activation.
+    ///      Replaces the former getCommitteeTotalStakeUSD; PolicyManager converts to USD via oracle.
     /// @param committeeId The ID of the committee.
-    /// @return totalStakeUSD The total stake for the committee in USD (8 decimals).
-    function getCommitteeTotalStakeUSD(uint96 committeeId) external view returns (uint256 totalStakeUSD);
+    /// @return vaults Array of vault addresses associated with the committee.
+    /// @return tokens Array of collateral token addresses per vault.
+    /// @return tokenStakes Array of stake amounts per vault in token-native units.
+    function getCommitteeTokenStakes(uint96 committeeId)
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes);
 
     /// @notice Returns all vault addresses associated with a committee.
     /// @param committeeId The ID of the committee to check.
