@@ -18,7 +18,7 @@ import {IQuoterV2} from "../interfaces/IQuoterV2.sol";
  */
 contract UniswapV3Adapter is Ownable2Step, IQuotableAdapter {
     /// @notice Uniswap V3 QuoterV2 contract address.
-    IQuoterV2 public immutable quoter;
+    IQuoterV2 public immutable QUOTER;
 
     /// @notice Default fee tier used when no pair-specific tier is configured (0.3%).
     uint24 public constant DEFAULT_FEE = 3000;
@@ -43,7 +43,7 @@ contract UniswapV3Adapter is Ownable2Step, IQuotableAdapter {
      */
     constructor(address quoter_, address owner_) Ownable(owner_) {
         require(quoter_ != address(0) && owner_ != address(0), ZeroAddress());
-        quoter = IQuoterV2(quoter_);
+        QUOTER = IQuoterV2(quoter_);
     }
 
     /**
@@ -67,7 +67,7 @@ contract UniswapV3Adapter is Ownable2Step, IQuotableAdapter {
      */
     function quote(address tokenIn, address tokenOut, uint256 amountIn) external override returns (uint256 amountOut) {
         uint24 fee = _getFee(tokenIn, tokenOut);
-        (amountOut,,,) = quoter.quoteExactInputSingle(
+        (amountOut,,,) = QUOTER.quoteExactInputSingle(
             IQuoterV2.QuoteExactInputSingleParams({
                 tokenIn: tokenIn, tokenOut: tokenOut, amountIn: amountIn, fee: fee, sqrtPriceLimitX96: 0
             })

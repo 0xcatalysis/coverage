@@ -180,6 +180,7 @@ contract DistributePremium is Script {
         vm.startBroadcast(deployerPrivateKey);
         IERC20(underlying).approve(coveredVault, bootstrapPremiumAmount);
         uint256 shares = vault.deposit(bootstrapPremiumAmount, deployer);
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         IERC20(coveredVault).transfer(premiumCollector, shares);
         vm.stopBroadcast();
 

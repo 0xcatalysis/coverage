@@ -1973,14 +1973,14 @@ contract MockMultiSwapper {
 }
 
 contract MockCoverPool {
-    address private immutable _owner;
+    address private immutable _OWNER;
 
     constructor(address owner_) {
-        _owner = owner_;
+        _OWNER = owner_;
     }
 
     function owner() external view returns (address) {
-        return _owner;
+        return _OWNER;
     }
 }
 
