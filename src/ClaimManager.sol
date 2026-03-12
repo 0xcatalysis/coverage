@@ -181,6 +181,7 @@ contract ClaimManager is
      * @inheritdoc IClaimManager
      */
     function setExcessCollateralRecipient(address recipient_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        // slither-disable-next-line missing-zero-check
         excessCollateralRecipient = recipient_;
         emit ExcessCollateralRecipientSet(recipient_);
     }
@@ -448,8 +449,10 @@ contract ClaimManager is
         if (excessRecipient == address(0)) return;
 
         for (uint256 i = 0; i < tokensLength; ++i) {
+            // slither-disable-next-line calls-loop
             uint256 strandedBalance = IERC20(collateralTokens[i]).balanceOf(address(this));
             if (strandedBalance > 0) {
+                // slither-disable-next-line calls-loop
                 IERC20(collateralTokens[i]).safeTransfer(excessRecipient, strandedBalance);
             }
         }
