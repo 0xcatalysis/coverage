@@ -9,6 +9,7 @@ import {ICoverPool} from "coverage/interfaces/ICoverPool.sol";
 import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
 import {IClaimManager} from "coverage/interfaces/IClaimManager.sol";
 import {CatalysisCoverAdapter} from "../../../src/defi/adapters/morpho/CatalysisCoverAdapter.sol";
+import {CoveredVaultWrapper} from "../../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
@@ -217,6 +218,44 @@ abstract contract RealCoverageSetup is Test {
             uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );
+    }
+
+    /// @notice Deploys CoveredVaultWrapper behind a UUPS proxy using the Upgrades library
+    function _deployWrapperProxy(
+        address morphoVault_,
+        address claimManager_,
+        address coverPool_,
+        uint16 maxCoverableLossBps_,
+        uint16 deductibleBps_,
+        address premiumRecipient_,
+        address owner_,
+        string memory name_,
+        string memory symbol_
+    )
+        internal
+        returns (CoveredVaultWrapper)
+    {
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+        address proxy = Upgrades.deployUUPSProxy(
+            "CoveredVaultWrapper.sol",
+            abi.encodeCall(
+                CoveredVaultWrapper.initialize,
+                (
+                    morphoVault_,
+                    claimManager_,
+                    coverPool_,
+                    maxCoverableLossBps_,
+                    deductibleBps_,
+                    premiumRecipient_,
+                    owner_,
+                    name_,
+                    symbol_
+                )
+            ),
+            deployOpts
+        );
+        return CoveredVaultWrapper(proxy);
     }
 
     /// @notice Deploys CatalysisCoverAdapter behind a UUPS proxy using the Upgrades library
