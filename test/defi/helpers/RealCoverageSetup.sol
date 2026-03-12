@@ -16,13 +16,19 @@ import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 
 import {MockClaimManager} from "../mocks/Mocks.sol";
-import {MockStakeManager, MockCoverPoolFactory, MockSpecRegistry, MockBindPolicyHook} from "../mocks/CoverageMocks.sol";
+import {
+    MockStakeManager,
+    MockChainlinkPriceFeedDefi,
+    MockCoverPoolFactory,
+    MockSpecRegistry,
+    MockBindPolicyHook
+} from "../mocks/CoverageMocks.sol";
 
 /// @title RealCoverageSetup
 /// @notice Abstract base contract that deploys real PolicyManager + real CoverPool for adapter tests
 /// @dev Replaces MockPolicyManager and MockCoverPool with real implementations.
 ///      MockClaimManager is retained because the real ClaimManager.fileClaim() requires deep dependencies
-///      (ChainlinkPriceFeed, SlashingManager, Swapper) that are external to the coverage protocol.
+///      (SlashingManager, Swapper) that are external to the coverage protocol.
 ///      Peripheral mocks (StakeManager, CoverPoolFactory, SpecRegistry) are lightweight shims.
 abstract contract RealCoverageSetup is Test {
     // ── Real contracts ──
@@ -32,6 +38,7 @@ abstract contract RealCoverageSetup is Test {
     // ── Lightweight mocks ──
     MockClaimManager internal claimManager;
     MockStakeManager internal mockStakeManager;
+    MockChainlinkPriceFeedDefi internal mockChainlinkPriceFeed;
     MockCoverPoolFactory internal mockCoverPoolFactory;
     MockSpecRegistry internal mockSpecRegistry;
     MockBindPolicyHook internal mockBindPolicyHook;
@@ -89,6 +96,11 @@ abstract contract RealCoverageSetup is Test {
         require(address(pm) == expectedPmProxy, "PM proxy address mismatch");
         policyManager = pm;
 
+        // ── Configure ChainlinkPriceFeed on PolicyManager ──
+        mockChainlinkPriceFeed = new MockChainlinkPriceFeedDefi();
+        vm.prank(admin);
+        pm.setChainlinkPriceFeed(address(mockChainlinkPriceFeed));
+
         // ── Deploy real CoverPool via minimal proxy clone ──
         CoverPool cpImpl = new CoverPool();
         CoverPool pool = CoverPool(Clones.clone(address(cpImpl)));
@@ -111,7 +123,6 @@ abstract contract RealCoverageSetup is Test {
     /// @param beneficiary Address that receives claim payouts (typically the adapter address)
     /// @param claimer Address authorized to file claims (typically the adapter address)
     /// @param payoutToken ERC20 token used for claim payouts
-    /// @param coverageAmount Stake requirement (in USD 8 decimals)
     /// @param coverageLimit Maximum payout notional (in payout token units)
     /// @param startTime Policy coverage start timestamp
     /// @param maturityTime Policy coverage end timestamp
@@ -122,7 +133,6 @@ abstract contract RealCoverageSetup is Test {
         address beneficiary,
         address claimer,
         address payoutToken,
-        uint256 coverageAmount,
         uint256 coverageLimit,
         uint32 startTime,
         uint32 maturityTime,
@@ -139,20 +149,18 @@ abstract contract RealCoverageSetup is Test {
             beneficiary,
             claimer,
             payoutToken,
-            coverageAmount,
             maturityTime - startTime, // duration
             bindPolicyHook_
         );
 
         // 2-5. Build quote, sign, and bind policy
-        _bindPolicy(policyId_, beneficiary, coverageAmount, coverageLimit, startTime, maturityTime);
+        _bindPolicy(policyId_, beneficiary, coverageLimit, startTime, maturityTime);
     }
 
     /// @notice Builds a quote, signs it, and binds the policy through the CoverPool
     function _bindPolicy(
         uint96 policyId_,
         address beneficiary,
-        uint256 coverageAmount,
         uint256 coverageLimit,
         uint32 startTime,
         uint32 maturityTime
@@ -176,14 +184,13 @@ abstract contract RealCoverageSetup is Test {
         // 3. Sign quote (EIP-712)
         bytes memory signature = _signQuote(quote);
 
-        // 4. Set sufficient operator stake
+        // 4. Register a vault so getCommitteeVaults check passes and token stakes cover coverageLimit
         address curator_ = coverPool.owner();
-        mockStakeManager.setOperatorStake(curator_, policyId_, coverageAmount);
-
-        // 5. Bind policy (as curator = pool admin)
         address[] memory vaults = new address[](1);
         vaults[0] = address(0xDEAD); // placeholder vault for committee
+        mockStakeManager.addCommitteeVaults(policyId_, vaults);
 
+        // 5. Bind policy (as curator = pool admin)
         vm.prank(curator_);
         coverPool.bindPolicyForRequest(
             policyId_,

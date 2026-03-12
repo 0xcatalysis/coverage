@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {ISlashingManager} from "coverage/interfaces/ISlashingManager.sol";
 import {IStakeManager} from "coverage/interfaces/IStakeManager.sol";
+import {IChainlinkPriceFeed} from "coverage/interfaces/IChainlinkPriceFeed.sol";
 import {ICoverPoolFactory} from "coverage/interfaces/ICoverPoolFactory.sol";
 import {ISpecRegistry} from "coverage/interfaces/ISpecRegistry.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
@@ -12,14 +14,17 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 /// @notice Minimal StakeManager mock for testing with real PolicyManager and CoverPool
 contract MockStakeManager {
     mapping(uint96 => address[]) private _committeeVaults;
-    mapping(bytes32 => uint256) private _operatorStakes;
 
-    function createCommittee(uint96, uint256, address, uint32) external {
+    function createCommittee(uint96, address, uint32) external {
         // No-op: just accept the call from PolicyManager.requestCoverage
     }
 
     function addOperatorToCommittee(address, uint96) external {
         // No-op: just accept the call from PolicyManager.requestCoverage
+    }
+
+    function removeOperatorFromCommittee(address, uint96) external {
+        // No-op
     }
 
     function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external {
@@ -32,17 +37,60 @@ contract MockStakeManager {
         return _committeeVaults[committeeId];
     }
 
-    function getOperatorCommitteeStake(address operator, uint96 committeeId) external view returns (uint256) {
-        return _operatorStakes[keccak256(abi.encode(operator, committeeId))];
+    function getCommitteeTokenStakes(uint96 committeeId)
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        vaults = _committeeVaults[committeeId];
+        tokens = new address[](vaults.length);
+        tokenStakes = new uint256[](vaults.length);
+        for (uint256 i = 0; i < vaults.length; i++) {
+            tokenStakes[i] = type(uint256).max / vaults.length; // Large enough to never fail stake check
+        }
+    }
+}
+
+/// @title MockSlashingManager
+/// @notice Minimal SlashingManager mock for defi tests
+contract MockSlashingManagerDefi {
+    function previewSlashing(
+        uint96, /*committeeId*/
+        address /*operator*/
+    )
+        external
+        pure
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        vaults = new address[](0);
+        tokens = new address[](0);
+        tokenStakes = new uint256[](0);
     }
 
-    function getCommitteeTotalStakeUSD(uint96) external pure returns (uint256) {
-        return type(uint256).max; // Return maximum value to avoid InsufficientStake errors
+    function executeSlashing(
+        uint96, /*committeeId*/
+        address, /*operator*/
+        ISlashingManager.VaultSlash[] calldata, /*vaultSlashes*/
+        bytes32 /*taskId*/
+    )
+        external
+        pure
+        returns (address[] memory tokens, uint256[] memory amounts)
+    {
+        tokens = new address[](0);
+        amounts = new uint256[](0);
+    }
+}
+
+/// @title MockChainlinkPriceFeedDefi
+/// @notice Returns input amount as USD value (1:1 identity) so stake checks always pass when stakes >= coverageLimit
+contract MockChainlinkPriceFeedDefi is IChainlinkPriceFeed {
+    function getUSDValue(address, uint256 amount) external pure override returns (uint256) {
+        return amount;
     }
 
-    /// @notice Test helper to set the stake for an operator in a committee
-    function setOperatorStake(address operator, uint96 committeeId, uint256 stake) external {
-        _operatorStakes[keccak256(abi.encode(operator, committeeId))] = stake;
+    function getTokenAmount(address, uint256 usdValue) external pure override returns (uint256) {
+        return usdValue;
     }
 }
 
