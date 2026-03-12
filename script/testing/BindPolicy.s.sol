@@ -189,8 +189,6 @@ contract BindPolicy is Script {
         require(draft.pool == coverPool, "Draft pool mismatch");
         console.log("Draft pool matches CoverPool");
 
-        console.log("Required coverage amount:", draft.coverageAmount);
-
         console.log("[OK] Prerequisites verified");
     }
 
