@@ -74,7 +74,6 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
             address(adapter), // beneficiary = adapter
             address(adapter), // claimer = adapter
             address(asset), // payoutToken
-            10_000 ether, // coverageAmount (stake requirement)
             10_000 ether, // coverageLimit (max payout)
             uint32(block.timestamp),
             uint32(block.timestamp + 365 days),
@@ -741,7 +740,6 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
             address(freshAdapter),
             address(asset),
             10_000 ether,
-            10_000 ether,
             uint32(block.timestamp),
             uint32(block.timestamp + 365 days),
             curator,
@@ -762,7 +760,6 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
             fakeBeneficiary, // beneficiary != adapter
             fakeBeneficiary,
             address(asset),
-            10_000 ether,
             10_000 ether,
             uint32(block.timestamp),
             uint32(block.timestamp + 365 days),
@@ -813,7 +810,6 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
                 address(a),
                 address(a),
                 address(asset),
-                coverageLimit,
                 coverageLimit,
                 uint32(block.timestamp),
                 uint32(block.timestamp + 365 days),

@@ -74,7 +74,6 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
             address(adapter), // beneficiary = adapter
             address(adapter), // claimer = adapter
             address(asset), // payoutToken
-            100_000 ether, // coverageAmount (stake requirement)
             type(uint128).max, // coverageLimit (max payout)
             uint32(block.timestamp),
             uint32(block.timestamp + 365 days),

@@ -74,7 +74,6 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
             address(adapter), // beneficiary = adapter
             address(adapter), // claimer = adapter
             address(asset), // payoutToken
-            type(uint128).max, // coverageAmount (stake requirement)
             type(uint128).max, // coverageLimit (max payout)
             uint32(block.timestamp),
             uint32(block.timestamp + 365 days),
@@ -500,7 +499,6 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
             address(customAdapter),
             address(customAdapter),
             address(asset),
-            type(uint128).max,
             type(uint128).max,
             uint32(block.timestamp),
             uint32(block.timestamp + 365 days),
