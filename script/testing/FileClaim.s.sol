@@ -6,6 +6,7 @@ import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IClaimManager} from "../../src/interfaces/IClaimManager.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
+import {ISlashingManager} from "../../src/interfaces/ISlashingManager.sol";
 import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 import {ISwapper} from "../../src/interfaces/ISwapper.sol";
 
@@ -160,34 +161,32 @@ contract FileClaim is Script {
      * @notice Checks whether the Swapper is configured for the collateral-to-payout swap.
      * @dev Probes each committee vault's collateral token and verifies a swap route exists
      *      for any token that differs from the policy's payout token. Also calls quoteSwap
-     *      to get a token-native estimate of expected output. Surfaces misconfigurations
-     *      before broadcast so the operator can fix them without wasting gas.
+     *      with the vault's token-native stake as amountIn (mirroring _computeVaultSlashes).
+     *      Surfaces misconfigurations before broadcast so the operator can fix them without
+     *      wasting gas.
      */
     function _checkSwapperReadiness(IPolicyManager.PolicyMetadata memory metadata) internal {
         console.log("\n--- Phase 2: Swapper Readiness ---");
 
         address swapper = claimManagerContract.swapper();
         console.log("Swapper:", swapper);
-        uint16 slippageBps = claimManagerContract.maxSwapSlippageBps();
 
-        address[] memory vaults = stakeManagerContract.getCommitteeVaults(policyId);
+        (address[] memory vaults, address[] memory tokens, uint256[] memory stakes) = _previewSlashingData(metadata);
         console.log("Committee vaults:", vaults.length);
 
         bool swapNeeded = false;
         bool allRoutesOk = true;
 
         for (uint256 i = 0; i < vaults.length; i++) {
-            address collateralToken = _getVaultCollateralToken(vaults[i]);
-            if (collateralToken == address(0)) {
-                console.log("  Vault", i, ":", vaults[i]);
-                console.log("  [WARNING] Could not probe collateral token -- skipping");
+            console.log("  Vault", i, ":", vaults[i]);
+            if (tokens[i] == address(0)) {
+                console.log("  [WARNING] Collateral token unknown -- skipping");
                 continue;
             }
+            console.log("    Collateral token       :", tokens[i]);
+            console.log("    Stake (token-native)   :", stakes[i]);
 
-            console.log("  Vault", i, ":", vaults[i]);
-            console.log("    Collateral token:", collateralToken);
-
-            if (collateralToken == metadata.payoutToken) {
+            if (tokens[i] == metadata.payoutToken) {
                 console.log("    Collateral == payout token -- direct transfer, no swap needed");
                 continue;
             }
@@ -195,29 +194,8 @@ contract FileClaim is Script {
             swapNeeded = true;
             console.log("    Collateral != payout token -- swap required");
 
-            ISwapper.SwapRoute memory route = ISwapper(swapper).getSwapRoute(collateralToken, metadata.payoutToken);
-
-            if (!route.enabled) {
-                console.log("    [FAIL] Swap route not enabled for this collateral -> payout pair");
-                console.log("    tokenIn :", collateralToken);
-                console.log("    tokenOut:", metadata.payoutToken);
-                allRoutesOk = false;
-                continue;
-            }
-
-            bool targetWhitelisted = ISwapper(swapper).whitelistedTargets(route.swapTarget);
-            if (!targetWhitelisted) {
-                console.log("    [FAIL] Swap target not whitelisted:", route.swapTarget);
-                allRoutesOk = false;
-                continue;
-            }
-
-            console.log("    [OK] Swap route enabled, target whitelisted:", route.swapTarget);
-
-            uint256 quotedOut = ISwapper(swapper).quoteSwap(collateralToken, metadata.payoutToken, requestedAmount);
-            uint256 amountOutMin = quotedOut > 0 ? quotedOut * (10_000 - slippageBps) / 10_000 : 0;
-            console.log("    QuoteSwap output (estimate)          :", quotedOut);
-            console.log("    Min output after slippage            :", amountOutMin);
+            bool routeOk = _checkVaultSwapRoute(swapper, tokens[i], metadata.payoutToken, stakes[i]);
+            if (!routeOk) allRoutesOk = false;
         }
 
         if (!swapNeeded) {
@@ -227,6 +205,42 @@ contract FileClaim is Script {
         } else {
             revert("Swapper misconfigured: fix swap routes before filing claim");
         }
+    }
+
+    /**
+     * @notice Checks and logs a single vault's swap route and quotes the expected output.
+     * @dev amountIn is the vault's token-native stake; using requestedAmount would be wrong
+     *      when collateral and payout token decimals differ.
+     * @return ok True when the route is enabled and its target is whitelisted.
+     */
+    function _checkVaultSwapRoute(
+        address swapper,
+        address collateralToken,
+        address payoutToken,
+        uint256 stake
+    )
+        internal
+        returns (bool ok)
+    {
+        ISwapper.SwapRoute memory route = ISwapper(swapper).getSwapRoute(collateralToken, payoutToken);
+        if (!route.enabled) {
+            console.log("    [FAIL] Swap route not enabled for this collateral -> payout pair");
+            console.log("    tokenIn :", collateralToken);
+            console.log("    tokenOut:", payoutToken);
+            return false;
+        }
+        if (!ISwapper(swapper).whitelistedTargets(route.swapTarget)) {
+            console.log("    [FAIL] Swap target not whitelisted:", route.swapTarget);
+            return false;
+        }
+        console.log("    [OK] Swap route enabled, target whitelisted:", route.swapTarget);
+
+        uint16 slippageBps = claimManagerContract.maxSwapSlippageBps();
+        uint256 quotedOut = stake > 0 ? ISwapper(swapper).quoteSwap(collateralToken, payoutToken, stake) : 0;
+        uint256 amountOutMin = quotedOut > 0 ? quotedOut * (10_000 - slippageBps) / 10_000 : 0;
+        console.log("    QuoteSwap output for full stake      :", quotedOut);
+        console.log("    Min output after slippage            :", amountOutMin);
+        return true;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -307,9 +321,11 @@ contract FileClaim is Script {
 
     /**
      * @notice Logs effective exchange rate and realized slippage for the swap path.
-     * @dev Uses quoteSwap to get a token-native estimate of expected output and compares it
-     *      against the actual payout to quantify DEX slippage. Only meaningful when at least
-     *      one vault collateral differs from payout token.
+     * @dev Replicates the proportional logic from _computeVaultSlashes using previewSlashing
+     *      stake data as amountIn for quoteSwap (collateral-token-native units). This produces
+     *      a meaningful expected output regardless of decimal differences between collateral
+     *      and payout tokens. Only meaningful when at least one vault collateral differs from
+     *      payout token.
      */
     function _logSwapMetrics(
         IPolicyManager.PolicyMetadata memory metadata,
@@ -336,19 +352,30 @@ contract FileClaim is Script {
         address swapper = claimManagerContract.swapper();
         uint16 slippageBps = claimManagerContract.maxSwapSlippageBps();
 
-        address[] memory vaultsForMetrics = stakeManagerContract.getCommitteeVaults(policyId);
-        address collateralTokenForMetrics = address(0);
-        for (uint256 i = 0; i < vaultsForMetrics.length; i++) {
-            address ct = _getVaultCollateralToken(vaultsForMetrics[i]);
-            if (ct != address(0) && ct != metadata.payoutToken) {
-                collateralTokenForMetrics = ct;
-                break;
+        (, address[] memory previewTokens, uint256[] memory previewStakes) = _previewSlashingData(metadata);
+
+        uint256 totalPayoutEquiv = 0;
+        uint256[] memory payoutEquivs = new uint256[](previewStakes.length);
+        for (uint256 i = 0; i < previewStakes.length; i++) {
+            if (previewStakes[i] == 0) continue;
+            payoutEquivs[i] = previewTokens[i] == metadata.payoutToken
+                ? previewStakes[i]
+                : ISwapper(swapper).quoteSwap(previewTokens[i], metadata.payoutToken, previewStakes[i]);
+            totalPayoutEquiv += payoutEquivs[i];
+        }
+
+        uint256 quotedExpected = 0;
+        if (totalPayoutEquiv > 0) {
+            for (uint256 i = 0; i < previewStakes.length; i++) {
+                if (previewStakes[i] == 0 || payoutEquivs[i] == 0) continue;
+                uint256 proportionalSlash = previewStakes[i] * claim.requestedAmount / totalPayoutEquiv;
+                if (proportionalSlash == 0) continue;
+                quotedExpected += previewTokens[i] == metadata.payoutToken
+                    ? proportionalSlash
+                    : ISwapper(swapper).quoteSwap(previewTokens[i], metadata.payoutToken, proportionalSlash);
             }
         }
 
-        uint256 quotedExpected = collateralTokenForMetrics != address(0)
-            ? ISwapper(swapper).quoteSwap(collateralTokenForMetrics, metadata.payoutToken, claim.requestedAmount)
-            : 0;
         uint256 minExpected = quotedExpected > 0 ? quotedExpected * (10_000 - slippageBps) / 10_000 : 0;
 
         console.log("  Requested amount         :", claim.requestedAmount);
@@ -409,6 +436,32 @@ contract FileClaim is Script {
     // ─────────────────────────────────────────────────────────────────────────
     //  Internal helpers
     // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @notice Returns the owner of a pool contract via low-level staticcall.
+     * @param pool Pool contract to query.
+     * @return Address of the owner, or address(0) if the call fails.
+     */
+    function _getPoolOwner(address pool) internal view returns (address) {
+        (bool ok, bytes memory data) = pool.staticcall(abi.encodeWithSignature("owner()"));
+        if (ok && data.length >= 32) return abi.decode(data, (address));
+        return address(0);
+    }
+
+    /**
+     * @notice Fetches per-vault stake preview data from the SlashingManager.
+     * @dev Centralises the previewSlashing call used by _checkSwapperReadiness and
+     *      _logSwapMetrics so the operator derivation is not duplicated inline.
+     */
+    function _previewSlashingData(IPolicyManager.PolicyMetadata memory metadata)
+        internal
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory stakes)
+    {
+        address slashingMgr = claimManagerContract.slashingManager();
+        address operator = _getPoolOwner(metadata.pool);
+        return ISlashingManager(slashingMgr).previewSlashing(policyId, operator);
+    }
 
     /**
      * @notice Probes a vault's collateral token via low-level staticcall.
