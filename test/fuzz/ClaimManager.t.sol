@@ -7,6 +7,7 @@ import {Test} from "forge-std/Test.sol";
 import {ClaimManager} from "../../src/ClaimManager.sol";
 import {IClaimManager} from "../../src/interfaces/IClaimManager.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
+import {ISlashingManager} from "../../src/interfaces/ISlashingManager.sol";
 import {ISpec} from "../../src/interfaces/ISpec.sol";
 import {ISwapper} from "../../src/interfaces/ISwapper.sol";
 
@@ -59,7 +60,28 @@ contract FuzzSlashingManager {
         _amounts[0] = amount;
     }
 
-    function executeSlashing(uint96, address, uint256, bytes32) external returns (address[] memory, uint256[] memory) {
+    function previewSlashing(
+        uint96, /*committeeId*/
+        address /*operator*/
+    )
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        vaults = _assets;
+        tokens = _assets;
+        tokenStakes = _amounts;
+    }
+
+    function executeSlashing(
+        uint96, /*committeeId*/
+        address, /*operator*/
+        ISlashingManager.VaultSlash[] calldata, /*vaultSlashes*/
+        bytes32 /*taskId*/
+    )
+        external
+        returns (address[] memory, uint256[] memory)
+    {
         if (_token != address(0)) {
             // forge-lint: disable-next-line(erc20-unchecked-transfer)
             FuzzToken(_token).transfer(msg.sender, FuzzToken(_token).balanceOf(address(this)));
@@ -77,6 +99,10 @@ contract FuzzSwapper {
         _output = output;
     }
 
+    function quoteSwap(address, address, uint256 amountIn) external pure returns (uint256) {
+        return amountIn; // 1:1 by default
+    }
+
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         FuzzToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn);
@@ -84,16 +110,6 @@ contract FuzzSwapper {
             FuzzToken(_outToken).mint(params.recipient, _output);
         }
         return _output;
-    }
-}
-
-contract FuzzChainlinkPriceFeed {
-    function getUSDValue(address, uint256 amount) external pure returns (uint256) {
-        return amount;
-    }
-
-    function getTokenAmount(address, uint256 usdValue) external pure returns (uint256) {
-        return usdValue;
     }
 }
 
@@ -131,7 +147,6 @@ contract ClaimManagerFuzzTest is Test {
     FuzzSpecRegistry internal specRegistry;
     FuzzSlashingManager internal slashingMgr;
     FuzzSwapper internal swapper;
-    FuzzChainlinkPriceFeed internal priceFeed;
     FuzzPolicy internal policyContract;
     FuzzCoverPool internal pool;
     FuzzToken internal collateralToken;
@@ -151,7 +166,6 @@ contract ClaimManagerFuzzTest is Test {
         specRegistry = new FuzzSpecRegistry(address(spec));
         slashingMgr = new FuzzSlashingManager();
         swapper = new FuzzSwapper();
-        priceFeed = new FuzzChainlinkPriceFeed();
         policyContract = new FuzzPolicy();
         pool = new FuzzCoverPool(operator);
         collateralToken = new FuzzToken("Collateral", "COL");
@@ -163,14 +177,7 @@ contract ClaimManagerFuzzTest is Test {
                 address(impl),
                 abi.encodeCall(
                     ClaimManager.initialize,
-                    (
-                        admin,
-                        address(specRegistry),
-                        address(slashingMgr),
-                        address(swapper),
-                        address(policyContract),
-                        address(priceFeed)
-                    )
+                    (admin, address(specRegistry), address(slashingMgr), address(swapper), address(policyContract))
                 )
             )
         );
