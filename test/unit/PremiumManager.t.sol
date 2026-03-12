@@ -106,7 +106,9 @@ contract PremiumManagerTest is Test {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(rewardsManager), address(0), PLATFORM_FEE_BPS, address(mockPolicyManager));
+        freshManager.initialize(
+            admin, address(rewardsManager), address(0), PLATFORM_FEE_BPS, address(mockPolicyManager)
+        );
     }
 
     function test_initialize_WhenPolicyManagerZero_Reverts() public {
@@ -486,7 +488,8 @@ contract PremiumManagerTest is Test {
 
     function test_distributePremium_WhenFeeRecipientDiffersFromOwner_SendsFeesToRecipientAndRewardsToCurator() public {
         address differentFeeRecipient = makeAddr("differentFeeRecipient");
-        MockCoverPool separateAddressPool = new MockCoverPool(makeAddr("irrelevantOwner"), differentFeeRecipient, POOL_FEE_BPS);
+        MockCoverPool separateAddressPool =
+            new MockCoverPool(makeAddr("irrelevantOwner"), differentFeeRecipient, POOL_FEE_BPS);
 
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
