@@ -444,13 +444,7 @@ contract ClaimManager is
      * @param tokensLength Length of the collateral token array.
      * @param payoutToken Payout token address for the policy.
      */
-    function _sweepExcessTokens(
-        address[] memory collateralTokens,
-        uint256 tokensLength,
-        address payoutToken
-    )
-        private
-    {
+    function _sweepExcessTokens(address[] memory collateralTokens, uint256 tokensLength, address payoutToken) private {
         address excessRecipient = excessCollateralRecipient;
         if (excessRecipient == address(0)) return;
 

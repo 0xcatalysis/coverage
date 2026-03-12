@@ -355,9 +355,7 @@ contract CoverPoolTest is Test {
         address differentCurator = makeAddr("differentCurator");
         mockPolicyManager.setDraftCurator(policyId, differentCurator);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(ICoverPool.CuratorMismatch.selector, differentCurator, curator)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.CuratorMismatch.selector, differentCurator, curator));
         vm.prank(curator);
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
     }
