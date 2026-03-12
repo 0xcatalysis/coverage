@@ -222,6 +222,19 @@ interface ISwapper is IAccessControl {
         external;
 
     /**
+     * @notice Returns a quoted output amount for a given input without executing a swap.
+     * @dev Uses the configured route's swapTarget to obtain a DEX quote. Not a view function
+     *      because Uniswap V3 QuoterV2 uses swap simulation via reverts internally.
+     *      Returns 0 when no route is configured or the adapter does not support quoting.
+     *      Resolves NATIVE_ETH to nativeWrapper before route lookup.
+     * @param tokenIn Source token address (use NATIVE_ETH constant for native ETH).
+     * @param tokenOut Destination token address (use NATIVE_ETH constant for native ETH).
+     * @param amountIn Amount of tokenIn to quote.
+     * @return amountOut Estimated output amount, or 0 if quoting is not supported for this route.
+     */
+    function quoteSwap(address tokenIn, address tokenOut, uint256 amountIn) external returns (uint256 amountOut);
+
+    /**
      * @notice Executes a token swap using a configured route.
      * @dev Requires SWAP_EXECUTOR_ROLE (typically granted to ClaimManager).
      *
