@@ -15,7 +15,7 @@ This split allows stake-backed readiness checks between request and activation.
 
 - `None` - no draft exists.
 - `Created` - draft created via `requestCoverage`.
-- `Cancelled` - draft cancelled by the requesting covered vault/buyer before binding.
+- `Cancelled` - draft cancelled by the requesting covered vault/buyer before binding, or force-released by the curator via `forceReleaseDraft`.
 - `Bound` - policy bound and active metadata persisted.
 
 ## State Machine
@@ -24,7 +24,7 @@ This split allows stake-backed readiness checks between request and activation.
 stateDiagram-v2
     [*] --> None
     None --> Created: requestCoverage()
-    Created --> Cancelled: cancelPolicyDraft()
+    Created --> Cancelled: cancelPolicyDraft() / forceReleaseDraft()
     Created --> Bound: CoverPool.bindPolicyForRequest() -> PolicyManager.bindPolicy()
     Bound --> [*]
     Cancelled --> [*]
@@ -57,6 +57,8 @@ Effects:
 
 ## Phase 2: Optional Draft Cancellation
 
+### 2a: Buyer-initiated cancellation
+
 Entry: The requesting covered vault/buyer calls `cancelPolicyDraft(policyId)`.
 
 Checks:
@@ -68,9 +70,29 @@ Effects:
 
 - status becomes `Cancelled`,
 - `StakeManager.removeOperatorFromCommittee(curator, policyId)` is called to release the
-  committee resources created in Phase 1 — the curator is removed as operator and the committee
-  slot is freed in Core,
+  committee resources created in Phase 1 — the original curator (snapshotted at request time)
+  is removed as operator and the committee slot is freed in Core,
 - no policy metadata is created.
+
+### 2b: Curator force-release (escape hatch)
+
+Entry: The pool curator calls `PolicyManager.forceReleaseDraft(policyId)`.
+
+This allows a curator to unilaterally cancel a draft they are pinned to, for example when a
+buyer has created a draft but is unresponsive or acting maliciously to grief the curator's
+ability to accept new coverage requests.
+
+Checks:
+
+- draft exists and is `Created`,
+- caller is the current owner of the pool referenced in the draft.
+
+Effects:
+
+- status becomes `Cancelled`,
+- `StakeManager.removeOperatorFromCommittee(curator, policyId)` is called using the curator
+  address captured at request time (not the current pool owner), preventing any double-removal issues,
+- emits `DraftForceReleased(policyId, pool, curator)`.
 
 ## Phase 3: Bind Policy
 
@@ -80,6 +102,8 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 
 - draft exists and belongs to this pool,
 - draft status is `Created`,
+- current pool owner matches the curator snapshotted at request time (prevents binding after
+  ownership transfer with stale committee operator state),
 - quote pool and policy id match draft,
 - quote beneficiary matches draft beneficiary,
 - quote timing and expiration valid,
@@ -104,7 +128,9 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 Then it:
 
 - marks draft as `Bound`,
-- stores canonical `PolicyMetadata`,
+- stores canonical `PolicyMetadata` including the pool curator (`ICoverPool.owner()`) captured
+  immutably at bind time — used by `ClaimManager` and `PremiumManager` to identify the correct
+  slashing target and rewards recipient even if pool ownership changes later,
 - triggers `IBindPolicyHook.onPolicyBound(policyId, coverageLimit)` (typically adapter callback).
 
 ## Phase 4: Active Coverage Window
