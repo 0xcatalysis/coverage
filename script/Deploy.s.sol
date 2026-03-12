@@ -197,6 +197,9 @@ abstract contract Deploy is Script {
      * @notice Orchestrates deployment of all contract proxies and implementations.
      * @dev Deploys contracts in dependency order. Uses deployer as temporary admin to enable
      *      role configuration phase. Final admin receives DEFAULT_ADMIN_ROLE in _grantRoles.
+     *
+     *      PolicyManager is deployed before PremiumManager so its address can be passed directly
+     *      into PremiumManager.initialize, avoiding a two-step address(0) + setPolicyManager pattern.
      * @param roles Role configuration containing admin, deployer, and other role addresses.
      * @param external_ External configuration containing Catalysis Core contract addresses.
      * @return contracts Populated DeployedContracts struct with all addresses.
@@ -224,6 +227,22 @@ abstract contract Deploy is Script {
         );
         contracts.swapperImpl = Upgrades.getImplementationAddress(contracts.swapperProxy);
 
+        contracts.policyManagerProxy = Upgrades.deployUUPSProxy(
+            "PolicyManager.sol:PolicyManager",
+            abi.encodeCall(
+                PolicyManager.initialize,
+                (
+                    roles.deployer,
+                    external_.stakeManager,
+                    roles.deployer, // Temporary placeholder for claimManager, will be set after ClaimManager deployment
+                    roles.deployer, // Temporary placeholder for coverPoolFactory, will be set after factory deployment
+                    getInitialPayoutTokens()
+                )
+            ),
+            opts
+        );
+        contracts.policyManagerImpl = Upgrades.getImplementationAddress(contracts.policyManagerProxy);
+
         _deployPremiumContracts(contracts, roles, external_, opts);
         _deployClaimAndFactoryContracts(contracts, roles, external_, opts);
     }
@@ -233,6 +252,8 @@ abstract contract Deploy is Script {
      * @dev PremiumManager handles premium distribution, fee splitting, and reward routing to RewardsManager.
      *      PremiumCollector is deployed later, after CoverPoolFactory exists, so it can be initialized
      *      with a valid factory address and avoid placeholder wiring.
+     *      PolicyManager must be deployed before this function is called so its address can be passed
+     *      directly into PremiumManager.initialize.
      *      Uses deployer as temporary admin for role configuration.
      * @param contracts DeployedContracts struct to populate with premium contract addresses.
      * @param roles Role configuration containing admin, deployer, and platformTreasury addresses.
@@ -251,7 +272,13 @@ abstract contract Deploy is Script {
             "PremiumManager.sol:PremiumManager",
             abi.encodeCall(
                 PremiumManager.initialize,
-                (roles.deployer, external_.rewardsManager, roles.platformTreasury, roles.platformFeeBps)
+                (
+                    roles.deployer,
+                    external_.rewardsManager,
+                    roles.platformTreasury,
+                    roles.platformFeeBps,
+                    contracts.policyManagerProxy
+                )
             ),
             opts
         );
@@ -259,11 +286,13 @@ abstract contract Deploy is Script {
     }
 
     /**
-     * @notice Deploys ClaimManager, PolicyManager, and CoverPoolFactory contracts.
+     * @notice Deploys ClaimManager, SpecRegistry, CoverPoolFactory, and PremiumCollector contracts.
      * @dev These contracts have dependencies on previously deployed contracts:
      *      - ClaimManager requires Swapper and PolicyManager
-     *      - PolicyManager requires PremiumManager and stores policy metadata
      *      - CoverPoolFactory requires CoverPool implementation and PolicyManager
+     *      - PremiumCollector requires PremiumManager and CoverPoolFactory
+     *      PolicyManager is deployed earlier in _deployAllContracts so its address is available to
+     *      both PremiumManager.initialize and this function.
      *      All use deployer as temporary admin for role configuration phase.
      * @param contracts DeployedContracts struct to populate with remaining contract addresses.
      * @param roles Role configuration containing admin and role holder addresses.
@@ -278,22 +307,6 @@ abstract contract Deploy is Script {
     )
         private
     {
-        contracts.policyManagerProxy = Upgrades.deployUUPSProxy(
-            "PolicyManager.sol:PolicyManager",
-            abi.encodeCall(
-                PolicyManager.initialize,
-                (
-                    roles.deployer,
-                    external_.stakeManager,
-                    roles.deployer, // Temporary placeholder for claimManager, will be set after ClaimManager deployment
-                    roles.deployer, // Temporary placeholder for coverPoolFactory, will be set after factory deployment
-                    getInitialPayoutTokens()
-                )
-            ),
-            opts
-        );
-        contracts.policyManagerImpl = Upgrades.getImplementationAddress(contracts.policyManagerProxy);
-
         contracts.specRegistryProxy = Upgrades.deployUUPSProxy(
             "SpecRegistry.sol:SpecRegistry", abi.encodeCall(SpecRegistry.initialize, (roles.deployer, address(0))), opts
         );
