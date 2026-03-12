@@ -63,7 +63,6 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   Coverage Request Params:
  *   - BENEFICIARY: Claim payout beneficiary
  *   - PAYOUT_TOKEN: ERC20 token for payouts
- *   - COVERAGE_AMOUNT: Coverage amount (USD, 8 decimals)
  *   - DURATION: Coverage duration in seconds
  *   - BIND_POLICY_HOOK: Hook contract for policy binding callback
  *
@@ -131,7 +130,6 @@ contract CompleteCoverageFlow is Script {
     // ── Coverage Request ──
     address public beneficiary;
     address public payoutToken;
-    uint256 public coverageAmount;
     uint32 public duration;
     address public bindPolicyHook;
 
@@ -272,8 +270,7 @@ contract CompleteCoverageFlow is Script {
         IPolicyManager pm = IPolicyManager(policyManager);
 
         vm.startBroadcast(buyerPrivateKey);
-        policyId =
-            pm.requestCoverage(coverPool, beneficiary, claimer, payoutToken, coverageAmount, duration, bindPolicyHook);
+        policyId = pm.requestCoverage(coverPool, beneficiary, claimer, payoutToken, duration, bindPolicyHook);
         vm.stopBroadcast();
 
         console.log("Policy ID:", policyId);
@@ -683,7 +680,6 @@ contract CompleteCoverageFlow is Script {
     function _loadCoverageRequestParams() internal {
         beneficiary = vm.envAddress("BENEFICIARY");
         payoutToken = vm.envAddress("PAYOUT_TOKEN");
-        coverageAmount = vm.envUint("COVERAGE_AMOUNT");
         duration = uint32(vm.envUint("DURATION"));
         bindPolicyHook = vm.envAddress("BIND_POLICY_HOOK");
     }
