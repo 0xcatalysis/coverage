@@ -302,8 +302,8 @@ interface IClaimManager is IAccessControl {
     /**
      * @notice Sets the recipient address for excess and stranded collateral after claim processing.
      * @dev Requires DEFAULT_ADMIN_ROLE. Any residual collateral or payout token balances after the
-     *      main payout loop are swept to this address.
-     * @param recipient_ Address to receive excess collateral.
+     *      main payout loop are swept to this address. Pass address(0) to disable sweeping.
+     * @param recipient_ Address to receive excess collateral, or address(0) to disable sweeping.
      */
     function setExcessCollateralRecipient(address recipient_) external;
 
