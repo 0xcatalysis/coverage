@@ -81,6 +81,7 @@ wrap_comments = true
 
 [lint]
 exclude_lints = ["asm-keccak256", "mixed-case-function", "mixed-case-variable", "unwrapped-modifier-logic"]
+ignore = ["src/defi/**", "test/defi/**"]
 
 [doc]
 out = "docs"
