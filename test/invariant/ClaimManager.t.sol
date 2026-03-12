@@ -171,7 +171,9 @@ contract ClaimManagerHandler is Test {
 
     function fileClaim(uint256 requestedAmountSeed) external {
         uint256 remaining = claimManager.remainingCoverage(POLICY_ID);
-        if (remaining == 0) return;
+        if (remaining == 0) {
+            return;
+        }
 
         if (claimManager.claimApprovalRequired(POLICY_ID)) {
             vm.prank(curator);
