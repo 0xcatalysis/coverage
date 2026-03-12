@@ -528,13 +528,19 @@ contract CompleteCoverageFlow is Script {
         bytes memory data;
 
         (ok, data) = vault.staticcall(abi.encodeWithSignature("collateral()"));
-        if (ok && data.length >= 32) return abi.decode(data, (address));
+        if (ok && data.length >= 32) {
+            return abi.decode(data, (address));
+        }
 
         (ok, data) = vault.staticcall(abi.encodeWithSignature("asset()"));
-        if (ok && data.length >= 32) return abi.decode(data, (address));
+        if (ok && data.length >= 32) {
+            return abi.decode(data, (address));
+        }
 
         (ok, data) = vault.staticcall(abi.encodeWithSignature("underlyingToken()"));
-        if (ok && data.length >= 32) return abi.decode(data, (address));
+        if (ok && data.length >= 32) {
+            return abi.decode(data, (address));
+        }
 
         return address(0);
     }
