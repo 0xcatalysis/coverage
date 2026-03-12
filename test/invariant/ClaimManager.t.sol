@@ -7,6 +7,7 @@ import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {Test} from "forge-std/Test.sol";
 import {ClaimManager} from "../../src/ClaimManager.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
+import {ISlashingManager} from "../../src/interfaces/ISlashingManager.sol";
 import {ISpec} from "../../src/interfaces/ISpec.sol";
 import {ISwapper} from "../../src/interfaces/ISwapper.sol";
 
@@ -47,43 +48,58 @@ contract InvSlashingManager {
         _token = t;
     }
 
+    function previewSlashing(
+        uint96, /*committeeId*/
+        address /*operator*/
+    )
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        vaults = new address[](1);
+        tokens = new address[](1);
+        tokenStakes = new uint256[](1);
+        vaults[0] = _token;
+        tokens[0] = _token;
+        // Return a positive stake so _computeVaultSlashes can proceed
+        tokenStakes[0] = type(uint256).max / 2;
+    }
+
     function executeSlashing(
-        uint96,
-        address,
-        uint256 slashAmount,
-        bytes32
+        uint96, /*committeeId*/
+        address, /*operator*/
+        ISlashingManager.VaultSlash[] calldata vaultSlashes,
+        bytes32 /*taskId*/
     )
         external
         returns (address[] memory, uint256[] memory)
     {
+        uint256 slashAmount = vaultSlashes.length > 0 ? vaultSlashes[0].amount : 0;
         address[] memory tokens = new address[](1);
         uint256[] memory amounts = new uint256[](1);
         tokens[0] = _token;
         amounts[0] = slashAmount;
-        if (_token != address(0)) {
+        if (_token != address(0) && slashAmount > 0) {
+            uint256 available = InvToken(_token).balanceOf(address(this));
+            uint256 toTransfer = slashAmount > available ? available : slashAmount;
             // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            InvToken(_token).transfer(msg.sender, slashAmount);
+            InvToken(_token).transfer(msg.sender, toTransfer);
+            amounts[0] = toTransfer;
         }
         return (tokens, amounts);
     }
 }
 
 contract InvSwapper {
+    function quoteSwap(address, address, uint256 amountIn) external pure returns (uint256) {
+        return amountIn; // 1:1
+    }
+
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         InvToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn);
         InvToken(params.tokenOut).mint(params.recipient, params.amountIn);
         return params.amountIn;
-    }
-}
-
-contract InvPriceFeed {
-    function getUSDValue(address, uint256 amount) external pure returns (uint256) {
-        return amount;
-    }
-
-    function getTokenAmount(address, uint256 usdValue) external pure returns (uint256) {
-        return usdValue;
     }
 }
 
@@ -234,21 +250,13 @@ contract ClaimManagerInvariantTest is StdInvariant, Test {
         returns (ClaimManager)
     {
         InvSpecRegistry specRegistry = new InvSpecRegistry(address(spec));
-        InvPriceFeed priceFeed = new InvPriceFeed();
         ClaimManager impl = new ClaimManager();
         address proxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
                     ClaimManager.initialize,
-                    (
-                        admin,
-                        address(specRegistry),
-                        address(slashingMgr),
-                        address(swapper),
-                        address(policyContract),
-                        address(priceFeed)
-                    )
+                    (admin, address(specRegistry), address(slashingMgr), address(swapper), address(policyContract))
                 )
             )
         );

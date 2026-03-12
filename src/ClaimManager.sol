@@ -9,7 +9,6 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {ISpec} from "./interfaces/ISpec.sol";
@@ -24,12 +23,12 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  * @dev Integrates with:
  *      - PolicyManager: Fetches policy metadata and coverage parameters
  *      - SpecRegistry: Resolves product-specific evaluation logic
- *      - SlashingManager (Core): Executes stake slashing for approved claims
- *      - Swapper: Converts slashed collateral to payout tokens
+ *      - SlashingManager (Core): Previews and executes token-native stake slashing for approved claims
+ *      - Swapper: Converts slashed collateral to payout tokens; also provides DEX quotes for slippage
  *
  *      Claim Flow:
  *      fileClaim: Authorized claimer atomically files and resolves claim → evaluates Spec → if approved:
- *      slash stake → swap collateral → payout
+ *      previewSlashing → _computeVaultSlashes → executeSlashing → swap collateral → payout
  */
 // slither-disable-next-line unimplemented-functions
 contract ClaimManager is
@@ -77,22 +76,20 @@ contract ClaimManager is
      * @param slashingManager_ Address of the SlashingManager contract.
      * @param swapper_ Address of the Swapper contract.
      * @param policyManager_ Address of the PolicyManager contract.
-     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
      */
     function initialize(
         address admin_,
         address specRegistry_,
         address slashingManager_,
         address swapper_,
-        address policyManager_,
-        address chainlinkPriceFeed_
+        address policyManager_
     )
         external
         initializer
     {
         require(
             admin_ != address(0) && specRegistry_ != address(0) && slashingManager_ != address(0)
-                && swapper_ != address(0) && policyManager_ != address(0) && chainlinkPriceFeed_ != address(0),
+                && swapper_ != address(0) && policyManager_ != address(0),
             ZeroAddress()
         );
 
@@ -105,7 +102,6 @@ contract ClaimManager is
         slashingManager = slashingManager_;
         swapper = swapper_;
         policyManager = policyManager_;
-        chainlinkPriceFeed = chainlinkPriceFeed_;
         maxSwapSlippageBps = 200; // 2%
     }
 
@@ -157,15 +153,6 @@ contract ClaimManager is
         require(policyManager_ != address(0), ZeroAddress());
         policyManager = policyManager_;
         emit PolicyManagerSet(policyManager_);
-    }
-
-    /**
-     * @inheritdoc IClaimManager
-     */
-    function setChainlinkPriceFeed(address chainlinkPriceFeed_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(chainlinkPriceFeed_ != address(0), ZeroAddress());
-        chainlinkPriceFeed = chainlinkPriceFeed_;
-        emit ChainlinkPriceFeedSet(chainlinkPriceFeed_);
     }
 
     /**
@@ -381,6 +368,8 @@ contract ClaimManager is
 
     /**
      * @notice Executes slashing and collateral swapping for payout directly.
+     * @dev Uses previewSlashing to obtain per-vault stake data, computes token-native slash amounts
+     *      with per-vault slippage inflation, executes slashing, then swaps/transfers collateral.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param metadata Policy metadata containing policyId and payout details.
@@ -396,9 +385,7 @@ contract ClaimManager is
         private
         returns (uint256 totalPayout)
     {
-        // slither-disable-next-line calls-loop
-        uint256 slashAmountUSD =
-            IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(metadata.payoutToken, requestedAmount);
+        address operator = ICoverPool(metadata.pool).owner();
 
         // taskId is deterministic per (policyId, claimId) pair to prevent replay attacks.
         // slither-disable-next-line calls-loop
@@ -493,14 +480,14 @@ contract ClaimManager is
         } else {
             _approveIfERC20(collateralToken, swapper, collateralAmount);
 
-            uint256 collateralUSD =
-                IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(collateralToken, collateralAmount);
-            uint256 expectedOut = IChainlinkPriceFeed(chainlinkPriceFeed).getTokenAmount(payoutToken, collateralUSD);
-            uint256 slippageBps = maxSwapSlippageBps;
-            uint256 amountOutMin = expectedOut * (10_000 - slippageBps) / 10_000;
-            if (amountOutMin == 0) {
-                amountOutMin = 1;
-            }
+            uint256 amountOutMin = 1;
+            // slither-disable-next-line calls-loop
+            try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 quoted) {
+                if (quoted > 0) {
+                    amountOutMin = quoted * (10_000 - maxSwapSlippageBps) / 10_000;
+                    if (amountOutMin == 0) amountOutMin = 1;
+                }
+            } catch {}
 
             ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
                 tokenIn: collateralToken,
