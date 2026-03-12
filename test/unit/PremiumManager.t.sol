@@ -595,6 +595,7 @@ contract PremiumManagerTest is Test {
         premiumManager.approveSpender(address(premiumToken), sspRouter, type(uint256).max);
 
         vm.prank(sspRouter);
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         premiumToken.transferFrom(address(premiumManager), sspRouter, restakerSplit);
 
         assertEq(premiumToken.balanceOf(sspRouter), restakerSplit, "SSPRouter balance mismatch");
