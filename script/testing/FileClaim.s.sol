@@ -195,7 +195,9 @@ contract FileClaim is Script {
             console.log("    Collateral != payout token -- swap required");
 
             bool routeOk = _checkVaultSwapRoute(swapper, tokens[i], metadata.payoutToken, stakes[i]);
-            if (!routeOk) allRoutesOk = false;
+            if (!routeOk) {
+                allRoutesOk = false;
+            }
         }
 
         if (!swapNeeded) {
@@ -357,7 +359,9 @@ contract FileClaim is Script {
         uint256 totalPayoutEquiv = 0;
         uint256[] memory payoutEquivs = new uint256[](previewStakes.length);
         for (uint256 i = 0; i < previewStakes.length; i++) {
-            if (previewStakes[i] == 0) continue;
+            if (previewStakes[i] == 0) {
+                continue;
+            }
             payoutEquivs[i] = previewTokens[i] == metadata.payoutToken
                 ? previewStakes[i]
                 : ISwapper(swapper).quoteSwap(previewTokens[i], metadata.payoutToken, previewStakes[i]);
@@ -367,9 +371,13 @@ contract FileClaim is Script {
         uint256 quotedExpected = 0;
         if (totalPayoutEquiv > 0) {
             for (uint256 i = 0; i < previewStakes.length; i++) {
-                if (previewStakes[i] == 0 || payoutEquivs[i] == 0) continue;
+                if (previewStakes[i] == 0 || payoutEquivs[i] == 0) {
+                    continue;
+                }
                 uint256 proportionalSlash = previewStakes[i] * claim.requestedAmount / totalPayoutEquiv;
-                if (proportionalSlash == 0) continue;
+                if (proportionalSlash == 0) {
+                    continue;
+                }
                 quotedExpected += previewTokens[i] == metadata.payoutToken
                     ? proportionalSlash
                     : ISwapper(swapper).quoteSwap(previewTokens[i], metadata.payoutToken, proportionalSlash);
@@ -444,7 +452,9 @@ contract FileClaim is Script {
      */
     function _getPoolOwner(address pool) internal view returns (address) {
         (bool ok, bytes memory data) = pool.staticcall(abi.encodeWithSignature("owner()"));
-        if (ok && data.length >= 32) return abi.decode(data, (address));
+        if (ok && data.length >= 32) {
+            return abi.decode(data, (address));
+        }
         return address(0);
     }
 
@@ -478,13 +488,19 @@ contract FileClaim is Script {
         bytes memory data;
 
         (ok, data) = vault.staticcall(abi.encodeWithSignature("collateral()"));
-        if (ok && data.length >= 32) return abi.decode(data, (address));
+        if (ok && data.length >= 32) {
+            return abi.decode(data, (address));
+        }
 
         (ok, data) = vault.staticcall(abi.encodeWithSignature("asset()"));
-        if (ok && data.length >= 32) return abi.decode(data, (address));
+        if (ok && data.length >= 32) {
+            return abi.decode(data, (address));
+        }
 
         (ok, data) = vault.staticcall(abi.encodeWithSignature("underlyingToken()"));
-        if (ok && data.length >= 32) return abi.decode(data, (address));
+        if (ok && data.length >= 32) {
+            return abi.decode(data, (address));
+        }
 
         return address(0);
     }

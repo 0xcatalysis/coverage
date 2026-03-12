@@ -184,16 +184,24 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
         override
         returns (uint256 amountOut)
     {
-        if (amountIn == 0) return 0;
+        if (amountIn == 0) {
+            return 0;
+        }
 
         address actualTokenIn = tokenIn == NATIVE_ETH ? nativeWrapper : tokenIn;
         address actualTokenOut = tokenOut == NATIVE_ETH ? nativeWrapper : tokenOut;
-        if (actualTokenIn == actualTokenOut) return 0;
+        if (actualTokenIn == actualTokenOut) {
+            return 0;
+        }
 
         bytes32 routeKey = _getRouteKey(actualTokenIn, actualTokenOut);
         SwapRoute storage route = _swapRoutes[routeKey];
-        if (!route.enabled || route.swapTarget == address(0)) return 0;
-        if (!whitelistedTargets[route.swapTarget]) return 0;
+        if (!route.enabled || route.swapTarget == address(0)) {
+            return 0;
+        }
+        if (!whitelistedTargets[route.swapTarget]) {
+            return 0;
+        }
 
         try IQuotableAdapter(route.swapTarget).quote(actualTokenIn, actualTokenOut, amountIn) returns (uint256 quoted) {
             amountOut = quoted;
