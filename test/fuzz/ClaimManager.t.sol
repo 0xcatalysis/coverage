@@ -192,6 +192,7 @@ contract ClaimManagerFuzzTest is Test {
                 policyId: POLICY_ID,
                 beneficiary: beneficiary,
                 claimer: claimer,
+                curator: makeAddr("curator"),
                 startTime: START,
                 maturityTime: MATURITY,
                 payoutToken: address(payoutToken),

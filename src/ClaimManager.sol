@@ -42,7 +42,7 @@ contract ClaimManager is
     using SafeERC20 for IERC20;
 
     uint16 private constant _MAX_SLIPPAGE_BPS = 10_000;
-    uint256 private constant MAX_COLLATERAL_ENTRIES = 20;
+    uint256 public constant MAX_COLLATERAL_ENTRIES = 20;
 
     address public override specRegistry;
     address public override slashingManager;
