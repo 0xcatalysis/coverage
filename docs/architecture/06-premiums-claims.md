@@ -99,9 +99,8 @@ Guardrail:
 
 - `ClaimManager` - claim intake, evaluation, and settlement.
 - `SpecRegistry` + `ISpec` - payability decision logic.
-- Core `ChainlinkPriceFeed` - payout token amount -> USD slash target.
-- Core `SlashingManager` - committee slashing execution.
-- `Swapper` - collateral token conversion.
+- Core `SlashingManager` - per-vault stake preview and token-native slashing execution.
+- `Swapper` - collateral token conversion and pre-swap quotes for slippage inflation.
 
 ### Claim Settlement Sequence
 
@@ -111,7 +110,6 @@ sequenceDiagram
     participant CM as ClaimManager
     participant SR as SpecRegistry
     participant Spec as ISpec
-    participant PF as Core ChainlinkPriceFeed
     participant SLM as Core SlashingManager
     participant SW as Swapper
     participant Beneficiary
@@ -126,9 +124,12 @@ sequenceDiagram
     alt non-payable
         CM-->>Claimer: claim rejected
     else payable
-        CM->>PF: getUSDValue(payoutToken, requestedAmount)
-        PF-->>CM: slashAmountUSD
-        CM->>SLM: executeSlashing(policyId, operator, slashAmountUSD)
+        CM->>SLM: previewSlashing(policyId, operator)
+        SLM-->>CM: vaults[], tokens[], tokenStakes[]
+        CM->>SW: quoteSwap(token, payoutToken, stake) per non-payout vault
+        SW-->>CM: quotedAmountOut per vault
+        CM->>CM: compute VaultSlash[] (proportional + slippage inflation)
+        CM->>SLM: executeSlashing(policyId, operator, vaultSlashes[], taskId)
         SLM-->>CM: collateralTokens[], collateralAmounts[]
         loop each collateral token
             alt token == payoutToken
@@ -266,8 +267,8 @@ target is whitelisted. It reverts before broadcasting if any route is missing.
 
 ### Runtime Risks
 
-- If Core slashing returns no collateral, payout path reverts.
-- If price conversion fails, slash target cannot be computed.
+- If Core slashing preview returns zero total stake, payout path reverts (`NoCollateralSlashed`).
+- If Core slashing execution returns no collateral, payout path reverts.
 - Claim timing outside coverage window always reverts.
 
 ### Operational Controls
