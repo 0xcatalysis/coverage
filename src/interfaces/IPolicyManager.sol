@@ -166,6 +166,12 @@ interface IPolicyManager is IAccessControl {
     event CoverPoolFactorySet(address indexed coverPoolFactory_);
 
     /**
+     * @notice Emitted when the ChainlinkPriceFeed dependency is set or updated.
+     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
+     */
+    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed_);
+
+    /**
      * @notice Emitted when a payout token is added to or removed from the supported whitelist.
      * @param token ERC20 token address.
      * @param supported Whether the token is now supported.
@@ -231,8 +237,8 @@ interface IPolicyManager is IAccessControl {
     /**
      * @notice Reverts when policy doesn't have sufficient stake.
      * @param policyId Policy identifier.
-     * @param required Required stake amount.
-     * @param actual Actual stake amount.
+     * @param required Required stake USD equivalent.
+     * @param actual Actual stake USD equivalent.
      */
     error InsufficientStake(uint96 policyId, uint256 required, uint256 actual);
 
@@ -332,9 +338,9 @@ interface IPolicyManager is IAccessControl {
     function setCoverPoolFactory(address coverPoolFactory_) external;
 
     /**
-     * @notice Sets the ChainlinkPriceFeed contract used for stake validation at bind time.
-     * @dev Requires DEFAULT_ADMIN_ROLE. Emits ChainlinkPriceFeedSet.
-     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed implementation.
+     * @notice Sets the ChainlinkPriceFeed address used for bind-time stake sufficiency checks.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
      */
     function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
 
