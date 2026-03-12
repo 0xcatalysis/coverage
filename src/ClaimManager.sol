@@ -455,7 +455,9 @@ contract ClaimManager is
      *      calls quoteSwap and returns 0 on failure so the vault is excluded from slash distribution.
      */
     function _toPayoutEquivalent(address token, address payoutToken, uint256 stake) private returns (uint256) {
-        if (token == payoutToken) return stake;
+        if (token == payoutToken) {
+            return stake;
+        }
         // slither-disable-next-line calls-loop
         try ISwapper(swapper).quoteSwap(token, payoutToken, stake) returns (uint256 quoted) {
             return quoted;
@@ -478,14 +480,22 @@ contract ClaimManager is
         private
         returns (uint256 slashAmount)
     {
-        if (payoutEquivalent == 0) return 0;
+        if (payoutEquivalent == 0) {
+            return 0;
+        }
         slashAmount = (tokenStake * requestedAmount) / totalPayoutEquivalent;
-        if (slashAmount > tokenStake) slashAmount = tokenStake;
-        if (slashAmount == 0 || token == payoutToken) return slashAmount;
+        if (slashAmount > tokenStake) {
+            slashAmount = tokenStake;
+        }
+        if (slashAmount == 0 || token == payoutToken) {
+            return slashAmount;
+        }
 
         uint256 expectedOut = (requestedAmount * payoutEquivalent) / totalPayoutEquivalent;
         slashAmount = _inflateForSlippage(token, payoutToken, slashAmount, expectedOut);
-        if (slashAmount > tokenStake) slashAmount = tokenStake;
+        if (slashAmount > tokenStake) {
+            slashAmount = tokenStake;
+        }
     }
 
     /**
@@ -550,7 +560,9 @@ contract ClaimManager is
             try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 quoted) {
                 if (quoted > 0) {
                     amountOutMin = quoted * (10_000 - maxSwapSlippageBps) / 10_000;
-                    if (amountOutMin == 0) amountOutMin = 1;
+                    if (amountOutMin == 0) {
+                        amountOutMin = 1;
+                    }
                 }
             } catch {}
 
