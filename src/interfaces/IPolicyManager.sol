@@ -33,9 +33,6 @@ interface IPolicyManager is IAccessControl {
         address claimer;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
-        /// @notice Coverage amount requested as stake requirement, denominated in USD with 8 decimals (Chainlink
-        /// standard).
-        uint256 coverageAmount;
         /// @notice Coverage duration requested (in seconds).
         uint32 duration;
         /// @notice Policy identifier (1:1 with committee).
@@ -97,9 +94,6 @@ interface IPolicyManager is IAccessControl {
         address claimer;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
-        /// @notice Coverage amount as the stake requirement for committee creation, denominated in USD with 8 decimals
-        /// (Chainlink standard).
-        uint256 coverageAmount;
         /// @notice Coverage quote from a single CoverPool.
         ICoverPool.Quote quote;
         /// @notice EIP-712 signature from the pool's authorized quote signer.
@@ -113,7 +107,6 @@ interface IPolicyManager is IAccessControl {
      * @param buyer Buyer address requesting coverage.
      * @param beneficiary Beneficiary address for claims.
      * @param claimer Account authorized to trigger claims.
-     * @param coverageAmount Requested coverage amount as stake requirement, denominated in USD with 8 decimals.
      * @param duration Requested coverage duration (in seconds).
      */
     event CoverageRequested(
@@ -122,7 +115,6 @@ interface IPolicyManager is IAccessControl {
         address indexed buyer,
         address beneficiary,
         address claimer,
-        uint256 coverageAmount,
         uint32 duration
     );
 
@@ -172,6 +164,12 @@ interface IPolicyManager is IAccessControl {
     event CoverPoolFactorySet(address indexed coverPoolFactory_);
 
     /**
+     * @notice Emitted when the ChainlinkPriceFeed dependency is set or updated.
+     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
+     */
+    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed_);
+
+    /**
      * @notice Emitted when a payout token is added to or removed from the supported whitelist.
      * @param token ERC20 token address.
      * @param supported Whether the token is now supported.
@@ -209,11 +207,6 @@ interface IPolicyManager is IAccessControl {
     error InvalidCoverageLimit();
 
     /**
-     * @notice Reverts when coverage amount is zero.
-     */
-    error InvalidCoverageAmount();
-
-    /**
      * @notice Reverts when coverage duration is zero.
      */
     error InvalidDuration();
@@ -242,8 +235,8 @@ interface IPolicyManager is IAccessControl {
     /**
      * @notice Reverts when policy doesn't have sufficient stake.
      * @param policyId Policy identifier.
-     * @param required Required stake amount.
-     * @param actual Actual stake amount.
+     * @param required Required stake USD equivalent.
+     * @param actual Actual stake USD equivalent.
      */
     error InsufficientStake(uint96 policyId, uint256 required, uint256 actual);
 
@@ -350,9 +343,9 @@ interface IPolicyManager is IAccessControl {
     function setCoverPoolFactory(address coverPoolFactory_) external;
 
     /**
-     * @notice Sets the ChainlinkPriceFeed contract used for stake validation at bind time.
-     * @dev Requires DEFAULT_ADMIN_ROLE. Emits ChainlinkPriceFeedSet.
-     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed implementation.
+     * @notice Sets the ChainlinkPriceFeed address used for bind-time stake sufficiency checks.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
      */
     function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
 
@@ -365,8 +358,6 @@ interface IPolicyManager is IAccessControl {
      * @param beneficiary Address receiving payouts upon approved claims.
      * @param claimer Account authorized to trigger claims for the policy.
      * @param payoutToken ERC20 token used for claim payouts.
-     * @param coverageAmount Requested coverage amount as stake requirement, denominated in USD with 8 decimals
-     * (Chainlink standard).
      * @param duration Requested coverage duration (in seconds).
      * @param bindPolicyHook Callback target invoked when policy is bound.
      * @return policyId Identifier reserved for binding and minting.
@@ -376,7 +367,6 @@ interface IPolicyManager is IAccessControl {
         address beneficiary,
         address claimer,
         address payoutToken,
-        uint256 coverageAmount,
         uint32 duration,
         address bindPolicyHook
     )
