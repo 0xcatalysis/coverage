@@ -8,7 +8,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
@@ -24,12 +23,12 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  * @dev Integrates with:
  *      - PolicyManager: Fetches policy metadata and coverage parameters
  *      - SpecRegistry: Resolves product-specific evaluation logic
- *      - SlashingManager (Core): Executes stake slashing for approved claims
- *      - Swapper: Converts slashed collateral to payout tokens
+ *      - SlashingManager (Core): Previews and executes token-native stake slashing for approved claims
+ *      - Swapper: Converts slashed collateral to payout tokens; also provides DEX quotes for slippage
  *
  *      Claim Flow:
  *      fileClaim: Authorized claimer atomically files and resolves claim → evaluates Spec → if approved:
- *      slash stake → swap collateral → payout
+ *      previewSlashing → _computeVaultSlashes → executeSlashing → swap collateral → payout
  */
 // slither-disable-next-line unimplemented-functions
 contract ClaimManager is
@@ -48,7 +47,6 @@ contract ClaimManager is
     address public override slashingManager;
     address public override swapper;
     address public override policyManager;
-    address public override chainlinkPriceFeed;
     uint16 public override maxSwapSlippageBps;
 
     mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
@@ -66,22 +64,20 @@ contract ClaimManager is
      * @param slashingManager_ Address of the SlashingManager contract.
      * @param swapper_ Address of the Swapper contract.
      * @param policyManager_ Address of the PolicyManager contract.
-     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
      */
     function initialize(
         address admin_,
         address specRegistry_,
         address slashingManager_,
         address swapper_,
-        address policyManager_,
-        address chainlinkPriceFeed_
+        address policyManager_
     )
         external
         initializer
     {
         require(
             admin_ != address(0) && specRegistry_ != address(0) && slashingManager_ != address(0)
-                && swapper_ != address(0) && policyManager_ != address(0) && chainlinkPriceFeed_ != address(0),
+                && swapper_ != address(0) && policyManager_ != address(0),
             ZeroAddress()
         );
 
@@ -94,7 +90,6 @@ contract ClaimManager is
         slashingManager = slashingManager_;
         swapper = swapper_;
         policyManager = policyManager_;
-        chainlinkPriceFeed = chainlinkPriceFeed_;
         maxSwapSlippageBps = 200; // 2%
     }
 
@@ -146,15 +141,6 @@ contract ClaimManager is
         require(policyManager_ != address(0), ZeroAddress());
         policyManager = policyManager_;
         emit PolicyManagerSet(policyManager_);
-    }
-
-    /**
-     * @inheritdoc IClaimManager
-     */
-    function setChainlinkPriceFeed(address chainlinkPriceFeed_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(chainlinkPriceFeed_ != address(0), ZeroAddress());
-        chainlinkPriceFeed = chainlinkPriceFeed_;
-        emit ChainlinkPriceFeedSet(chainlinkPriceFeed_);
     }
 
     /**
@@ -326,6 +312,8 @@ contract ClaimManager is
 
     /**
      * @notice Executes slashing and collateral swapping for payout directly.
+     * @dev Uses previewSlashing to obtain per-vault stake data, computes token-native slash amounts
+     *      with per-vault slippage inflation, executes slashing, then swaps/transfers collateral.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param metadata Policy metadata containing policyId and payout details.
@@ -341,20 +329,43 @@ contract ClaimManager is
         private
         returns (uint256 totalPayout)
     {
-        // slither-disable-next-line calls-loop
-        uint256 slashAmountUSD =
-            IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(metadata.payoutToken, requestedAmount);
+        address operator = ICoverPool(metadata.pool).owner();
 
-        // Slash committee in core contracts using policyId as committeeId (1:1 mapping).
-        // taskId (inlined) is deterministic per (policyId, claimId) pair to prevent replay attacks.
+        // Steps 1+2: Preview stake data and compute vault slashes in a scoped block to free
+        // intermediate arrays (vaults, tokens, tokenStakes) before subsequent calls.
+        ISlashingManager.VaultSlash[] memory vaultSlashes;
+        {
+            // slither-disable-next-line calls-loop
+            (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes) =
+                ISlashingManager(slashingManager).previewSlashing(policyId, operator);
+            vaultSlashes =
+                _computeVaultSlashes(policyId, vaults, tokens, tokenStakes, metadata.payoutToken, requestedAmount);
+        }
+
+        // Steps 3+4: Execute slashing and process collateral payouts.
+        totalPayout = _slashAndDistribute(policyId, claimId, operator, vaultSlashes, metadata, requestedAmount);
+    }
+
+    /**
+     * @notice Executes slashing via the SlashingManager then processes each collateral token into payouts.
+     * @dev Separated from _executeSlashingAndPayout to avoid stack-too-deep errors.
+     */
+    function _slashAndDistribute(
+        uint96 policyId,
+        uint256 claimId,
+        address operator,
+        ISlashingManager.VaultSlash[] memory vaultSlashes,
+        IPolicyManager.PolicyMetadata memory metadata,
+        uint256 requestedAmount
+    )
+        private
+        returns (uint256 totalPayout)
+    {
+        // Step 3: Execute slashing in core contracts using policyId as committeeId (1:1 mapping).
+        // taskId is deterministic per (policyId, claimId) pair to prevent replay attacks.
         // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) = ISlashingManager(slashingManager)
-            .executeSlashing(
-                metadata.policyId,
-                ICoverPool(metadata.pool).owner(),
-                slashAmountUSD,
-                keccak256(abi.encodePacked(metadata.policyId, claimId))
-            );
+            .executeSlashing(policyId, operator, vaultSlashes, keccak256(abi.encodePacked(policyId, claimId)));
 
         uint256 tokensLength = collateralTokens.length;
         // slither-disable-next-line incorrect-equality
@@ -378,6 +389,76 @@ contract ClaimManager is
         }
 
         require(totalPayout > 0, ZeroPayoutAmount(policyId));
+    }
+
+    /**
+     * @notice Computes per-vault token-native slash amounts with per-vault DEX-based slippage inflation.
+     * @dev Step 1: Each vault's stake is converted to payout-equivalent via quoteSwap.
+     *      Step 2: Proportional slash is computed; non-payout-token vaults get an upward slippage
+     *              inflation so that after the DEX swap the beneficiary receives the target amount.
+     *              The inflation is capped at maxSwapSlippageBps and vault stake.
+     * @param policyId Policy identifier used for revert messages.
+     * @param vaults Array of vault addresses from previewSlashing.
+     * @param tokens Array of collateral token addresses per vault.
+     * @param tokenStakes Array of slashable stake amounts per vault in token-native units.
+     * @param payoutToken Policy payout token address.
+     * @param requestedAmount Requested payout amount in payout token units.
+     * @return vaultSlashes Array of per-vault slash specs with token-native amounts.
+     */
+    function _computeVaultSlashes(
+        uint96 policyId,
+        address[] memory vaults,
+        address[] memory tokens,
+        uint256[] memory tokenStakes,
+        address payoutToken,
+        uint256 requestedAmount
+    )
+        private
+        returns (ISlashingManager.VaultSlash[] memory vaultSlashes)
+    {
+        uint256 len = vaults.length;
+        uint256 totalPayoutEquivalent = 0;
+        uint256[] memory payoutEquivalents = new uint256[](len);
+
+        for (uint256 i = 0; i < len; ++i) {
+            if (tokenStakes[i] == 0) continue;
+            if (tokens[i] == payoutToken) {
+                payoutEquivalents[i] = tokenStakes[i];
+            } else {
+                // slither-disable-next-line calls-loop
+                try ISwapper(swapper).quoteSwap(tokens[i], payoutToken, tokenStakes[i]) returns (uint256 quoted) {
+                    payoutEquivalents[i] = quoted;
+                } catch {
+                    payoutEquivalents[i] = 0;
+                }
+            }
+            totalPayoutEquivalent += payoutEquivalents[i];
+        }
+
+        require(totalPayoutEquivalent > 0, NoCollateralSlashed(policyId));
+
+        vaultSlashes = new ISlashingManager.VaultSlash[](len);
+        for (uint256 i = 0; i < len; ++i) {
+            uint256 baseSlash = (tokenStakes[i] * requestedAmount) / totalPayoutEquivalent;
+
+            if (baseSlash > 0 && tokens[i] != payoutToken) {
+                // slither-disable-next-line calls-loop
+                try ISwapper(swapper).quoteSwap(tokens[i], payoutToken, baseSlash) returns (uint256 quotedOut) {
+                    uint256 expectedOut = (requestedAmount * payoutEquivalents[i]) / totalPayoutEquivalent;
+                    if (quotedOut > 0 && quotedOut < expectedOut) {
+                        uint256 inflated = (baseSlash * expectedOut) / quotedOut;
+                        uint256 maxInflated = baseSlash * 10_000 / (10_000 - maxSwapSlippageBps);
+                        baseSlash = inflated > maxInflated ? maxInflated : inflated;
+                    }
+                } catch {}
+
+                if (baseSlash > tokenStakes[i]) {
+                    baseSlash = tokenStakes[i];
+                }
+            }
+
+            vaultSlashes[i] = ISlashingManager.VaultSlash({vault: vaults[i], token: tokens[i], amount: baseSlash});
+        }
     }
 
     /**
@@ -411,14 +492,14 @@ contract ClaimManager is
         } else {
             IERC20(collateralToken).forceApprove(swapper, collateralAmount);
 
-            uint256 collateralUSD =
-                IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(collateralToken, collateralAmount);
-            uint256 expectedOut = IChainlinkPriceFeed(chainlinkPriceFeed).getTokenAmount(payoutToken, collateralUSD);
-            uint256 slippageBps = maxSwapSlippageBps;
-            uint256 amountOutMin = expectedOut * (10_000 - slippageBps) / 10_000;
-            if (amountOutMin == 0) {
-                amountOutMin = 1;
-            }
+            uint256 amountOutMin = 1;
+            // slither-disable-next-line calls-loop
+            try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 quoted) {
+                if (quoted > 0) {
+                    amountOutMin = quoted * (10_000 - maxSwapSlippageBps) / 10_000;
+                    if (amountOutMin == 0) amountOutMin = 1;
+                }
+            } catch {}
 
             ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
                 tokenIn: collateralToken,
