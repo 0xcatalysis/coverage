@@ -150,6 +150,12 @@ interface IClaimManager is IAccessControl {
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
 
     /**
+     * @notice Emitted when the excess collateral recipient address is updated.
+     * @param recipient New excess collateral recipient address.
+     */
+    event ExcessCollateralRecipientSet(address indexed recipient);
+
+    /**
      * @notice Emitted when the pool curator approves the next claim for a policy.
      * @param policyId Identifier of the policy.
      * @param approver Address that granted the approval.
@@ -266,6 +272,12 @@ interface IClaimManager is IAccessControl {
     error PremiumDefaulted(uint96 policyId);
 
     /**
+     * @notice Reverts when the number of slashed collateral entries exceeds the processing cap.
+     * @param count Number of collateral entries returned by the slashing manager.
+     */
+    error TooManyCollateralEntries(uint256 count);
+
+    /**
      * @notice Pauses claim operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
@@ -318,6 +330,14 @@ interface IClaimManager is IAccessControl {
      * @param maxSwapSlippageBps_ Slippage tolerance in basis points (e.g., 200 = 2%).
      */
     function setMaxSwapSlippageBps(uint16 maxSwapSlippageBps_) external;
+
+    /**
+     * @notice Sets the recipient address for excess and stranded collateral after claim processing.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Any residual collateral or payout token balances after the
+     *      main payout loop are swept to this address.
+     * @param recipient_ Address to receive excess collateral.
+     */
+    function setExcessCollateralRecipient(address recipient_) external;
 
     /**
      * @notice Files and resolves a claim atomically in a single transaction.
@@ -399,6 +419,18 @@ interface IClaimManager is IAccessControl {
      * @notice Returns the maximum swap slippage tolerance in basis points.
      */
     function maxSwapSlippageBps() external view returns (uint16);
+
+    /**
+     * @notice Returns the address that receives excess and stranded collateral after claim processing.
+     */
+    function excessCollateralRecipient() external view returns (address);
+
+    /**
+     * @notice Sets the excess collateral recipient address.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param recipient_ New recipient address for excess/stranded collateral.
+     */
+    function setExcessCollateralRecipient(address recipient_) external;
 
     /**
      * @notice Clears the claim approval gate for a policy, allowing the next claim to be filed freely.

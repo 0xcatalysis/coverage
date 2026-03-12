@@ -196,6 +196,13 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidPolicyId();
 
     /**
+     * @notice Reverts when the curator at bind time does not match the curator stored in the policy draft.
+     * @param expected Curator address stored in the policy draft at request time.
+     * @param actual Current owner() of the pool at bind time.
+     */
+    error CuratorMismatch(address expected, address actual);
+
+    /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param curator_ Address assigned as the owner (curator). Serves as the operator for the pool.
      * @param policyManager_ Address of the PolicyManager contract for policy binding operations.

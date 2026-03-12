@@ -78,6 +78,8 @@ interface IPolicyManager is IAccessControl {
         bytes32 termsHash;
         /// @notice Deterministic hash representing the policy schedule.
         bytes32 policyCommit;
+        /// @notice Pool curator (operator) immutably captured at bind time for slashing/rewards.
+        address curator;
         /// @notice Whether the policyholder is in premium default; set by the pool curator.
         bool premiumDefaulted;
     }
@@ -105,6 +107,14 @@ interface IPolicyManager is IAccessControl {
         /// @notice EIP-712 signature from the pool's authorized quote signer.
         bytes signature;
     }
+
+    /**
+     * @notice Emitted when a policy draft is force-released by the pool curator to undo griefing.
+     * @param policyId Identifier of the released draft.
+     * @param pool CoverPool whose curator triggered the release.
+     * @param curator Address that called the release.
+     */
+    event DraftForceReleased(uint96 indexed policyId, address indexed pool, address indexed curator);
 
     /**
      * @notice Emitted when coverage is requested via a policy draft.
@@ -451,6 +461,15 @@ interface IPolicyManager is IAccessControl {
      * @return metadata The policy metadata struct.
      */
     function policyMetadata(uint96 policyId) external view returns (PolicyMetadata memory metadata);
+
+    /**
+     * @notice Allows the pool curator to force-cancel a policy draft and release the committee
+     *         operator slot, undoing any griefing attack from a malicious buyer.
+     * @dev Caller must be the current owner of the pool referenced in the draft.
+     *      Removes the operator from the committee in Core and marks the draft Cancelled.
+     * @param policyId Identifier of the draft to release.
+     */
+    function forceReleaseDraft(uint96 policyId) external;
 
     /**
      * @notice Sets or clears the premium default flag for a policy.

@@ -342,6 +342,26 @@ contract CoverPoolTest is Test {
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
     }
 
+    function test_bindPolicyForRequest_WhenCuratorMismatch_Reverts() public {
+        uint96 policyId = _createDraft();
+        ICoverPool.Quote memory quote = _defaultQuote();
+        quote.policyId = policyId;
+        quote.beneficiary = beneficiary;
+        bytes memory signature = _signQuote(quote);
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault1");
+        address spec = makeAddr("spec");
+
+        address differentCurator = makeAddr("differentCurator");
+        mockPolicyManager.setDraftCurator(policyId, differentCurator);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ICoverPool.CuratorMismatch.selector, differentCurator, curator)
+        );
+        vm.prank(curator);
+        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
+    }
+
     function test_bindPolicyForRequest_WhenQuotePoolMismatch_Reverts() public {
         uint96 policyId = _createDraft();
         ICoverPool.Quote memory quote = _defaultQuote();
@@ -1109,6 +1129,7 @@ contract CoverPoolTest is Test {
         policyId = uint96(mockPolicyManager.nextPolicyId() + 1);
         mockPolicyManager.mockPolicyDraft(policyId, address(coverPool), buyer);
         mockPolicyManager.setDraftBeneficiary(policyId, beneficiary);
+        mockPolicyManager.setDraftCurator(policyId, curator);
     }
 
     function _defaultQuote() private view returns (ICoverPool.Quote memory quote) {
@@ -1206,6 +1227,10 @@ contract MockPolicyManager {
 
     function setDraftBeneficiary(uint96 policyId, address beneficiary) external {
         _drafts[policyId].beneficiary = beneficiary;
+    }
+
+    function setDraftCurator(uint96 policyId, address curator_) external {
+        _drafts[policyId].curator = curator_;
     }
 
     function getPolicyDraft(uint96 policyId) external view returns (IPolicyManager.PolicyDraft memory) {

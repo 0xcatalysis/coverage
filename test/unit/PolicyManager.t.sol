@@ -637,6 +637,7 @@ contract PolicyManagerTest is Test {
         assertEq(metadata.policyId, coverPool.lastBoundPolicy().policyId, "Metadata and bound policy ID mismatch");
         assertEq(metadata.startTime, uint32(block.timestamp), "Metadata start time mismatch");
         assertEq(metadata.maturityTime, uint32(block.timestamp + COVERAGE_DURATION), "Metadata maturity time mismatch");
+        assertEq(metadata.curator, curator, "Metadata curator must be pool owner at bind time");
     }
 
     function test_bindPolicy_WhenValid_EmitsPolicyBound() public {
@@ -1403,6 +1404,163 @@ contract PolicyManagerTest is Test {
 
         IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
         assertTrue(draft.status == IPolicyManager.PolicyStatus.Cancelled, "Status should be Cancelled");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                       FORCE RELEASE DRAFT
+    //////////////////////////////////////////////////////////////*/
+
+    function test_forceReleaseDraft_WhenDraftNotFound_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.PolicyDraftNotFound.selector, 999));
+        vm.prank(curator);
+        policyManager.forceReleaseDraft(999);
+    }
+
+    function test_forceReleaseDraft_WhenCallerNotCurrentCurator_Reverts() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        address notCurator = makeAddr("notCurator");
+        vm.expectRevert(IPolicyManager.UnauthorizedCaller.selector);
+        vm.prank(notCurator);
+        policyManager.forceReleaseDraft(policyId);
+    }
+
+    function test_forceReleaseDraft_WhenDraftAlreadyCancelled_Reverts() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        vm.prank(buyer);
+        policyManager.cancelPolicyDraft(policyId);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.InvalidPolicyStatus.selector, IPolicyManager.PolicyStatus.Cancelled)
+        );
+        vm.prank(curator);
+        policyManager.forceReleaseDraft(policyId);
+    }
+
+    function test_forceReleaseDraft_WhenDraftAlreadyBound_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, request.coverageAmount, true);
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.InvalidPolicyStatus.selector, IPolicyManager.PolicyStatus.Bound)
+        );
+        vm.prank(curator);
+        policyManager.forceReleaseDraft(request.policyId);
+    }
+
+    function test_forceReleaseDraft_WhenPaused_Reverts() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        vm.prank(admin);
+        policyManager.pause();
+
+        vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
+        vm.prank(curator);
+        policyManager.forceReleaseDraft(policyId);
+    }
+
+    function test_forceReleaseDraft_WhenCurator_CancelsDraftAndRemovesOperator() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        assertTrue(mockStakeManager.committeeExists(policyId), "Committee should exist before release");
+
+        vm.expectEmit(true, true, true, true, address(policyManager));
+        emit IPolicyManager.DraftForceReleased(policyId, address(coverPool), curator);
+
+        vm.prank(curator);
+        policyManager.forceReleaseDraft(policyId);
+
+        IPolicyManager.PolicyDraft memory draft = policyManager.getPolicyDraft(policyId);
+        assertTrue(draft.status == IPolicyManager.PolicyStatus.Cancelled, "Draft should be Cancelled");
+        assertEq(mockStakeManager.getOperatorCommittee(curator), 0, "Curator should be removed from committee");
+    }
+
+    function test_forceReleaseDraft_UsesOriginalCuratorForRemoval() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        address newOwner = makeAddr("newOwner");
+        coverPool.setCurator(newOwner);
+
+        vm.prank(newOwner);
+        policyManager.forceReleaseDraft(policyId);
+
+        assertEq(mockStakeManager.getOperatorCommittee(curator), 0, "Original curator should be removed");
+        assertEq(mockStakeManager.getOperatorCommittee(newOwner), 0, "New owner was never an operator");
+    }
+
+    function test_forceReleaseDraft_CannotBindAfterRelease() public {
+        vm.prank(buyer);
+        uint96 policyId = policyManager.requestCoverage(
+            address(coverPool),
+            beneficiary,
+            beneficiary,
+            payoutToken,
+            COVERAGE_AMOUNT,
+            COVERAGE_DURATION,
+            address(defaultHook)
+        );
+
+        vm.prank(curator);
+        policyManager.forceReleaseDraft(policyId);
+
+        IPolicyManager.BindPolicyRequest memory request = _buildRequest(policyId);
+        _seedCommitteeForTesting(request.quote.policyId, curator, request.coverageAmount, true);
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.InvalidPolicyStatus.selector, IPolicyManager.PolicyStatus.Cancelled)
+        );
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
     }
 
     /*//////////////////////////////////////////////////////////////

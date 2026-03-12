@@ -349,10 +349,10 @@ contract CatalysisCoverAdapter is
         // Construct idData matching the adapterId encoding
         bytes memory _idData = abi.encodePacked("CatalysisCoverAdapter", parentVault, underlyingVault, deployTimestamp);
 
-        // Submit and execute increaseAbsoluteCap on parent vault (requires Curator role)
         bytes memory data = abi.encodeWithSignature("increaseAbsoluteCap(bytes,uint256)", _idData, absoluteCap);
         // slither-disable-next-line reentrancy-events
         IVaultV2(parentVault).submit(data);
+        // slither-disable-next-line reentrancy-events
         IVaultV2(parentVault).increaseAbsoluteCap(_idData, absoluteCap);
 
         emit IE.PolicyBound(address(this), _policyId);

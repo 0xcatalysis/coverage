@@ -652,6 +652,142 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                   SET EXCESS COLLATERAL RECIPIENT
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setExcessCollateralRecipient_WhenCallerNotAdmin_Reverts() public {
+        address recipient = makeAddr("recipient");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, claimer, claimManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(claimer);
+        claimManager.setExcessCollateralRecipient(recipient);
+    }
+
+    function test_setExcessCollateralRecipient_WhenCalledByAdmin_UpdatesStateAndEmits() public {
+        address recipient = makeAddr("excessRecipient");
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit IClaimManager.ExcessCollateralRecipientSet(recipient);
+
+        vm.prank(admin);
+        claimManager.setExcessCollateralRecipient(recipient);
+
+        assertEq(claimManager.excessCollateralRecipient(), recipient, "Excess recipient not updated");
+    }
+
+    function test_setExcessCollateralRecipient_WhenSetToZero_ClearsRecipient() public {
+        address recipient = makeAddr("excessRecipient");
+        vm.prank(admin);
+        claimManager.setExcessCollateralRecipient(recipient);
+        assertEq(claimManager.excessCollateralRecipient(), recipient, "Should be set");
+
+        vm.prank(admin);
+        claimManager.setExcessCollateralRecipient(address(0));
+        assertEq(claimManager.excessCollateralRecipient(), address(0), "Should be cleared");
+    }
+
+    function test_fileClaim_WhenExcessCollateralRecipientSet_SweepsLeftoverTokens() public {
+        address recipient = makeAddr("excessRecipient");
+        vm.prank(admin);
+        claimManager.setExcessCollateralRecipient(recipient);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+
+        payoutTokenMock.mint(address(swapperMock), SLASH_AMOUNT);
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(SLASH_AMOUNT);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+
+        assertEq(collateralTokenMock.balanceOf(address(claimManager)), 0, "ClaimManager should not hold collateral");
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "ClaimManager should not hold payout tokens");
+    }
+
+    function test_fileClaim_WhenTooManyCollateralEntries_Reverts() public {
+        uint256 maxEntries = claimManager.MAX_COLLATERAL_ENTRIES();
+        uint256 overLimit = maxEntries + 1;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](overLimit);
+        uint256[] memory amounts = new uint256[](overLimit);
+        for (uint256 i = 0; i < overLimit; i++) {
+            assets[i] = address(new MockToken("C", "C"));
+            amounts[i] = 1 ether;
+        }
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.TooManyCollateralEntries.selector, overLimit));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenCollateralEntriesAtMaximum_Succeeds() public {
+        uint256 maxEntries = claimManager.MAX_COLLATERAL_ENTRIES();
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](maxEntries);
+        uint256[] memory amounts = new uint256[](maxEntries);
+        for (uint256 i = 0; i < maxEntries; i++) {
+            MockToken tok = new MockToken("C", "C");
+            assets[i] = address(tok);
+            amounts[i] = 0;
+        }
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.ZeroPayoutAmount.selector, POLICY_ID));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            CLAIM RECORD
+    //////////////////////////////////////////////////////////////*/
+
+    function test_claimRecord_WhenClaimNotFiled_ReturnsDefault() public view {
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, 0);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.None), "Status should be None");
+        assertEq(record.reporter, address(0), "Reporter should be zero");
+        assertEq(record.filedAt, 0, "FiledAt should be zero");
+        assertEq(record.resolvedAt, 0, "ResolvedAt should be zero");
+        assertEq(record.evidenceHash, bytes32(0), "EvidenceHash should be zero");
+        assertEq(record.payoutAmount, 0, "PayoutAmount should be zero");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          POLICY CLAIM
+    //////////////////////////////////////////////////////////////*/
+
+    function test_policyClaim_WhenNoClaims_ReturnsDefaults() public view {
+        IClaimManager.PolicyClaim memory state = claimManager.policyClaim(POLICY_ID);
+        assertEq(state.claimCount, 0, "ClaimCount should be 0");
+        assertEq(state.totalPaidOut, 0, "TotalPaidOut should be 0");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        REMAINING COVERAGE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_remainingCoverage_WhenNoClaims_ReturnsFullCoverage() public view {
+        uint256 remaining = claimManager.remainingCoverage(POLICY_ID);
+        assertEq(remaining, COVERAGE_LIMIT, "Should return full coverage limit");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                               FILE CLAIM
     //////////////////////////////////////////////////////////////*/
 
@@ -2289,6 +2425,7 @@ contract ClaimManagerTest is Test {
             specId: keccak256("MorphoSpec"),
             termsHash: keccak256("terms-hash"),
             policyCommit: policyCommit,
+            curator: operator,
             premiumDefaulted: false
         });
     }
