@@ -8,6 +8,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {IQuotableAdapter} from "./interfaces/IQuotableAdapter.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
 import {IWETH} from "./interfaces/IWETH.sol";
 
@@ -169,6 +170,36 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
         route.swapCalldata = swapCalldata;
 
         emit SwapRouteSet(tokenIn, tokenOut, swapTarget, enabled);
+    }
+
+    /**
+     * @inheritdoc ISwapper
+     */
+    function quoteSwap(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn
+    )
+        external
+        override
+        returns (uint256 amountOut)
+    {
+        if (amountIn == 0) return 0;
+
+        address actualTokenIn = tokenIn == NATIVE_ETH ? nativeWrapper : tokenIn;
+        address actualTokenOut = tokenOut == NATIVE_ETH ? nativeWrapper : tokenOut;
+        if (actualTokenIn == actualTokenOut) return 0;
+
+        bytes32 routeKey = _getRouteKey(actualTokenIn, actualTokenOut);
+        SwapRoute storage route = _swapRoutes[routeKey];
+        if (!route.enabled || route.swapTarget == address(0)) return 0;
+        if (!whitelistedTargets[route.swapTarget]) return 0;
+
+        try IQuotableAdapter(route.swapTarget).quote(actualTokenIn, actualTokenOut, amountIn) returns (uint256 quoted) {
+            amountOut = quoted;
+        } catch {
+            amountOut = 0;
+        }
     }
 
     /**
