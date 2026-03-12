@@ -67,6 +67,7 @@ contract UniswapV3Adapter is Ownable2Step, IQuotableAdapter {
      */
     function quote(address tokenIn, address tokenOut, uint256 amountIn) external override returns (uint256 amountOut) {
         uint24 fee = _getFee(tokenIn, tokenOut);
+        // slither-disable-next-line unused-return
         (amountOut,,,) = QUOTER.quoteExactInputSingle(
             IQuoterV2.QuoteExactInputSingleParams({
                 tokenIn: tokenIn, tokenOut: tokenOut, amountIn: amountIn, fee: fee, sqrtPriceLimitX96: 0

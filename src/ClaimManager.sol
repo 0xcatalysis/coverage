@@ -450,6 +450,73 @@ contract ClaimManager is
     }
 
     /**
+     * @notice Converts a vault's stake to its payout-token equivalent value.
+     * @dev Returns the stake directly when the collateral token matches the payout token; otherwise
+     *      calls quoteSwap and returns 0 on failure so the vault is excluded from slash distribution.
+     */
+    function _toPayoutEquivalent(address token, address payoutToken, uint256 stake) private returns (uint256) {
+        if (token == payoutToken) return stake;
+        // slither-disable-next-line calls-loop
+        try ISwapper(swapper).quoteSwap(token, payoutToken, stake) returns (uint256 quoted) {
+            return quoted;
+        } catch {
+            return 0;
+        }
+    }
+
+    /**
+     * @notice Calculates the token-native slash amount for a vault.
+     * @dev Proportional base slash is inflated upward for non-payout-token vaults to account for
+     *      DEX slippage, then capped at the vault's available stake.
+     *      The stake cap is intentionally skipped for payout-token vaults (token == payoutToken)
+     *      since no swap is involved; the SlashingManager enforces its own ceiling in that case.
+     */
+    function _calculateVaultSlash(
+        address token,
+        address payoutToken,
+        uint256 tokenStake,
+        uint256 payoutEquivalent,
+        uint256 requestedAmount,
+        uint256 totalPayoutEquivalent
+    )
+        private
+        returns (uint256 slashAmount)
+    {
+        slashAmount = (tokenStake * requestedAmount) / totalPayoutEquivalent;
+        if (slashAmount == 0 || token == payoutToken) return slashAmount;
+
+        uint256 expectedOut = (requestedAmount * payoutEquivalent) / totalPayoutEquivalent;
+        slashAmount = _inflateForSlippage(token, payoutToken, slashAmount, expectedOut);
+        if (slashAmount > tokenStake) slashAmount = tokenStake;
+    }
+
+    /**
+     * @notice Inflates a base slash amount to compensate for anticipated DEX swap slippage.
+     * @dev Quotes the actual swap output for baseSlash and scales up so the beneficiary receives
+     *      expectedOut after the swap. The result is capped at maxSwapSlippageBps above baseSlash.
+     *      Returns baseSlash unchanged when the quote call reverts or no inflation is needed.
+     */
+    function _inflateForSlippage(
+        address token,
+        address payoutToken,
+        uint256 baseSlash,
+        uint256 expectedOut
+    )
+        private
+        returns (uint256)
+    {
+        // slither-disable-next-line calls-loop
+        try ISwapper(swapper).quoteSwap(token, payoutToken, baseSlash) returns (uint256 quotedOut) {
+            if (quotedOut > 0 && quotedOut < expectedOut) {
+                uint256 inflated = (baseSlash * expectedOut) / quotedOut;
+                uint256 maxInflated = baseSlash * 10_000 / (10_000 - maxSwapSlippageBps);
+                return inflated > maxInflated ? maxInflated : inflated;
+            }
+        } catch {}
+        return baseSlash;
+    }
+
+    /**
      * @notice Processes collateral by swapping or transferring directly with cap.
      * @param policyId Identifier of the policy (for events).
      * @param claimId Identifier of the claim (for events).
