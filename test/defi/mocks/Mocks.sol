@@ -535,7 +535,8 @@ contract MockVaultV2 {
 
         _shares[owner_] -= shares;
         _totalShares -= shares;
-        _totalAssets -= assets;
+        // Safe subtraction: with simulated profit, convertToAssets can exceed _totalAssets
+        _totalAssets = assets >= _totalAssets ? 0 : _totalAssets - assets;
 
         _asset.transfer(receiver, assets);
 
