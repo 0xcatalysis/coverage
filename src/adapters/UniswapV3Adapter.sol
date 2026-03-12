@@ -81,6 +81,8 @@ contract UniswapV3Adapter is Ownable2Step, IQuotableAdapter {
     function _getFee(address tokenIn, address tokenOut) private view returns (uint24 fee) {
         bytes32 key = keccak256(abi.encodePacked(tokenIn, tokenOut));
         fee = pairFees[key];
-        if (fee == 0) fee = DEFAULT_FEE;
+        if (fee == 0) {
+            fee = DEFAULT_FEE;
+        }
     }
 }
