@@ -181,7 +181,6 @@ contract ClaimManager is
      * @inheritdoc IClaimManager
      */
     function setExcessCollateralRecipient(address recipient_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(recipient_ != address(0), ZeroAddress());
         excessCollateralRecipient = recipient_;
         emit ExcessCollateralRecipientSet(recipient_);
     }
