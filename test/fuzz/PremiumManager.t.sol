@@ -81,7 +81,8 @@ contract PremiumManagerFuzzTest is Test {
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
-                    PremiumManager.initialize, (admin, address(rewardsManager), platformTreasury, 50, address(policyManager))
+                    PremiumManager.initialize,
+                    (admin, address(rewardsManager), platformTreasury, 50, address(policyManager))
                 )
             )
         );
