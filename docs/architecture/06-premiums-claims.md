@@ -99,12 +99,9 @@ Guardrail:
 ### Components
 
 - `ClaimManager` - claim intake, evaluation, and settlement.
-- `SpecRegistry` + `ISpec` - payability decision logic. Only admin-approved `ISpec` implementations
-  can be registered; once registered, a spec remains resolvable for existing policies regardless of
-  subsequent revocation.
-- Core `ChainlinkPriceFeed` - payout token amount -> USD slash target.
-- Core `SlashingManager` - committee slashing execution.
-- `Swapper` - collateral token conversion.
+- `SpecRegistry` + `ISpec` - payability decision logic.
+- Core `SlashingManager` - per-vault stake preview and token-native slashing execution.
+- `Swapper` - collateral token conversion and pre-swap quotes for slippage inflation.
 
 ### Claim Settlement Sequence
 
@@ -114,7 +111,6 @@ sequenceDiagram
     participant CM as ClaimManager
     participant SR as SpecRegistry
     participant Spec as ISpec
-    participant PF as Core ChainlinkPriceFeed
     participant SLM as Core SlashingManager
     participant SW as Swapper
     participant Beneficiary
@@ -213,16 +209,6 @@ Claims are accepted only while policy is active:
 
 Claim payout path is entered only if `ISpec.evaluate(context).isPayable == true`.
 
-### Evidence Hash
-
-Every call to `fileClaim` must supply a non-zero `evidenceHash` that is unique per policy. The
-`ClaimManager` maintains a per-policy set of consumed hashes and reverts with `DuplicateEvidenceHash`
-if the same hash is reused, whether the original claim was approved or rejected. This ensures each
-claim references distinct evidence and supports post-claim auditing.
-
-Callers should supply a hash that identifies a retrievable evidence document, such as an IPFS CID
-digest (`keccak256` of the CID multihash bytes), to enable off-chain verification.
-
 ## Collateral Conversion Rules
 
 In `_processCollateral(...)`:
@@ -280,8 +266,8 @@ target is whitelisted. It reverts before broadcasting if any route is missing.
 
 ### Runtime Risks
 
-- If Core slashing returns no collateral, payout path reverts.
-- If price conversion fails, slash target cannot be computed.
+- If Core slashing preview returns zero total stake, payout path reverts (`NoCollateralSlashed`).
+- If Core slashing execution returns no collateral, payout path reverts.
 - Claim timing outside coverage window always reverts.
 
 ### Operational Controls
