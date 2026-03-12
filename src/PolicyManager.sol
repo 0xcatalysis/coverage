@@ -256,11 +256,13 @@ contract PolicyManager is
         // Query core contracts using policyId as committeeId (1:1 mapping).
         require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));
 
+        // slither-disable-next-line unused-return
         (, address[] memory tokens, uint256[] memory tokenStakes) =
             IStakeManager(stakeManager).getCommitteeTokenStakes(policyId);
         uint256 totalStakeUSD = 0;
         for (uint256 i = 0; i < tokens.length; ++i) {
             if (tokenStakes[i] > 0) {
+                // slither-disable-next-line calls-loop
                 totalStakeUSD += IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(tokens[i], tokenStakes[i]);
             }
         }
