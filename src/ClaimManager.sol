@@ -466,10 +466,6 @@ contract ClaimManager is
 
     /**
      * @notice Calculates the token-native slash amount for a vault.
-     * @dev Proportional base slash is capped at the vault's available stake for all vault types,
-     *      then inflated upward for non-payout-token vaults to account for DEX slippage (also capped).
-     *      The base cap guards against requestedAmount > totalPayoutEquivalent, which can occur when
-     *      stake is withdrawn between bind and claim.
      */
     function _calculateVaultSlash(
         address token,
@@ -482,6 +478,7 @@ contract ClaimManager is
         private
         returns (uint256 slashAmount)
     {
+        if (payoutEquivalent == 0) return 0;
         slashAmount = (tokenStake * requestedAmount) / totalPayoutEquivalent;
         if (slashAmount > tokenStake) slashAmount = tokenStake;
         if (slashAmount == 0 || token == payoutToken) return slashAmount;
