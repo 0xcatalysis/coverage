@@ -848,6 +848,7 @@ contract ClaimManagerTest is Test {
                 policyId: 0,
                 beneficiary: address(0),
                 claimer: address(0),
+                curator: address(0),
                 startTime: 0,
                 maturityTime: 0,
                 payoutToken: address(0),
