@@ -1192,7 +1192,6 @@ contract MockPolicyManager {
             claimer: address(0),
             payoutToken: address(0),
             curator: address(0),
-            coverageAmount: 1_000_000e8,
             duration: 30 days,
             policyId: policyId,
             status: IPolicyManager.PolicyStatus.Created,
