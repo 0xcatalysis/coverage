@@ -72,7 +72,8 @@ sequenceDiagram
     PC->>PC: redeem(shares) -> underlying assets
     PC->>PRM: transfer underlying
     PC->>PRM: distributePremium(pool, policyId, token, amount)
-    PRM->>Pool: read poolFeeBps + feeRecipient + owner
+    PRM->>Pool: read poolFeeBps + feeRecipient
+    PRM->>PM: policyMetadata(policyId) -> curator (snapshotted at bind)
     PRM->>PRM: compute fee splits (retain restaker share)
     PRM->>Treasury: platform fee
     PRM->>PoolRecipient: pool fee
@@ -130,7 +131,8 @@ sequenceDiagram
     else payable
         CM->>PF: getUSDValue(payoutToken, requestedAmount)
         PF-->>CM: slashAmountUSD
-        CM->>SLM: executeSlashing(policyId, operator, slashAmountUSD)
+        Note over CM: curator read from PolicyMetadata (snapshotted at bind)
+        CM->>SLM: executeSlashing(policyId, curator, slashAmountUSD)
         SLM-->>CM: collateralTokens[], collateralAmounts[]
         loop each collateral token
             alt token == payoutToken
