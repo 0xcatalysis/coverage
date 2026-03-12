@@ -6,6 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Test} from "forge-std/Test.sol";
 import {PremiumManager} from "../../src/PremiumManager.sol";
+import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -21,6 +22,18 @@ contract FuzzPMToken is ERC20 {
 
 contract FuzzRewardsManager {
     function distributeRewards(uint96, address, uint256, IERC20, bytes32) external {}
+}
+
+contract FuzzPolicyManager {
+    address internal _curator;
+
+    constructor(address curator_) {
+        _curator = curator_;
+    }
+
+    function policyMetadata(uint96) external view returns (IPolicyManager.PolicyMetadata memory meta) {
+        meta.curator = _curator;
+    }
 }
 
 contract FuzzCoverPool {
@@ -47,6 +60,7 @@ contract PremiumManagerFuzzTest is Test {
     PremiumManager internal premiumManager;
     FuzzPMToken internal premiumToken;
     FuzzRewardsManager internal rewardsManager;
+    FuzzPolicyManager internal policyManager;
     FuzzCoverPool internal pool;
 
     address internal admin = makeAddr("admin");
@@ -59,13 +73,16 @@ contract PremiumManagerFuzzTest is Test {
 
     function setUp() public {
         rewardsManager = new FuzzRewardsManager();
+        policyManager = new FuzzPolicyManager(curator);
         premiumToken = new FuzzPMToken();
 
         PremiumManager impl = new PremiumManager();
         address proxy = address(
             new ERC1967Proxy(
                 address(impl),
-                abi.encodeCall(PremiumManager.initialize, (admin, address(rewardsManager), platformTreasury, 50))
+                abi.encodeCall(
+                    PremiumManager.initialize, (admin, address(rewardsManager), platformTreasury, 50, address(policyManager))
+                )
             )
         );
         premiumManager = PremiumManager(proxy);

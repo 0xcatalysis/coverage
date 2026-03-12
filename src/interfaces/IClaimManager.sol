@@ -426,6 +426,11 @@ interface IClaimManager is IAccessControl {
     function excessCollateralRecipient() external view returns (address);
 
     /**
+     * @notice Returns the maximum number of collateral token entries that can be processed in a single claim.
+     */
+    function MAX_COLLATERAL_ENTRIES() external view returns (uint256);
+
+    /**
      * @notice Sets the excess collateral recipient address.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      * @param recipient_ New recipient address for excess/stranded collateral.
