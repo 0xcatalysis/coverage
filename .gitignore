@@ -6,6 +6,7 @@ node_modules/
 out/
 
 .idea
+.claude/
 *.log
 .DS_Store
 .env

@@ -1,0 +1,532 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
+
+import {ICoveredVaultWrapper} from "../../interfaces/ICoveredVaultWrapper.sol";
+import {IVaultV2} from "../../interfaces/Morpho/IVaultV2.sol";
+import {BasePolicyInteractions} from "../../base/BasePolicyInteractions.sol";
+import {IAlerts as IA} from "../../interfaces/IAlerts.sol";
+import {IEvents as IE} from "../../interfaces/IEvents.sol";
+import {ISpec} from "coverage/interfaces/ISpec.sol";
+import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
+import {IClaimManager} from "coverage/interfaces/IClaimManager.sol";
+import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+/// @title CoveredVaultWrapper
+/// @notice User-facing ERC-4626 vault (UUPS proxy) that wraps a Morpho V2 vault and provides per-user insurance.
+///
+/// @dev Architecture:
+///      User → CoveredVaultWrapper (ERC-4626, UUPS)
+///               → Morpho V2 vault (fees=0, sole depositor=wrapper)
+///                   → MorphoVaultV1Adapter (off-the-shelf)
+///                       → Underlying ERC-4626 yield source
+///
+///      Coverage model:
+///      - Tracks per-user principal (cost basis) in userPrincipal[user]
+///      - Premium accrues on totalPrincipal (not totalAssets), preventing premium on yield
+///      - Insurance is paid directly to the receiver on withdrawal, not via share price
+///      - Maximum per-user coverage is capped at maxCoverableLossBps of the user's principal
+///      - A configurable deductible (deductibleBps) is applied to every insurance claim
+///
+///      Share transfer invariant:
+///      - _update() migrates userPrincipal proportionally on every ERC-20 transfer
+///      - totalPrincipal is unchanged by transfers (only by deposits and withdrawals)
+contract CoveredVaultWrapper is
+    ICoveredVaultWrapper,
+    ERC4626Upgradeable,
+    OwnableUpgradeable,
+    BasePolicyInteractions,
+    UUPSUpgradeable,
+    ReentrancyGuard,
+    IBindPolicyHook
+{
+    using SafeERC20 for IERC20;
+    using Math for uint256;
+
+    /*//////////////////////////////////////////////////////////////
+                            CONSTANTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Basis points denominator (100% = 10_000)
+    // aderyn-fp-next-line(large-numeric-literal) 10_000 is clearer than 1e4 for basis points
+    uint256 private constant BPS_DENOMINATOR = 10_000;
+
+    /// @notice Transient storage slot for pending claim amount
+    // aderyn-fp-next-line(unused-state-variable) Used in inline assembly with tstore/tload
+    uint256 private constant PENDING_CLAIM_AMOUNT_SLOT = 0x1;
+
+    /// @notice WAD scaling factor for premium rate
+    uint256 private constant WAD = 1e18;
+
+    /// @notice Maximum allowed premium rate: ~50% per year (WAD-scaled per second)
+    /// @dev 50e16 / 365 days = 15_854_895_991 wei/second
+    uint256 private constant MAX_PREMIUM_RATE_PER_SECOND = 15_854_895_991;
+
+    /*//////////////////////////////////////////////////////////////
+                         STORAGE
+    //////////////////////////////////////////////////////////////*/
+
+    /// @inheritdoc ICoveredVaultWrapper
+    address public morphoVault;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    uint16 public maxCoverableLossBps;
+
+    /// @notice Deductible percentage applied to every insurance claim (in basis points)
+    uint16 public deductibleBps;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    uint96 public policyId;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    bool public policyBoundExecuted;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    mapping(address => uint256) public userPrincipal;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    uint256 public totalPrincipal;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    uint256 public premiumRatePerSecond;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    uint256 public lastPremiumAccrualTime;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    address public premiumRecipient;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev Set to 0 on deployment; updated by onPolicyBound. maxDeposit() returns 0 until set.
+    uint256 public depositCap;
+
+    uint256[50] private __gap;
+
+    /*//////////////////////////////////////////////////////////////
+                            ERRORS
+    //////////////////////////////////////////////////////////////*/
+
+    error NotAuthorized();
+    error InvalidData();
+    error PolicyBoundAlreadyExecuted();
+
+    /*//////////////////////////////////////////////////////////////
+                            CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            INITIALIZER
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Initializes the CoveredVaultWrapper
+    /// @param _morphoVault Address of the underlying Morpho V2 vault
+    /// @param _claimManager Address of the ClaimManager contract
+    /// @param _coverPool Address of the CoverPool contract
+    /// @param _maxCoverableLossBps Maximum loss percentage coverable in basis points (e.g. 1000 = 10%)
+    /// @param _deductibleBps Deductible percentage in basis points applied to every claim (e.g. 100 = 1%)
+    /// @param _premiumRecipient Address that receives accrued premiums
+    /// @param _owner Owner of the wrapper (also the required policy buyer)
+    /// @param _name ERC-20 name for the wrapper shares
+    /// @param _symbol ERC-20 symbol for the wrapper shares
+    function initialize(
+        address _morphoVault,
+        address _claimManager,
+        address _coverPool,
+        uint16 _maxCoverableLossBps,
+        uint16 _deductibleBps,
+        address _premiumRecipient,
+        address _owner,
+        string memory _name,
+        string memory _symbol
+    )
+        external
+        initializer
+    {
+        require(_morphoVault != address(0), IA.ZeroAddress());
+        require(_premiumRecipient != address(0), IA.ZeroAddress());
+        require(_maxCoverableLossBps > 0 && _maxCoverableLossBps <= BPS_DENOMINATOR, IA.InvalidMaxCoverableLoss());
+        require(_deductibleBps < BPS_DENOMINATOR, IA.InvalidParameters());
+
+        __ERC4626_init(IERC20(IVaultV2(_morphoVault).asset()));
+        __ERC20_init(_name, _symbol);
+        __Ownable_init(_owner);
+        __BasePolicyInteractions_init(IClaimManager(_claimManager).policyManager(), _claimManager, _coverPool);
+
+        morphoVault = _morphoVault;
+        maxCoverableLossBps = _maxCoverableLossBps;
+        deductibleBps = _deductibleBps;
+        premiumRecipient = _premiumRecipient;
+        lastPremiumAccrualTime = block.timestamp;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    ERC-4626 OVERRIDES
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns total assets managed by this wrapper, net of accrued-but-unprocessed premium
+    /// @dev This keeps the share price honest: premium is a liability against the vault's assets
+    function totalAssets() public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
+        uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
+        uint256 accrued = _accruedPremium();
+        return morphoValue > accrued ? morphoValue - accrued : 0;
+    }
+
+    /// @notice Deposit assets into the wrapper
+    /// @dev Full override — does NOT call super._deposit. Deposits into Morpho as address(this).
+    ///      Principal is tracked for the receiver (not the caller).
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-benign
+    function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override nonReentrant {
+        _accruePremium();
+        IERC20(asset()).safeTransferFrom(caller, address(this), assets);
+        IERC20(asset()).forceApprove(address(morphoVault), assets);
+        // slither-disable-next-line reentrancy-state-change
+        IVaultV2(morphoVault).deposit(assets, address(this));
+        _mint(receiver, shares); // triggers _update(address(0), receiver, shares) — no principal migration for mints
+        userPrincipal[receiver] += assets;
+        totalPrincipal += assets;
+        emit IE.NavRecorded(receiver, assets, shares, userPrincipal[receiver]);
+    }
+
+    /// @notice Withdraw assets from the wrapper
+    /// @dev Full override — does NOT call super._withdraw. Redeems Morpho shares proportionally.
+    ///      Insurance is paid directly to receiver if a loss is detected and policy is active.
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-benign,events-maths
+    function _withdraw(
+        address caller,
+        address receiver,
+        address owner,
+        uint256 assets,
+        uint256 shares
+    )
+        internal
+        override
+        nonReentrant
+    {
+        _accruePremium();
+
+        if (caller != owner) {
+            _spendAllowance(owner, caller, shares);
+        }
+
+        // Calculate principal attributable to these shares BEFORE burn (balanceOf still includes them)
+        uint256 ownerBalance = balanceOf(owner);
+        uint256 userPrincipalForWithdrawal =
+            ownerBalance > 0 ? userPrincipal[owner].mulDiv(shares, ownerBalance, Math.Rounding.Floor) : 0;
+
+        _burn(owner, shares); // triggers _update(owner, address(0), shares) — no principal migration for burns
+
+        // Redeem from Morpho: burn morpho shares proportional to wrapper shares redeemed
+        // assets == 0 when totalAssets() == 0 (e.g. 100% loss) — skip morpho redeem in that case
+        uint256 assetsReceived;
+        if (assets > 0) {
+            uint256 morphoShares = IVaultV2(morphoVault).previewWithdraw(assets);
+            // slither-disable-next-line reentrancy-state-change
+            assetsReceived = IVaultV2(morphoVault).redeem(morphoShares, address(this), address(this));
+        }
+
+        // Per-user insurance: only if a shortfall exists and policy is active
+        uint256 insurancePayout = 0;
+        if (userPrincipalForWithdrawal > assetsReceived && _isPolicyActive()) {
+            uint256 shortfall = userPrincipalForWithdrawal - assetsReceived;
+            uint256 maxInsurance = userPrincipalForWithdrawal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
+            uint256 effectiveInsurance = maxInsurance.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
+            uint256 claimAmount = shortfall < effectiveInsurance ? shortfall : effectiveInsurance;
+            if (claimAmount > 0) {
+                insurancePayout = _claimInsurance(claimAmount, owner);
+            }
+        }
+
+        uint256 totalOut = assetsReceived + insurancePayout;
+        if (totalOut > 0) IERC20(asset()).safeTransfer(receiver, totalOut);
+
+        userPrincipal[owner] -= userPrincipalForWithdrawal;
+        totalPrincipal -= userPrincipalForWithdrawal;
+
+        emit IE.NavWithdrawn(owner, assetsReceived, shares, insurancePayout, userPrincipal[owner]);
+    }
+
+    /// @notice Hook called on every ERC-20 share transfer
+    /// @dev Migrates userPrincipal proportionally on transfers. Mint (from==0) and burn (to==0)
+    ///      are intentionally excluded — those cases are handled explicitly in _deposit/_withdraw.
+    ///      IMPORTANT: super._update() is called LAST so that balanceOf(from) is still pre-transfer.
+    function _update(address from, address to, uint256 value) internal override {
+        if (from != address(0) && to != address(0)) {
+            uint256 fromBalance = balanceOf(from); // pre-transfer balance
+            if (fromBalance > 0) {
+                uint256 principalMoved = userPrincipal[from].mulDiv(value, fromBalance, Math.Rounding.Floor);
+                userPrincipal[from] -= principalMoved;
+                userPrincipal[to] += principalMoved;
+                emit IE.PrincipalTransferred(from, to, principalMoved);
+            }
+        }
+        super._update(from, to, value);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    PREMIUM FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns accrued-but-unprocessed premium owed to premiumRecipient
+    function _accruedPremium() internal view returns (uint256) {
+        if (totalPrincipal == 0) return 0;
+        uint256 elapsed = block.timestamp - lastPremiumAccrualTime;
+        return totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor);
+    }
+
+    /// @notice Accrues premium and transfers it to premiumRecipient
+    // slither-disable-next-line reentrancy-no-eth
+    function _accruePremium() internal {
+        uint256 accrued = _accruedPremium();
+        if (accrued == 0) {
+            lastPremiumAccrualTime = block.timestamp;
+            return;
+        }
+
+        // H-02: Cap accrued premium at the wrapper's actual Morpho position value to
+        //        prevent over-redemption after a loss or prolonged accrual gap
+        uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
+        if (accrued > morphoValue) accrued = morphoValue;
+
+        uint256 morphoShares = IVaultV2(morphoVault).previewWithdraw(accrued);
+        // L-03: Only advance timestamp when an actual redemption occurs; otherwise dust
+        //        carries forward into the next cycle rather than being silently dropped
+        if (morphoShares == 0) return;
+
+        lastPremiumAccrualTime = block.timestamp;
+        // slither-disable-next-line reentrancy-state-change
+        uint256 assetsReceived = IVaultV2(morphoVault).redeem(morphoShares, address(this), address(this));
+        if (assetsReceived > 0) {
+            IERC20(asset()).safeTransfer(premiumRecipient, assetsReceived);
+            emit IE.PremiumCollected(premiumRecipient, assetsReceived);
+        }
+    }
+
+    /// @inheritdoc ICoveredVaultWrapper
+    function collectPremium() external {
+        _accruePremium();
+    }
+
+    /// @inheritdoc ICoveredVaultWrapper
+    function setPremiumRate(uint256 newRate) external onlyOwner {
+        require(newRate <= MAX_PREMIUM_RATE_PER_SECOND, IA.InvalidParameters());
+        // Settle any premium accrued at the old rate before switching
+        _accruePremium();
+        uint256 oldRate = premiumRatePerSecond;
+        premiumRatePerSecond = newRate;
+        emit IE.PremiumRateUpdated(oldRate, newRate);
+    }
+
+    /// @inheritdoc ICoveredVaultWrapper
+    function setPremiumRecipient(address newRecipient) external onlyOwner {
+        require(newRecipient != address(0), IA.ZeroAddress());
+        _accruePremium(); // settle at old recipient before switching
+        address oldRecipient = premiumRecipient;
+        premiumRecipient = newRecipient;
+        emit IE.PremiumRecipientUpdated(oldRecipient, newRecipient);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    POLICY HOOK
+    //////////////////////////////////////////////////////////////*/
+
+    /// @inheritdoc IBindPolicyHook
+    // slither-disable-next-line reentrancy-events
+    function onPolicyBound(
+        uint96 _policyId,
+        uint256 coverageLimit
+    )
+        external
+        override (IBindPolicyHook, ICoveredVaultWrapper)
+    {
+        if (msg.sender != address(_policyManager)) revert NotAuthorized();
+        if (policyBoundExecuted) revert PolicyBoundAlreadyExecuted();
+
+        // Validate that the policy parameters are consistent with this wrapper
+        // aderyn-fp-next-line(reentrancy-state-change) Only callable by trusted PolicyManager, executed once
+        IPolicyManager.PolicyMetadata memory pol = _policyManager.policyMetadata(_policyId);
+        // aderyn-fp-next-line(reentrancy-state-change) Only callable by trusted PolicyManager, executed once
+        if (pol.buyer != owner()) revert InvalidData();
+        if (pol.pool != address(coverPool)) revert InvalidData();
+        if (pol.claimer != address(this)) revert InvalidData();
+        if (pol.beneficiary != address(this)) revert InvalidData();
+        if (pol.payoutToken != asset()) revert InvalidData();
+
+        policyId = _policyId;
+        policyBoundExecuted = true;
+
+        // depositCap = total TVL cap implied by the coverage limit
+        // If maxCoverableLossBps=10% (1000) and coverageLimit=100, cap = 100 * 10000/1000 = 1000
+        depositCap = (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
+
+        emit IE.PolicyBound(address(this), _policyId);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    INSURANCE INTERNALS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Claims insurance for a shortfall incurred by a user
+    /// @param shortfall The raw shortfall amount (will be capped by remaining coverage)
+    /// @param user Address of the user who suffered the loss (used for event emission)
+    /// @return payout The actual insurance payout received
+    function _claimInsurance(uint256 shortfall, address user) internal returns (uint256 payout) {
+        (uint256 coverageLimit, address payoutToken) = _getCoverageParams(policyId);
+
+        uint256 paidOut = _getPaidCover(policyId);
+        uint256 remainingCoverage = coverageLimit > paidOut ? coverageLimit - paidOut : 0;
+
+        uint256 cappedShortfall = shortfall > remainingCoverage ? remainingCoverage : shortfall;
+        if (cappedShortfall == 0) return 0;
+
+        uint256 balanceBefore = IERC20(payoutToken).balanceOf(address(this));
+
+        _setPendingClaim(cappedShortfall);
+
+        // aderyn-fp-next-line(weak-randomness) evidenceHash is for claim identification, not security-critical
+        bytes32 evidenceHash = keccak256(abi.encodePacked(user, policyId, cappedShortfall, block.timestamp));
+        // aderyn-fp-next-line(unchecked-return) ClaimId not needed — success determined via balance change
+        _fileAndResolveClaim(policyId, cappedShortfall, evidenceHash, abi.encode(address(this), cappedShortfall));
+
+        _clearPendingClaim();
+
+        uint256 balanceAfter = IERC20(payoutToken).balanceOf(address(this));
+        payout = balanceAfter - balanceBefore;
+
+        emit IE.InsuranceClaimed(user, policyId, shortfall, payout);
+    }
+
+    /// @inheritdoc ISpec
+    function evaluate(ISpec.EvaluationContext calldata context)
+        external
+        view
+        override
+        returns (ISpec.EvaluationResult memory result)
+    {
+        (uint256 pendingClaimAmount, bool hasPendingClaim) = _getPendingClaim();
+        (address claimant, uint256 claimedAmount) = abi.decode(context.additionalData, (address, uint256));
+
+        if (!hasPendingClaim || policyId != context.policyId) {
+            return ISpec.EvaluationResult({
+                isPayable: false, notesHash: keccak256(abi.encodePacked("No pending claim from wrapper"))
+            });
+        }
+
+        bool isValid = pendingClaimAmount == claimedAmount;
+        result = ISpec.EvaluationResult({
+            isPayable: isValid,
+            notesHash: keccak256(
+                abi.encodePacked(claimant, claimedAmount, isValid ? "Shortfall validated" : "Invalid claim")
+            )
+        });
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    VIEW FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @inheritdoc ICoveredVaultWrapper
+    // slither-disable-next-line incorrect-equality
+    function calculateShortfall() external view override returns (uint256) {
+        if (totalPrincipal == 0) return 0;
+        uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
+        if (totalPrincipal > morphoValue) {
+            uint256 rawShortfall = totalPrincipal - morphoValue;
+            uint256 maxCoverable = totalPrincipal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
+            uint256 capped = rawShortfall > maxCoverable ? maxCoverable : rawShortfall;
+            return capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
+        }
+        return 0;
+    }
+
+    /// @inheritdoc ICoveredVaultWrapper
+    // slither-disable-next-line incorrect-equality
+    function userShortfall(address user) external view override returns (uint256) {
+        uint256 userShares = balanceOf(user);
+        if (userShares == 0) return 0;
+        uint256 totalShares = totalSupply();
+        uint256 morphoTotal = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
+        uint256 userMorphoValue = totalShares > 0 ? morphoTotal.mulDiv(userShares, totalShares, Math.Rounding.Floor) : 0;
+        if (userPrincipal[user] > userMorphoValue) {
+            uint256 raw = userPrincipal[user] - userMorphoValue;
+            uint256 maxCoverable = userPrincipal[user].mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
+            uint256 capped = raw > maxCoverable ? maxCoverable : raw;
+            return capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
+        }
+        return 0;
+    }
+
+    /// @notice Deposits are blocked until the policy is bound (depositCap is set by onPolicyBound)
+    function maxDeposit(address) public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
+        if (!policyBoundExecuted) return 0;
+        return depositCap > totalPrincipal ? depositCap - totalPrincipal : 0;
+    }
+
+    /// @notice Returns maximum shares mintable — mirrors maxDeposit() to enforce the deposit cap via mint()
+    function maxMint(address receiver)
+        public
+        view
+        override (ERC4626Upgradeable, ICoveredVaultWrapper)
+        returns (uint256)
+    {
+        return previewDeposit(maxDeposit(receiver));
+    }
+
+    /// @inheritdoc IERC165
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(IBindPolicyHook).interfaceId || interfaceId == type(IERC165).interfaceId;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    INTERNAL VIEW FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Checks if the policy is currently active (bound and within coverage window)
+    // slither-disable-next-line incorrect-equality
+    function _isPolicyActive() internal view returns (bool) {
+        if (policyId == 0) return false;
+        IPolicyManager.PolicyMetadata memory metadata = _policyManager.policyMetadata(policyId);
+        return metadata.buyer != address(0) && block.timestamp >= metadata.startTime
+            && block.timestamp <= metadata.maturityTime;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    PRIVATE HELPERS
+    //////////////////////////////////////////////////////////////*/
+
+    function _setPendingClaim(uint256 amount) private {
+        assembly {
+            tstore(PENDING_CLAIM_AMOUNT_SLOT, amount)
+        }
+    }
+
+    function _getPendingClaim() private view returns (uint256 amount, bool hasPendingClaim) {
+        assembly {
+            amount := tload(PENDING_CLAIM_AMOUNT_SLOT)
+            hasPendingClaim := gt(amount, 0)
+        }
+    }
+
+    function _clearPendingClaim() private {
+        assembly {
+            tstore(PENDING_CLAIM_AMOUNT_SLOT, 0)
+        }
+    }
+
+    /// @notice Restricts UUPS upgrade authorization to the wrapper owner
+    function _authorizeUpgrade(address) internal view override {
+        require(msg.sender == owner(), IA.NotAuthorizedUpgrader(msg.sender));
+    }
+}

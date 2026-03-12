@@ -40,4 +40,16 @@ interface IEvents {
 
     /// @notice Emitted when configuration is updated
     event ConfigUpdated();
+
+    /// @notice Emitted when premium is collected from the vault
+    event PremiumCollected(address indexed recipient, uint256 amount);
+
+    /// @notice Emitted when principal is migrated on share transfer
+    event PrincipalTransferred(address indexed from, address indexed to, uint256 principalAmount);
+
+    /// @notice Emitted when the premium rate is updated by the owner
+    event PremiumRateUpdated(uint256 oldRate, uint256 newRate);
+
+    /// @notice Emitted when the premium recipient is updated
+    event PremiumRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
 }
