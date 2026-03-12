@@ -185,11 +185,10 @@ contract PolicyManager is
             bindPolicyHook: bindPolicyHook
         });
 
-        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount, duration);
-
-        // Create committee in core contracts using policyId as committeeId (1:1 mapping).
         IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, pool, duration);
         IStakeManager(stakeManager).addOperatorToCommittee(curator, policyId);
+
+        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount, duration);
     }
 
     /**
@@ -245,7 +244,6 @@ contract PolicyManager is
 
         draft.status = PolicyStatus.Bound;
 
-        // Query core contracts using policyId as committeeId (1:1 mapping).
         require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));
 
         uint256 totalStake = IStakeManager(stakeManager).getCommitteeTotalStakeUSD(policyId);
@@ -267,7 +265,8 @@ contract PolicyManager is
             coverageLimit: boundPolicy.coverageLimit,
             specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
-            policyCommit: policyCommit
+            policyCommit: policyCommit,
+            curator: ICoverPool(msg.sender).owner()
         });
 
         _registeredPolicyCommits[policyCommit] = true;
@@ -309,6 +308,22 @@ contract PolicyManager is
      */
     function paused() public view override (IPolicyManager, PausableUpgradeable) returns (bool) {
         return super.paused();
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
+    function forceReleaseDraft(uint96 policyId) external override nonReentrant whenNotPaused {
+        PolicyDraft storage draft = _policyDrafts[policyId];
+        require(draft.status != PolicyStatus.None, PolicyDraftNotFound(policyId));
+        require(draft.status == PolicyStatus.Created, InvalidPolicyStatus(draft.status));
+        require(ICoverPool(draft.pool).owner() == msg.sender, UnauthorizedCaller());
+
+        draft.status = PolicyStatus.Cancelled;
+
+        IStakeManager(stakeManager).removeOperatorFromCommittee(draft.curator, policyId);
+
+        emit DraftForceReleased(policyId, draft.pool, msg.sender);
     }
 
     /**

@@ -24,6 +24,12 @@ interface IPremiumManager is IAccessControl {
     event RewardsManagerSet(address indexed rewardsManager_);
 
     /**
+     * @notice Emitted when the PolicyManager dependency is set or updated.
+     * @param policyManager_ Address of the policy manager contract.
+     */
+    event PolicyManagerSet(address indexed policyManager_);
+
+    /**
      * @notice Emitted when an ERC20 spender approval is set by the admin.
      * @param token ERC20 token address.
      * @param spender Address approved to spend the token.
@@ -99,6 +105,13 @@ interface IPremiumManager is IAccessControl {
     function setRewardsManager(address rewardsManager_) external;
 
     /**
+     * @notice Sets the PolicyManager contract reference for curator lookup.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param policyManager_ Address of the PolicyManager implementation.
+     */
+    function setPolicyManager(address policyManager_) external;
+
+    /**
      * @notice Approves a spender to transfer an ERC20 token held by this contract.
      * @dev Requires DEFAULT_ADMIN_ROLE. Uses forceApprove to safely reset allowances.
      * @param token ERC20 token to approve.
@@ -136,6 +149,11 @@ interface IPremiumManager is IAccessControl {
      * @notice Returns the configured RewardsManager address.
      */
     function rewardsManager() external view returns (address);
+
+    /**
+     * @notice Returns the configured PolicyManager address.
+     */
+    function policyManager() external view returns (address);
 
     /**
      * @notice Returns the configured platform treasury address.

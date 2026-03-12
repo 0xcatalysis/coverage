@@ -9,6 +9,7 @@ import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {PremiumManager} from "../../src/PremiumManager.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
+import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 
 contract PremiumManagerTest is Test {
@@ -29,6 +30,7 @@ contract PremiumManagerTest is Test {
     MockRewardsManager internal rewardsManager;
     MockToken internal premiumToken;
     MockCoverPool internal mockPool;
+    MockPolicyManager internal mockPolicyManager;
 
     event PremiumDistributed(address indexed pool, uint96 indexed policyId, uint256 amount);
     event RewardsManagerSet(address indexed rewardsManager_);
@@ -55,13 +57,15 @@ contract PremiumManagerTest is Test {
         premiumToken = new MockToken();
         mockPool = new MockCoverPool(curator, poolFeeRecipient, POOL_FEE_BPS);
         pool = address(mockPool);
+        mockPolicyManager = new MockPolicyManager(curator);
 
         Options memory deployOpts;
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
             "PremiumManager.sol",
             abi.encodeCall(
-                PremiumManager.initialize, (admin, address(rewardsManager), platformTreasury, PLATFORM_FEE_BPS)
+                PremiumManager.initialize,
+                (admin, address(rewardsManager), platformTreasury, PLATFORM_FEE_BPS, address(mockPolicyManager))
             ),
             deployOpts
         );
@@ -86,28 +90,37 @@ contract PremiumManagerTest is Test {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(address(0), address(rewardsManager), platformTreasury, PLATFORM_FEE_BPS);
+        freshManager.initialize(
+            address(0), address(rewardsManager), platformTreasury, PLATFORM_FEE_BPS, address(mockPolicyManager)
+        );
     }
 
     function test_initialize_WhenRewardsManagerZero_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(0), platformTreasury, PLATFORM_FEE_BPS);
+        freshManager.initialize(admin, address(0), platformTreasury, PLATFORM_FEE_BPS, address(mockPolicyManager));
     }
 
     function test_initialize_WhenPlatformTreasuryZero_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(rewardsManager), address(0), PLATFORM_FEE_BPS);
+        freshManager.initialize(admin, address(rewardsManager), address(0), PLATFORM_FEE_BPS, address(mockPolicyManager));
+    }
+
+    function test_initialize_WhenPolicyManagerZero_Reverts() public {
+        PremiumManager implementation = new PremiumManager();
+        PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
+        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
+        freshManager.initialize(admin, address(rewardsManager), platformTreasury, PLATFORM_FEE_BPS, address(0));
     }
 
     function test_initialize_WhenPlatformFeeExceedsMax_Reverts() public {
         PremiumManager implementation = new PremiumManager();
         PremiumManager freshManager = PremiumManager(address(new ERC1967Proxy(address(implementation), "")));
         vm.expectRevert(abi.encodeWithSelector(IPremiumManager.InvalidPlatformFeeBps.selector, 2501));
-        freshManager.initialize(admin, address(rewardsManager), platformTreasury, 2501);
+        freshManager.initialize(admin, address(rewardsManager), platformTreasury, 2501, address(mockPolicyManager));
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -115,7 +128,43 @@ contract PremiumManagerTest is Test {
         assertEq(premiumManager.rewardsManager(), address(rewardsManager), "Rewards manager mismatch");
         assertEq(premiumManager.platformTreasury(), platformTreasury, "Platform treasury mismatch");
         assertEq(premiumManager.platformFeeBps(), PLATFORM_FEE_BPS, "Platform fee mismatch");
+        assertEq(premiumManager.policyManager(), address(mockPolicyManager), "PolicyManager mismatch");
         assertFalse(premiumManager.paused(), "Manager unexpectedly paused");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          SET POLICY MANAGER
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setPolicyManager_WhenCallerNotAdmin_Reverts() public {
+        address newPolicyManager = makeAddr("newPolicyManager");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(premiumCollector);
+        premiumManager.setPolicyManager(newPolicyManager);
+    }
+
+    function test_setPolicyManager_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
+        vm.prank(admin);
+        premiumManager.setPolicyManager(address(0));
+    }
+
+    function test_setPolicyManager_WhenValid_UpdatesStateAndEmits() public {
+        address newPolicyManager = makeAddr("newPolicyManager");
+
+        vm.expectEmit(true, true, true, true, address(premiumManager));
+        emit IPremiumManager.PolicyManagerSet(newPolicyManager);
+
+        vm.prank(admin);
+        premiumManager.setPolicyManager(newPolicyManager);
+
+        assertEq(premiumManager.policyManager(), newPolicyManager, "PolicyManager not updated");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -352,12 +401,12 @@ contract PremiumManagerTest is Test {
         premiumManager.distributePremium(address(zeroRecipientPool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
-    function test_distributePremium_WhenPoolOwnerZero_Reverts() public {
-        MockCoverPool zeroOwnerPool = new MockCoverPool(address(0), poolFeeRecipient, POOL_FEE_BPS);
+    function test_distributePremium_WhenCuratorZeroInMetadata_Reverts() public {
+        mockPolicyManager.setCuratorForPolicy(POLICY_ID, address(0));
 
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(premiumCollector);
-        premiumManager.distributePremium(address(zeroOwnerPool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
     function test_distributePremium_WhenCombinedFeesExceed100Percent_Reverts() public {
@@ -435,10 +484,9 @@ contract PremiumManagerTest is Test {
         assertEq(address(call.rewardToken), address(premiumToken), "Reward token mismatch");
     }
 
-    function test_distributePremium_WhenFeeRecipientDiffersFromOwner_SendsFeesToRecipientAndOperatorToOwner() public {
+    function test_distributePremium_WhenFeeRecipientDiffersFromOwner_SendsFeesToRecipientAndRewardsToCurator() public {
         address differentFeeRecipient = makeAddr("differentFeeRecipient");
-        address separatePoolOwner = makeAddr("separatePoolOwner");
-        MockCoverPool separateAddressPool = new MockCoverPool(separatePoolOwner, differentFeeRecipient, POOL_FEE_BPS);
+        MockCoverPool separateAddressPool = new MockCoverPool(makeAddr("irrelevantOwner"), differentFeeRecipient, POOL_FEE_BPS);
 
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
@@ -450,11 +498,10 @@ contract PremiumManagerTest is Test {
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(differentFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertEq(premiumToken.balanceOf(separatePoolOwner), 0, "Pool owner should not receive pool fee");
         assertEq(premiumToken.balanceOf(address(premiumManager)), restakerSplit, "Restaker split mismatch");
 
         MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
-        assertEq(call.curator, separatePoolOwner, "Curator should be the pool owner, not feeRecipient");
+        assertEq(call.curator, curator, "Curator comes from policy metadata, not pool.owner()");
     }
 
     function test_distributePremium_FlowFromPolicyBindingToPremiumDistribution() public {
@@ -606,6 +653,7 @@ contract PremiumManagerTest is Test {
         address feeRecipient2 = makeAddr("feeRecipient2");
         MockCoverPool pool2 = new MockCoverPool(curator2, feeRecipient2, POOL_FEE_BPS);
         uint96 policyId2 = POLICY_ID + 1;
+        mockPolicyManager.setCuratorForPolicy(policyId2, curator2);
 
         (uint256 platformSplit,, uint256 restakerSplit) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
@@ -902,5 +950,24 @@ contract MockCoverPool {
     function getBoundPolicy(uint96 policyId) external view returns (ICoverPool.BoundPolicy memory policy) {
         if (!_permissive) revert ICoverPool.PolicyNotFound(policyId);
         policy.policyId = policyId;
+    }
+}
+
+contract MockPolicyManager {
+    address public defaultCurator;
+    mapping(uint96 => address) private _curatorOverrides;
+    mapping(uint96 => bool) private _hasOverride;
+
+    constructor(address defaultCurator_) {
+        defaultCurator = defaultCurator_;
+    }
+
+    function setCuratorForPolicy(uint96 policyId, address curator_) external {
+        _curatorOverrides[policyId] = curator_;
+        _hasOverride[policyId] = true;
+    }
+
+    function policyMetadata(uint96 policyId) external view returns (IPolicyManager.PolicyMetadata memory metadata) {
+        metadata.curator = _hasOverride[policyId] ? _curatorOverrides[policyId] : defaultCurator;
     }
 }

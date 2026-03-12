@@ -10,7 +10,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
-import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {ISpec} from "./interfaces/ISpec.sol";
 import {ISpecRegistry} from "./interfaces/ISpecRegistry.sol";
@@ -43,12 +42,14 @@ contract ClaimManager is
     using SafeERC20 for IERC20;
 
     uint16 private constant _MAX_SLIPPAGE_BPS = 10_000;
+    uint256 private constant MAX_COLLATERAL_ENTRIES = 20;
 
     address public override specRegistry;
     address public override slashingManager;
     address public override swapper;
     address public override policyManager;
     address public override chainlinkPriceFeed;
+    address public override excessCollateralRecipient;
     uint16 public override maxSwapSlippageBps;
 
     mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
@@ -164,6 +165,15 @@ contract ClaimManager is
         require(maxSwapSlippageBps_ < _MAX_SLIPPAGE_BPS, InvalidSlippageBps(maxSwapSlippageBps_));
         maxSwapSlippageBps = maxSwapSlippageBps_;
         emit MaxSwapSlippageBpsSet(maxSwapSlippageBps_);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
+    function setExcessCollateralRecipient(address recipient_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(recipient_ != address(0), ZeroAddress());
+        excessCollateralRecipient = recipient_;
+        emit ExcessCollateralRecipientSet(recipient_);
     }
 
     /**
@@ -345,13 +355,12 @@ contract ClaimManager is
         uint256 slashAmountUSD =
             IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(metadata.payoutToken, requestedAmount);
 
-        // Slash committee in core contracts using policyId as committeeId (1:1 mapping).
-        // taskId (inlined) is deterministic per (policyId, claimId) pair to prevent replay attacks.
+        // taskId is deterministic per (policyId, claimId) pair to prevent replay attacks.
         // slither-disable-next-line calls-loop
         (address[] memory collateralTokens, uint256[] memory collateralAmounts) = ISlashingManager(slashingManager)
             .executeSlashing(
                 metadata.policyId,
-                ICoverPool(metadata.pool).owner(),
+                metadata.curator,
                 slashAmountUSD,
                 keccak256(abi.encodePacked(metadata.policyId, claimId))
             );
@@ -359,6 +368,7 @@ contract ClaimManager is
         uint256 tokensLength = collateralTokens.length;
         // slither-disable-next-line incorrect-equality
         require(tokensLength > 0 && tokensLength == collateralAmounts.length, NoCollateralSlashed(policyId));
+        require(tokensLength <= MAX_COLLATERAL_ENTRIES, TooManyCollateralEntries(tokensLength));
 
         uint256 remainingPayout = requestedAmount;
         for (uint256 i = 0; i < tokensLength && remainingPayout > 0; ++i) {
@@ -377,7 +387,38 @@ contract ClaimManager is
             }
         }
 
+        _sweepExcessTokens(collateralTokens, tokensLength, metadata.payoutToken);
+
         require(totalPayout > 0, ZeroPayoutAmount(policyId));
+    }
+
+    /**
+     * @notice Sweeps any leftover collateral and payout token balances to the configured
+     *         excess recipient. No-op when no recipient is set.
+     * @param collateralTokens Collateral token addresses returned from slashing.
+     * @param tokensLength Length of the collateral token array.
+     * @param payoutToken Payout token address for the policy.
+     */
+    function _sweepExcessTokens(
+        address[] memory collateralTokens,
+        uint256 tokensLength,
+        address payoutToken
+    )
+        private
+    {
+        address excessRecipient = excessCollateralRecipient;
+        if (excessRecipient == address(0)) return;
+
+        for (uint256 i = 0; i < tokensLength; ++i) {
+            uint256 strandedBalance = IERC20(collateralTokens[i]).balanceOf(address(this));
+            if (strandedBalance > 0) {
+                IERC20(collateralTokens[i]).safeTransfer(excessRecipient, strandedBalance);
+            }
+        }
+        uint256 excessPayout = IERC20(payoutToken).balanceOf(address(this));
+        if (excessPayout > 0) {
+            IERC20(payoutToken).safeTransfer(excessRecipient, excessPayout);
+        }
     }
 
     /**

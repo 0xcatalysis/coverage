@@ -8,6 +8,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
+import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {IRewardsManager} from "./interfaces/IRewardsManager.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 
@@ -36,6 +37,7 @@ contract PremiumManager is
     address public override rewardsManager;
     address public override platformTreasury;
     uint16 public override platformFeeBps;
+    address public override policyManager;
 
     uint256 private _distributionNonce;
 
@@ -50,17 +52,23 @@ contract PremiumManager is
      * @param rewardsManager_ Address of the RewardsManager contract for reward distribution.
      * @param platformTreasury_ Address of the platform treasury.
      * @param platformFeeBps_ Platform fee in basis points (max 2500 = 25%).
+     * @param policyManager_ Address of the PolicyManager contract for curator lookup.
      */
     function initialize(
         address admin_,
         address rewardsManager_,
         address platformTreasury_,
-        uint16 platformFeeBps_
+        uint16 platformFeeBps_,
+        address policyManager_
     )
         external
         initializer
     {
-        require(admin_ != address(0) && rewardsManager_ != address(0) && platformTreasury_ != address(0), ZeroAddress());
+        require(
+            admin_ != address(0) && rewardsManager_ != address(0) && platformTreasury_ != address(0)
+                && policyManager_ != address(0),
+            ZeroAddress()
+        );
         require(platformFeeBps_ <= _MAX_PLATFORM_FEE_BPS, InvalidPlatformFeeBps(platformFeeBps_));
 
         __AccessControl_init();
@@ -71,6 +79,7 @@ contract PremiumManager is
         rewardsManager = rewardsManager_;
         platformTreasury = platformTreasury_;
         platformFeeBps = platformFeeBps_;
+        policyManager = policyManager_;
     }
 
     /**
@@ -94,6 +103,15 @@ contract PremiumManager is
         require(rewardsManager_ != address(0), ZeroAddress());
         rewardsManager = rewardsManager_;
         emit RewardsManagerSet(rewardsManager_);
+    }
+
+    /**
+     * @inheritdoc IPremiumManager
+     */
+    function setPolicyManager(address policyManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(policyManager_ != address(0), ZeroAddress());
+        policyManager = policyManager_;
+        emit PolicyManagerSet(policyManager_);
     }
 
     /**
@@ -152,7 +170,8 @@ contract PremiumManager is
         require(ICoverPool(pool).hasBoundPolicy(policyId), PolicyNotBound(policyId, pool));
 
         uint16 poolFeeBps = ICoverPool(pool).poolFeeBps();
-        address curator = ICoverPool(pool).owner();
+        IPolicyManager.PolicyMetadata memory metadata = IPolicyManager(policyManager).policyMetadata(policyId);
+        address curator = metadata.curator;
         address feeRecipient = ICoverPool(pool).feeRecipient();
         require(curator != address(0) && feeRecipient != address(0), ZeroAddress());
 

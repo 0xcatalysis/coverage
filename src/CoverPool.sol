@@ -159,6 +159,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         IPolicyManager.PolicyDraft memory draft = IPolicyManager(policyManager).getPolicyDraft(policyId);
         require(draft.pool == address(this), PoolAddressMismatch(address(this), draft.pool));
         require(draft.status == IPolicyManager.PolicyStatus.Created, IPolicyManager.InvalidPolicyStatus(draft.status));
+        require(owner() == draft.curator, CuratorMismatch(draft.curator, owner()));
         require(quote.pool == address(this), PoolAddressMismatch(address(this), quote.pool));
         require(quote.policyId == draft.policyId, PolicyIdMismatch(draft.policyId, quote.policyId));
         require(quote.beneficiary == draft.beneficiary, BeneficiaryMismatch(draft.beneficiary, quote.beneficiary));
@@ -171,8 +172,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
 
         ISpecRegistry(specRegistry).registerSpec(quote.specId, ISpec(spec));
 
-        // Add vaults to committee in core contracts using policyId as committeeId (1:1 mapping).
-        IStakeManager(stakeManager).addCommitteeVaults(draft.policyId, vaults);
+        IStakeManager(stakeManager).addCommitteeVaults(policyId, vaults);
 
         IPolicyManager(policyManager)
             .bindPolicy(
