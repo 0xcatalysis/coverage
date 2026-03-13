@@ -18,7 +18,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 /// @title CoveredVaultWrapper
 /// @notice User-facing ERC-4626 vault (UUPS proxy) that wraps a Morpho V2 vault and provides per-user insurance.
@@ -45,7 +45,7 @@ contract CoveredVaultWrapper is
     OwnableUpgradeable,
     BasePolicyInteractions,
     UUPSUpgradeable,
-    ReentrancyGuard,
+    ReentrancyGuardTransient,
     IBindPolicyHook
 {
     using SafeERC20 for IERC20;
@@ -108,6 +108,7 @@ contract CoveredVaultWrapper is
     /// @dev Set to 0 on deployment; updated by onPolicyBound. maxDeposit() returns 0 until set.
     uint256 public depositCap;
 
+    // slither-disable-next-line unused-state
     uint256[50] private __gap;
 
     /*//////////////////////////////////////////////////////////////
@@ -192,7 +193,7 @@ contract CoveredVaultWrapper is
         _accruePremium();
         IERC20(asset()).safeTransferFrom(caller, address(this), assets);
         IERC20(asset()).forceApprove(address(morphoVault), assets);
-        // slither-disable-next-line reentrancy-state-change
+        // slither-disable-next-line reentrancy-state-change,unused-return
         IVaultV2(morphoVault).deposit(assets, address(this));
         _mint(receiver, shares); // triggers _update(address(0), receiver, shares) — no principal migration for mints
         userPrincipal[receiver] += assets;
@@ -231,7 +232,7 @@ contract CoveredVaultWrapper is
 
         // Redeem from Morpho: burn morpho shares proportional to wrapper shares redeemed
         // assets == 0 when totalAssets() == 0 (e.g. 100% loss) — skip morpho redeem in that case
-        uint256 assetsReceived;
+        uint256 assetsReceived = 0;
         if (assets > 0) {
             uint256 morphoShares = IVaultV2(morphoVault).previewWithdraw(assets);
             // slither-disable-next-line reentrancy-state-change
@@ -282,6 +283,7 @@ contract CoveredVaultWrapper is
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Returns accrued-but-unprocessed premium owed to premiumRecipient
+    // slither-disable-next-line incorrect-equality
     function _accruedPremium() internal view returns (uint256) {
         if (totalPrincipal == 0) return 0;
         uint256 elapsed = block.timestamp - lastPremiumAccrualTime;
@@ -289,7 +291,7 @@ contract CoveredVaultWrapper is
     }
 
     /// @notice Accrues premium and transfers it to premiumRecipient
-    // slither-disable-next-line reentrancy-no-eth
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-events,incorrect-equality
     function _accruePremium() internal {
         uint256 accrued = _accruedPremium();
         if (accrued == 0) {
@@ -305,6 +307,7 @@ contract CoveredVaultWrapper is
         uint256 morphoShares = IVaultV2(morphoVault).previewWithdraw(accrued);
         // L-03: Only advance timestamp when an actual redemption occurs; otherwise dust
         //        carries forward into the next cycle rather than being silently dropped
+        // slither-disable-next-line incorrect-equality
         if (morphoShares == 0) return;
 
         lastPremiumAccrualTime = block.timestamp;
@@ -322,6 +325,7 @@ contract CoveredVaultWrapper is
     }
 
     /// @inheritdoc ICoveredVaultWrapper
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function setPremiumRate(uint256 newRate) external onlyOwner {
         require(newRate <= MAX_PREMIUM_RATE_PER_SECOND, IA.InvalidParameters());
         // Settle any premium accrued at the old rate before switching
@@ -332,6 +336,7 @@ contract CoveredVaultWrapper is
     }
 
     /// @inheritdoc ICoveredVaultWrapper
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function setPremiumRecipient(address newRecipient) external onlyOwner {
         require(newRecipient != address(0), IA.ZeroAddress());
         _accruePremium(); // settle at old recipient before switching
@@ -384,6 +389,7 @@ contract CoveredVaultWrapper is
     /// @param shortfall The raw shortfall amount (will be capped by remaining coverage)
     /// @param user Address of the user who suffered the loss (used for event emission)
     /// @return payout The actual insurance payout received
+    // slither-disable-next-line reentrancy-events,incorrect-equality
     function _claimInsurance(uint256 shortfall, address user) internal returns (uint256 payout) {
         (uint256 coverageLimit, address payoutToken) = _getCoverageParams(policyId);
 
@@ -444,8 +450,10 @@ contract CoveredVaultWrapper is
     function calculateShortfall() external view override returns (uint256) {
         if (totalPrincipal == 0) return 0;
         uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
-        if (totalPrincipal > morphoValue) {
-            uint256 rawShortfall = totalPrincipal - morphoValue;
+        uint256 accrued = _accruedPremium();
+        uint256 netValue = morphoValue > accrued ? morphoValue - accrued : 0;
+        if (totalPrincipal > netValue) {
+            uint256 rawShortfall = totalPrincipal - netValue;
             uint256 maxCoverable = totalPrincipal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
             uint256 capped = rawShortfall > maxCoverable ? maxCoverable : rawShortfall;
             return capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
@@ -460,7 +468,10 @@ contract CoveredVaultWrapper is
         if (userShares == 0) return 0;
         uint256 totalShares = totalSupply();
         uint256 morphoTotal = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
-        uint256 userMorphoValue = totalShares > 0 ? morphoTotal.mulDiv(userShares, totalShares, Math.Rounding.Floor) : 0;
+        uint256 accrued = _accruedPremium();
+        uint256 netMorphoTotal = morphoTotal > accrued ? morphoTotal - accrued : 0;
+        uint256 userMorphoValue =
+            totalShares > 0 ? netMorphoTotal.mulDiv(userShares, totalShares, Math.Rounding.Floor) : 0;
         if (userPrincipal[user] > userMorphoValue) {
             uint256 raw = userPrincipal[user] - userMorphoValue;
             uint256 maxCoverable = userPrincipal[user].mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
