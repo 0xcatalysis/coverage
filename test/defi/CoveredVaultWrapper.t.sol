@@ -663,6 +663,42 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertApproxEqAbs(received, 949 ether, 3 ether, "Should receive assets + insurance for the loss only");
     }
 
+    /// @dev Regression: calculateShortfall() must return 0 when there is pending (unaccrued)
+    ///      premium but no actual loss, even before collectPremium() is called.
+    ///
+    ///      Bug: netValue = morphoValue − accrued (full premium deducted) but
+    ///           adjustedPrincipal = totalPrincipal − totalPremiumRedeemed (only settled premium).
+    ///           With accrued=100 and totalPremiumRedeemed=0, netValue=900 vs adjustedPrincipal=1000
+    ///           → phantom shortfall of 100 even though no loss occurred.
+    function test_calculateShortfall_pendingAccrual_noLoss_returnsZero() public {
+        uint256 rate = uint256(1e17) / 31_536_000; // 10%/year
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        // 1 year: ~100 ether premium accrued but collectPremium() NOT called
+        vm.warp(block.timestamp + 365 days);
+
+        // No loss — only pending premium. View must return 0.
+        assertEq(wrapper.calculateShortfall(), 0, "Pending accrual must not appear as shortfall");
+    }
+
+    /// @dev Regression: userShortfall() must return 0 with pending premium and no loss.
+    function test_userShortfall_pendingAccrual_noLoss_returnsZero() public {
+        uint256 rate = uint256(1e17) / 31_536_000;
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        vm.warp(block.timestamp + 365 days);
+
+        assertEq(wrapper.userShortfall(user1), 0, "Pending accrual must not appear as user shortfall");
+    }
+
     function test_calculateShortfall_premiumOnly_returnsZero() public {
         uint256 rate = uint256(1e17) / 31_536_000;
         vm.prank(curator);
@@ -815,5 +851,119 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         });
         ISpec.EvaluationResult memory result = wrapper.evaluate(context);
         assertFalse(result.isPayable);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    SET PREMIUM RECIPIENT TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setPremiumRecipient_updatesRecipient() public {
+        address newRecipient = address(0xBEEF);
+        vm.prank(curator);
+        wrapper.setPremiumRecipient(newRecipient);
+        assertEq(wrapper.premiumRecipient(), newRecipient);
+    }
+
+    function test_setPremiumRecipient_revertsOnZeroAddress() public {
+        vm.prank(curator);
+        vm.expectRevert(IA.ZeroAddress.selector);
+        wrapper.setPremiumRecipient(address(0));
+    }
+
+    function test_setPremiumRecipient_revertsIfNotOwner() public {
+        vm.prank(user1);
+        vm.expectRevert();
+        wrapper.setPremiumRecipient(address(0xBEEF));
+    }
+
+    function test_setPremiumRecipient_emitsEvent() public {
+        address newRecipient = address(0xBEEF);
+        vm.prank(curator);
+        vm.expectEmit(true, true, false, false);
+        emit IE.PremiumRecipientUpdated(premiumRecipientAddr, newRecipient);
+        wrapper.setPremiumRecipient(newRecipient);
+    }
+
+    /// @dev Accrued premium must land in pendingPremium before the switch so the old
+    ///      recipient can collect it via collectPremium(); it must NOT be lost.
+    function test_setPremiumRecipient_accruesPremiumFirst() public {
+        uint256 rate = uint256(1e17) / 31_536_000; // 10%/year
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        vm.warp(block.timestamp + 365 days);
+
+        address newRecipient = address(0xBEEF);
+        vm.prank(curator);
+        wrapper.setPremiumRecipient(newRecipient); // settles premium into pendingPremium
+
+        // pendingPremium must contain the accrued amount
+        assertGt(wrapper.pendingPremium(), 90 ether, "Accrued premium must be in pendingPremium after switch");
+
+        // collectPremium() now sends to the NEW recipient (it forwards pendingPremium)
+        uint256 oldBefore = asset.balanceOf(premiumRecipientAddr);
+        uint256 newBefore = asset.balanceOf(newRecipient);
+        wrapper.collectPremium();
+        assertEq(asset.balanceOf(premiumRecipientAddr), oldBefore, "Old recipient should receive nothing after switch");
+        assertGt(asset.balanceOf(newRecipient), newBefore, "New recipient should receive the pending premium");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    PREMIUM RATE CAP TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @dev M-01 fix: setPremiumRate must revert when the new rate exceeds ~50%/year
+    function test_setPremiumRate_revertsAboveMaxRate() public {
+        // MAX_PREMIUM_RATE_PER_SECOND = 15_854_895_991; one above must revert
+        vm.prank(curator);
+        vm.expectRevert(IA.InvalidParameters.selector);
+        wrapper.setPremiumRate(15_854_895_992);
+    }
+
+    function test_setPremiumRate_acceptsMaxRate() public {
+        vm.prank(curator);
+        wrapper.setPremiumRate(15_854_895_991); // exactly at cap must succeed
+        assertEq(wrapper.premiumRatePerSecond(), 15_854_895_991);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    MAX MINT / MINT TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @dev H-01 fix: maxMint must return 0 before policy is bound (mirrors maxDeposit)
+    function test_maxMint_zeroBeforeBound() public {
+        CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            MAX_COVERABLE_LOSS_BPS,
+            DEDUCTIBLE_BPS,
+            premiumRecipientAddr,
+            curator,
+            "Fresh3",
+            "FR3"
+        );
+        assertEq(freshWrapper.maxMint(user1), 0, "maxMint must be 0 before policy bound");
+    }
+
+    /// @dev H-01 fix: mint() must revert when totalPrincipal == depositCap (cap already reached).
+    ///      Without the maxMint() override, OZ's mint() checks type(uint256).max and would
+    ///      allow unlimited minting past the deposit cap.
+    function test_mint_revertsWhenDepositCapReached() public {
+        // Fill the entire deposit cap
+        uint256 cap = wrapper.maxDeposit(user1); // = 100_000 ether in setUp
+        asset.mint(user1, cap);
+        vm.prank(user1);
+        wrapper.deposit(cap, user1);
+
+        // Any further mint must revert because maxMint(user1) == 0
+        uint256 extraShares = 1;
+        asset.mint(user1, 1 ether);
+        vm.prank(user1);
+        vm.expectRevert();
+        wrapper.mint(extraShares, user1);
     }
 }

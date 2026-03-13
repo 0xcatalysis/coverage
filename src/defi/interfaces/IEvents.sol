@@ -33,14 +33,6 @@ interface IEvents {
     /// @param policyId The policy ID bound
     event PolicyBound(address indexed user, uint96 indexed policyId);
 
-    /// @notice Emitted when a claim is filed
-    /// @param policyId The policy for which claim is filed
-    /// @param evidenceHash Hash of the evidence supporting the claim
-    event ClaimFiled(uint96 indexed policyId, bytes32 indexed evidenceHash);
-
-    /// @notice Emitted when configuration is updated
-    event ConfigUpdated();
-
     /// @notice Emitted when premium is collected from the vault
     event PremiumCollected(address indexed recipient, uint256 amount);
 

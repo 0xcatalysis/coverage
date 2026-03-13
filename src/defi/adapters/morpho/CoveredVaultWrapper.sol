@@ -114,8 +114,9 @@ contract CoveredVaultWrapper is
     uint256 public pendingPremium;
 
     /// @inheritdoc ICoveredVaultWrapper
-    /// @dev Monotonically increasing. Used to compute insured basis in shortfall checks:
-    ///      insuredBasis = userPrincipal × (totalPrincipal − totalPremiumRedeemed) / totalPrincipal
+    /// @dev Monotonically increasing. On the write path (_withdraw), insuredBasis uses this value
+    ///      directly because _accruePremium() has already settled all pending accrual into it.
+    ///      On the view path, both this value and _accruedPremium() are deducted symmetrically.
     uint256 public totalPremiumRedeemed;
 
     // slither-disable-next-line unused-state
@@ -491,8 +492,12 @@ contract CoveredVaultWrapper is
         uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
         uint256 accrued = _accruedPremium();
         uint256 netValue = morphoValue > accrued ? morphoValue - accrued : 0;
-        // Compare against premium-adjusted principal so paid premium is not counted as a coverable loss
-        uint256 adjustedPrincipal = totalPrincipal > totalPremiumRedeemed ? totalPrincipal - totalPremiumRedeemed : 0;
+        // adjustedPrincipal must deduct BOTH already-redeemed premium AND the pending accrual,
+        // mirroring netValue which subtracts the same total from the Morpho position.
+        // Using only totalPremiumRedeemed here would cause a phantom shortfall equal to the
+        // pending accrual even when no real loss has occurred.
+        uint256 totalPremiumTotal = totalPremiumRedeemed + accrued;
+        uint256 adjustedPrincipal = totalPrincipal > totalPremiumTotal ? totalPrincipal - totalPremiumTotal : 0;
         if (adjustedPrincipal > netValue) {
             uint256 rawShortfall = adjustedPrincipal - netValue;
             uint256 maxCoverable = totalPrincipal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
@@ -510,13 +515,17 @@ contract CoveredVaultWrapper is
         uint256 totalShares = totalSupply();
         uint256 morphoTotal = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
         uint256 accrued = _accruedPremium();
-        uint256 netMorphoTotal = morphoTotal > accrued ? morphoTotal - accrued : 0;
-        uint256 userMorphoValue =
-            totalShares > 0 ? netMorphoTotal.mulDiv(userShares, totalShares, Math.Rounding.Floor) : 0;
-        // Scale user's principal down by the pro-rata premium paid so premium is not counted as a coverable loss
+        // Inline netMorphoTotal to free a stack slot for totalPremiumTotal below.
+        uint256 userMorphoValue = totalShares > 0
+            ? (morphoTotal > accrued ? morphoTotal - accrued : 0).mulDiv(userShares, totalShares, Math.Rounding.Floor)
+            : 0;
+        // Scale user's adjusted principal using total premium (redeemed + pending accrual).
+        // Must match the net Morpho value which already subtracts the same accrued amount;
+        // using only totalPremiumRedeemed would cause phantom shortfalls equal to the pending accrual.
+        uint256 totalPremiumTotal = totalPremiumRedeemed + accrued;
         uint256 adjustedUserPrincipal = totalPrincipal > 0
             ? userPrincipal[user].mulDiv(
-                totalPrincipal > totalPremiumRedeemed ? totalPrincipal - totalPremiumRedeemed : 0,
+                totalPrincipal > totalPremiumTotal ? totalPrincipal - totalPremiumTotal : 0,
                 totalPrincipal,
                 Math.Rounding.Floor
             )
