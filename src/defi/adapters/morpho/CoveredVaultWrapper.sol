@@ -274,6 +274,16 @@ contract CoveredVaultWrapper is
         uint256 totalOut = assetsReceived + insurancePayout;
         if (totalOut > 0) IERC20(asset()).safeTransfer(receiver, totalOut);
 
+        // Pro-rata removal of totalPremiumRedeemed: without this, the full premium history
+        // hangs against a shrinking totalPrincipal after each exit, making the ratio
+        // (totalPrincipal − totalPremiumRedeemed) / totalPrincipal progressively worse and
+        // undercharging insuredBasis for remaining users. Must use current totalPrincipal
+        // as denominator before it is decremented below.
+        if (totalPrincipal > 0) {
+            totalPremiumRedeemed -= totalPremiumRedeemed.mulDiv(
+                userPrincipalForWithdrawal, totalPrincipal, Math.Rounding.Floor
+            );
+        }
         userPrincipal[owner] -= userPrincipalForWithdrawal;
         totalPrincipal -= userPrincipalForWithdrawal;
 

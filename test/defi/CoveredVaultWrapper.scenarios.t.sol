@@ -248,6 +248,141 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
     }
 
     /*//////////////////////////////////////////////////////////////
+            SCENARIO 8: ALICE (ENTRY 1.0) + BOB (ENTRY 1.4)
+                    WITH 1%/YEAR PREMIUM AND 20% MAX COVERAGE
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Deploy a fresh wrapper with 20% max coverage, 1% deductible, and 1%/year premium
+    ///         for the multi-entry-price scenarios.
+    function _deployEntryPriceWrapper() internal {
+        wrapper = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            2000, // 20% max coverable loss
+            100, // 1% deductible
+            premiumRecipientAddr,
+            curator,
+            "EntryPrice Vault",
+            "EPV"
+        );
+        morphoVault.setCurator(address(wrapper));
+
+        POLICY_ID = _createAndBindPolicy(
+            address(wrapper),
+            address(wrapper),
+            address(asset),
+            type(uint128).max,
+            type(uint128).max,
+            uint32(block.timestamp),
+            uint32(block.timestamp + 365 days),
+            curator,
+            address(wrapper)
+        );
+
+        // Fund morpho vault for payout transfers
+        asset.mint(address(morphoVault), 10_000_000 ether);
+
+        // 1%/year premium rate
+        uint256 onePctAnnualRate = uint256(1e16) / 31_536_000;
+        vm.prank(curator);
+        wrapper.setPremiumRate(onePctAnnualRate);
+    }
+
+    /// @notice Scenario 8A: price ~1.6 — both Alice (entry 1.0) and Bob (entry ~1.4) are above
+    ///         their entry prices → calculateShortfall()==0 and userShortfall()==0 for both.
+    ///
+    ///         Setup numbers:
+    ///           - Alice deposits 1000 at price 1.0 → 1000 wrapper shares
+    ///           - setProfit(40) → Morpho price 1.4
+    ///           - Bob deposits 1000 at price ~1.4 → 714 wrapper shares (1000×1000/1400)
+    ///           - State: _totalAssets=2000, profitPercent=40 → totalAssets()=2800, price≈1.634
+    ///           - Alice value: 1000/1714 × 2800 ≈ 1634 > 1000 → profit
+    ///           - Bob value:    714/1714 × 2800 ≈ 1166 > 1000 → profit
+    function test_multiEntryPrice_scenarioA_bothProfit_noShortfall() public {
+        _deployEntryPriceWrapper();
+
+        address alice = address(0xAA11);
+        address bob = address(0xBB22);
+        _mintAndApprove(alice, 2000 ether);
+        _mintAndApprove(bob, 2000 ether);
+
+        // Alice deposits at Morpho price 1.0
+        vm.prank(alice);
+        wrapper.deposit(1000 ether, alice);
+
+        // Morpho price rises to 1.4
+        morphoVault.setProfit(40);
+
+        // Bob deposits 1000 ether at price ~1.4 → gets ~714 wrapper shares
+        vm.prank(bob);
+        wrapper.deposit(1000 ether, bob);
+
+        // With profitPercent=40 and _totalAssets=2000: totalAssets()=2800, price≈1.634.
+        // Both users entered below the current price → no shortfall for either.
+        assertEq(wrapper.calculateShortfall(), 0, "No global shortfall at price ~1.6");
+        assertEq(wrapper.userShortfall(alice), 0, "Alice: no shortfall at price ~1.6");
+        assertEq(wrapper.userShortfall(bob), 0, "Bob: no shortfall at price ~1.6");
+    }
+
+    /// @notice Scenario 8B: price drops to ~1.17 (below Bob's entry of ~1.4).
+    ///         Alice (entry 1.0) is still in profit → no insurance.
+    ///         Bob (entry ~1.4) has a shortfall → insured up to 20% of principal.
+    ///
+    ///         setLoss(0) clears profitPercent without adding extra loss so that
+    ///         raw price = _totalAssets/totalShares = 2000/1714 ≈ 1.167.
+    ///
+    ///         After Alice redeems: _totalAssets≈833, Bob's value≈833.
+    ///         Bob's shortfall=167, maxInsurance=200 (20%), effectiveInsurance=198 (1% deductible).
+    ///         claimAmount = min(167,198) = 167 → Bob receives 833+167 = 1000 ether.
+    function test_multiEntryPrice_scenarioB_aliceProfitBobInsured() public {
+        _deployEntryPriceWrapper();
+
+        address alice = address(0xAA11);
+        address bob = address(0xBB22);
+        _mintAndApprove(alice, 2000 ether);
+        _mintAndApprove(bob, 2000 ether);
+
+        // Alice deposits 1000 at price 1.0
+        vm.prank(alice);
+        wrapper.deposit(1000 ether, alice);
+
+        // Morpho price rises to 1.4
+        morphoVault.setProfit(40);
+
+        // Bob deposits 1000 at price ~1.4 → ~714 wrapper shares
+        vm.prank(bob);
+        wrapper.deposit(1000 ether, bob);
+
+        // Price reverts to raw book value: _totalAssets/totalShares = 2000/1714 ≈ 1.167
+        // Alice (entry 1.0) still above water; Bob (entry ~1.40) below water.
+        morphoVault.setLoss(0);
+
+        // Alice redeems: value ≈ 1000×2000/1714 ≈ 1167 > 1000 → profit, no insurance
+        uint256 aliceShares = wrapper.balanceOf(alice);
+        uint256 aliceBefore = asset.balanceOf(alice);
+        vm.prank(alice);
+        wrapper.redeem(aliceShares, alice, alice);
+        uint256 aliceReceived = asset.balanceOf(alice) - aliceBefore;
+
+        assertGt(aliceReceived, 1000 ether, "Alice in profit: no insurance triggered");
+        assertEq(wrapper.userPrincipal(alice), 0, "Alice principal cleared");
+
+        // Bob redeems: after Alice's exit, remaining Morpho value ≈ 833.
+        // insuredBasis = 1000×(1000-0)/1000 = 1000 > 833 → insurance triggered.
+        // claimAmount = min(167, 200×99%=198) = 167; Bob receives 833+167 = 1000.
+        uint256 bobShares = wrapper.balanceOf(bob);
+        uint256 bobBefore = asset.balanceOf(bob);
+        vm.prank(bob);
+        wrapper.redeem(bobShares, bob, bob);
+        uint256 bobReceived = asset.balanceOf(bob) - bobBefore;
+
+        assertGt(bobReceived, 900 ether, "Bob receives assets + insurance payout");
+        assertApproxEqAbs(bobReceived, 1000 ether, 5 ether, "Bob near-full recovery via 20% coverage");
+        assertEq(wrapper.userPrincipal(bob), 0, "Bob principal cleared");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                 SCENARIO 5: ZERO PRINCIPAL PREMIUM ACCRUAL
     //////////////////////////////////////////////////////////////*/
 
