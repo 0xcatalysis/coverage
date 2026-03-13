@@ -197,6 +197,7 @@ contract CoveredVaultWrapper is
         _mint(receiver, shares); // triggers _update(address(0), receiver, shares) — no principal migration for mints
         userPrincipal[receiver] += assets;
         totalPrincipal += assets;
+        emit Deposit(caller, receiver, assets, shares);
         emit IE.NavRecorded(receiver, assets, shares, userPrincipal[receiver]);
     }
 
@@ -255,6 +256,7 @@ contract CoveredVaultWrapper is
         userPrincipal[owner] -= userPrincipalForWithdrawal;
         totalPrincipal -= userPrincipalForWithdrawal;
 
+        emit Withdraw(caller, receiver, owner, assets, shares);
         emit IE.NavWithdrawn(owner, assetsReceived, shares, insurancePayout, userPrincipal[owner]);
     }
 
