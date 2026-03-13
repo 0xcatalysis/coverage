@@ -113,8 +113,13 @@ contract CoveredVaultWrapper is
     ///      Kept separate from depositor assets so that a blocked transfer cannot freeze the vault.
     uint256 public pendingPremium;
 
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev Monotonically increasing. Used to compute insured basis in shortfall checks:
+    ///      insuredBasis = userPrincipal × (totalPrincipal − totalPremiumRedeemed) / totalPrincipal
+    uint256 public totalPremiumRedeemed;
+
     // slither-disable-next-line unused-state
-    uint256[49] private __gap;
+    uint256[48] private __gap;
 
     /*//////////////////////////////////////////////////////////////
                             ERRORS
@@ -244,10 +249,20 @@ contract CoveredVaultWrapper is
             assetsReceived = IVaultV2(morphoVault).redeem(morphoShares, address(this), address(this));
         }
 
-        // Per-user insurance: only if a shortfall exists and policy is active
+        // Per-user insurance: only if a loss-induced shortfall exists and policy is active.
+        // insuredBasis = principal scaled down by the pro-rata premium already paid out of the vault.
+        // This ensures that premium deductions — which reduce the Morpho position but NOT userPrincipal —
+        // do not produce spurious insurance claims. Only losses BEYOND the premium-adjusted basis trigger a claim.
         uint256 insurancePayout = 0;
-        if (userPrincipalForWithdrawal > assetsReceived && _isPolicyActive()) {
-            uint256 shortfall = userPrincipalForWithdrawal - assetsReceived;
+        uint256 insuredBasis = totalPrincipal > 0
+            ? userPrincipalForWithdrawal.mulDiv(
+                totalPrincipal > totalPremiumRedeemed ? totalPrincipal - totalPremiumRedeemed : 0,
+                totalPrincipal,
+                Math.Rounding.Floor
+            )
+            : 0;
+        if (insuredBasis > assetsReceived && _isPolicyActive()) {
+            uint256 shortfall = insuredBasis - assetsReceived;
             uint256 maxInsurance = userPrincipalForWithdrawal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
             uint256 effectiveInsurance = maxInsurance.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
             uint256 claimAmount = shortfall < effectiveInsurance ? shortfall : effectiveInsurance;
@@ -322,6 +337,7 @@ contract CoveredVaultWrapper is
         uint256 assetsReceived = IVaultV2(morphoVault).redeem(morphoShares, address(this), address(this));
         if (assetsReceived > 0) {
             pendingPremium += assetsReceived;
+            totalPremiumRedeemed += assetsReceived;
         }
     }
 
@@ -465,8 +481,10 @@ contract CoveredVaultWrapper is
         uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
         uint256 accrued = _accruedPremium();
         uint256 netValue = morphoValue > accrued ? morphoValue - accrued : 0;
-        if (totalPrincipal > netValue) {
-            uint256 rawShortfall = totalPrincipal - netValue;
+        // Compare against premium-adjusted principal so paid premium is not counted as a coverable loss
+        uint256 adjustedPrincipal = totalPrincipal > totalPremiumRedeemed ? totalPrincipal - totalPremiumRedeemed : 0;
+        if (adjustedPrincipal > netValue) {
+            uint256 rawShortfall = adjustedPrincipal - netValue;
             uint256 maxCoverable = totalPrincipal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
             uint256 capped = rawShortfall > maxCoverable ? maxCoverable : rawShortfall;
             return capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
@@ -485,8 +503,16 @@ contract CoveredVaultWrapper is
         uint256 netMorphoTotal = morphoTotal > accrued ? morphoTotal - accrued : 0;
         uint256 userMorphoValue =
             totalShares > 0 ? netMorphoTotal.mulDiv(userShares, totalShares, Math.Rounding.Floor) : 0;
-        if (userPrincipal[user] > userMorphoValue) {
-            uint256 raw = userPrincipal[user] - userMorphoValue;
+        // Scale user's principal down by the pro-rata premium paid so premium is not counted as a coverable loss
+        uint256 adjustedUserPrincipal = totalPrincipal > 0
+            ? userPrincipal[user].mulDiv(
+                totalPrincipal > totalPremiumRedeemed ? totalPrincipal - totalPremiumRedeemed : 0,
+                totalPrincipal,
+                Math.Rounding.Floor
+            )
+            : 0;
+        if (adjustedUserPrincipal > userMorphoValue) {
+            uint256 raw = adjustedUserPrincipal - userMorphoValue;
             uint256 maxCoverable = userPrincipal[user].mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
             uint256 capped = raw > maxCoverable ? maxCoverable : raw;
             return capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
