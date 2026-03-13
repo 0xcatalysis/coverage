@@ -884,9 +884,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.setPremiumRecipient(newRecipient);
     }
 
-    /// @dev Accrued premium must land in pendingPremium before the switch so the old
-    ///      recipient can collect it via collectPremium(); it must NOT be lost.
-    function test_setPremiumRecipient_accruesPremiumFirst() public {
+    /// @dev All pending premium (pre-existing + freshly settled) must be transferred to the OLD
+    ///      recipient at switch time, not redirected to the new one.
+    function test_setPremiumRecipient_flushesToOldRecipientOnSwitch() public {
         uint256 rate = uint256(1e17) / 31_536_000; // 10%/year
         vm.prank(curator);
         wrapper.setPremiumRate(rate);
@@ -896,19 +896,23 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         vm.warp(block.timestamp + 365 days);
 
-        address newRecipient = address(0xBEEF);
-        vm.prank(curator);
-        wrapper.setPremiumRecipient(newRecipient); // settles premium into pendingPremium
-
-        // pendingPremium must contain the accrued amount
-        assertGt(wrapper.pendingPremium(), 90 ether, "Accrued premium must be in pendingPremium after switch");
-
-        // collectPremium() now sends to the NEW recipient (it forwards pendingPremium)
         uint256 oldBefore = asset.balanceOf(premiumRecipientAddr);
+        address newRecipient = address(0xBEEF);
         uint256 newBefore = asset.balanceOf(newRecipient);
-        wrapper.collectPremium();
-        assertEq(asset.balanceOf(premiumRecipientAddr), oldBefore, "Old recipient should receive nothing after switch");
-        assertGt(asset.balanceOf(newRecipient), newBefore, "New recipient should receive the pending premium");
+
+        vm.prank(curator);
+        wrapper.setPremiumRecipient(newRecipient);
+
+        // pendingPremium must be zero — flushed to the old recipient during the switch
+        assertEq(wrapper.pendingPremium(), 0, "pendingPremium must be flushed to old recipient on switch");
+
+        // Old recipient received the full accrued premium at switch time
+        assertGt(
+            asset.balanceOf(premiumRecipientAddr) - oldBefore, 90 ether, "Old recipient must receive accrued premium"
+        );
+
+        // New recipient received nothing at switch time
+        assertEq(asset.balanceOf(newRecipient), newBefore, "New recipient must not receive pre-switch premium");
     }
 
     /*//////////////////////////////////////////////////////////////

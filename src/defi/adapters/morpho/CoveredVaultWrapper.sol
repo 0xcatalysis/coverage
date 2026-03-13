@@ -379,8 +379,18 @@ contract CoveredVaultWrapper is
     // slither-disable-next-line reentrancy-no-eth,reentrancy-benign,reentrancy-events
     function setPremiumRecipient(address newRecipient) external onlyOwner {
         require(newRecipient != address(0), IA.ZeroAddress());
-        _accruePremium(); // settle at old recipient before switching
+        _accruePremium(); // settle any accrued premium into pendingPremium first
+        // Flush all pending premium to the OLD recipient before switching.
+        // Without this, any earned-but-uncollected premium (both pre-existing pendingPremium
+        // and the amount just settled above) would be silently redirected to the new recipient
+        // on the next collectPremium() call.
         address oldRecipient = premiumRecipient;
+        uint256 pending = pendingPremium;
+        if (pending > 0) {
+            pendingPremium = 0;
+            IERC20(asset()).safeTransfer(oldRecipient, pending);
+            emit IE.PremiumCollected(oldRecipient, pending);
+        }
         premiumRecipient = newRecipient;
         emit IE.PremiumRecipientUpdated(oldRecipient, newRecipient);
     }
