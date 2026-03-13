@@ -41,8 +41,10 @@ interface ICoveredVaultWrapper is IERC4626 {
     function pendingPremium() external view returns (uint256);
 
     /// @notice Cumulative premium ever redeemed from Morpho (monotonically increasing).
-    ///         Used to compute the insured basis: principal × (totalPrincipal − totalPremiumRedeemed) /
-    /// totalPrincipal
+    ///         On the write path (_withdraw), insuredBasis = userPrincipal × (totalPrincipal − totalPremiumRedeemed)
+    /// / totalPrincipal because _accruePremium() has already settled all pending accrual into this value.
+    ///         On the view path (calculateShortfall/userShortfall), both this value and the pending
+    ///         accrual are deducted symmetrically to avoid phantom shortfalls.
     function totalPremiumRedeemed() external view returns (uint256);
 
     /// @notice Maximum total assets (TVL) that can be deposited into this vault.
