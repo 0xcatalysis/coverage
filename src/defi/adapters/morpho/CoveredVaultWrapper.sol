@@ -108,8 +108,13 @@ contract CoveredVaultWrapper is
     /// @dev Set to 0 on deployment; updated by onPolicyBound. maxDeposit() returns 0 until set.
     uint256 public depositCap;
 
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev Accumulates assets redeemed from Morpho for the premium recipient.
+    ///      Kept separate from depositor assets so that a blocked transfer cannot freeze the vault.
+    uint256 public pendingPremium;
+
     // slither-disable-next-line unused-state
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     /*//////////////////////////////////////////////////////////////
                             ERRORS
@@ -290,8 +295,10 @@ contract CoveredVaultWrapper is
         return totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor);
     }
 
-    /// @notice Accrues premium and transfers it to premiumRecipient
-    // slither-disable-next-line reentrancy-no-eth,reentrancy-events,incorrect-equality
+    /// @notice Redeems accrued premium from Morpho into pendingPremium — never transfers to recipient.
+    ///         Keeping the transfer out of this function ensures a blacklisted or reverting recipient
+    ///         cannot freeze deposits, withdrawals, or admin configuration changes.
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-benign,incorrect-equality
     function _accruePremium() internal {
         uint256 accrued = _accruedPremium();
         if (accrued == 0) {
@@ -314,14 +321,20 @@ contract CoveredVaultWrapper is
         // slither-disable-next-line reentrancy-state-change
         uint256 assetsReceived = IVaultV2(morphoVault).redeem(morphoShares, address(this), address(this));
         if (assetsReceived > 0) {
-            IERC20(asset()).safeTransfer(premiumRecipient, assetsReceived);
-            emit IE.PremiumCollected(premiumRecipient, assetsReceived);
+            pendingPremium += assetsReceived;
         }
     }
 
     /// @inheritdoc ICoveredVaultWrapper
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function collectPremium() external {
         _accruePremium();
+        uint256 pending = pendingPremium;
+        if (pending > 0) {
+            pendingPremium = 0;
+            IERC20(asset()).safeTransfer(premiumRecipient, pending);
+            emit IE.PremiumCollected(premiumRecipient, pending);
+        }
     }
 
     /// @inheritdoc ICoveredVaultWrapper
@@ -336,7 +349,7 @@ contract CoveredVaultWrapper is
     }
 
     /// @inheritdoc ICoveredVaultWrapper
-    // slither-disable-next-line reentrancy-no-eth,reentrancy-events
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-benign,reentrancy-events
     function setPremiumRecipient(address newRecipient) external onlyOwner {
         require(newRecipient != address(0), IA.ZeroAddress());
         _accruePremium(); // settle at old recipient before switching
