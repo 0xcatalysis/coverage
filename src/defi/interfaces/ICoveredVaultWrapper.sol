@@ -40,6 +40,11 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// @notice Premium redeemed from Morpho and awaiting transfer to premiumRecipient via collectPremium()
     function pendingPremium() external view returns (uint256);
 
+    /// @notice Cumulative premium ever redeemed from Morpho (monotonically increasing).
+    ///         Used to compute the insured basis: principal × (totalPrincipal − totalPremiumRedeemed) /
+    /// totalPrincipal
+    function totalPremiumRedeemed() external view returns (uint256);
+
     /// @notice Maximum total assets (TVL) that can be deposited into this vault.
     ///         Set to 0 on deployment; updated by onPolicyBound to coverageLimit * BPS_DENOMINATOR /
     /// maxCoverableLossBps.
