@@ -622,8 +622,11 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         // passes, no spurious claim was filed.
         assertLt(received, 950 ether, "Insurance must NOT have been paid for premium deductions");
 
-        // Confirm premium was actually deducted (not a vacuous test)
-        assertGt(wrapper.totalPremiumRedeemed(), 90 ether, "Premium must have been taken from vault");
+        // Confirm premium was actually taken from the Morpho position during the redeem.
+        // After the last user exits, totalPremiumRedeemed is zeroed by the pro-rata decrement
+        // (correct: no principal remains to carry premium history). The accrued premium is
+        // instead held in pendingPremium, waiting for collectPremium() to forward it.
+        assertGt(wrapper.pendingPremium(), 90 ether, "Premium must be in pendingPremium after redeem");
     }
 
     /// @dev Premium reduces the insured basis; only losses BEYOND that basis trigger insurance.
@@ -639,6 +642,11 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.warp(block.timestamp + 365 days / 2);
         wrapper.collectPremium();
 
+        // Confirm premium was deducted BEFORE the loss event.
+        // totalPremiumRedeemed is checked here (after collectPremium but before redeem)
+        // because the pro-rata decrement in _withdraw() will zero it for the last exiting user.
+        assertGt(wrapper.totalPremiumRedeemed(), 40 ether, "Premium must have been deducted before loss");
+
         // 10% hack loss on the remaining ~950 ether position → ~95 ether loss
         morphoVault.setLoss(10);
 
@@ -653,7 +661,6 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         // total ≈ 855 + 94 = 949
         // Old bug: shortfall = 1000−855 = 145, capped at effectiveMaxInsurance = 99 → total ≈ 954
         assertApproxEqAbs(received, 949 ether, 3 ether, "Should receive assets + insurance for the loss only");
-        assertGt(wrapper.totalPremiumRedeemed(), 40 ether, "Premium must have been deducted before loss");
     }
 
     function test_calculateShortfall_premiumOnly_returnsZero() public {
@@ -683,6 +690,96 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.collectPremium();
 
         assertEq(wrapper.userShortfall(user1), 0, "Premium deductions must not appear as user shortfall");
+    }
+
+    /// @dev Regression: when a user exits, their pro-rata share of totalPremiumRedeemed must be
+    ///      removed so the (totalPrincipal − totalPremiumRedeemed) / totalPrincipal ratio stays
+    ///      stable for remaining users.
+    ///
+    ///      Bug: totalPrincipal decrements on each withdrawal but totalPremiumRedeemed never does.
+    ///      With two equal users and totalPremiumRedeemed=200:
+    ///        user1 exits → insuredBasis=900 (correct)
+    ///        user2 exits → insuredBasis=800 instead of 900 (bug: full 200 hangs against 1000)
+    ///
+    ///      Fix: after user1 exits, totalPremiumRedeemed halves to 100.
+    ///        user2 exits → insuredBasis = 1000*(1000−100)/1000 = 900 (correct)
+    function test_withdrawal_preservesInsuredBasisRatioForRemainingUsers() public {
+        // Fresh wrapper: 20% max coverage, 0% deductible for clean arithmetic
+        CoveredVaultWrapper w = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            2000, // 20% max coverage
+            0, // 0% deductible
+            premiumRecipientAddr,
+            curator,
+            "RatioTest",
+            "RT"
+        );
+        morphoVault.setCurator(address(w));
+        _createAndBindPolicy(
+            address(w),
+            address(w),
+            address(asset),
+            type(uint128).max,
+            type(uint128).max,
+            uint32(block.timestamp),
+            uint32(block.timestamp + 365 days),
+            curator,
+            address(w)
+        );
+
+        // 10%/year premium
+        uint256 rate = uint256(1e17) / 31_536_000;
+        vm.prank(curator);
+        w.setPremiumRate(rate);
+
+        vm.prank(user1);
+        asset.approve(address(w), type(uint256).max);
+        vm.prank(user1);
+        w.deposit(1000 ether, user1);
+
+        vm.prank(user2);
+        asset.approve(address(w), type(uint256).max);
+        vm.prank(user2);
+        w.deposit(1000 ether, user2);
+
+        // 1 year: ~200 ether premium accrues on totalPrincipal=2000 at 10%/year
+        vm.warp(block.timestamp + 365 days);
+        w.collectPremium();
+
+        uint256 premRedeemed = w.totalPremiumRedeemed();
+        assertGt(premRedeemed, 180 ether, "At least 180 ether premium after 1 year");
+        assertLt(premRedeemed, 220 ether, "At most 220 ether premium after 1 year");
+
+        // user1 exits at NO loss — receives ~900 (half of remaining 1800 post-premium position)
+        uint256 shares1 = w.balanceOf(user1);
+        vm.prank(user1);
+        w.redeem(shares1, user1, user1);
+
+        // After user1 exits with half the principal, totalPremiumRedeemed must halve
+        uint256 premAfter = w.totalPremiumRedeemed();
+        assertApproxEqAbs(
+            premAfter, premRedeemed / 2, 5 ether, "totalPremiumRedeemed must halve when half the principal exits"
+        );
+
+        // Now apply a 20% loss — only user2 remains
+        morphoVault.setLoss(20);
+
+        // user2 exits:
+        //   insuredBasis = 1000 * (1000 − ~100) / 1000 ≈ 900  (correct with fix)
+        //   insuredBasis = 1000 * (1000 − ~200) / 1000 ≈ 800  (wrong without fix)
+        //   assetsReceived ≈ 720 (900 remaining × 80%)
+        //   shortfall ≈ 180, insurance ≈ 180 (< maxInsurance=200, deductible=0)
+        //   total ≈ 900
+        uint256 before2 = asset.balanceOf(user2);
+        uint256 shares2 = w.balanceOf(user2);
+        vm.prank(user2);
+        w.redeem(shares2, user2, user2);
+        uint256 received2 = asset.balanceOf(user2) - before2;
+
+        assertApproxEqAbs(received2, 900 ether, 5 ether, "user2 must receive correct insurance via fair insuredBasis");
+        assertGt(received2, 850 ether, "user2 must NOT suffer from skewed premium ratio after user1 exited");
     }
 
     /*//////////////////////////////////////////////////////////////
