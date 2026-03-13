@@ -570,6 +570,122 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     }
 
     /*//////////////////////////////////////////////////////////////
+               PREMIUM × INSURANCE REGRESSION TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_totalPremiumRedeemed_tracksAccrual() public {
+        uint256 rate = uint256(1e17) / 31_536_000; // ~10% per year
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        assertEq(wrapper.totalPremiumRedeemed(), 0, "No premium before time passes");
+
+        vm.warp(block.timestamp + 365 days);
+        wrapper.collectPremium();
+
+        uint256 redeemed = wrapper.totalPremiumRedeemed();
+        assertGt(redeemed, 90 ether, "totalPremiumRedeemed should exceed 90 ether after 1 year at 10%");
+        assertLt(redeemed, 105 ether, "totalPremiumRedeemed should be under 105 ether after 1 year at 10%");
+        assertEq(wrapper.pendingPremium(), 0, "pendingPremium is cleared after collectPremium");
+    }
+
+    /// @dev Regression: premium deductions must NOT trigger insurance claims.
+    ///      Before the fix, any non-zero premium rate produced userPrincipalForWithdrawal > assetsReceived,
+    ///      causing the vault to file spurious insurance claims against the coverage pool.
+    function test_withdraw_premiumOnly_noInsuranceClaim() public {
+        uint256 rate = uint256(1e17) / 31_536_000; // ~10% per year
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        // 1 year passes — ~10% of principal (≈100 ether) accrues as premium, no hack
+        vm.warp(block.timestamp + 365 days);
+
+        uint256 user1BalanceBefore = asset.balanceOf(user1);
+        uint256 shares = wrapper.balanceOf(user1);
+        vm.prank(user1);
+        wrapper.redeem(shares, user1, user1);
+
+        uint256 received = asset.balanceOf(user1) - user1BalanceBefore;
+
+        // User paid ~100 ether in premium, receives ~900 ether back — no insurance payout
+        assertGt(received, 890 ether, "Should receive ~900 (principal minus premium)");
+        assertLt(received, 910 ether, "Should not receive more than principal minus premium");
+
+        // Key assertion: received is ~900, NOT ~999. The old buggy code filed an insurance
+        // claim for the premium-induced gap and paid ~99 ether on top (≈999 total). If this
+        // passes, no spurious claim was filed.
+        assertLt(received, 950 ether, "Insurance must NOT have been paid for premium deductions");
+
+        // Confirm premium was actually deducted (not a vacuous test)
+        assertGt(wrapper.totalPremiumRedeemed(), 90 ether, "Premium must have been taken from vault");
+    }
+
+    /// @dev Premium reduces the insured basis; only losses BEYOND that basis trigger insurance.
+    function test_withdraw_premiumPlusLoss_onlyLossInsured() public {
+        uint256 rate = uint256(1e17) / 31_536_000; // ~10% per year
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        // Advance half a year — ~50 ether premium paid; morpho position → ~950
+        vm.warp(block.timestamp + 365 days / 2);
+        wrapper.collectPremium();
+
+        // 10% hack loss on the remaining ~950 ether position → ~95 ether loss
+        morphoVault.setLoss(10);
+
+        uint256 user1BalanceBefore = asset.balanceOf(user1);
+        uint256 shares = wrapper.balanceOf(user1);
+        vm.prank(user1);
+        wrapper.redeem(shares, user1, user1);
+
+        uint256 received = asset.balanceOf(user1) - user1BalanceBefore;
+
+        // assetsReceived ≈ 855, insuredBasis ≈ 950, shortfall ≈ 95, insurance ≈ 94 (after 1% deductible)
+        // total ≈ 855 + 94 = 949
+        // Old bug: shortfall = 1000−855 = 145, capped at effectiveMaxInsurance = 99 → total ≈ 954
+        assertApproxEqAbs(received, 949 ether, 3 ether, "Should receive assets + insurance for the loss only");
+        assertGt(wrapper.totalPremiumRedeemed(), 40 ether, "Premium must have been deducted before loss");
+    }
+
+    function test_calculateShortfall_premiumOnly_returnsZero() public {
+        uint256 rate = uint256(1e17) / 31_536_000;
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        vm.warp(block.timestamp + 365 days);
+        wrapper.collectPremium(); // settle; totalPremiumRedeemed updated, morpho position reduced
+
+        // No hack — only premium has reduced the Morpho position
+        assertEq(wrapper.calculateShortfall(), 0, "Premium deductions must not appear as coverable shortfall");
+    }
+
+    function test_userShortfall_premiumOnly_returnsZero() public {
+        uint256 rate = uint256(1e17) / 31_536_000;
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        vm.warp(block.timestamp + 365 days);
+        wrapper.collectPremium();
+
+        assertEq(wrapper.userShortfall(user1), 0, "Premium deductions must not appear as user shortfall");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                         SUPPORTSINTERFACE
     //////////////////////////////////////////////////////////////*/
 
