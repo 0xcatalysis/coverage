@@ -361,9 +361,13 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.warp(block.timestamp + 365 days / 2);
         uint256 recipientBefore = asset.balanceOf(premiumRecipientAddr);
 
-        // Change rate again — must settle half-year accrual at old rate first
+        // Change rate again — must settle half-year accrual at old rate into pendingPremium first
         vm.prank(curator);
         wrapper.setPremiumRate(rate * 2);
+
+        // setPremiumRate now uses pull-payment: accrual lands in pendingPremium, not the recipient.
+        // collectPremium() pushes the pending amount to the recipient.
+        wrapper.collectPremium();
 
         uint256 premiumPaid = asset.balanceOf(premiumRecipientAddr) - recipientBefore;
         // ~5% of 1000 ether accrued over half-year at 10% annual rate
