@@ -119,13 +119,16 @@ contract CoveredVaultWrapper is
     ///      On the view path, both this value and _accruedPremium() are deducted symmetrically.
     uint256 public totalPremiumRedeemed;
 
-    // slither-disable-next-line unused-state
-    uint256[48] private __gap;
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev Persisted from onPolicyBound so that setMaxCoverableLossBps can recompute depositCap
+    ///      without a second call to the policy manager.
+    uint256 public coverageLimit;
 
     /*//////////////////////////////////////////////////////////////
                             ERRORS
     //////////////////////////////////////////////////////////////*/
 
+    error InvalidPolicyId();
     error NotAuthorized();
     error InvalidData();
     error PolicyBoundAlreadyExecuted();
@@ -168,6 +171,7 @@ contract CoveredVaultWrapper is
         initializer
     {
         require(_morphoVault != address(0), IA.ZeroAddress());
+        require(_claimManager != address(0), IA.ZeroAddress());
         require(_premiumRecipient != address(0), IA.ZeroAddress());
         require(_maxCoverableLossBps > 0 && _maxCoverableLossBps <= BPS_DENOMINATOR, IA.InvalidMaxCoverableLoss());
         require(_deductibleBps < BPS_DENOMINATOR, IA.InvalidParameters());
@@ -210,7 +214,6 @@ contract CoveredVaultWrapper is
         userPrincipal[receiver] += assets;
         totalPrincipal += assets;
         emit Deposit(caller, receiver, assets, shares);
-        emit IE.NavRecorded(receiver, assets, shares, userPrincipal[receiver]);
     }
 
     /// @notice Withdraw assets from the wrapper
@@ -265,8 +268,12 @@ contract CoveredVaultWrapper is
         if (insuredBasis > assetsReceived && _isPolicyActive()) {
             uint256 shortfall = insuredBasis - assetsReceived;
             uint256 maxInsurance = userPrincipalForWithdrawal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
-            uint256 effectiveInsurance = maxInsurance.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
-            uint256 claimAmount = shortfall < effectiveInsurance ? shortfall : effectiveInsurance;
+            // Cap to maxInsurance first, then apply deductible to the capped loss.
+            // This matches calculateShortfall() / userShortfall() which do the same two steps in order.
+            // The old order (deductible on cap, then min with shortfall) skipped the deductible entirely
+            // for any shortfall smaller than maxInsurance × (1 − deductible).
+            uint256 capped = shortfall < maxInsurance ? shortfall : maxInsurance;
+            uint256 claimAmount = capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
             if (claimAmount > 0) {
                 insurancePayout = _claimInsurance(claimAmount, owner);
             }
@@ -289,7 +296,6 @@ contract CoveredVaultWrapper is
         totalPrincipal -= userPrincipalForWithdrawal;
 
         emit Withdraw(caller, receiver, owner, assets, shares);
-        emit IE.NavWithdrawn(owner, assetsReceived, shares, insurancePayout, userPrincipal[owner]);
     }
 
     /// @notice Hook called on every ERC-20 share transfer
@@ -376,6 +382,28 @@ contract CoveredVaultWrapper is
     }
 
     /// @inheritdoc ICoveredVaultWrapper
+    function setMaxCoverableLossBps(uint16 newBps) external onlyOwner {
+        require(newBps > 0 && newBps <= BPS_DENOMINATOR, IA.InvalidMaxCoverableLoss());
+        uint16 oldBps = maxCoverableLossBps;
+        maxCoverableLossBps = newBps;
+        // Recalculate depositCap against the stored coverage limit so the two values stay consistent.
+        // If the policy is not yet bound, coverageLimit == 0 and depositCap stays 0 — onPolicyBound
+        // will set the correct cap using the new maxCoverableLossBps when it is eventually called.
+        if (policyBoundExecuted) {
+            depositCap = (coverageLimit * BPS_DENOMINATOR) / uint256(newBps);
+        }
+        emit IE.MaxCoverableLossUpdated(oldBps, newBps);
+    }
+
+    /// @inheritdoc ICoveredVaultWrapper
+    function setDeductibleBps(uint16 newBps) external onlyOwner {
+        require(newBps < BPS_DENOMINATOR, IA.InvalidParameters());
+        uint16 oldBps = deductibleBps;
+        deductibleBps = newBps;
+        emit IE.DeductibleUpdated(oldBps, newBps);
+    }
+
+    /// @inheritdoc ICoveredVaultWrapper
     // slither-disable-next-line reentrancy-no-eth,reentrancy-benign,reentrancy-events
     function setPremiumRecipient(address newRecipient) external onlyOwner {
         require(newRecipient != address(0), IA.ZeroAddress());
@@ -403,11 +431,12 @@ contract CoveredVaultWrapper is
     // slither-disable-next-line reentrancy-events
     function onPolicyBound(
         uint96 _policyId,
-        uint256 coverageLimit
+        uint256 _coverageLimit
     )
         external
         override (IBindPolicyHook, ICoveredVaultWrapper)
     {
+        if (_policyId == 0) revert InvalidPolicyId();
         if (msg.sender != address(_policyManager)) revert NotAuthorized();
         if (policyBoundExecuted) revert PolicyBoundAlreadyExecuted();
 
@@ -423,10 +452,11 @@ contract CoveredVaultWrapper is
 
         policyId = _policyId;
         policyBoundExecuted = true;
+        coverageLimit = _coverageLimit;
 
         // depositCap = total TVL cap implied by the coverage limit
         // If maxCoverableLossBps=10% (1000) and coverageLimit=100, cap = 100 * 10000/1000 = 1000
-        depositCap = (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
+        depositCap = (_coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
 
         emit IE.PolicyBound(address(this), _policyId);
     }
