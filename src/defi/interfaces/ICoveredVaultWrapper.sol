@@ -84,5 +84,5 @@ interface ICoveredVaultWrapper is IERC4626 {
     function maxMint(address receiver) external view returns (uint256);
 
     /// @notice Called by PolicyManager when the policy is bound; sets policyId and depositCap
-    function onPolicyBound(uint96 _policyId, uint256 coverageLimit) external;
+    function onPolicyBound(uint96 _policyId, uint256 _coverageLimit) external;
 }
