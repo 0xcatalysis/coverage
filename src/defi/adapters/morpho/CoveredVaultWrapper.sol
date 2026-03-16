@@ -471,10 +471,10 @@ contract CoveredVaultWrapper is
     /// @return payout The actual insurance payout received
     // slither-disable-next-line reentrancy-events,incorrect-equality
     function _claimInsurance(uint256 shortfall, address user) internal returns (uint256 payout) {
-        (uint256 coverageLimit, address payoutToken) = _getCoverageParams(policyId);
+        (uint256 policyCoverageLimit, address payoutToken) = _getCoverageParams(policyId);
 
         uint256 paidOut = _getPaidCover(policyId);
-        uint256 remainingCoverage = coverageLimit > paidOut ? coverageLimit - paidOut : 0;
+        uint256 remainingCoverage = policyCoverageLimit > paidOut ? policyCoverageLimit - paidOut : 0;
 
         uint256 cappedShortfall = shortfall > remainingCoverage ? remainingCoverage : shortfall;
         if (cappedShortfall == 0) return 0;
