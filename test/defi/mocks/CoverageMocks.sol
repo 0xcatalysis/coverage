@@ -27,7 +27,7 @@ contract MockStakeManager {
         // No-op
     }
 
-    function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external {
+    function setCommitteeVaults(uint96 committeeId, address[] calldata vaults, uint256) external {
         for (uint256 i = 0; i < vaults.length; i++) {
             _committeeVaults[committeeId].push(vaults[i]);
         }

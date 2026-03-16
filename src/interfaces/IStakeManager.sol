@@ -48,7 +48,8 @@ interface IStakeManager {
     /// @notice Associates vaults with a committee and configures them in the appropriate adapters.
     /// @param committeeId The ID of the committee.
     /// @param vaults The array of vault addresses to associate.
-    function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external;
+    /// @param coverageLimit Coverage notional (payout token units) used to set EigenLayer TVL limits.
+    function setCommitteeVaults(uint96 committeeId, address[] calldata vaults, uint256 coverageLimit) external;
 
     /// @notice Returns per-vault token stakes for a committee in token-native units.
     /// @dev Called by PolicyManager.bindPolicy to enforce stake sufficiency before policy activation.

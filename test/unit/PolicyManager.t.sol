@@ -416,9 +416,8 @@ contract PolicyManagerTest is Test {
         vaults[0] = makeAddr("vault1");
         mockStakeManager.createCommittee(committeeId, address(coverPool), COVERAGE_DURATION);
         mockStakeManager.addOperatorToCommittee(lowStakeOperator, committeeId);
-        mockStakeManager.addCommitteeVaults(committeeId, vaults);
+        mockStakeManager.setCommitteeVaults(committeeId, vaults, 0);
 
-        // Token stake of 100 wei → totalStakeUSD = 100 < coverageLimitUSD = COVERAGE_LIMIT
         mockStakeManager.setCommitteeTokenStakes(committeeId, vaults, payoutToken, 100);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
@@ -437,7 +436,7 @@ contract PolicyManagerTest is Test {
         vaults[0] = makeAddr("vault1");
         mockStakeManager.createCommittee(committeeId, address(coverPool), COVERAGE_DURATION);
         mockStakeManager.addOperatorToCommittee(curator, committeeId);
-        mockStakeManager.addCommitteeVaults(committeeId, vaults);
+        mockStakeManager.setCommitteeVaults(committeeId, vaults, 0);
         mockStakeManager.setCommitteeTokenStakes(committeeId, vaults, payoutToken, COVERAGE_LIMIT + 1);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
@@ -453,7 +452,7 @@ contract PolicyManagerTest is Test {
         vaults[0] = makeAddr("vault1");
         mockStakeManager.createCommittee(committeeId, address(coverPool), COVERAGE_DURATION);
         mockStakeManager.addOperatorToCommittee(curator, committeeId);
-        mockStakeManager.addCommitteeVaults(committeeId, vaults);
+        mockStakeManager.setCommitteeVaults(committeeId, vaults, 0);
         mockStakeManager.setCommitteeTokenStakes(committeeId, vaults, payoutToken, COVERAGE_LIMIT);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
@@ -1755,8 +1754,7 @@ contract PolicyManagerTest is Test {
             address[] memory vaults = new address[](2);
             vaults[0] = makeAddr("vault1");
             vaults[1] = makeAddr("vault2");
-            mockStakeManager.addCommitteeVaults(committeeId, vaults);
-            // Set token stakes ≥ COVERAGE_LIMIT so the default bind succeeds
+            mockStakeManager.setCommitteeVaults(committeeId, vaults, 0);
             mockStakeManager.setCommitteeTokenStakes(committeeId, vaults, payoutToken, COVERAGE_LIMIT + 1);
         }
     }
@@ -1911,7 +1909,7 @@ contract MockStakeManager {
         return _operatorCommittees[operator];
     }
 
-    function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external {
+    function setCommitteeVaults(uint96 committeeId, address[] calldata vaults, uint256) external {
         for (uint256 i = 0; i < vaults.length; i++) {
             _committeeVaults[committeeId].push(vaults[i]);
         }

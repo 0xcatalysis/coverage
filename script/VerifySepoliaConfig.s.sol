@@ -220,13 +220,13 @@ contract VerifySepoliaConfig is Script {
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Flow 5 – BindPolicy
-    //  Requires: vault module registered in SSPRouter (for addCommitteeVaults)
+    //  Requires: vault module registered in SSPRouter (for setCommitteeVaults)
     // ─────────────────────────────────────────────────────────────────────────
 
     function _checkFlow5_bindPolicy() internal {
         console2.log("--- Flow 5: BindPolicy ---");
 
-        // addCommitteeVaults checks getVaultModule != NONE for each vault
+        // setCommitteeVaults checks getVaultModule != NONE for each vault
         uint8 module = ISSPRouterView(SSP_ROUTER).getVaultModule(WETH_EL_STRATEGY);
         if (module == MODULE_EIGENLAYER) {
             console2.log("[OK] SSPRouter.getVaultModule(WETH_EL_STRATEGY): EIGENLAYER (2)");
