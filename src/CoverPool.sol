@@ -180,7 +180,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         ISpecRegistry(specRegistry).registerSpec(quote.specId, ISpec(spec));
 
         // Add vaults to committee in core contracts using policyId as committeeId (1:1 mapping).
-        IStakeManager(stakeManager).addCommitteeVaults(draft.policyId, vaults);
+        IStakeManager(stakeManager).setCommitteeVaults(draft.policyId, vaults, quote.coverageLimit);
 
         IPolicyManager(policyManager)
             .bindPolicy(

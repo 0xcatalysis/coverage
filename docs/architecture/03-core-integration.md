@@ -15,7 +15,7 @@ This separation keeps restaking platform complexity out of Coverage contracts.
 | Coverage Contract | Core Contract | Function | Purpose |
 |---|---|---|---|
 | `PolicyManager` | `StakeManager` | `createCommittee(policyId, pool, duration)` | Create policy-scoped committee; auto-assigns pool curator as operator |
-| `CoverPool` | `StakeManager` | `addCommitteeVaults(policyId, vaults[])` | Bind selected vaults/strategies backing policy |
+| `CoverPool` | `StakeManager` | `setCommitteeVaults(policyId, vaults[], coverageLimit)` | Bind selected vaults/strategies backing policy; sets EigenLayer TVL caps |
 | `PolicyManager` | `StakeManager` | `getCommitteeVaults(policyId)` | Verify vault backing exists before bind finalization |
 | `PolicyManager` | `StakeManager` | `getCommitteeTokenStakes(policyId)` | Retrieve per-vault token-native stakes for USD sufficiency check at bind |
 | `PolicyManager` | `ChainlinkPriceFeed` | `getUSDValue(token, amount)` | Convert stake and coverageLimit to USD for bind-time sufficiency check |
@@ -77,7 +77,7 @@ Outcome:
 Sequence:
 
 1. Curator calls `CoverPool.bindPolicyForRequest(...)` with quote and vaults.
-2. Pool calls `StakeManager.addCommitteeVaults(policyId, vaults)`.
+2. Pool calls `StakeManager.setCommitteeVaults(policyId, vaults, quote.coverageLimit)`.
 3. `PolicyManager.bindPolicy(...)` checks:
    - committee has at least one vault (`getCommitteeVaults`),
    - total stake (USD) ≥ coverage limit (USD) by calling `getCommitteeTokenStakes` and `ChainlinkPriceFeed.getUSDValue` for each token.

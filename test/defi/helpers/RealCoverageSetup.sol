@@ -194,7 +194,7 @@ abstract contract RealCoverageSetup is Test {
         address curator_ = coverPool.owner();
         address[] memory vaults = new address[](1);
         vaults[0] = address(0xDEAD); // placeholder vault for committee
-        mockStakeManager.addCommitteeVaults(policyId_, vaults);
+        mockStakeManager.setCommitteeVaults(policyId_, vaults, quote.coverageLimit);
 
         // 5. Bind policy (as curator = pool admin)
         vm.prank(curator_);
