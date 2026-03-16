@@ -854,6 +854,192 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     }
 
     /*//////////////////////////////////////////////////////////////
+                SET MAX COVERABLE LOSS BPS TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setMaxCoverableLossBps_updatesValue() public {
+        vm.prank(curator);
+        wrapper.setMaxCoverableLossBps(2000);
+        assertEq(wrapper.maxCoverableLossBps(), 2000);
+    }
+
+    function test_setMaxCoverableLossBps_revertsOnZero() public {
+        vm.prank(curator);
+        vm.expectRevert(IA.InvalidMaxCoverableLoss.selector);
+        wrapper.setMaxCoverableLossBps(0);
+    }
+
+    function test_setMaxCoverableLossBps_revertsAboveBpsDenominator() public {
+        vm.prank(curator);
+        vm.expectRevert(IA.InvalidMaxCoverableLoss.selector);
+        wrapper.setMaxCoverableLossBps(10_001);
+    }
+
+    function test_setMaxCoverableLossBps_revertsIfNotOwner() public {
+        vm.prank(user1);
+        vm.expectRevert();
+        wrapper.setMaxCoverableLossBps(2000);
+    }
+
+    function test_setMaxCoverableLossBps_emitsEvent() public {
+        vm.prank(curator);
+        vm.expectEmit(false, false, false, true);
+        emit IE.MaxCoverableLossUpdated(MAX_COVERABLE_LOSS_BPS, 2000);
+        wrapper.setMaxCoverableLossBps(2000);
+    }
+
+    /// @dev Changing maxCoverableLossBps after policy binding must recalculate depositCap.
+    ///      setUp binds with coverageLimit=10_000 ether and maxCoverableLossBps=1000 (10%)
+    ///      → depositCap = 10_000 * 10_000 / 1000 = 100_000 ether.
+    ///      After setMaxCoverableLossBps(2000) (20%):
+    ///      → depositCap = 10_000 * 10_000 / 2000 = 50_000 ether.
+    function test_setMaxCoverableLossBps_recalculatesDepositCapWhenBound() public {
+        assertEq(wrapper.depositCap(), 100_000 ether, "Initial depositCap at 10%");
+
+        vm.prank(curator);
+        wrapper.setMaxCoverableLossBps(2000); // 20%
+
+        assertEq(wrapper.depositCap(), 50_000 ether, "depositCap halves when maxCoverableLossBps doubles");
+    }
+
+    /// @dev Before policy binding, depositCap stays 0; onPolicyBound will use the new bps.
+    function test_setMaxCoverableLossBps_beforeBind_depositCapStaysZero() public {
+        CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            MAX_COVERABLE_LOSS_BPS,
+            DEDUCTIBLE_BPS,
+            premiumRecipientAddr,
+            curator,
+            "Fresh4",
+            "FR4"
+        );
+        assertEq(freshWrapper.depositCap(), 0, "depositCap 0 before binding");
+
+        vm.prank(curator);
+        freshWrapper.setMaxCoverableLossBps(500); // 5%
+
+        assertEq(freshWrapper.depositCap(), 0, "depositCap stays 0 until policy bound");
+    }
+
+    /// @dev coverageLimit stored during onPolicyBound; correct depositCap uses the latest bps.
+    function test_setMaxCoverableLossBps_storesCoverageLimitOnBind() public {
+        assertEq(wrapper.coverageLimit(), 10_000 ether);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    SET DEDUCTIBLE BPS TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setDeductibleBps_updatesValue() public {
+        vm.prank(curator);
+        wrapper.setDeductibleBps(500);
+        assertEq(wrapper.deductibleBps(), 500);
+    }
+
+    function test_setDeductibleBps_allowsZero() public {
+        vm.prank(curator);
+        wrapper.setDeductibleBps(0);
+        assertEq(wrapper.deductibleBps(), 0);
+    }
+
+    function test_setDeductibleBps_revertsAt10000() public {
+        vm.prank(curator);
+        vm.expectRevert(IA.InvalidParameters.selector);
+        wrapper.setDeductibleBps(10_000);
+    }
+
+    function test_setDeductibleBps_revertsIfNotOwner() public {
+        vm.prank(user1);
+        vm.expectRevert();
+        wrapper.setDeductibleBps(200);
+    }
+
+    function test_setDeductibleBps_emitsEvent() public {
+        vm.prank(curator);
+        vm.expectEmit(false, false, false, true);
+        emit IE.DeductibleUpdated(DEDUCTIBLE_BPS, 200);
+        wrapper.setDeductibleBps(200);
+    }
+
+    /// @dev Regression: deductible must apply to the CAPPED shortfall, not to the cap itself.
+    ///
+    ///      Bug: write path computed effectiveInsurance = maxInsurance × (1 − deductible), then
+    ///      claimAmount = min(shortfall, effectiveInsurance). When shortfall < effectiveInsurance the
+    ///      deductible was never applied and the user received the full shortfall — no deductible at all.
+    ///
+    ///      Fix: cap the raw shortfall first, then apply the deductible to the capped amount,
+    ///      matching calculateShortfall() / userShortfall().
+    ///
+    ///      Setup: principal=1000, maxCoverable=20% (max=200), deductible=50%, 5% loss.
+    ///        shortfall = 50, maxInsurance = 200
+    ///        Bug:  effectiveInsurance = 200×50% = 100; claimAmount = min(50,100) = 50  (no deductible!)
+    ///        Fix:  capped = min(50, 200) = 50; claimAmount = 50×50% = 25
+    function test_deductible_appliedToCappedShortfall_notToCap() public {
+        CoveredVaultWrapper w = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            2000, // 20% max coverable loss
+            5000, // 50% deductible
+            premiumRecipientAddr,
+            curator,
+            "DeductibleTest",
+            "DT"
+        );
+        morphoVault.setCurator(address(w));
+        _createAndBindPolicy(
+            address(w),
+            address(w),
+            address(asset),
+            type(uint128).max,
+            type(uint128).max,
+            uint32(block.timestamp),
+            uint32(block.timestamp + 365 days),
+            curator,
+            address(w)
+        );
+
+        vm.prank(user1);
+        asset.approve(address(w), type(uint256).max);
+        vm.prank(user1);
+        w.deposit(1000 ether, user1);
+
+        morphoVault.setLoss(5); // 5% loss → assetsReceived≈950, shortfall=50
+
+        uint256 before = asset.balanceOf(user1);
+        uint256 shares = w.balanceOf(user1);
+        vm.prank(user1);
+        w.redeem(shares, user1, user1);
+        uint256 received = asset.balanceOf(user1) - before;
+
+        // Correct: 950 + 25 = 975.  Bug would give: 950 + 50 = 1000 (deductible skipped).
+        assertApproxEqAbs(received, 975 ether, 1 ether, "Deductible must apply to the actual shortfall");
+        assertLt(received, 990 ether, "Full shortfall must NOT be paid when deductible > 0");
+    }
+
+    /// @dev Raising deductible reduces effective insurance payout proportionally.
+    ///      10% loss → shortfall=100, maxInsurance=100; with 50% deductible: payout=50.
+    function test_setDeductibleBps_affectsInsurancePayout() public {
+        vm.prank(curator);
+        wrapper.setDeductibleBps(5000); // 50% deductible
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+        morphoVault.setLoss(10);
+
+        uint256 before = asset.balanceOf(user1);
+        uint256 shares = wrapper.balanceOf(user1);
+        vm.prank(user1);
+        wrapper.redeem(shares, user1, user1);
+        uint256 received = asset.balanceOf(user1) - before;
+
+        // assetsReceived=900, shortfall=100, maxInsurance=100, effective=50 (50% deductible)
+        assertApproxEqAbs(received, 950 ether, 1 ether, "50% deductible halves the insurance payout");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                     SET PREMIUM RECIPIENT TESTS
     //////////////////////////////////////////////////////////////*/
 

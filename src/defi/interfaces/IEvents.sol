@@ -44,4 +44,10 @@ interface IEvents {
 
     /// @notice Emitted when the premium recipient is updated
     event PremiumRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
+
+    /// @notice Emitted when maxCoverableLossBps is updated by the owner
+    event MaxCoverableLossUpdated(uint16 oldBps, uint16 newBps);
+
+    /// @notice Emitted when deductibleBps is updated by the owner
+    event DeductibleUpdated(uint16 oldBps, uint16 newBps);
 }
