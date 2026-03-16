@@ -47,6 +47,10 @@ interface ICoveredVaultWrapper is IERC4626 {
     ///         accrual are deducted symmetrically to avoid phantom shortfalls.
     function totalPremiumRedeemed() external view returns (uint256);
 
+    /// @notice Coverage limit stored from the bound policy (0 before onPolicyBound is called).
+    ///         Used to recalculate depositCap when maxCoverableLossBps changes post-binding.
+    function coverageLimit() external view returns (uint256);
+
     /// @notice Maximum total assets (TVL) that can be deposited into this vault.
     ///         Set to 0 on deployment; updated by onPolicyBound to coverageLimit * BPS_DENOMINATOR /
     /// maxCoverableLossBps.
@@ -64,6 +68,14 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// @notice Updates the premium rate per second. Accrues pending premium at the old rate first.
     ///         Only callable by the owner. Rate is WAD-scaled (e.g. 1e16 / 31536000 ≈ 0.1%/year).
     function setPremiumRate(uint256 newRate) external;
+
+    /// @notice Updates the maximum coverable loss in basis points. Recalculates depositCap if policy is bound.
+    ///         Caller must be the owner. Reverts with InvalidMaxCoverableLoss if newBps == 0 or > 10_000.
+    function setMaxCoverableLossBps(uint16 newBps) external;
+
+    /// @notice Updates the deductible in basis points applied to every insurance claim.
+    ///         Caller must be the owner. Reverts with InvalidParameters if newBps >= 10_000.
+    function setDeductibleBps(uint16 newBps) external;
 
     /// @notice Updates the premium recipient. Accrues pending premium at the old address first.
     function setPremiumRecipient(address newRecipient) external;
