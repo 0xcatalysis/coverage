@@ -267,7 +267,9 @@ contract CoveredVaultWrapper is
             : 0;
         if (insuredBasis > assetsReceived && _isPolicyActive()) {
             uint256 shortfall = insuredBasis - assetsReceived;
-            uint256 maxInsurance = userPrincipalForWithdrawal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
+            // EF-4: Cap based on insuredBasis (post-premium principal), not raw userPrincipalForWithdrawal.
+            // Using the raw principal would allow claiming for premium-period losses beyond the insured position.
+            uint256 maxInsurance = insuredBasis.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
             // Cap to maxInsurance first, then apply deductible to the capped loss.
             // This matches calculateShortfall() / userShortfall() which do the same two steps in order.
             // The old order (deductible on cap, then min with shortfall) skipped the deductible entirely
@@ -404,21 +406,12 @@ contract CoveredVaultWrapper is
     }
 
     /// @inheritdoc ICoveredVaultWrapper
-    // slither-disable-next-line reentrancy-no-eth,reentrancy-benign,reentrancy-events
     function setPremiumRecipient(address newRecipient) external onlyOwner {
         require(newRecipient != address(0), IA.ZeroAddress());
-        _accruePremium(); // settle any accrued premium into pendingPremium first
-        // Flush all pending premium to the OLD recipient before switching.
-        // Without this, any earned-but-uncollected premium (both pre-existing pendingPremium
-        // and the amount just settled above) would be silently redirected to the new recipient
-        // on the next collectPremium() call.
+        // EF-2: No flush — if the old recipient is on a token blocklist a transfer would revert and
+        // prevent the owner from ever switching. The owner should call collectPremium() first if
+        // they want to forward pending funds; this function only updates the storage slot.
         address oldRecipient = premiumRecipient;
-        uint256 pending = pendingPremium;
-        if (pending > 0) {
-            pendingPremium = 0;
-            IERC20(asset()).safeTransfer(oldRecipient, pending);
-            emit IE.PremiumCollected(oldRecipient, pending);
-        }
         premiumRecipient = newRecipient;
         emit IE.PremiumRecipientUpdated(oldRecipient, newRecipient);
     }
@@ -540,7 +533,8 @@ contract CoveredVaultWrapper is
         uint256 adjustedPrincipal = totalPrincipal > totalPremiumTotal ? totalPrincipal - totalPremiumTotal : 0;
         if (adjustedPrincipal > netValue) {
             uint256 rawShortfall = adjustedPrincipal - netValue;
-            uint256 maxCoverable = totalPrincipal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
+            // EF-4: Cap on adjustedPrincipal so premium-period losses don't inflate the coverable amount
+            uint256 maxCoverable = adjustedPrincipal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
             uint256 capped = rawShortfall > maxCoverable ? maxCoverable : rawShortfall;
             return capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
         }
@@ -572,11 +566,18 @@ contract CoveredVaultWrapper is
             : 0;
         if (adjustedUserPrincipal > userMorphoValue) {
             uint256 raw = adjustedUserPrincipal - userMorphoValue;
-            uint256 maxCoverable = userPrincipal[user].mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
+            // EF-4: Cap on adjustedUserPrincipal so premium-period losses don't inflate the coverable amount
+            uint256 maxCoverable = adjustedUserPrincipal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
             uint256 capped = raw > maxCoverable ? maxCoverable : raw;
             return capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
         }
         return 0;
+    }
+
+    /// @notice Decimal offset for inflation attack protection
+    /// @dev Inserts 10^6 virtual shares; an attacker must donate >10^6× the victim's deposit to profit from rounding
+    function _decimalsOffset() internal pure override returns (uint8) {
+        return 6;
     }
 
     /// @notice Deposits are blocked until the policy is bound (depositCap is set by onPolicyBound)

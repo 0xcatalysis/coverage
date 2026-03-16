@@ -1070,9 +1070,10 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.setPremiumRecipient(newRecipient);
     }
 
-    /// @dev All pending premium (pre-existing + freshly settled) must be transferred to the OLD
-    ///      recipient at switch time, not redirected to the new one.
-    function test_setPremiumRecipient_flushesToOldRecipientOnSwitch() public {
+    /// @dev EF-2: setPremiumRecipient() must NOT transfer funds — it only updates the storage slot.
+    ///      If the old recipient is on a token blocklist, the old flush would revert and prevent
+    ///      the owner from ever switching. The owner calls collectPremium() separately if needed.
+    function test_setPremiumRecipient_noFlushOnSwitch() public {
         uint256 rate = uint256(1e17) / 31_536_000; // 10%/year
         vm.prank(curator);
         wrapper.setPremiumRate(rate);
@@ -1081,24 +1082,29 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
 
         vm.warp(block.timestamp + 365 days);
+        // Settle premium into pendingPremium so there is a non-zero balance before the switch
+        wrapper.collectPremium();
+        uint256 pendingAfterCollect = wrapper.pendingPremium();
+        assertEq(pendingAfterCollect, 0, "pendingPremium zeroed by collectPremium");
 
-        uint256 oldBefore = asset.balanceOf(premiumRecipientAddr);
+        // Accrue more premium that has NOT been collected yet
+        vm.warp(block.timestamp + 30 days);
+
+        uint256 oldRecipientBefore = asset.balanceOf(premiumRecipientAddr);
         address newRecipient = address(0xBEEF);
-        uint256 newBefore = asset.balanceOf(newRecipient);
+        uint256 newRecipientBefore = asset.balanceOf(newRecipient);
+        uint256 pendingBefore = wrapper.pendingPremium(); // 0 — not yet settled
 
         vm.prank(curator);
         wrapper.setPremiumRecipient(newRecipient);
 
-        // pendingPremium must be zero — flushed to the old recipient during the switch
-        assertEq(wrapper.pendingPremium(), 0, "pendingPremium must be flushed to old recipient on switch");
-
-        // Old recipient received the full accrued premium at switch time
-        assertGt(
-            asset.balanceOf(premiumRecipientAddr) - oldBefore, 90 ether, "Old recipient must receive accrued premium"
+        // State: recipient updated, no transfer occurred, pendingPremium unchanged
+        assertEq(wrapper.premiumRecipient(), newRecipient, "Recipient must be updated");
+        assertEq(wrapper.pendingPremium(), pendingBefore, "pendingPremium must be unchanged by setPremiumRecipient");
+        assertEq(
+            asset.balanceOf(premiumRecipientAddr), oldRecipientBefore, "Old recipient must not receive funds on switch"
         );
-
-        // New recipient received nothing at switch time
-        assertEq(asset.balanceOf(newRecipient), newBefore, "New recipient must not receive pre-switch premium");
+        assertEq(asset.balanceOf(newRecipient), newRecipientBefore, "New recipient must not receive funds on switch");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1155,5 +1161,126 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(user1);
         vm.expectRevert();
         wrapper.mint(extraShares, user1);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    INFLATION ATTACK PROTECTION TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @dev EF-3: _decimalsOffset() == 6 makes inflation attacks economically infeasible.
+    ///      An attacker who donates D assets after the first 1-wei deposit can only steal
+    ///      floor(victim_deposit * 1 / (D + 1 + 10^6)) per unit donated.
+    ///      With offset=6 the attacker must donate >10^6 × victim_deposit to gain 1 wei.
+    function test_decimalsOffset_inflationProtection() public {
+        // Attacker deposits 1 wei as the first depositor
+        address attacker = address(0xA77AC);
+        asset.mint(attacker, 1 ether + 1);
+        vm.prank(attacker);
+        asset.approve(address(wrapper), type(uint256).max);
+        vm.prank(attacker);
+        wrapper.deposit(1, attacker); // 1 wei deposit
+
+        // Attacker donates 1 ether directly to the Morpho vault to inflate share price
+        vm.prank(attacker);
+        asset.transfer(address(morphoVault), 1 ether);
+
+        // Victim deposits 0.5 ether — should receive shares > 0 despite donation
+        uint256 victimDeposit = 0.5 ether;
+        asset.mint(user1, victimDeposit);
+        vm.prank(user1);
+        asset.approve(address(wrapper), type(uint256).max);
+        vm.prank(user1);
+        wrapper.deposit(victimDeposit, user1);
+
+        // With decimalsOffset=6, victim's shares must be > 0 (inflation attack defeated)
+        assertGt(wrapper.balanceOf(user1), 0, "Victim must receive non-zero shares despite donation");
+
+        // Attacker redeems — gains must not exceed victim's deposit (no profit from inflation)
+        uint256 attackerSharesBefore = wrapper.balanceOf(attacker);
+        uint256 attackerAssetsBefore = asset.balanceOf(attacker);
+        vm.prank(attacker);
+        wrapper.redeem(attackerSharesBefore, attacker, attacker);
+        uint256 attackerGain = asset.balanceOf(attacker) - attackerAssetsBefore;
+        // Attacker deposited 1 wei and donated 1 ether; total cost = ~1 ether
+        // They must not recover more than their total outlay (no theft of victim funds)
+        assertLt(attackerGain, 1 ether + 1000, "Attacker must not profit from inflation attack");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    EF-4 CAP BASED ON INSURED BASIS TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @dev EF-4: When shortfall > insuredBasis × maxCoverableLoss but shortfall < principal × maxCoverableLoss,
+    ///      the lower (insuredBasis-based) cap must apply — not the raw-principal cap.
+    ///
+    ///      Setup: principal=1000, 40% premium paid → insuredBasis=600, 10% maxCoverable, 0% deductible.
+    ///      30% loss on the remaining 600:
+    ///        assetsReceived = 420, shortfall = 180
+    ///        OLD cap: 1000 × 10% = 100 → payout = 100
+    ///        NEW cap: 600 × 10% = 60  → payout = 60
+    ///
+    ///      The new cap is correct: coverage only applies to genuine hack losses on the insured basis,
+    ///      not on principal that has already been consumed by premium.
+    function test_EF4_maxInsurance_basedOnInsuredBasis() public {
+        // Fresh wrapper: 10% max coverage, 0% deductible for clean assertions
+        CoveredVaultWrapper w = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            1000, // 10% max coverage
+            0, // 0% deductible
+            premiumRecipientAddr,
+            curator,
+            "EF4Test",
+            "EF4"
+        );
+        morphoVault.setCurator(address(w));
+        _createAndBindPolicy(
+            address(w),
+            address(w),
+            address(asset),
+            type(uint128).max,
+            type(uint128).max,
+            uint32(block.timestamp),
+            uint32(block.timestamp + 365 days),
+            curator,
+            address(w)
+        );
+
+        // ~40%/year premium rate: 40e16 / 31536000
+        uint256 rate = (uint256(4e17)) / 31_536_000;
+        vm.prank(curator);
+        w.setPremiumRate(rate);
+
+        vm.prank(user1);
+        asset.approve(address(w), type(uint256).max);
+        vm.prank(user1);
+        w.deposit(1000 ether, user1);
+
+        // 1 year: ~40% of 1000 = ~400 ether premium deducted; morpho position ≈ 600
+        vm.warp(block.timestamp + 365 days);
+        w.collectPremium();
+
+        uint256 premRedeemed = w.totalPremiumRedeemed();
+        // insuredBasis = 1000 * (1000 - premRedeemed) / 1000 ≈ 600
+        assertGt(premRedeemed, 350 ether, "Premium must be > 35% of principal");
+        assertLt(premRedeemed, 450 ether, "Premium must be < 45% of principal");
+
+        // 30% hack loss on remaining morpho position (~600 ether)
+        morphoVault.setLoss(30);
+
+        uint256 before = asset.balanceOf(user1);
+        uint256 shares = w.balanceOf(user1);
+        vm.prank(user1);
+        w.redeem(shares, user1, user1);
+        uint256 received = asset.balanceOf(user1) - before;
+
+        // assetsReceived ≈ 420 (600 × 70%)
+        // insuredBasis ≈ 600; shortfall ≈ 180
+        // NEW cap = 600 × 10% = 60 → payout = 60
+        // OLD cap = 1000 × 10% = 100 → payout = 100 (wrong: covers premium losses)
+        // total ≈ 420 + 60 = 480
+        assertApproxEqAbs(received, 480 ether, 10 ether, "Payout must use insuredBasis cap, not raw principal cap");
+        assertLt(received, 530 ether, "Must NOT pay out using the over-generous raw-principal cap");
     }
 }
