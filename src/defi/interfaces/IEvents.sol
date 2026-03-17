@@ -24,9 +24,9 @@ interface IEvents {
     /// @notice Emitted when insurance is claimed for a shortfall
     /// @param user The user address
     /// @param policyId The policy ID used
-    /// @param shortfall The shortfall amount requested
-    /// @param payout The actual payout received
-    event InsuranceClaimed(address indexed user, uint96 indexed policyId, uint256 shortfall, uint256 payout);
+    /// @param claimAmount The post-cap, post-deductible amount submitted to the claim manager
+    /// @param payout The actual payout received (may be less than claimAmount if coverage is exhausted)
+    event InsuranceClaimed(address indexed user, uint96 indexed policyId, uint256 claimAmount, uint256 payout);
 
     /// @notice Emitted when a policy is bound to a user position
     /// @param user The user address
