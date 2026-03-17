@@ -180,6 +180,11 @@ interface IVaultV2 {
     /// @notice Abdicates a selector
     function abdicate(bytes4 selector) external;
 
+    /// @notice Sets a curator
+    function setCurator(address newCurator) external;
+
+    function setMaxRate(uint256 newMaxRate) external;
+
     /* FORCE DEALLOCATE */
 
     /// @notice Force deallocates from an adapter (with penalty)
