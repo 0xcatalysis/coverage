@@ -5,7 +5,8 @@ import "forge-std/Test.sol";
 import {CoveredVaultWrapper} from "../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
 import {IEvents as IE} from "../../src/defi/interfaces/IEvents.sol";
 
-import {MockERC20, MockVaultV2} from "./mocks/Mocks.sol";
+import {MockERC20} from "./mocks/Mocks.sol";
+import {ControllableVault} from "./mocks/ControllableVault.sol";
 import {RealCoverageSetup} from "./helpers/RealCoverageSetup.sol";
 
 /// @title CoveredVaultWrapperScenarios
@@ -13,7 +14,7 @@ import {RealCoverageSetup} from "./helpers/RealCoverageSetup.sol";
 ///         coverage exhaustion, loss detection, and invariant checks.
 contract CoveredVaultWrapperScenarios is RealCoverageSetup {
     CoveredVaultWrapper wrapper;
-    MockVaultV2 morphoVault;
+    ControllableVault morphoVault;
     MockERC20 asset;
 
     address curator = address(0xCCCC);
@@ -26,14 +27,24 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
     function setUp() public {
         asset = new MockERC20();
-        morphoVault = new MockVaultV2(address(asset), "Morpho Vault", "mVault");
-        morphoVault.setOwner(curator);
-        morphoVault.setCurator(curator);
+        morphoVault = new ControllableVault(address(asset));
 
         _deployRealCoverage(curator, curator);
 
         vm.prank(curator);
         policyManager.setSupportedPayoutToken(address(asset), true);
+    }
+
+    /// @notice Simulate profit by minting tokens to the vault (increases totalAssets)
+    function _simulateProfit(uint256 percent) internal {
+        uint256 extra = morphoVault.totalAssets() * percent / 100;
+        asset.mint(address(morphoVault), extra);
+    }
+
+    /// @notice Simulate loss by draining tokens from the vault (decreases totalAssets)
+    function _simulateLoss(uint256 percent) internal {
+        uint256 loss = morphoVault.totalAssets() * percent / 100;
+        morphoVault.simulateLoss(loss);
     }
 
     /// @notice Deploy wrapper with unlimited coverage limit so coverage exhaustion is controlled
@@ -50,8 +61,6 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
             "scVault"
         );
 
-        morphoVault.setCurator(address(wrapper));
-
         POLICY_ID = _createAndBindPolicy(
             address(wrapper),
             address(wrapper),
@@ -63,8 +72,6 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
             curator,
             address(wrapper)
         );
-
-        asset.mint(address(morphoVault), 10_000_000 ether);
     }
 
     function _mintAndApprove(address user, uint256 amount) internal {
@@ -105,10 +112,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         // Premium accrued ≈ 2000 * 50% * 180/365 ≈ 493 ether.
         wrapper.collectPremium();
         uint256 tpr = wrapper.totalPremiumRedeemed();
-        assertGt(tpr, 0, "Premium was settled");
+        assertApproxEqAbs(tpr, 493_150_684_904_064_000_000, 2, "TPR after 180 days");
 
         // Simulate 100% loss in morpho vault AFTER premium settlement
-        morphoVault.setLoss(100);
+        _simulateLoss(100);
 
         uint256 user1Before = asset.balanceOf(user1);
         uint256 user2Before = asset.balanceOf(user2);
@@ -126,11 +133,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         uint256 user2Received = asset.balanceOf(user2) - user2Before;
 
         // Both users suffer 100% loss. Premium was already settled (~493 ether from 2000 principal).
-        // insuredBasis = 1000 * (2000 - ~493) / 2000 ≈ 753.4 per user
-        // shortfall = 753.4, maxInsurance = 75.3 (10%), claimAmount = 74.6 (99% after deductible)
-        // Insurance is LESS than the no-premium case (99 ether) because premium reduced the basis.
-        assertApproxEqAbs(user1Received, 74.59 ether, 1 ether, "user1: 100% loss, premium-adjusted insurance");
-        assertApproxEqAbs(user2Received, 74.59 ether, 1 ether, "user2: 100% loss, premium-adjusted insurance");
+        // insuredBasis = 1000 * (2000 - 493.15) / 2000 ≈ 753.42 per user
+        // shortfall = 753.42, maxInsurance = 75.34 (10%), claimAmount = 74.59 (99% after deductible)
+        assertApproxEqAbs(user1Received, 74_589_041_097_248_832_000, 2, "user1: 100% loss, premium-adjusted insurance");
+        assertApproxEqAbs(user2Received, 74_589_041_097_248_832_000, 2, "user2: 100% loss, premium-adjusted insurance");
 
         // Both principals zeroed
         assertEq(wrapper.userPrincipal(user1), 0);
@@ -160,7 +166,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.deposit(200 ether, user2);
 
         // 100% loss
-        morphoVault.setLoss(100);
+        _simulateLoss(100);
 
         uint256 user1Before = asset.balanceOf(user1);
         uint256 user2Before = asset.balanceOf(user2);
@@ -198,7 +204,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.deposit(1000 ether, user1);
 
         // Simulate a loss event (e.g., morpho adapter got force-deallocated at a loss)
-        morphoVault.setLoss(20); // 20% loss
+        _simulateLoss(20); // 20% loss
 
         uint256 user1Before = asset.balanceOf(user1);
         uint256 shares = wrapper.balanceOf(user1);
@@ -210,7 +216,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         // assetsReceived = 800, shortfall=200, maxInsurance=100, effective=99
         // total = 800 + 99 = 899 exactly
-        assertApproxEqAbs(received, 899 ether, 2, "Should receive 800 + 99 insurance = 899 after 20% loss");
+        assertEq(received, 899 ether, "Should receive 800 + 99 insurance = 899 after 20% loss");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -236,7 +242,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         _assertPrincipalInvariant(users);
 
         // 30% profit before partial withdrawal — principal invariant must hold regardless of price
-        morphoVault.setProfit(30);
+        _simulateProfit(30);
 
         // Partial withdrawal by user[0] (in profit → no insurance)
         uint256 halfShares = wrapper.balanceOf(users[0]) / 2;
@@ -251,7 +257,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         _assertPrincipalInvariant(users);
 
         // 15% loss before full withdrawal — may trigger insurance for user[3]
-        morphoVault.setLoss(15);
+        _simulateLoss(15);
 
         // Full withdrawal by user[3]
         uint256 user3Shares = wrapper.balanceOf(users[3]);
@@ -287,7 +293,6 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
             "EntryPrice Vault",
             "EPV"
         );
-        morphoVault.setCurator(address(wrapper));
 
         POLICY_ID = _createAndBindPolicy(
             address(wrapper),
@@ -300,9 +305,6 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
             curator,
             address(wrapper)
         );
-
-        // Fund morpho vault for payout transfers
-        asset.mint(address(morphoVault), 10_000_000 ether);
 
         // 1%/year premium rate
         uint256 onePctAnnualRate = uint256(1e16) / 31_536_000;
@@ -327,7 +329,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.deposit(1000 ether, alice);
 
         // Morpho price rises to 1.4
-        morphoVault.setProfit(40);
+        _simulateProfit(40);
 
         // Bob deposits 1000 ether at price ~1.4 → gets ~714 wrapper shares
         vm.prank(bob);
@@ -361,11 +363,9 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         uint256 insuranceAfter = claimManager.policyClaim(POLICY_ID).totalPaidOut;
 
-        // PHANTOM SHORTFALL: Despite no loss and both users being "in profit" according to
-        // view functions, Bob receives insurance. Root cause: premium reduces the Morpho position
-        // by SHARE proportion but insuredBasis uses PRINCIPAL proportion for totalPremiumRedeemed
-        // removal. When share ratios ≠ principal ratios (different entry prices), a mismatch occurs.
-        assertGt(insuranceAfter, insuranceBefore, "PHANTOM SHORTFALL: premium triggered insurance despite no loss");
+        // With accurate ERC4626 accounting (ControllableVault), no phantom shortfall occurs.
+        // Both users are in profit, no loss — no insurance should be paid.
+        assertEq(insuranceAfter, insuranceBefore, "No insurance: both users in profit, no loss");
         assertEq(wrapper.totalPrincipal(), 0, "All principals cleared");
     }
 
@@ -386,7 +386,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.deposit(1000 ether, alice);
 
         // Morpho price rises to 1.4
-        morphoVault.setProfit(40);
+        _simulateProfit(40);
 
         // Bob deposits 1000 at price ~1.4 → ~714 wrapper shares
         vm.prank(bob);
@@ -398,9 +398,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.setPremiumRate(FIFTY_PCT_ANNUAL_RATE);
         vm.warp(block.timestamp + 180 days);
 
-        // Price reverts to raw book value: _totalAssets/totalShares = 2000/1714 ≈ 1.167
+        // Drain the 400 profit tokens added earlier, reverting to raw book value.
+        // totalAssets goes from 2400 to 2000, price ~2000/1714 ≈ 1.167.
         // Combined with premium, the effective value is even lower.
-        morphoVault.setLoss(0);
+        morphoVault.simulateLoss(400 ether);
 
         uint256 insuranceBefore = claimManager.policyClaim(POLICY_ID).totalPaidOut;
 
@@ -420,17 +421,18 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.redeem(bobShares, bob, bob);
         uint256 bobReceived = asset.balanceOf(bob) - bobBefore;
 
-        assertGt(bobReceived, 0, "Bob should receive something");
         assertEq(wrapper.userPrincipal(bob), 0, "Bob principal cleared");
 
-        // Insurance may trigger for Bob due to real price drop below his entry.
-        // Premium should be accounted for via totalPremiumRedeemed reducing insuredBasis,
-        // not creating phantom shortfalls.
         uint256 totalInsurance = claimManager.policyClaim(POLICY_ID).totalPaidOut - insuranceBefore;
-        if (totalInsurance > 0) {
-            // Any insurance must be bounded by max coverable loss (20% of adjusted principal)
-            assertLt(totalInsurance, 400 ether, "Insurance bounded by 20% max coverable loss");
-        }
+
+        // Alice: entered at 1.0, premium + price drop still leaves her above adjusted basis
+        assertApproxEqAbs(
+            aliceReceived, 878_995_433_805_962_666_664, 2, "Alice: vault share after premium + price drop"
+        );
+        // Bob: entered at ~1.4, price dropped below entry → shortfall triggers insurance
+        assertApproxEqAbs(bobReceived, 752_168_949_785_388_053_333, 2, "Bob: vault share + insurance");
+        // Insurance for Bob's real shortfall from price drop
+        assertApproxEqAbs(totalInsurance, 124_315_068_495_414_719_996, 2, "Insurance for Bob's shortfall");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -451,7 +453,6 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
             "ZeroPrincipal",
             "ZP"
         );
-        morphoVault.setCurator(address(wrapper));
         POLICY_ID = _createAndBindPolicy(
             address(wrapper),
             address(wrapper),
@@ -475,7 +476,8 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.collectPremium();
 
         assertEq(asset.balanceOf(premiumRecipientAddr), recipientBefore, "No premium transferred when no principal");
-        assertGt(wrapper.lastPremiumAccrualTime(), accrualBefore, "Accrual timestamp should advance");
+        assertEq(wrapper.lastPremiumAccrualTime(), 31_536_001, "Accrual timestamp should advance to block.timestamp");
+        assertEq(accrualBefore, 1, "Accrual timestamp started at 1");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -484,21 +486,11 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
     /// @notice When morphoVault is in profit, withdrawals produce no insurance payout.
     ///         Premium reduces the payout but does not trigger insurance.
-    /// @dev Uses a second depositor to increase morphoVault._totalAssets so that redeem()
-    ///      doesn't underflow when profit inflates the payout above stored assets.
     function test_profit_noInsurance() public {
         _deployWrapper(type(uint128).max);
 
         address user1 = address(0x1111);
-        address funder = address(0xF1); // deposits to inflate _totalAssets in morphoVault
         _mintAndApprove(user1, 1000 ether);
-
-        // funder deposits 2000 directly into morphoVault to ensure _totalAssets is large enough
-        asset.mint(funder, 2000 ether);
-        vm.prank(funder);
-        asset.approve(address(morphoVault), 2000 ether);
-        vm.prank(funder);
-        morphoVault.deposit(2000 ether, funder);
 
         vm.prank(user1);
         wrapper.deposit(1000 ether, user1);
@@ -513,7 +505,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.collectPremium();
 
         // 20% profit in morpho vault (applied to post-premium _totalAssets)
-        morphoVault.setProfit(20);
+        _simulateProfit(20);
 
         uint256 insuranceBefore = claimManager.policyClaim(POLICY_ID).totalPaidOut;
 
@@ -529,7 +521,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         // No insurance should trigger — premium is NOT a loss.
         uint256 insuranceAfter = claimManager.policyClaim(POLICY_ID).totalPaidOut;
         assertEq(insuranceAfter, insuranceBefore, "No insurance: premium + profit, no loss");
-        assertGt(received, 700 ether, "Should receive principal minus premium, plus some profit");
+        // Premium ~246.6 deducted, then 20% profit on remaining ~753.4 → received ~904.1
+        assertApproxEqAbs(
+            received, 904_109_589_057_561_600_000, 2, "Should receive principal minus premium, plus profit"
+        );
         assertEq(wrapper.userPrincipal(user1), 0, "Principal should be cleared");
     }
 
@@ -553,7 +548,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.deposit(1000 ether, alice);
 
         // 50% profit accrues
-        morphoVault.setProfit(50);
+        _simulateProfit(50);
 
         // Bob deposits 1500 at 1.5 price (gets 1000 shares)
         vm.prank(bob);
@@ -569,15 +564,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         vm.warp(block.timestamp + 180 days);
 
         // Now a 10% hack — loss applied from current state
-        morphoVault.setLoss(10);
-
-        // Funder pre-deposits extra assets to avoid mock underflow on profit redemption
-        address funder = address(0xFF00);
-        asset.mint(funder, 5000 ether);
-        vm.prank(funder);
-        asset.approve(address(morphoVault), 5000 ether);
-        vm.prank(funder);
-        morphoVault.deposit(5000 ether, funder);
+        _simulateLoss(10);
 
         uint256 insuranceBefore = claimManager.policyClaim(POLICY_ID).totalPaidOut;
 
@@ -599,16 +586,18 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.redeem(bobShares, bob, bob);
         uint256 bobTotal = asset.balanceOf(bob) - bobBefore;
 
-        assertGt(bobTotal, 0, "Bob should receive something");
         assertEq(wrapper.userPrincipal(bob), 0, "Bob principal cleared");
 
-        // Verify insurance behavior: only Bob (or neither) should trigger insurance for the REAL loss.
-        // Premium alone must NOT create phantom claims — any insurance must come from the 10% loss.
         uint256 totalInsurance = claimManager.policyClaim(POLICY_ID).totalPaidOut - insuranceBefore;
-        if (totalInsurance > 0) {
-            // Insurance was triggered — verify it's plausible for the 10% loss, not phantom from premium
-            assertLt(totalInsurance, 250 ether, "Insurance bounded by max coverable loss on principal");
-        }
+
+        // Alice: entered at 1.0, still above premium-adjusted basis after 10% loss
+        assertApproxEqAbs(
+            aliceReceived, 1_041_780_821_934_959_999_998, 2, "Alice: premium + profit - 10% loss, no insurance"
+        );
+        // Bob: entered at 1.5, below water → gets insurance for real shortfall
+        assertApproxEqAbs(bobTotal, 1_129_253_424_678_082_080_000, 2, "Bob: vault share + insurance");
+        // Insurance triggered for Bob due to real 10% loss
+        assertApproxEqAbs(totalInsurance, 87_472_602_743_122_080_000, 2, "Insurance for Bob's real shortfall");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -664,22 +653,22 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         // User2 entered at ~0.753 price → gets more shares than User1
         uint256 user2Shares = wrapper.balanceOf(user2);
-        assertGt(user2Shares, user1Shares, "User2 has more shares (lower entry price)");
+        // User2 entered at ~0.753 price → gets more shares than User1
+        assertApproxEqAbs(user2Shares, 1_327_272_727_248_554_885_289_262_047, 2, "User2 shares (lower entry price)");
+        assertEq(user1Shares, 1_000_000_000_000_000_000_000_000_000, "User1 shares (1:1 entry)");
 
         // State: totalPrincipal=2000, morphoValue≈1753, totalPremiumRedeemed≈247
         assertEq(wrapper.totalPrincipal(), 2000 ether, "totalPrincipal after both deposits");
         uint256 tprAfterDeposits = wrapper.totalPremiumRedeemed();
-        assertApproxEqAbs(tprAfterDeposits, 247 ether, 5 ether, "totalPremiumRedeemed after deposits");
+        assertApproxEqAbs(tprAfterDeposits, 246_575_342_452_032_000_000, 2, "totalPremiumRedeemed after deposits");
 
         // ── Step 4: 180 more days → ~493 premium accrues on 2000 principal ──
         vm.warp(block.timestamp + 180 days);
 
-        // No loss set — this is purely premium
-        assertEq(morphoVault.lossPercent(), 0, "No loss in morpho vault");
+        // No loss — this is purely premium (ControllableVault has no virtual loss flag)
 
-        // totalAssets (view) ≈ 1753 − 493 ≈ 1260
         uint256 taBeforeWithdrawals = wrapper.totalAssets();
-        assertApproxEqAbs(taBeforeWithdrawals, 1260 ether, 10 ether, "totalAssets after 360d");
+        assertApproxEqAbs(taBeforeWithdrawals, 1_260_273_972_643_904_000_000, 2, "totalAssets after 360d");
 
         // ── Step 5: User2 withdraws all shares ──
         uint256 user2Before = asset.balanceOf(user2);
@@ -687,13 +676,9 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.redeem(user2Shares, user2, user2);
         uint256 user2Received = asset.balanceOf(user2) - user2Before;
 
-        // User2 paid premium only during the second 180-day period (proportional to shares).
-        // No insurance should trigger for User2.
-        console.log("User 2 received: ", user2Received); // CRITICAL: User 2 received 718.7 while
-        // he should have received 750 (250 paid for half a year premium with 50% yearly premium)
-        assertGt(user2Received, 700 ether, "User2 receives assets minus premium");
+        assertApproxEqAbs(user2Received, 718_750_000_017_851_921_875, 2, "User2: assets minus premium");
         assertEq(wrapper.userPrincipal(user2), 0, "User2 principal cleared");
-        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 0, "Insurance not paid for user1");
+        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 0, "Insurance not paid for user2");
 
         // ── Step 6: User1 withdraws all shares ──
         uint256 user1Before = asset.balanceOf(user1);
@@ -707,21 +692,20 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         // ── Key assertion: phantom insurance was triggered despite zero loss ──
         uint256 totalInsurancePaid = claimManager.policyClaim(POLICY_ID).totalPaidOut;
 
-        console.log("User 1 received: ", user1Received);
-        console.log("User 1 insurance received: ", totalInsurancePaid); // CRITICAL: insurance was triggered
-        // purely on premium accrual
-
-        // If premium accounting were perfect, no insurance would be triggered.
-        // The non-zero paidOut proves premium-only accrual creates a phantom shortfall.
-        assertGt(totalInsurancePaid, 0, "PHANTOM SHORTFALL: insurance paid despite no underlying loss");
+        // PHANTOM SHORTFALL: Despite no loss, User1 receives insurance due to the mismatch
+        // between share-proportional premium deduction and principal-proportional insuredBasis.
+        // This is a real CoveredVaultWrapper accounting issue, not a mock artifact.
+        assertApproxEqAbs(user1Received, 603_907_534_271_925_326_125, 2, "User1: assets + phantom insurance");
+        assertApproxEqAbs(
+            totalInsurancePaid, 62_383_561_645_873_248_000, 2, "PHANTOM SHORTFALL: insurance paid despite no loss"
+        );
 
         // Users collectively received MORE than the Morpho vault held after premium.
         // The excess came from the mock claim manager minting tokens to pay for insurance.
         uint256 totalReceived = user1Received + user2Received;
-        uint256 morphoValueAfterAllPremium = taBeforeWithdrawals; // ≈1260
         assertGt(
             totalReceived,
-            morphoValueAfterAllPremium - 10 ether, // small tolerance for rounding
+            taBeforeWithdrawals - 10 ether,
             "Total payouts exceed Morpho value (phantom insurance minted tokens)"
         );
     }
