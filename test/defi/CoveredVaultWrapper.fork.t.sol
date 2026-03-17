@@ -221,7 +221,7 @@ contract CoveredVaultWrapperForkTest is Test {
         require(ok, "execute failed");
     }
 
-    function test_fork_UnderlyingVaultFee_LossCount() public {
+    function test_fork_UnderlyingVaultFee_LossCount() public onlyFork {
         // Setup management fee for Underlying Morpho Vault
         uint256 feePerSec = uint256(0.02e18) / uint256(365 days); // ~2% annual
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFeeRecipient(address)", underlyingFeeRecipient));
@@ -247,7 +247,7 @@ contract CoveredVaultWrapperForkTest is Test {
         assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 0, "Insurance payout wasn't triggered");
     }
 
-    function test_fork_UnderlyingVaultFee_ProfitCoversFee() public {
+    function test_fork_UnderlyingVaultFee_ProfitCoversFee() public onlyFork {
         // Setup management fee for Underlying Morpho Vault
         uint256 feePerSec = uint256(0.02e18) / uint256(365 days); // ~2% annual
         _curatorSubmitExec(abi.encodeWithSignature("setIsAllocator(address,bool)", curator, true));
@@ -277,7 +277,7 @@ contract CoveredVaultWrapperForkTest is Test {
         assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 0, "Insurance payout wasn't triggered");
     }
 
-    function test_fork_UnderlyingVaultFee_OnlyLossCovered() public {
+    function test_fork_UnderlyingVaultFee_OnlyLossCovered() public onlyFork {
         // Setup management fee for Underlying Morpho Vault
         uint256 feePerSec = uint256(0.02e18) / uint256(365 days); // ~2% annual
         _curatorSubmitExec(abi.encodeWithSignature("setIsAllocator(address,bool)", curator, true));
