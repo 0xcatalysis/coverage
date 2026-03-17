@@ -130,7 +130,7 @@ contract CoveredVaultWrapperForkTest is Test {
             USDC, // payoutToken = wrapper.asset()
             COVERAGE_LIMIT,
             uint32(block.timestamp),
-            uint32(block.timestamp + 5*365 days)
+            uint32(block.timestamp + 5 * 365 days)
         );
 
         // -- 5. Trigger onPolicyBound (sets policyId, depositCap) --
@@ -179,7 +179,17 @@ contract CoveredVaultWrapperForkTest is Test {
             "CoveredVaultWrapper.sol",
             abi.encodeCall(
                 CoveredVaultWrapper.initialize,
-                (morphoVault_, claimManager_, coverPool_, maxCoverableLossBps_, deductibleBps_, premiumRecipient_, owner_, name_, symbol_)
+                (
+                    morphoVault_,
+                    claimManager_,
+                    coverPool_,
+                    maxCoverableLossBps_,
+                    deductibleBps_,
+                    premiumRecipient_,
+                    owner_,
+                    name_,
+                    symbol_
+                )
             ),
             deployOpts
         );
@@ -297,9 +307,13 @@ contract CoveredVaultWrapperForkTest is Test {
         uint256 expectedReceive = userDepositAfterFee - userLoss + (userLoss - (userLoss * DEDUCTIBLE_BPS / 10_000));
 
         // User's current value is 970 (20 tokens - fee, 10 tokens - loss).
-        // Current loss is 1%. Insurance should cover 9.9 assets (including deductible) only. Underlying fee shouldn't be covered
-        // User should receive 979.9 tokens in result
+        // Current loss is 1%. Insurance should cover 9.9 assets (including deductible) only. Underlying fee shouldn't
+        // be covered User should receive 979.9 tokens in result
         assertEq(IERC20(USDC).balanceOf(user1), expectedReceive, "User received insurance for Vault loss only");
-        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, userLoss - (userLoss * DEDUCTIBLE_BPS / 10_000), "User loss covered");
+        assertEq(
+            claimManager.policyClaim(POLICY_ID).totalPaidOut,
+            userLoss - (userLoss * DEDUCTIBLE_BPS / 10_000),
+            "User loss covered"
+        );
     }
 }
