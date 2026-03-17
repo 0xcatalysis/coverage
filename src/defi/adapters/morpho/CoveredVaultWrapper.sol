@@ -267,7 +267,6 @@ contract CoveredVaultWrapper is
             : 0;
         if (insuredBasis > assetsReceived && _isPolicyActive()) {
             uint256 shortfall = insuredBasis - assetsReceived;
-            // EF-4: Cap based on insuredBasis (post-premium principal), not raw userPrincipalForWithdrawal.
             // Using the raw principal would allow claiming for premium-period losses beyond the insured position.
             uint256 maxInsurance = insuredBasis.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
             // Cap to maxInsurance first, then apply deductible to the capped loss.
@@ -340,14 +339,14 @@ contract CoveredVaultWrapper is
             return;
         }
 
-        // H-02: Cap accrued premium at the wrapper's actual Morpho position value to
-        //        prevent over-redemption after a loss or prolonged accrual gap
+        // Cap accrued premium at the wrapper's actual Morpho position value to prevent over-redemption
+        // after a loss or prolonged accrual gap
         uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
         if (accrued > morphoValue) accrued = morphoValue;
 
         uint256 morphoShares = IVaultV2(morphoVault).previewWithdraw(accrued);
-        // L-03: Only advance timestamp when an actual redemption occurs; otherwise dust
-        //        carries forward into the next cycle rather than being silently dropped
+        // Only advance timestamp when an actual redemption occurs; otherwise dust
+        // carries forward into the next cycle rather than being silently dropped
         // slither-disable-next-line incorrect-equality
         if (morphoShares == 0) return;
 
@@ -376,8 +375,13 @@ contract CoveredVaultWrapper is
     // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function setPremiumRate(uint256 newRate) external onlyOwner {
         require(newRate <= MAX_PREMIUM_RATE_PER_SECOND, IA.InvalidParameters());
-        // Settle any premium accrued at the old rate before switching
+        // Settle any premium accrued at the old rate before switching.
         _accruePremium();
+        // Force-advance the timestamp even if _accruePremium() hit the dust path (accrued > 0
+        // but rounds to 0 Morpho shares). Without this, lastPremiumAccrualTime stays stale and
+        // newRate would be charged retroactively over the period when oldRate was still active.
+        // We accept losing at most 1 Morpho share of carry-forward premium (<< $1 in practice).
+        lastPremiumAccrualTime = block.timestamp;
         uint256 oldRate = premiumRatePerSecond;
         premiumRatePerSecond = newRate;
         emit IE.PremiumRateUpdated(oldRate, newRate);
@@ -408,9 +412,6 @@ contract CoveredVaultWrapper is
     /// @inheritdoc ICoveredVaultWrapper
     function setPremiumRecipient(address newRecipient) external onlyOwner {
         require(newRecipient != address(0), IA.ZeroAddress());
-        // EF-2: No flush — if the old recipient is on a token blocklist a transfer would revert and
-        // prevent the owner from ever switching. The owner should call collectPremium() first if
-        // they want to forward pending funds; this function only updates the storage slot.
         address oldRecipient = premiumRecipient;
         premiumRecipient = newRecipient;
         emit IE.PremiumRecipientUpdated(oldRecipient, newRecipient);
@@ -458,35 +459,35 @@ contract CoveredVaultWrapper is
                     INSURANCE INTERNALS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Claims insurance for a shortfall incurred by a user
-    /// @param shortfall The raw shortfall amount (will be capped by remaining coverage)
+    /// @notice Claims insurance for a capped, post-deductible amount
+    /// @param claimAmount The amount to claim (post-cap and post-deductible, further capped by remaining coverage)
     /// @param user Address of the user who suffered the loss (used for event emission)
     /// @return payout The actual insurance payout received
     // slither-disable-next-line reentrancy-events,incorrect-equality
-    function _claimInsurance(uint256 shortfall, address user) internal returns (uint256 payout) {
+    function _claimInsurance(uint256 claimAmount, address user) internal returns (uint256 payout) {
         (uint256 policyCoverageLimit, address payoutToken) = _getCoverageParams(policyId);
 
         uint256 paidOut = _getPaidCover(policyId);
         uint256 remainingCoverage = policyCoverageLimit > paidOut ? policyCoverageLimit - paidOut : 0;
 
-        uint256 cappedShortfall = shortfall > remainingCoverage ? remainingCoverage : shortfall;
-        if (cappedShortfall == 0) return 0;
+        uint256 cappedClaim = claimAmount > remainingCoverage ? remainingCoverage : claimAmount;
+        if (cappedClaim == 0) return 0;
 
         uint256 balanceBefore = IERC20(payoutToken).balanceOf(address(this));
 
-        _setPendingClaim(cappedShortfall);
+        _setPendingClaim(cappedClaim);
 
         // aderyn-fp-next-line(weak-randomness) evidenceHash is for claim identification, not security-critical
-        bytes32 evidenceHash = keccak256(abi.encodePacked(user, policyId, cappedShortfall, block.timestamp));
+        bytes32 evidenceHash = keccak256(abi.encodePacked(user, policyId, cappedClaim, block.timestamp));
         // aderyn-fp-next-line(unchecked-return) ClaimId not needed — success determined via balance change
-        _fileAndResolveClaim(policyId, cappedShortfall, evidenceHash, abi.encode(address(this), cappedShortfall));
+        _fileAndResolveClaim(policyId, cappedClaim, evidenceHash, abi.encode(address(this), cappedClaim));
 
         _clearPendingClaim();
 
         uint256 balanceAfter = IERC20(payoutToken).balanceOf(address(this));
         payout = balanceAfter - balanceBefore;
 
-        emit IE.InsuranceClaimed(user, policyId, shortfall, payout);
+        emit IE.InsuranceClaimed(user, policyId, claimAmount, payout);
     }
 
     /// @inheritdoc ISpec

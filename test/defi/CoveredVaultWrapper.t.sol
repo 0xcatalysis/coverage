@@ -1125,6 +1125,62 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertEq(wrapper.premiumRatePerSecond(), 15_854_895_991);
     }
 
+    /// @dev Regression: setPremiumRate() must advance lastPremiumAccrualTime even when _accruePremium()
+    ///      hits the dust path (accrued > 0 but rounds to 0 Morpho shares).
+    ///
+    ///      Without the fix, lastPremiumAccrualTime stays stale and newRate is charged retroactively
+    ///      over the period when oldRate was active, overcharging by (newRate − oldRate) × oldElapsed.
+    ///
+    ///      Setup:
+    ///        - Deposit 1 ether. Morpho share price inflated to 1.01 via setProfit(1).
+    ///        - premiumRatePerSecond = 1 (1 wei/s). After 1 second: accrued = 1 wei.
+    ///        - previewWithdraw(1 wei) = 1 * 1e18 / 1.01e18 = 0  → dust path, timestamp not advanced.
+    ///        - setPremiumRate(MAX) is called. With fix: timestamp is forced to block.timestamp.
+    ///        - After 100 more seconds at MAX rate, collectPremium collects ≈ MAX × 100 seconds of premium.
+    ///          Without fix it would collect MAX × 101 seconds (retroactive 1-second overcharge).
+    function test_setPremiumRate_advancesTimestamp_onDustPath() public {
+        // Inflate Morpho share price so previewWithdraw(1 wei) == 0
+        morphoVault.setProfit(1); // totalAssets = deposits × 101/100 → share price = 1.01
+
+        vm.prank(curator);
+        wrapper.setPremiumRate(1); // 1 wei/second: 1 ether × 1 × 1s / 1e18 = 1 wei (dust with profit=1%)
+
+        vm.prank(user1);
+        wrapper.deposit(1 ether, user1); // lastPremiumAccrualTime = t0
+
+        uint256 t0 = block.timestamp;
+        vm.warp(t0 + 1); // elapsed = 1s → accrued = 1 wei, morphoShares = 0 (dust path)
+
+        // With the fix, setPremiumRate must force lastPremiumAccrualTime = block.timestamp = t0+1
+        vm.prank(curator);
+        uint256 maxRate = 15_854_895_991;
+        wrapper.setPremiumRate(maxRate);
+
+        assertEq(
+            wrapper.lastPremiumAccrualTime(),
+            block.timestamp,
+            "lastPremiumAccrualTime must equal block.timestamp after setPremiumRate, even via the dust path"
+        );
+
+        // Advance 100 more seconds at maxRate and collect
+        uint256 U = 100;
+        vm.warp(block.timestamp + U);
+
+        uint256 recipientBefore = asset.balanceOf(premiumRecipientAddr);
+        wrapper.collectPremium();
+        uint256 collected = asset.balanceOf(premiumRecipientAddr) - recipientBefore;
+
+        // Expected: 1 ether × maxRate × 100s / WAD (only 100 seconds at new rate, not 101)
+        uint256 expected = uint256(1 ether) * maxRate * U / 1e18;
+        // Bug would give: 1 ether × maxRate × 101s / WAD (retroactive 1-second overcharge = ~15.85 wei more)
+        assertApproxEqAbs(
+            collected,
+            expected,
+            100,
+            "Premium must reflect only time elapsed since rate change, not retroactive period at old rate"
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                     MAX MINT / MINT TESTS
     //////////////////////////////////////////////////////////////*/
