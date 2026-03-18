@@ -709,4 +709,83 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
             "Total payouts exceed Morpho value (phantom insurance minted tokens)"
         );
     }
+
+    /*//////////////////////////////////////////////////////////////
+        SCENARIO 10: EARLIER DEPOSITOR (LOWER ENTRY PRICE) PAYS
+                     MORE PREMIUM THAN LATER DEPOSITOR
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Demonstrates that an earlier depositor who entered at a lower share price
+    ///         pays more premium than a later depositor with the same principal.
+    ///
+    ///         Premium is collected by redeeming Morpho shares, which reduces the wrapper
+    ///         share price equally for ALL shares. A user with MORE shares bears a larger
+    ///         absolute premium — even if their principal is identical.
+    ///
+    ///         Timeline:
+    ///           T0:        Alice deposits 1000 at price 1.0 → 1000 shares
+    ///           T0:        50% yield → price rises to 1.5
+    ///           T0:        Bob deposits 1000 at price 1.5 → ~667 shares
+    ///           T0+180d:   Premium accrues (~493 on 2000 principal)
+    ///
+    ///         Result: Alice (60% of shares) pays ~60% of premium.
+    ///                 Bob (40% of shares) pays ~40% of premium.
+    ///                 Both deposited 1000 — premium splits by shares, not principal.
+    function test_earlyDepositor_paysMorePremium() public {
+        _deployWrapper(type(uint128).max);
+
+        address alice = address(0xAA11);
+        address bob = address(0xBB22);
+        _mintAndApprove(alice, 1000 ether);
+        _mintAndApprove(bob, 1000 ether);
+
+        // ── Alice deposits 1000 at price 1.0 ──
+        vm.prank(alice);
+        wrapper.deposit(1000 ether, alice);
+
+        // ── 50% yield → price rises to 1.5 ──
+        _simulateProfit(50);
+
+        // ── Bob deposits 1000 at price 1.5 → fewer shares ──
+        vm.prank(bob);
+        wrapper.deposit(1000 ether, bob);
+
+        uint256 aliceShares = wrapper.balanceOf(alice);
+        uint256 bobShares = wrapper.balanceOf(bob);
+        uint256 totalShares = aliceShares + bobShares;
+
+        assertGt(aliceShares, bobShares, "Alice has more shares (lower entry price)");
+        assertEq(wrapper.userPrincipal(alice), 1000 ether, "Same principal: Alice");
+        assertEq(wrapper.userPrincipal(bob), 1000 ether, "Same principal: Bob");
+
+        // ── Snapshot values BEFORE premium ──
+        uint256 aliceValueBefore = wrapper.convertToAssets(aliceShares);
+        uint256 bobValueBefore = wrapper.convertToAssets(bobShares);
+
+        // ── Enable 50%/year premium, skip 180 days ──
+        // Premium accrued ≈ 2000 * 50% * 180/365 ≈ 493 ether
+        vm.prank(curator);
+        wrapper.setPremiumRate(FIFTY_PCT_ANNUAL_RATE);
+        vm.warp(block.timestamp + 180 days);
+
+        // ── Snapshot values AFTER premium accrual (view reflects unsettled premium) ──
+        uint256 aliceValueAfter = wrapper.convertToAssets(aliceShares);
+        uint256 bobValueAfter = wrapper.convertToAssets(bobShares);
+
+        uint256 alicePremiumPaid = aliceValueBefore - aliceValueAfter;
+        uint256 bobPremiumPaid = bobValueBefore - bobValueAfter;
+        uint256 totalPremium = alicePremiumPaid + bobPremiumPaid;
+
+        // ── Key assertion: Alice paid MORE premium despite same principal ──
+        assertGt(alicePremiumPaid, bobPremiumPaid, "Alice paid more premium (more shares)");
+
+        // ── Premium splits by share ratio (60/40), NOT by principal ratio (50/50) ──
+        uint256 aliceSharePct = aliceShares * 10000 / totalShares;
+        uint256 alicePremiumPct = alicePremiumPaid * 10000 / totalPremium;
+
+        // Alice holds ~60% of shares and pays ~60% of premium
+        assertApproxEqAbs(aliceSharePct, 6000, 2, "Alice holds ~60% of shares");
+        assertApproxEqAbs(alicePremiumPct, 6000, 2, "Alice pays ~60% of premium");
+        assertApproxEqAbs(alicePremiumPct, aliceSharePct, 2, "Premium % tracks share %, not principal %");
+    }
 }
