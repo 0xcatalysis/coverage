@@ -61,8 +61,7 @@ contract InvSlashingManager {
         tokenStakes = new uint256[](1);
         vaults[0] = _token;
         tokens[0] = _token;
-        // Return a positive stake so _computeVaultSlashes can proceed
-        tokenStakes[0] = type(uint256).max / 2;
+        tokenStakes[0] = 10_000 ether;
     }
 
     function executeSlashing(
@@ -181,14 +180,10 @@ contract ClaimManagerHandler is Test {
         uint256 beneficiaryBefore = payoutToken.balanceOf(claimer);
 
         vm.prank(claimer);
-        try claimManager.fileClaim(
-            POLICY_ID, requestedAmount, keccak256(abi.encodePacked(requestedAmount, remaining)), ""
-        ) returns (
-            uint256
-        ) {
-            uint256 paidOut = payoutToken.balanceOf(claimer) - beneficiaryBefore;
-            ghost_totalPaidOut += paidOut;
-        } catch {}
+        claimManager.fileClaim(POLICY_ID, requestedAmount, keccak256(abi.encodePacked(requestedAmount, remaining)), "");
+
+        uint256 paidOut = payoutToken.balanceOf(claimer) - beneficiaryBefore;
+        ghost_totalPaidOut += paidOut;
     }
 }
 
@@ -281,18 +276,21 @@ contract ClaimManagerInvariantTest is StdInvariant, Test {
         );
     }
 
-    /// @dev Core invariant: the sum of all payouts never exceeds the policy's coverage limit.
+    /// @dev Core invariant: remaining coverage never exceeds the original limit (i.e. totalPaidOut >= 0).
     function invariant_totalPaidOutNeverExceedsCoverageLimit() public view {
         uint256 remaining = claimManager.remainingCoverage(POLICY_ID);
-        assertLe(COVERAGE_LIMIT - remaining, COVERAGE_LIMIT, "Remaining coverage must never go negative (underflow)");
-        assertGe(remaining, 0, "Remaining coverage must be non-negative");
+        assertLe(remaining, COVERAGE_LIMIT, "Remaining must not exceed original coverage limit");
     }
 
-    /// @dev Coverage limit minus remaining equals total paid out; must not exceed the limit.
+    /// @dev Ghost accounting must match contract state: every payout token received by the
+    ///      beneficiary is reflected in the contract's consumed-coverage counter.
     function invariant_remainingCoverageIsMonotonicallyNonIncreasing() public view {
         uint256 remaining = claimManager.remainingCoverage(POLICY_ID);
         assertLe(handler.ghost_totalPaidOut(), COVERAGE_LIMIT, "Ghost total paid out must not exceed coverage limit");
-        // Remaining + ghost_totalPaidOut may differ due to capping, but remaining must never exceed original limit.
-        assertLe(remaining, COVERAGE_LIMIT, "Remaining must not exceed coverage limit");
+        assertEq(
+            handler.ghost_totalPaidOut(),
+            COVERAGE_LIMIT - remaining,
+            "Ghost paid out must equal coverage consumed on-chain"
+        );
     }
 }
