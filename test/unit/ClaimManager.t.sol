@@ -1536,8 +1536,6 @@ contract ClaimManagerTest is Test {
                      REAL-TIME SLIPPAGE INFLATION TESTS
     //////////////////////////////////////////////////////////////*/
 
-    // Scenario: single collateral vault, 1% DEX slippage (below 2% maxSwapSlippageBps cap).
-    // Expected: slash amount inflated to baseSlash * expectedOut / quotedOut (not capped).
     function test_inflateForSlippage_BelowCap_InflatesSlashAmount() public {
         uint256 stake = 1000 ether;
         uint256 requestedAmount = 500 ether;
@@ -1554,13 +1552,10 @@ contract ClaimManagerTest is Test {
         collateralTokenMock.mint(address(slashFull), stake);
         slashFull.setTokenToTransfer(collateralToken);
 
-        // Call 0: toPayoutEquivalent(col, 1000 ether) → 1000 ether (1:1)
-        // Call 1: inflateForSlippage(col, 500 ether)  → 495 ether (1% slippage)
-        // Call 2: processCollateral amountOutMin       → 1000 ether (fallback 1:1)
         MockSwapperSequential seqSwapper = new MockSwapperSequential();
         uint256[] memory quoteVals = new uint256[](2);
-        quoteVals[0] = stake; // 1000 ether
-        quoteVals[1] = requestedAmount * (10_000 - 100) / 10_000; // 495 ether (1% slippage)
+        quoteVals[0] = stake;
+        quoteVals[1] = requestedAmount * (10_000 - 100) / 10_000; // 1% slippage, below 2% cap
         seqSwapper.setQuoteValues(quoteVals);
         uint256 swapOut = 990 ether;
         seqSwapper.setSwapOutput(swapOut);
@@ -1594,20 +1589,14 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        // inflated = (500e18 * 500e18) / 495e18 = 505050505050505050505
-        // maxInflated = 500e18 * 10000 / 9800 = 510204081632653061224
-        // inflated < maxInflated → result = inflated
         uint256 base = 500 ether;
-        uint256 expected = 500 ether;
         uint256 quoted = 495 ether;
-        uint256 expectedInflated = (base * expected) / quoted;
+        uint256 expectedInflated = (base * base) / quoted;
         uint256 maxInflated = base * 10_000 / (10_000 - 200);
         assertTrue(expectedInflated < maxInflated, "Test setup: should be below cap");
         assertEq(slashFull.lastSlashTotal(), expectedInflated, "Slash should be inflated below cap");
     }
 
-    // Scenario: extreme DEX slippage (50%), which exceeds the 2% maxSwapSlippageBps cap.
-    // Expected: slash amount capped at baseSlash * 10_000 / (10_000 - maxSwapSlippageBps).
     function test_inflateForSlippage_AboveCap_CapsAtMaxSlippageBps() public {
         uint256 stake = 1000 ether;
         uint256 requestedAmount = 500 ether;
@@ -1624,13 +1613,10 @@ contract ClaimManagerTest is Test {
         collateralTokenMock.mint(address(slashFull), stake);
         slashFull.setTokenToTransfer(collateralToken);
 
-        // Call 0: toPayoutEquivalent(col, 1000 ether) → 1000 ether (1:1)
-        // Call 1: inflateForSlippage(col, 500 ether)  → 250 ether (50% slippage, above 2% cap)
-        // Call 2: processCollateral amountOutMin       → 1000 ether (fallback 1:1)
         MockSwapperSequential seqSwapper = new MockSwapperSequential();
         uint256[] memory quoteVals = new uint256[](2);
-        quoteVals[0] = stake; // 1000 ether
-        quoteVals[1] = 250 ether; // 50% slippage — way above the 2% cap
+        quoteVals[0] = stake;
+        quoteVals[1] = 250 ether; // 50% slippage — above the 2% cap
         seqSwapper.setQuoteValues(quoteVals);
         uint256 swapOut = 990 ether;
         seqSwapper.setSwapOutput(swapOut);
@@ -1645,15 +1631,11 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        // inflated = 500e18 * 500e18 / 250e18 = 1000e18 (200% — way over cap)
-        // maxInflated = 500e18 * 10000 / 9800 = 510204081632653061224
         uint256 baseAmt = 500 ether;
         uint256 expectedCapped = baseAmt * 10_000 / (10_000 - 200);
         assertEq(slashFull.lastSlashTotal(), expectedCapped, "Slash should be capped at maxSwapSlippageBps");
     }
 
-    // Scenario: quoteSwap returns exactly expectedOut (0% DEX slippage).
-    // Expected: no inflation — slash amount equals the proportional base.
     function test_inflateForSlippage_NoInflation_WhenQuoteEqualsExpected() public {
         uint256 stake = 1000 ether;
         uint256 requestedAmount = 500 ether;
@@ -1670,7 +1652,7 @@ contract ClaimManagerTest is Test {
         collateralTokenMock.mint(address(slashFull), stake);
         slashFull.setTokenToTransfer(collateralToken);
 
-        // All calls return 1:1 → quotedOut == expectedOut → no inflation
+        // All quoteSwap calls return 1:1 (fallback), so quotedOut == expectedOut and no inflation occurs.
         MockSwapperSequential seqSwapper = new MockSwapperSequential();
         seqSwapper.setSwapOutput(990 ether);
         seqSwapper.setPayoutToken(payoutToken);
@@ -1684,12 +1666,9 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        // With 1:1 quotes: baseSlash = 1000 * 500 / 1000 = 500 ether, quotedOut = 500 = expectedOut
         assertEq(slashFull.lastSlashTotal(), requestedAmount, "No inflation when quote equals expected");
     }
 
-    // Scenario: quoteSwap reverts during inflateForSlippage.
-    // Expected: try/catch falls back to baseSlash unchanged.
     function test_inflateForSlippage_NoInflation_WhenQuoteReverts() public {
         uint256 stake = 1000 ether;
         uint256 requestedAmount = 500 ether;
@@ -1706,14 +1685,11 @@ contract ClaimManagerTest is Test {
         collateralTokenMock.mint(address(slashFull), stake);
         slashFull.setTokenToTransfer(collateralToken);
 
-        // Call 0: toPayoutEquivalent → 1000 ether (1:1, no inflation needed here)
-        // Call 1: inflateForSlippage → REVERT → fallback to baseSlash = 500 ether
-        // Call 2: processCollateral amountOutMin → 1000 ether (fallback 1:1)
         MockSwapperSequential seqSwapper = new MockSwapperSequential();
         uint256[] memory quoteVals = new uint256[](1);
-        quoteVals[0] = stake; // call 0 = 1:1
+        quoteVals[0] = stake;
         seqSwapper.setQuoteValues(quoteVals);
-        seqSwapper.setRevertAtCall(1); // call 1 (inflateForSlippage) reverts
+        seqSwapper.setRevertAtCall(1); // quoteSwap reverts on the inflateForSlippage call
         seqSwapper.setSwapOutput(990 ether);
         seqSwapper.setPayoutToken(payoutToken);
         payoutTokenMock.mint(address(seqSwapper), 990 ether);
@@ -1729,8 +1705,6 @@ contract ClaimManagerTest is Test {
         assertEq(slashFull.lastSlashTotal(), requestedAmount, "Should fall back to baseSlash when quote reverts");
     }
 
-    // Scenario: quoteSwap reverts during processCollateral amountOutMin computation.
-    // Expected: amountOutMin falls back to 1 (try/catch) allowing swap to proceed.
     function test_processCollateral_AmountOutMin_FallsBackToOne_WhenQuoteReverts() public {
         uint256 stake = 1000 ether;
         uint256 requestedAmount = 500 ether;
@@ -1747,16 +1721,13 @@ contract ClaimManagerTest is Test {
         collateralTokenMock.mint(address(slashFull), stake);
         slashFull.setTokenToTransfer(collateralToken);
 
-        // Call 0: toPayoutEquivalent → 1000 ether (1:1)
-        // Call 1: inflateForSlippage → 1000 ether (1:1, no inflation)
-        // Call 2: processCollateral amountOutMin → REVERT → amountOutMin falls back to 1
         MockSwapperSequential seqSwapper = new MockSwapperSequential();
         uint256[] memory quoteVals = new uint256[](2);
         quoteVals[0] = stake;
-        quoteVals[1] = requestedAmount; // inflateForSlippage: 1:1
+        quoteVals[1] = requestedAmount;
         seqSwapper.setQuoteValues(quoteVals);
-        seqSwapper.setRevertAtCall(2); // call 2 (processCollateral) reverts
-        uint256 swapOut = 600 ether; // above amountOutMin=1
+        seqSwapper.setRevertAtCall(2); // quoteSwap reverts on the processCollateral amountOutMin call
+        uint256 swapOut = 600 ether;
         seqSwapper.setSwapOutput(swapOut);
         seqSwapper.setPayoutToken(payoutToken);
         payoutTokenMock.mint(address(seqSwapper), swapOut);
@@ -1772,9 +1743,6 @@ contract ClaimManagerTest is Test {
         assertEq(seqSwapper.lastAmountOutMin(), 1, "amountOutMin should fall back to 1 when quoteSwap reverts");
     }
 
-    // Scenario: one of two vaults returns quoteSwap = 0 in _toPayoutEquivalent.
-    // Expected: that vault is excluded (payoutEquivalent = 0, VaultSlash.amount = 0);
-    //           only the other vault contributes to lastSlashTotal.
     function test_toPayoutEquivalent_ExcludesVault_WhenQuoteReturnsZero() public {
         uint256 requestedAmount = 200 ether;
         MockToken collateralToken2Mock = new MockToken("Col2", "COL2");
@@ -1783,7 +1751,7 @@ contract ClaimManagerTest is Test {
 
         MockSlashingManagerFull slashFull = new MockSlashingManagerFull();
         address[] memory vaults = new address[](2);
-        vaults[0] = address(collateralTokenMock); // will be excluded (quote = 0)
+        vaults[0] = address(collateralTokenMock);
         vaults[1] = address(collateralToken2Mock);
         uint256[] memory stakes = new uint256[](2);
         stakes[0] = 500 ether;
@@ -1798,13 +1766,11 @@ contract ClaimManagerTest is Test {
         collateralToken2Mock.mint(address(slashFull), requestedAmount);
         slashFull.setTokenToTransfer(address(collateralToken2Mock));
 
-        // Call 0: toPayoutEquivalent(col1, 500 ether) → 0 (col1 excluded)
-        // Call 1: toPayoutEquivalent(col2, 500 ether) → 500 ether (1:1, fallback)
-        // Call 2: inflateForSlippage(col2, proportional) → fallback 1:1
-        // Call 3: processCollateral amountOutMin → fallback 1:1
+        // First configured quote is 0, which excludes collateralTokenMock from slash distribution.
+        // All subsequent calls fall back to 1:1 (collateralToken2Mock is included normally).
         MockSwapperSequential seqSwapper = new MockSwapperSequential();
         uint256[] memory quoteVals = new uint256[](1);
-        quoteVals[0] = 0; // call 0: col1 returns 0 → excluded
+        quoteVals[0] = 0;
         seqSwapper.setQuoteValues(quoteVals);
         seqSwapper.setSwapOutput(requestedAmount);
         seqSwapper.setPayoutToken(payoutToken);
@@ -1823,8 +1789,6 @@ contract ClaimManagerTest is Test {
         assertEq(slashFull.lastSlashTotal(), slashFull.getLastVaultSlashAmount(1), "Total = only included vault");
     }
 
-    // Scenario: all vault quotes return 0 → totalPayoutEquivalent = 0.
-    // Expected: _computeVaultSlashes reverts with NoCollateralSlashed.
     function test_computeVaultSlashes_RevertsNoCollateralSlashed_WhenAllQuotesReturnZero() public {
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -1835,7 +1799,6 @@ contract ClaimManagerTest is Test {
         stakes[0] = 1000 ether;
         slashFull.setPreviewResult(vaults, vaults, stakes);
 
-        // quoteSwap always returns 0 → totalPayoutEquivalent = 0
         MockSwapperSequential seqSwapper = new MockSwapperSequential();
         uint256[] memory quoteVals = new uint256[](1);
         quoteVals[0] = 0;
@@ -1851,12 +1814,11 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, 500 ether, evidenceHash, "");
     }
 
-    // Scenario: inflation would exceed tokenStake → capped at tokenStake.
-    // Uses requestedAmount near COVERAGE_LIMIT so proportional base slash is large,
-    // then extreme slippage inflates beyond tokenStake via maxSwapSlippageBps.
+    // requestedAmount > 0.98 * stake so maxInflated = base * 10_000/(10_000-200) exceeds tokenStake,
+    // triggering the post-inflation stake cap in _calculateVaultSlash.
     function test_calculateVaultSlash_CapsInflatedAmountAtTokenStake() public {
         uint256 stake = 1000 ether;
-        uint256 requestedAmount = 990 ether; // > 0.98 * stake → maxInflated > stake
+        uint256 requestedAmount = 990 ether;
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -1870,15 +1832,10 @@ contract ClaimManagerTest is Test {
         collateralTokenMock.mint(address(slashFull), stake);
         slashFull.setTokenToTransfer(collateralToken);
 
-        // Call 0: toPayoutEquivalent → 1000 ether (1:1)
-        // Call 1: inflateForSlippage(990 ether) → 50 ether (extreme slippage)
-        //   inflated = 990 * 990 / 50 >> tokenStake
-        //   maxInflated = 990 * 10000/9800 ≈ 1010 ether > tokenStake (1000)
-        //   → capped at tokenStake = 1000 ether
         MockSwapperSequential seqSwapper = new MockSwapperSequential();
         uint256[] memory quoteVals = new uint256[](2);
-        quoteVals[0] = stake; // toPayoutEquivalent
-        quoteVals[1] = 50 ether; // inflateForSlippage: extreme slippage
+        quoteVals[0] = stake;
+        quoteVals[1] = 50 ether; // extreme slippage — forces maxInflated > tokenStake
         seqSwapper.setQuoteValues(quoteVals);
         seqSwapper.setSwapOutput(990 ether);
         seqSwapper.setPayoutToken(payoutToken);
@@ -1892,27 +1849,22 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        // maxInflated = 990e18 * 10000 / 9800 ≈ 1010e18 > tokenStake → capped at 1000e18
         assertEq(slashFull.lastSlashTotal(), stake, "Inflated slash should be capped at tokenStake");
     }
 
-    // Scenario: two vaults — one payoutToken (direct, no quoting), one collateral (1:1 quote).
-    // Expected: proportional slash: payoutToken vault gets 30%, collateral vault gets 70%
-    //           of requestedAmount proportional to their stake values.
     function test_computeVaultSlashes_ProportionalDistribution_TwoVaults() public {
-        uint256 stakeA = 300 ether; // payoutToken vault — direct transfer
-        uint256 stakeB = 700 ether; // collateral vault — swap needed
+        uint256 stakeA = 300 ether;
+        uint256 stakeB = 700 ether;
         uint256 requestedAmount = 500 ether;
-        // totalStake = 1000 ether → A gets 30%, B gets 70%
-        uint256 expectedSlashA = 150 ether; // 300/1000 * 500
-        uint256 expectedSlashB = 350 ether; // 700/1000 * 500
+        uint256 expectedSlashA = 150 ether;
+        uint256 expectedSlashB = 350 ether;
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
         MockSlashingManagerFull slashFull = new MockSlashingManagerFull();
         address[] memory vaults = new address[](2);
-        vaults[0] = payoutToken; // vault A token = payoutToken (no swap needed)
-        vaults[1] = collateralToken; // vault B token = collateral
+        vaults[0] = payoutToken;
+        vaults[1] = collateralToken;
         uint256[] memory stakes = new uint256[](2);
         stakes[0] = stakeA;
         stakes[1] = stakeB;
@@ -1922,20 +1874,18 @@ contract ClaimManagerTest is Test {
         execTokens[0] = payoutToken;
         execTokens[1] = collateralToken;
         uint256[] memory execAmounts = new uint256[](2);
-        execAmounts[0] = stakeA; // payout vault — transfered directly
-        execAmounts[1] = stakeB; // collateral vault — to be swapped
+        execAmounts[0] = stakeA;
+        execAmounts[1] = stakeB;
         slashFull.setExecuteResult(execTokens, execAmounts);
         payoutTokenMock.mint(address(slashFull), stakeA);
         collateralTokenMock.mint(address(slashFull), stakeB);
         slashFull.setTokenToTransfer(payoutToken);
         slashFull.setToken2ToTransfer(collateralToken);
 
-        // Call 0: toPayoutEquivalent(col, stakeB=700e) → 700 ether (1:1 fallback, no configured values)
-        // (vault A is payoutToken → returns stakeA directly, no quoteSwap call)
-        // Call 1: inflateForSlippage(col, 350 ether) → 350 ether (fallback 1:1, no inflation)
-        // Call 2: processCollateral amountOutMin(col, stakeB) → fallback 1:1
+        // payoutToken vault (A) returns stakeA directly without quoteSwap.
+        // collateralToken vault (B) uses 1:1 fallback quotes — no inflation.
         MockSwapperSequential seqSwapper = new MockSwapperSequential();
-        seqSwapper.setSwapOutput(stakeB); // swapper returns stakeB payout tokens for the col swap
+        seqSwapper.setSwapOutput(stakeB);
         seqSwapper.setPayoutToken(payoutToken);
         payoutTokenMock.mint(address(seqSwapper), stakeB);
 
