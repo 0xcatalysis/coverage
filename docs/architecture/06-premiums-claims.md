@@ -218,11 +218,24 @@ In `_processCollateral(...)`:
   - transfer directly up to remaining payout target.
 - Else:
   - approve `Swapper`,
+  - build `amountOutMin` from live `quoteSwap` quote minus `maxSwapSlippageBps` tolerance (MEV guard);
+    falls back to `amountOutMin = 1` if the quote reverts or returns zero,
   - execute configured route,
   - cap delivered amount to remaining payout target,
   - clear approval.
 
 This supports heterogeneous slash collateral while preserving payout-token settlement.
+
+### Two Separate Slippage Controls
+
+| Control | Where | Purpose |
+|---------|-------|---------|
+| `_inflateForSlippage` | before `executeSlashing` | Inflates the per-vault token-native slash amount proportionally so the beneficiary receives the target payout despite real Uniswap slippage. Uses `Swapper.quoteSwap` → `UniswapV3Adapter.quote` → `QuoterV2`. Capped at `maxSwapSlippageBps` above the base slash. |
+| `maxSwapSlippageBps` | inside `_processCollateral` | Applied as a tolerance around a live `quoteSwap` quote to set `amountOutMin` on `executeSwap` — protection against MEV / sandwich attacks between quote and execution. Configurable by admin. Falls back to `amountOutMin = 1` if the quote reverts or returns zero. |
+
+If the slippage preview fails (e.g. `quoteSwap` reverts, route not configured), inflation falls
+back to the base slash amount. If `quoteSwap` fails during `_processCollateral`, `amountOutMin`
+falls back to 1 (the swap itself reverts on zero output).
 
 ## Swapper Configuration for Cross-Token Payouts
 

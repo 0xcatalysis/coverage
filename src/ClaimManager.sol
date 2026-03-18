@@ -493,6 +493,10 @@ contract ClaimManager is
      * @dev Quotes the actual swap output for baseSlash and scales up so the beneficiary receives
      *      expectedOut after the swap. The result is capped at maxSwapSlippageBps above baseSlash.
      *      Returns baseSlash unchanged when the quote call reverts or no inflation is needed.
+     *
+     *      The expected output is computed from the payout-equivalent fraction of requestedAmount,
+     *      not directly from baseSlash. This ensures the inflation correctly compensates for the
+     *      beneficiary's target payout share, not the raw collateral amount.
      */
     function _inflateForSlippage(
         address token,

@@ -272,6 +272,126 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                     SET CHAINLINK PRICE FEED
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setChainlinkPriceFeed_WhenCallerNotAdmin_Reverts() public {
+        address newFeed = makeAddr("newFeed");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(buyer);
+        policyManager.setChainlinkPriceFeed(newFeed);
+    }
+
+    function test_setChainlinkPriceFeed_WhenAddressZero_Reverts() public {
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(admin);
+        policyManager.setChainlinkPriceFeed(address(0));
+    }
+
+    function test_setChainlinkPriceFeed_WhenValid_UpdatesStateAndEmitsEvent() public {
+        address newFeed = makeAddr("newFeed");
+
+        vm.expectEmit(true, true, true, true, address(policyManager));
+        emit IPolicyManager.ChainlinkPriceFeedSet(newFeed);
+
+        vm.prank(admin);
+        policyManager.setChainlinkPriceFeed(newFeed);
+
+        assertEq(policyManager.chainlinkPriceFeed(), newFeed, "ChainlinkPriceFeed not updated");
+    }
+
+    function test_setChainlinkPriceFeed_CanUpdateMultipleTimes() public {
+        address feed1 = makeAddr("feed1");
+        address feed2 = makeAddr("feed2");
+
+        vm.prank(admin);
+        policyManager.setChainlinkPriceFeed(feed1);
+        assertEq(policyManager.chainlinkPriceFeed(), feed1, "First update should be stored");
+
+        vm.prank(admin);
+        policyManager.setChainlinkPriceFeed(feed2);
+        assertEq(policyManager.chainlinkPriceFeed(), feed2, "Second update should overwrite");
+    }
+
+    function test_bindPolicy_WhenMultipleTokenVaults_AggregatesStakeUSDForSufficiencyCheck() public {
+        // Two vaults with different collateral tokens — USD values must be summed.
+        // mockPriceFeed returns amountIn directly as USD (1:1). Two vaults of stakePerVault
+        // each → totalStakeUSD = 2 * stakePerVault = COVERAGE_LIMIT.
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        uint96 committeeId = request.quote.policyId;
+
+        address vault1 = makeAddr("vault1");
+        address vault2 = makeAddr("vault2");
+        address token1 = makeAddr("token1");
+        address token2 = makeAddr("token2");
+
+        mockStakeManager.createCommittee(committeeId, address(coverPool), COVERAGE_DURATION);
+        mockStakeManager.addOperatorToCommittee(curator, committeeId);
+
+        address[] memory vaults = new address[](2);
+        vaults[0] = vault1;
+        vaults[1] = vault2;
+        mockStakeManager.setCommitteeVaults(committeeId, vaults, 0);
+
+        uint256 stakePerVault = COVERAGE_LIMIT / 2;
+        address[] memory tokenArr = new address[](2);
+        tokenArr[0] = token1;
+        tokenArr[1] = token2;
+        uint256[] memory stakeArr = new uint256[](2);
+        stakeArr[0] = stakePerVault;
+        stakeArr[1] = stakePerVault;
+        mockStakeManager.setCommitteeTokenStakesMulti(committeeId, vaults, tokenArr, stakeArr);
+
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+        // totalStakeUSD = stakePerVault + stakePerVault = COVERAGE_LIMIT = coverageLimitUSD → binds OK
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        assertEq(policyManager.policyMetadata(committeeId).policyId, committeeId, "Policy should be bound");
+    }
+
+    function test_bindPolicy_WhenMultipleTokenVaults_InsufficientAggregateUSD_Reverts() public {
+        // Two vaults, each with half of COVERAGE_LIMIT / 2 — aggregate is below the coverage limit.
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        uint96 committeeId = request.quote.policyId;
+
+        address vault1 = makeAddr("vault1");
+        address vault2 = makeAddr("vault2");
+
+        mockStakeManager.createCommittee(committeeId, address(coverPool), COVERAGE_DURATION);
+        mockStakeManager.addOperatorToCommittee(curator, committeeId);
+
+        address[] memory vaults = new address[](2);
+        vaults[0] = vault1;
+        vaults[1] = vault2;
+        mockStakeManager.setCommitteeVaults(committeeId, vaults, 0);
+
+        // Each vault has quarter of coverage limit → total = COVERAGE_LIMIT/2, insufficient
+        uint256 insufficientPerVault = COVERAGE_LIMIT / 4;
+        uint256 totalInsufficient = insufficientPerVault * 2;
+        address[] memory tokenArr = new address[](2);
+        tokenArr[0] = makeAddr("token1");
+        tokenArr[1] = makeAddr("token2");
+        uint256[] memory stakeArr = new uint256[](2);
+        stakeArr[0] = insufficientPerVault;
+        stakeArr[1] = insufficientPerVault;
+        mockStakeManager.setCommitteeTokenStakesMulti(committeeId, vaults, tokenArr, stakeArr);
+
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPolicyManager.InsufficientStake.selector, committeeId, COVERAGE_LIMIT, totalInsufficient
+            )
+        );
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                             BIND POLICY
     //////////////////////////////////////////////////////////////*/
 
@@ -1936,6 +2056,23 @@ contract MockStakeManager {
         for (uint256 i = 0; i < vaults.length; i++) {
             _committeeTokens[committeeId].push(token);
             _committeeTokenStakes[committeeId].push(perVault);
+        }
+    }
+
+    /// @dev Sets per-vault tokens and stakes independently (unlike setCommitteeTokenStakes which uses one token).
+    function setCommitteeTokenStakesMulti(
+        uint96 committeeId,
+        address[] memory, /*vaults*/
+        address[] memory tokens,
+        uint256[] memory stakes
+    )
+        external
+    {
+        delete _committeeTokens[committeeId];
+        delete _committeeTokenStakes[committeeId];
+        for (uint256 i = 0; i < tokens.length; i++) {
+            _committeeTokens[committeeId].push(tokens[i]);
+            _committeeTokenStakes[committeeId].push(stakes[i]);
         }
     }
 

@@ -9,6 +9,7 @@ import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {Test} from "forge-std/Test.sol";
 import {Swapper} from "../../src/Swapper.sol";
 import {ISwapper} from "../../src/interfaces/ISwapper.sol";
+import {IQuotableAdapter} from "../../src/interfaces/IQuotableAdapter.sol";
 
 contract SwapperTest is Test {
     address internal admin;
@@ -1270,6 +1271,113 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                         QUOTE SWAP TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_quoteSwap_WhenAmountInZero_ReturnsZero() public {
+        _setupRoute();
+        assertEq(swapper.quoteSwap(address(tokenIn), address(tokenOut), 0), 0, "Should return 0 for zero amountIn");
+    }
+
+    function test_quoteSwap_WhenTokenInEqualsTokenOut_ReturnsZero() public {
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
+
+        assertEq(
+            swapper.quoteSwap(address(tokenIn), address(tokenIn), 100 ether), 0, "Same tokenIn/tokenOut should return 0"
+        );
+    }
+
+    function test_quoteSwap_WhenRouteNotEnabled_ReturnsZero() public {
+        // Route exists but is disabled
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, false, "");
+
+        assertEq(swapper.quoteSwap(address(tokenIn), address(tokenOut), 100 ether), 0, "Disabled route should return 0");
+    }
+
+    function test_quoteSwap_WhenNoRouteConfigured_ReturnsZero() public {
+        assertEq(swapper.quoteSwap(address(tokenIn), address(tokenOut), 100 ether), 0, "Missing route should return 0");
+    }
+
+    function test_quoteSwap_WhenTargetNotWhitelisted_ReturnsZero() public {
+        // Route configured but target not whitelisted
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
+        // Revoke whitelist after route is set
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, false);
+
+        assertEq(
+            swapper.quoteSwap(address(tokenIn), address(tokenOut), 100 ether),
+            0,
+            "Non-whitelisted target should return 0"
+        );
+    }
+
+    function test_quoteSwap_WhenAdapterQuoteReverts_ReturnsZero() public {
+        MockRevertingAdapter revertAdapter = new MockRevertingAdapter();
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(address(revertAdapter), true);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), address(revertAdapter), true, "");
+
+        assertEq(
+            swapper.quoteSwap(address(tokenIn), address(tokenOut), 100 ether),
+            0,
+            "Reverting adapter should return 0 (try/catch)"
+        );
+    }
+
+    function test_quoteSwap_WhenAdapterQuoteSucceeds_ReturnsQuotedAmount() public {
+        uint256 amountIn = 100 ether;
+        uint256 quotedOut = 98 ether;
+
+        MockQuotableAdapter quotableAdapter = new MockQuotableAdapter(quotedOut);
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(address(quotableAdapter), true);
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), address(quotableAdapter), true, "");
+
+        assertEq(
+            swapper.quoteSwap(address(tokenIn), address(tokenOut), amountIn),
+            quotedOut,
+            "Should return adapter's quoted amount"
+        );
+    }
+
+    function test_quoteSwap_ResolvesNativeETH_ToNativeWrapper() public {
+        address NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+        MockWETH weth = new MockWETH();
+        // Redeploy swapper with WETH as nativeWrapper
+        Options memory opts;
+        opts.unsafeSkipAllChecks = true;
+        address proxy2 = Upgrades.deployUUPSProxy(
+            "Swapper.sol", abi.encodeCall(Swapper.initialize, (admin, swapManager, swapExecutor, address(weth))), opts
+        );
+        Swapper swapper2 = Swapper(payable(proxy2));
+
+        uint256 quotedOut = 95 ether;
+        MockQuotableAdapter quotableAdapter = new MockQuotableAdapter(quotedOut);
+        vm.prank(admin);
+        swapper2.setSwapTargetWhitelist(address(quotableAdapter), true);
+
+        // Route configured with WETH (not NATIVE_ETH sentinel) as per Swapper's requirement
+        vm.prank(swapManager);
+        swapper2.setSwapRoute(address(tokenIn), address(weth), address(quotableAdapter), true, "");
+
+        // Call quoteSwap with NATIVE_ETH sentinel — should resolve to WETH route
+        uint256 result = swapper2.quoteSwap(address(tokenIn), NATIVE_ETH, 100 ether);
+        assertEq(result, quotedOut, "NATIVE_ETH should resolve to nativeWrapper for quote lookup");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                               HELPERS
     //////////////////////////////////////////////////////////////*/
 
@@ -1393,5 +1501,23 @@ contract MockWETH is ERC20 {
 contract RejectEther {
     receive() external payable {
         revert("ETH not accepted");
+    }
+}
+
+contract MockQuotableAdapter is IQuotableAdapter {
+    uint256 private immutable _QUOTE;
+
+    constructor(uint256 quote_) {
+        _QUOTE = quote_;
+    }
+
+    function quote(address, address, uint256) external view override returns (uint256) {
+        return _QUOTE;
+    }
+}
+
+contract MockRevertingAdapter is IQuotableAdapter {
+    function quote(address, address, uint256) external pure override returns (uint256) {
+        revert("MockRevertingAdapter: quote reverts");
     }
 }

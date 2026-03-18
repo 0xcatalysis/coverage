@@ -204,6 +204,9 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 - `setSwapRoute(...)`, `setSwapTargetWhitelist(...)` for configuration.
 - `executeSwap(params)` for authorized executors (typically `ClaimManager`).
+- `quoteSwap(tokenIn, tokenOut, amountIn)` — non-privileged read-only quote; delegates to the
+  route's `swapTarget` via `IQuotableAdapter.quote(tokenIn, tokenOut, amountIn)`; used by
+  `ClaimManager` for pre-slashing per-vault slippage inflation and `amountOutMin` MEV protection.
 
 **Key roles:**
 
@@ -212,22 +215,28 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 ### 9) UniswapV3Adapter
 
-**Role:** Bridges the Swapper's static-calldata pattern to Uniswap V3 `SwapRouter02`.
+**Role:** Implements `IQuotableAdapter` for real-time slippage preview via Uniswap V3 `QuoterV2`.
+Registered as the `swapTarget` in Swapper routes where collateral must be converted to the payout
+token via Uniswap V3.
 
-**Why it exists:** The Swapper stores one static calldata blob per `(tokenIn, tokenOut)` route and
-replays it verbatim on every swap. Uniswap V3's `exactInputSingle` requires the `amountIn` to be
-encoded in each call, making a direct route impossible. The adapter resolves `amountIn` dynamically
-from the allowance the Swapper grants it.
+**Why it exists:** `ClaimManager` needs a pre-swap quote to (a) inflate the per-vault slash amount
+so the beneficiary receives the target payout despite DEX slippage, and (b) compute `amountOutMin`
+for MEV protection. The adapter wraps `QuoterV2.quoteExactInputSingle` behind the `IQuotableAdapter`
+interface so `Swapper.quoteSwap` can obtain quotes without executing swaps.
 
-**Integration pattern** (called by `Swapper._performSwap`):
+**Swap execution pattern** (`ClaimManager._processCollateral` → `Swapper.executeSwap`):
 
-1. Swapper approves adapter for `amountIn` of `tokenIn`.
-2. Swapper calls `adapter.swap(tokenIn, tokenOut, fee)` via stored static calldata.
-3. Adapter reads `allowance(Swapper, adapter)` to obtain `amountIn`.
-4. Adapter pulls `tokenIn` from Swapper via `transferFrom`.
-5. Adapter calls `SwapRouter02.exactInputSingle` with `recipient = Swapper`.
-6. Router delivers `tokenOut` directly to Swapper.
-7. Adapter clears residual approval to the router.
+1. `ClaimManager` approves `Swapper` for the collateral amount.
+2. `Swapper.executeSwap` calls `forceApprove(swapTarget, amountIn)` and then `swapTarget.call(swapCalldata)`.
+3. The stored `swapCalldata` (set via `setSwapRoute`) encodes the swap selector and static route
+   parameters. The DEX executes the swap and delivers `tokenOut` to `Swapper`.
+4. `Swapper` verifies output via balance diff and transfers to the recipient.
+
+**Quote pattern** (`ClaimManager._computeVaultSlashes` / `_processCollateral` → `Swapper.quoteSwap`):
+
+1. `Swapper.quoteSwap` looks up the route and calls `IQuotableAdapter(swapTarget).quote(tokenIn, tokenOut, amountIn)`.
+2. `UniswapV3Adapter.quote` calls `QuoterV2.quoteExactInputSingle` with the configured fee tier.
+3. Returns the simulated output amount. Never reverts in normal usage (Swapper wraps in try/catch).
 
 **Deployment:** `script/DeployUniswapV3Adapter.s.sol` deploys the adapter, whitelists it in
 `Swapper`, and configures the route in one transaction.

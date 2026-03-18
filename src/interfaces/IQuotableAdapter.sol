@@ -12,6 +12,9 @@ pragma solidity 0.8.28;
 interface IQuotableAdapter {
     /**
      * @notice Returns an estimated output amount for a given input without executing a swap.
+     * @dev Not declared `view` because Uniswap V3 QuoterV2 simulates the swap via a
+     *      state-modifying call that it then reverts internally; this requires a non-view
+     *      context even though no persistent state is changed.
      * @param tokenIn Address of the input token.
      * @param tokenOut Address of the output token.
      * @param amountIn Amount of tokenIn to quote.
