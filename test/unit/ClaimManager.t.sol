@@ -1564,25 +1564,6 @@ contract ClaimManagerTest is Test {
 
         vm.prank(admin);
         claimManager.setSwapper(address(seqSwapper));
-
-        policyMock.setPolicyMetadata(
-            POLICY_ID,
-            IPolicyManager.PolicyMetadata({
-                buyer: buyer,
-                policyId: POLICY_ID,
-                beneficiary: beneficiary,
-                claimer: claimer,
-                startTime: uint32(block.timestamp),
-                maturityTime: uint32(block.timestamp + COVERAGE_DURATION),
-                payoutToken: payoutToken,
-                pool: pool,
-                coverageLimit: COVERAGE_LIMIT,
-                specId: keccak256("MorphoSpec"),
-                termsHash: keccak256("terms-hash"),
-                policyCommit: policyCommit
-            })
-        );
-
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashFull));
 
