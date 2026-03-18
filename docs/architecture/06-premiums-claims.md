@@ -230,7 +230,7 @@ This supports heterogeneous slash collateral while preserving payout-token settl
 
 | Control | Where | Purpose |
 |---------|-------|---------|
-| `_inflateForSlippage` | before `executeSlashing` | Inflates the per-vault token-native slash amount proportionally so the beneficiary receives the target payout despite real Uniswap slippage. Uses `Swapper.quoteSwap` → `UniswapV3Adapter.quote` → `QuoterV2`. Capped at `maxSwapSlippageBps` above the base slash. |
+| `_inflateForSlippage` | before `executeSlashing` | Inflates the per-vault token-native slash amount proportionally so the beneficiary receives the target payout despite real Uniswap slippage. Uses `Swapper.quoteSwap` (try/catch) → `IQuotableAdapter.quote` → `QuoterV2` when a quote-capable adapter is registered. Falls back to base slash if the quote reverts or returns 0. Capped at `maxSwapSlippageBps` above the base slash. |
 | `maxSwapSlippageBps` | inside `_processCollateral` | Applied as a tolerance around a live `quoteSwap` quote to set `amountOutMin` on `executeSwap` — protection against MEV / sandwich attacks between quote and execution. Configurable by admin. Falls back to `amountOutMin = 1` if the quote reverts or returns zero. |
 
 If the slippage preview fails (e.g. `quoteSwap` reverts, route not configured), inflation falls

@@ -204,9 +204,9 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 - `setSwapRoute(...)`, `setSwapTargetWhitelist(...)` for configuration.
 - `executeSwap(params)` for authorized executors (typically `ClaimManager`).
-- `quoteSwap(tokenIn, tokenOut, amountIn)` — non-privileged read-only quote; delegates to the
-  route's `swapTarget` via `IQuotableAdapter.quote(tokenIn, tokenOut, amountIn)`; used by
-  `ClaimManager` for pre-slashing per-vault slippage inflation and `amountOutMin` MEV protection.
+- `quoteSwap(tokenIn, tokenOut, amountIn)` — non-privileged quote; attempts
+  `IQuotableAdapter(swapTarget).quote(tokenIn, tokenOut, amountIn)` in a try/catch, returning 0 on
+  failure; used by `ClaimManager` for per-vault slippage inflation and `amountOutMin` MEV protection.
 
 **Key roles:**
 
@@ -215,31 +215,39 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 ### 9) UniswapV3Adapter
 
-**Role:** Implements `IQuotableAdapter` for real-time slippage preview via Uniswap V3 `QuoterV2`.
-Registered as the `swapTarget` in Swapper routes where collateral must be converted to the payout
-token via Uniswap V3.
+Two adapter contracts serve the Swapper in this repository:
 
-**Why it exists:** `ClaimManager` needs a pre-swap quote to (a) inflate the per-vault slash amount
-so the beneficiary receives the target payout despite DEX slippage, and (b) compute `amountOutMin`
-for MEV protection. The adapter wraps `QuoterV2.quoteExactInputSingle` behind the `IQuotableAdapter`
-interface so `Swapper.quoteSwap` can obtain quotes without executing swaps.
+**`src/swappers/UniswapV3Adapter.sol`** — swap execution adapter (currently deployed via
+`script/DeployUniswapV3Adapter.s.sol`). Registered as `swapTarget` in routes. Resolves `amountIn`
+from `allowance(Swapper, adapter)` at execution time, then calls `SwapRouter02.exactInputSingle`
+with `recipient = Swapper`. Does **not** implement `IQuotableAdapter`; `Swapper.quoteSwap` gracefully
+returns 0 for routes using this adapter alone (try/catch).
+
+**`src/adapters/UniswapV3Adapter.sol`** — quote-only adapter implementing `IQuotableAdapter`.
+When registered as `swapTarget`, enables `Swapper.quoteSwap` to obtain live Uniswap V3 price quotes
+via `QuoterV2.quoteExactInputSingle`, powering `ClaimManager`'s per-vault slippage inflation and
+`amountOutMin` MEV protection. Uses `Ownable2Step` with per-pair fee tier overrides via `setPairFee`.
+Does **not** contain a `swap()` function; for production use it must be paired with a swap-capable
+target or the deploy script updated to register an adapter that implements both interfaces.
 
 **Swap execution pattern** (`ClaimManager._processCollateral` → `Swapper.executeSwap`):
 
 1. `ClaimManager` approves `Swapper` for the collateral amount.
 2. `Swapper.executeSwap` calls `forceApprove(swapTarget, amountIn)` and then `swapTarget.call(swapCalldata)`.
-3. The stored `swapCalldata` (set via `setSwapRoute`) encodes the swap selector and static route
-   parameters. The DEX executes the swap and delivers `tokenOut` to `Swapper`.
+3. The stored `swapCalldata` (set via `setSwapRoute`) encodes the swap selector (`swap(tokenIn, tokenOut, fee)`)
+   and static route parameters. The DEX executes the swap and delivers `tokenOut` to `Swapper`.
 4. `Swapper` verifies output via balance diff and transfers to the recipient.
 
 **Quote pattern** (`ClaimManager._computeVaultSlashes` / `_processCollateral` → `Swapper.quoteSwap`):
 
 1. `Swapper.quoteSwap` looks up the route and calls `IQuotableAdapter(swapTarget).quote(tokenIn, tokenOut, amountIn)`.
-2. `UniswapV3Adapter.quote` calls `QuoterV2.quoteExactInputSingle` with the configured fee tier.
-3. Returns the simulated output amount. Never reverts in normal usage (Swapper wraps in try/catch).
+2. If `swapTarget` implements `IQuotableAdapter` (i.e. `src/adapters/UniswapV3Adapter`), `quote` calls
+   `QuoterV2.quoteExactInputSingle` with the configured fee tier and returns the simulated output.
+3. If `swapTarget` does not implement `IQuotableAdapter` (i.e. `src/swappers/UniswapV3Adapter`), the call
+   reverts and the Swapper's try/catch returns 0 — slippage inflation and MEV quoting degrade gracefully.
 
-**Deployment:** `script/DeployUniswapV3Adapter.s.sol` deploys the adapter, whitelists it in
-`Swapper`, and configures the route in one transaction.
+**Deployment:** `script/DeployUniswapV3Adapter.s.sol` deploys `src/swappers/UniswapV3Adapter`, whitelists
+it in `Swapper`, and configures the route in one transaction.
 
 | Network | SwapRouter02 |
 |---------|-------------|
