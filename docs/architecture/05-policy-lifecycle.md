@@ -44,8 +44,8 @@ Recommended adapter-based tuple:
 Checks:
 
 - pool is factory-registered,
-- non-zero beneficiary/claimer/payout token,
-- non-zero coverage amount and duration,
+- non-zero beneficiary/claimer/payoutToken; payoutToken must be supported,
+- non-zero duration,
 - hook address supports `IBindPolicyHook`.
 
 Effects:
@@ -88,7 +88,7 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 ### 3.2 Core and Spec Registration
 
 - `SpecRegistry.registerSpec(specId, spec)` called by pool.
-- `StakeManager.addCommitteeVaults(policyId, vaults[])` binds committee backing vaults.
+- `StakeManager.setCommitteeVaults(policyId, vaults[], coverageLimit)` binds committee backing vaults.
 
 ### 3.3 PolicyManager Finalization
 
@@ -98,7 +98,7 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 - request data matches draft values,
 - duration matches quote window,
 - committee has at least one vault,
-   - committee total stake (USD) >= requested `coverageAmount`,
+   - committee total stake (USD) >= `coverageLimit` (USD) — converted via `getCommitteeTokenStakes` + `ChainlinkPriceFeed.getUSDValue` in `PolicyManager.bindPolicy`,
 - policy commit is unique.
 
 Then it:

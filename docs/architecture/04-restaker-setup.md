@@ -7,8 +7,9 @@ slashable by the policy's committee. This process involves depositing directly i
 duration vault (and optionally a Symbiotic vault).
 
 The restaker deposit is performed directly against EigenLayer contracts (no Coverage script needed).
-Stake sufficiency is enforced at bind time by `SSPRouter._checkDelegation` inside `addCommitteeVaults`
-and does not require a separate verification step.
+Stake sufficiency is enforced at bind time by `PolicyManager.bindPolicy`, which converts per-vault
+token-native stakes to USD via `ChainlinkPriceFeed.getUSDValue` and checks against the quote's
+`coverageLimit`.
 
 ## Duration Vault Model (EigenLayer)
 
@@ -56,30 +57,24 @@ It acts as both an EigenLayer strategy (accepts deposits) and an EigenLayer oper
 slashable). Its address is stored in `StakeManager.getCommitteeVaults(policyId)` after committee
 creation.
 
-The deposited amount must satisfy the coverage USD requirement. The USD value is computed by
-`EigenAdapter.getStrategiesStakeUSD(vaults)` at bind time:
+The deposited amount must satisfy the coverage USD requirement. At bind time `PolicyManager.bindPolicy`
+calls `StakeManager.getCommitteeTokenStakes(policyId)` to retrieve per-vault token-native stakes,
+then converts each to USD via `ChainlinkPriceFeed.getUSDValue(token, amount)` and checks that the
+sum meets or exceeds the quote's `coverageLimit` (also converted to USD).
 
-```
-stake_USD = totalShares * sharesToUnderlyingView() * ChainlinkPriceFeed.getUSDValue(token, 1e18) / 1e18
-```
-
-Example: to cover `coverageAmount = 100_000_000_000` (1000 USD at 8 decimals), at least
-`$1000 / ETH_USD_PRICE` ETH worth of WETH must be deposited.
+Example: to cover a `coverageLimit` of 1000 USD, at least `$1000 / ETH_USD_PRICE` ETH worth of
+WETH must be deposited into the committee's duration vault.
 
 ### Steps 2 & 3: Add Vaults and Bind Policy
 
 These steps are performed by the curator via `CoverPool.bindPolicyForRequest(...)`, which:
 
-1. calls `StakeManager.addCommitteeVaults(policyId, [durationVaultStrategy])` — registers the
-   vault as a committee vault, calls `EigenAdapter.addStrategiesToOperatorSet` to configure it,
-   and runs `SSPRouter._checkDelegation` which reverts with `InsufficientDelegationAmount` if
-   `EigenAdapter.getStrategiesStakeUSD(vaults)` < `committeeMaxStake`,
-2. calls `PolicyManager.bindPolicy(...)` — verifies committee has at least one vault and activates
-   the policy.
-
-The `_checkDelegation` call inside `SSPRouter.addCommitteeVaults` computes
-`EigenAdapter.getStrategiesStakeUSD(vaults)` and reverts with
-`InsufficientDelegationAmount` if the stake is insufficient.
+1. calls `StakeManager.setCommitteeVaults(policyId, [durationVaultStrategy], coverageLimit)` —
+   registers the vault as a committee vault and calls `EigenAdapter.addStrategiesToOperatorSet`
+   to configure it,
+2. calls `PolicyManager.bindPolicy(...)` — verifies committee has at least one vault, checks that
+   total stake (USD) ≥ `coverageLimit` (USD) via `getCommitteeTokenStakes` +
+   `ChainlinkPriceFeed.getUSDValue`, and activates the policy.
 
 ## Why a Separate Setup Phase Exists
 
@@ -129,19 +124,18 @@ cast call $SSPROUTER "getVaultModule(address)(uint8)" $VAULT_ADDRESS --rpc-url $
 
 ## Stake Sufficiency Check at Bind Time
 
-The delegation check inside `SSPRouter.addCommitteeVaults` verifies:
+The stake sufficiency check runs inside `PolicyManager.bindPolicy` after `setCommitteeVaults`
+has registered the vaults:
 
 ```
-EigenAdapter.getStrategiesStakeUSD(eigenVaults)
-  + SymbioticAdapter.getOperatorStakeUSD(operator, symbioticVaults, committeeId)
-  >= SSPRouter.committeeMaxStake[committeeId]
+sum_i( ChainlinkPriceFeed.getUSDValue(tokens[i], tokenStakes[i]) )
+  >= ChainlinkPriceFeed.getUSDValue(payoutToken, coverageLimit)
 ```
 
-Where `committeeMaxStake[committeeId]` was set during `SSPRouter.createCommittee` (called from
-`StakeManager.createCommittee`, which was called from `PolicyManager.requestCoverage`).
-
-`committeeMaxStake` equals the `coverageAmount` from the policy request, denominated in USD
-(8 decimal places). For example, a `coverageAmount` of `100_000_000_000` means $1,000 USD.
+Where `tokens[i]` and `tokenStakes[i]` come from `StakeManager.getCommitteeTokenStakes(policyId)`,
+and `coverageLimit` is the value from the curator-signed quote. Both sides are expressed in USD
+with 8 decimal places. For example, a `coverageLimit` of `1000e18` payout-token units for a
+$1 peg token corresponds to $1,000 USD (8 decimals: `100_000_000_000`).
 
 ## Restaker Deposit Reference
 
@@ -183,11 +177,11 @@ Duration vault addresses are looked up at runtime via `StakeManager.getCommittee
 
 | Symptom | Root Cause | Fix |
 |---------|-----------|-----|
-| `InsufficientDelegationAmount` at bind | `getStrategiesStakeUSD` < `committeeMaxStake` | Deposit more collateral or reduce `COVERAGE_AMOUNT` |
-| `VaultModuleNotSet` at `addCommitteeVaults` | Duration vault not registered in `SSPRouter` | Core admin: `SSPRouter.registerVaultModule(vault, 2)` |
-| `PriceFeedNotFound` at `fileClaim` | WETH not registered in `ChainlinkPriceFeed` | Core admin: `registerPriceFeed(WETH, ETH/USD_aggregator)` |
+| `InsufficientStake` at bind | Total stake USD < `coverageLimit` USD | Deposit more collateral or reduce `coverageLimit` in the quote |
+| `VaultModuleNotSet` at `setCommitteeVaults` | Duration vault not registered in `SSPRouter` | Core admin: `SSPRouter.registerVaultModule(vault, 2)` |
+| `PriceFeedNotFound` at bind | Payout or collateral token not registered in `ChainlinkPriceFeed` | Core admin: `registerPriceFeed(token, aggregator)` before bind |
 | `InvalidCommitteeId` | `policyId = 0` (not set from output of RequestCoverage) | Set `POLICY_ID` env var from `RequestCoverage.s.sol` output |
-| Stake reads 0 before bind | Vaults not yet added to committee (expected) | Stake = 0 until `bindPolicyForRequest` runs `addCommitteeVaults` |
+| Stake reads 0 before bind | Vaults not yet added to committee (expected) | Stake = 0 until `bindPolicyForRequest` runs `setCommitteeVaults` |
 | `SSPRouter safeTransferFrom` reverts on distribution | PremiumManager has not approved SSPRouter | Admin: `PremiumManager.approveSpender(token, sspRouter, type(uint256).max)` |
 
 ## Related Pages

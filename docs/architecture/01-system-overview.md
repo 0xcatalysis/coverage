@@ -25,7 +25,7 @@ Core contracts manage:
 Coverage and Core share a canonical identifier:
 
 - `policyId` (Coverage) is the same value as `committeeId` (Core).
-- committee-level capacity in Core is set from requested `coverageAmount`.
+- committee capacity is determined by the `coverageLimit` in the signed quote; stake sufficiency is verified at bind time via USD conversion in `PolicyManager`.
 - slashing is executed by committee, which means per policy.
 
 Coverage request actor mapping:
@@ -95,7 +95,7 @@ graph TB
 
     CLAIMER --> CM
     CM --> SR
-    CM --> PF
+    PM --> PF
     CM --> SLM
     CM --> SW
 
