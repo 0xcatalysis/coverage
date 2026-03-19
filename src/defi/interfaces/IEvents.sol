@@ -47,4 +47,7 @@ interface IEvents {
 
     /// @notice Emitted when deductibleBps is updated by the owner
     event DeductibleUpdated(uint16 oldBps, uint16 newBps);
+
+    /// @notice Emitted when underlyingExpectedLossBps is updated by the owner
+    event UnderlyingExpectedLossUpdated(uint256 oldBps, uint256 newBps);
 }

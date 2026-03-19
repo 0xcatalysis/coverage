@@ -40,12 +40,35 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// @notice Premium redeemed from Morpho and awaiting transfer to premiumRecipient via collectPremium()
     function pendingPremium() external view returns (uint256);
 
-    /// @notice Cumulative premium ever redeemed from Morpho (monotonically increasing).
-    ///         On the write path (_withdraw), insuredBasis = userPrincipal × (totalPrincipal − totalPremiumRedeemed)
-    /// / totalPrincipal because _accruePremium() has already settled all pending accrual into this value.
-    ///         On the view path (calculateShortfall/userShortfall), both this value and the pending
-    ///         accrual are deducted symmetrically to avoid phantom shortfalls.
+    /// @notice Cumulative premium ever accrued (monotonically increasing informational stat).
+    ///         No longer used directly in insuredBasis calculations — see totalPremiumLiability.
     function totalPremiumRedeemed() external view returns (uint256);
+
+    /// @notice WAD-scaled cumulative premium per unit of principal (reward-per-token accumulator).
+    ///         Increases by (accruedPremium × WAD / totalPrincipal) on every _accruePremium call.
+    function cumulativePremiumPerUnit() external view returns (uint256);
+
+    /// @notice Snapshot of cumulativePremiumPerUnit at the user's last checkpoint.
+    function userPremiumDebt(address user) external view returns (uint256);
+
+    /// @notice Settled premium owed by user (excludes uncheckpointed accrual since last checkpoint).
+    function userPremiumAccrued(address user) external view returns (uint256);
+
+    /// @notice Total outstanding per-user premium debt not yet collected from withdrawal proceeds.
+    function totalPremiumLiability() external view returns (uint256);
+
+    /// @notice Annual expected loss rate of the underlying vault in basis points (e.g. 200 = 2%/year).
+    ///         Losses within this rate (e.g. management fees) are NOT covered by insurance.
+    function underlyingExpectedLossBps() external view returns (uint256);
+
+    /// @notice WAD-scaled cumulative expected loss per unit of principal (reward-per-token accumulator).
+    function cumulativeExpectedLossPerUnit() external view returns (uint256);
+
+    /// @notice Snapshot of cumulativeExpectedLossPerUnit at the user's last checkpoint.
+    function userExpectedLossDebt(address user) external view returns (uint256);
+
+    /// @notice Settled expected loss owed by user (excludes uncheckpointed accrual since last checkpoint).
+    function userExpectedLossAccrued(address user) external view returns (uint256);
 
     /// @notice Coverage limit stored from the bound policy (0 before onPolicyBound is called).
     ///         Used to recalculate depositCap when maxCoverableLossBps changes post-binding.
@@ -72,6 +95,10 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// @notice Updates the maximum coverable loss in basis points. Recalculates depositCap if policy is bound.
     ///         Caller must be the owner. Reverts with InvalidMaxCoverableLoss if newBps == 0 or > 10_000.
     function setMaxCoverableLossBps(uint16 newBps) external;
+
+    /// @notice Updates the expected annual loss rate of the underlying vault in basis points.
+    ///         Accrues both premium and expected loss at the old rate first. Only callable by the owner.
+    function setUnderlyingExpectedLossBps(uint256 newBps) external;
 
     /// @notice Updates the deductible in basis points applied to every insurance claim.
     ///         Caller must be the owner. Reverts with InvalidParameters if newBps >= 10_000.

@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {CoveredVaultWrapper} from "../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
+import {ICoveredVaultWrapper} from "../../src/defi/interfaces/ICoveredVaultWrapper.sol";
 
 import {MockERC20} from "./mocks/Mocks.sol";
 import {ControllableVault} from "./mocks/ControllableVault.sol";
@@ -241,23 +242,21 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         // ── Settle final period ──
         wrapper.collectPremium();
 
-        // totalPremiumRedeemed should match the sum of per-period calculations
+        // totalPremiumRedeemed (monotonic accrual stat) should match sum of per-period calculations
         assertApproxEqAbs(
             wrapper.totalPremiumRedeemed(),
             expectedTotal,
-            10, // ≤10 wei tolerance for Morpho share rounding across 3 redemptions
+            10,
             "Total premium must equal sum(principal * rate_i * duration_i / WAD)"
         );
 
-        // Cross-check: morpho position should equal deposit minus premium
-        uint256 morphoValue = morphoVault.totalAssets();
-        // morphoVault.totalAssets() only reflects the wrapper's position (sole depositor)
-        // pendingPremium sits in the wrapper as ERC20, not in morpho
+        // With premium-as-debt, Morpho is NOT redeemed during accrual; premium lives as totalPremiumLiability.
+        // Verify liability equals the accrued stat (no withdrawals have occurred in this test).
         assertApproxEqAbs(
-            morphoValue + wrapper.totalPremiumRedeemed(),
-            principal,
-            10,
-            "morphoValue + premium == original deposit (conservation of assets)"
+            wrapper.totalPremiumLiability(),
+            wrapper.totalPremiumRedeemed(),
+            1,
+            "totalPremiumLiability must equal totalPremiumRedeemed when no withdrawals have occurred"
         );
     }
 
@@ -268,17 +267,15 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
 
     /// @notice Fuzz test: premium should be distributed proportionally to principal.
     ///
-    ///         The INTENDED behavior is that two users with equal principal pay equal
-    ///         premium, regardless of their entry share price. However, premium is
-    ///         currently collected by redeeming Morpho shares (reducing the share price),
-    ///         which distributes premium proportionally to SHARES, not to PRINCIPAL.
+    ///         With the premium-as-debt model (Option A fix), each user's premium is
+    ///         tracked via a per-user debt accumulator (cumulativePremiumPerUnit).
+    ///         Accrual is principal-proportional: a user with 1000 principal always pays
+    ///         exactly principal × rate × elapsed / WAD regardless of their entry share price.
     ///
-    ///         When users enter at different prices they hold different share counts for
-    ///         the same principal. The user with more shares (lower entry price) absorbs
-    ///         more premium through the share-price decline.
-    ///
-    ///         This test is expected to FAIL — confirming the known issue. A fix will be
-    ///         issued later to make premium distribution principal-proportional.
+    ///         This test verifies the fix by having both Alice and Bob withdraw after premium
+    ///         accrues. The premium deducted from each (= pendingPremium increase) must be
+    ///         equal since they hold equal principals, despite Alice holding more shares
+    ///         (lower entry price) than Bob.
     function testFuzz_premiumAccrual_shouldBeProportionalToPrincipal(
         uint256 deposit,
         uint256 yieldPct,
@@ -315,26 +312,27 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         assertEq(wrapper.userPrincipal(alice), deposit, "Same principal: Alice");
         assertEq(wrapper.userPrincipal(bob), deposit, "Same principal: Bob");
 
-        // ── Snapshot values BEFORE premium ──
-        uint256 aliceValueBefore = wrapper.convertToAssets(aliceShares);
-        uint256 bobValueBefore = wrapper.convertToAssets(bobShares);
-
         // ── Enable premium and let time pass ──
         vm.prank(curator);
         wrapper.setPremiumRate(FIFTY_PCT_ANNUAL_RATE);
         vm.warp(block.timestamp + premiumDays * 1 days);
 
-        // ── Snapshot values AFTER premium accrual ──
-        uint256 aliceValueAfter = wrapper.convertToAssets(aliceShares);
-        uint256 bobValueAfter = wrapper.convertToAssets(bobShares);
+        // ── Alice withdraws: measure premium deducted (pendingPremium increase) ──
+        uint256 pendingBefore = wrapper.pendingPremium();
+        vm.prank(alice);
+        wrapper.redeem(aliceShares, alice, alice);
+        uint256 alicePremiumPaid = wrapper.pendingPremium() - pendingBefore;
 
-        uint256 alicePremiumPaid = aliceValueBefore - aliceValueAfter;
-        uint256 bobPremiumPaid = bobValueBefore - bobValueAfter;
+        // ── Bob withdraws: measure premium deducted ──
+        uint256 pendingAfterAlice = wrapper.pendingPremium();
+        vm.prank(bob);
+        wrapper.redeem(bobShares, bob, bob);
+        uint256 bobPremiumPaid = wrapper.pendingPremium() - pendingAfterAlice;
 
-        // ── INTENDED invariant: equal principal → equal premium ──
-        // Allow 0.1% relative tolerance for rounding
+        // ── FIXED invariant: equal principal → equal premium paid at withdrawal ──
+        // Allow 0.1% relative tolerance for accumulator rounding
         assertApproxEqRel(
-            alicePremiumPaid, bobPremiumPaid, 0.001e18, "KNOWN ISSUE: premium distributed by shares, not principal"
+            alicePremiumPaid, bobPremiumPaid, 0.001e18, "Premium must be distributed proportionally to principal"
         );
     }
 
@@ -342,14 +340,9 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
                    TRANSFER INVARIANT FUZZ TESTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Fuzz test: share transfers preserve principal accounting and transferred
-    ///         principal determines insurance payout on withdrawal after a loss.
-    ///
-    ///         Invariants:
-    ///           1. totalPrincipal unchanged after transfer
-    ///           2. Σ userPrincipal == totalPrincipal after transfer
-    ///           3. After a loss, the receiver gets insurance based on their NEW principal
-    ///              (original + transferred portion), not their original deposit
+    /// @notice Fuzz test: share transfers are disabled (soulbound). Attempting any transfer
+    ///         between two non-zero addresses reverts with TransfersDisabled().
+    ///         Invariants verified: principal sums remain correct after deposits.
     function testFuzz_transfer_principalInvariants_and_insurance(
         uint256 deposit1,
         uint256 deposit2,
@@ -358,12 +351,12 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
     )
         public
     {
-        uint96 policyId = _deployWrapperWithCap(type(uint128).max);
+        _deployWrapperWithCap(type(uint128).max);
 
         deposit1 = bound(deposit1, 10 ether, 1_000_000 ether);
         deposit2 = bound(deposit2, 10 ether, 1_000_000 ether);
-        transferPct = bound(transferPct, 1, 99); // 1-99% of sender's shares
-        lossPct = bound(lossPct, 20, 80); // 20-80% loss to ensure shortfall
+        transferPct = bound(transferPct, 1, 99);
+        lossPct = bound(lossPct, 20, 80);
 
         address alice = address(0xAA11);
         address bob = address(0xBB22);
@@ -384,97 +377,18 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
             "sum == total before transfer"
         );
 
-        // ── Alice transfers a portion of her shares to Bob ──
-        _transferAndAssertInvariants(alice, bob, transferPct, totalPrincipalBefore);
+        // ── Transfer reverts: shares are soulbound ──
+        uint256 sharesToTransfer = wrapper.balanceOf(alice) * transferPct / 100;
+        vm.prank(alice);
+        vm.expectRevert(CoveredVaultWrapper.TransfersDisabled.selector);
+        wrapper.transfer(bob, sharesToTransfer);
 
-        // Cache post-transfer principals for insurance assertions
-        uint256 bobPrincipalAfter = wrapper.userPrincipal(bob);
-        uint256 alicePrincipalAfter = wrapper.userPrincipal(alice);
-
-        // ── Simulate loss → both users should have shortfall ──
-        _simulateLoss(lossPct);
-
-        // ── Withdraw both and verify insurance is based on post-transfer principal ──
-        _withdrawAndAssertInsurance(alice, bob, policyId, alicePrincipalAfter, bobPrincipalAfter);
-    }
-
-    function _transferAndAssertInvariants(
-        address from,
-        address to,
-        uint256 transferPct,
-        uint256 expectedTotal
-    )
-        internal
-    {
-        uint256 fromPrincipalBefore = wrapper.userPrincipal(from);
-        uint256 toPrincipalBefore = wrapper.userPrincipal(to);
-        uint256 fromShares = wrapper.balanceOf(from);
-        uint256 sharesToTransfer = fromShares * transferPct / 100;
-        uint256 expectedPrincipalMoved = fromPrincipalBefore * sharesToTransfer / fromShares;
-
-        vm.prank(from);
-        wrapper.transfer(to, sharesToTransfer);
-
-        // Invariant 1: totalPrincipal unchanged
-        assertEq(wrapper.totalPrincipal(), expectedTotal, "totalPrincipal unchanged after transfer");
-
-        // Invariant 2: sum of principals == totalPrincipal
-        assertEq(wrapper.userPrincipal(from) + wrapper.userPrincipal(to), expectedTotal, "sum == total after transfer");
-
-        // Verify principal migrated correctly
+        // Principals are unchanged since the transfer reverted
+        assertEq(wrapper.totalPrincipal(), totalPrincipalBefore, "totalPrincipal unchanged after failed transfer");
         assertEq(
-            wrapper.userPrincipal(from), fromPrincipalBefore - expectedPrincipalMoved, "Sender principal decreased"
+            wrapper.userPrincipal(alice) + wrapper.userPrincipal(bob),
+            totalPrincipalBefore,
+            "sum == total after failed transfer"
         );
-        assertEq(wrapper.userPrincipal(to), toPrincipalBefore + expectedPrincipalMoved, "Receiver principal increased");
-    }
-
-    function _withdrawAndAssertInsurance(
-        address alice,
-        address bob,
-        uint96 policyId,
-        uint256 alicePrincipal,
-        uint256 bobPrincipal
-    )
-        internal
-    {
-        uint256 insuranceBefore = claimManager.policyClaim(policyId).totalPaidOut;
-
-        // ── Bob withdraws — insurance based on his NEW (inflated) principal ──
-        uint256 bobShares = wrapper.balanceOf(bob);
-        uint256 bobBalBefore = asset.balanceOf(bob);
-        vm.prank(bob);
-        wrapper.redeem(bobShares, bob, bob);
-
-        uint256 bobInsurance = claimManager.policyClaim(policyId).totalPaidOut - insuranceBefore;
-        assertGt(bobInsurance, 0, "Bob receives insurance based on new principal");
-        assertGt(asset.balanceOf(bob) - bobBalBefore, 0, "Bob received assets");
-
-        // Bob's insurance bounded by his post-transfer principal cap
-        // insuredBasis ≈ principal (no premium), maxInsurance = insuredBasis * 10%
-        assertLe(bobInsurance, bobPrincipal * MAX_COVERABLE_LOSS_BPS / 10_000, "Bob insurance bounded by cap");
-
-        uint256 insuranceAfterBob = claimManager.policyClaim(policyId).totalPaidOut;
-
-        // ── Alice withdraws ──
-        uint256 aliceShares = wrapper.balanceOf(alice);
-        if (aliceShares > 0) {
-            vm.prank(alice);
-            wrapper.redeem(aliceShares, alice, alice);
-
-            uint256 aliceInsurance = claimManager.policyClaim(policyId).totalPaidOut - insuranceAfterBob;
-            if (alicePrincipal > 0) {
-                assertLe(
-                    aliceInsurance, alicePrincipal * MAX_COVERABLE_LOSS_BPS / 10_000, "Alice insurance bounded by cap"
-                );
-            }
-        }
-
-        // Both principals cleared
-        assertEq(wrapper.userPrincipal(alice), 0, "Alice principal cleared");
-        assertEq(wrapper.userPrincipal(bob), 0, "Bob principal cleared");
-        assertEq(wrapper.totalPrincipal(), 0, "totalPrincipal zeroed");
-
-        // Total insurance was paid
-        assertGt(claimManager.policyClaim(policyId).totalPaidOut - insuranceBefore, 0, "Insurance paid after loss");
     }
 }

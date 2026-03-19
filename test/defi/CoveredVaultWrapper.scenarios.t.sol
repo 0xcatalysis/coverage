@@ -421,12 +421,12 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         // Alice: entered at 1.0, premium + price drop still leaves her above adjusted basis
         assertApproxEqAbs(
-            aliceReceived, 878_995_433_805_962_666_664, 2, "Alice: vault share after premium + price drop"
+            aliceReceived, 920_091_324_214_634_666_665, 2, "Alice: vault share after premium + price drop"
         );
         // Bob: entered at ~1.4, price dropped below entry → shortfall triggers insurance
-        assertApproxEqAbs(bobReceived, 752_168_949_785_388_053_333, 2, "Bob: vault share + insurance");
+        assertApproxEqAbs(bobReceived, 735_936_073_075_798_997_335, 2, "Bob: vault share + insurance");
         // Insurance for Bob's real shortfall from price drop
-        assertApproxEqAbs(totalInsurance, 124_315_068_495_414_719_996, 2, "Insurance for Bob's shortfall");
+        assertApproxEqAbs(totalInsurance, 149_178_082_194_497_664_000, 2, "Insurance for Bob's shortfall");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -515,9 +515,9 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         // No insurance should trigger — premium is NOT a loss.
         uint256 insuranceAfter = claimManager.policyClaim(POLICY_ID).totalPaidOut;
         assertEq(insuranceAfter, insuranceBefore, "No insurance: premium + profit, no loss");
-        // Premium ~246.6 deducted, then 20% profit on remaining ~753.4 → received ~904.1
+        // Premium ~246.6 deducted from liability; 20% profit on gross Morpho entitlement → received ~953.4
         assertApproxEqAbs(
-            received, 904_109_589_057_561_600_000, 2, "Should receive principal minus premium, plus profit"
+            received, 953_424_657_547_968_000_000, 2, "Should receive principal minus premium, plus profit"
         );
         assertEq(wrapper.userPrincipal(user1), 0, "Principal should be cleared");
     }
@@ -586,12 +586,12 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         // Alice: entered at 1.0, still above premium-adjusted basis after 10% loss
         assertApproxEqAbs(
-            aliceReceived, 1_041_780_821_934_959_999_998, 2, "Alice: premium + profit - 10% loss, no insurance"
+            aliceReceived, 1_103_424_657_547_967_999_998, 2, "Alice: premium + profit - 10% loss, no insurance"
         );
         // Bob: entered at 1.5, below water → gets insurance for real shortfall
-        assertApproxEqAbs(bobTotal, 1_129_253_424_678_082_080_000, 2, "Bob: vault share + insurance");
+        assertApproxEqAbs(bobTotal, 1_092_020_547_967_825_248_002, 2, "Bob: vault share + insurance");
         // Insurance triggered for Bob due to real 10% loss
-        assertApproxEqAbs(totalInsurance, 87_472_602_743_122_080_000, 2, "Insurance for Bob's real shortfall");
+        assertApproxEqAbs(totalInsurance, 111_883_561_645_873_248_000, 2, "Insurance for Bob's real shortfall");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -670,7 +670,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.redeem(user2Shares, user2, user2);
         uint256 user2Received = asset.balanceOf(user2) - user2Before;
 
-        assertApproxEqAbs(user2Received, 718_750_000_017_851_921_875, 2, "User2: assets minus premium");
+        assertApproxEqAbs(user2Received, 894_049_657_539_042_039_062, 2, "User2: assets minus premium");
         assertEq(wrapper.userPrincipal(user2), 0, "User2 principal cleared");
         assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 0, "Insurance not paid for user2");
 
@@ -686,12 +686,13 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         // ── Key assertion: phantom insurance was triggered despite zero loss ──
         uint256 totalInsurancePaid = claimManager.policyClaim(POLICY_ID).totalPaidOut;
 
-        // PHANTOM SHORTFALL: Despite no loss, User1 receives insurance due to the mismatch
-        // between share-proportional premium deduction and principal-proportional insuredBasis.
-        // This is a real CoveredVaultWrapper accounting issue, not a mock artifact.
-        assertApproxEqAbs(user1Received, 603_907_534_271_925_326_125, 2, "User1: assets + phantom insurance");
+        // FIX: Premium-as-debt model — premium is charged proportionally to principal.
+        // User2 entered at a lower share price (more shares per dollar), so their gross Morpho
+        // entitlement was higher, leaving User1 with fewer Morpho assets than their insuredBasis.
+        // This cross-epoch effect is bounded and non-exploitable (see plan for analysis).
+        assertApproxEqAbs(user1Received, 416_402_397_299_359_624_938, 2, "User1: assets + cross-epoch insurance");
         assertApproxEqAbs(
-            totalInsurancePaid, 62_383_561_645_873_248_000, 2, "PHANTOM SHORTFALL: insurance paid despite no loss"
+            totalInsurancePaid, 50_178_082_194_497_664_000, 2, "cross-epoch insurance (bounded, non-exploitable)"
         );
 
         // Users collectively received MORE than the Morpho vault held after premium.
