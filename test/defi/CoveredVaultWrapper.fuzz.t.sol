@@ -566,17 +566,13 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         // ── D2: second deposit — must NOT increase liability ──
         vm.prank(user);
         wrapper.deposit(deposit2, user);
-        assertApproxEqAbs(
-            wrapper.totalPremiumLiability(), liabilityAfterP1, 10, "Liability unchanged after D2"
-        );
+        assertApproxEqAbs(wrapper.totalPremiumLiability(), liabilityAfterP1, 10, "Liability unchanged after D2");
         assertEq(wrapper.userPrincipal(user), deposit1 + deposit2, "Principal = D1 + D2");
 
         // ── Period 2: premium accrues on D1+D2 ──
         vm.warp(block.timestamp + period2);
         wrapper.collectPremium();
-        assertApproxEqAbs(
-            wrapper.totalPremiumLiability(), expectedTotal, 10, "Total liability = P1(D1) + P2(D1+D2)"
-        );
+        assertApproxEqAbs(wrapper.totalPremiumLiability(), expectedTotal, 10, "Total liability = P1(D1) + P2(D1+D2)");
 
         // ── Partial withdrawal ──
         uint256 totalShares = wrapper.balanceOf(user);
@@ -605,9 +601,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
 
         // Invariant: total premium across both withdrawals matches expected
         // Tolerance: 0.1% relative — rounding accumulates across partial + full withdrawal
-        assertApproxEqRel(
-            premiumPaidPartial + premiumPaidFinal, expectedTotal, 0.001e18, "Total premium = P1 + P2"
-        );
+        assertApproxEqRel(premiumPaidPartial + premiumPaidFinal, expectedTotal, 0.001e18, "Total premium = P1 + P2");
 
         // Invariant: all state cleaned
         assertEq(wrapper.userPrincipal(user), 0, "Principal cleared");
