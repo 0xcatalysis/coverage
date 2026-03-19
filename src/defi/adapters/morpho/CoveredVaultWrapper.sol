@@ -273,7 +273,7 @@ contract CoveredVaultWrapper is
         address owner_
     )
         private
-        returns (uint256 premiumForWithdrawal_)
+        returns (uint256 premiumForWithdrawal_, uint256 totalOut_)
     {
         // Cap: can't deduct more premium than what Morpho returned (deep-loss guard)
         premiumForWithdrawal_ = uncappedPremium_ < assetsReceived_ ? uncappedPremium_ : assetsReceived_;
@@ -286,8 +286,8 @@ contract CoveredVaultWrapper is
         uint256 insuredBasis =
             userPrincipalForWithdrawal_ > totalDeductions ? userPrincipalForWithdrawal_ - totalDeductions : 0;
         uint256 netAssetsReceived = assetsReceived_ - premiumForWithdrawal_;
-        uint256 totalOut = netAssetsReceived + _computeInsurance(insuredBasis, netAssetsReceived, owner_);
-        if (totalOut > 0) IERC20(asset()).safeTransfer(receiver_, totalOut);
+        totalOut_ = netAssetsReceived + _computeInsurance(insuredBasis, netAssetsReceived, owner_);
+        if (totalOut_ > 0) IERC20(asset()).safeTransfer(receiver_, totalOut_);
     }
 
     ///      Insurance is paid directly to receiver if a loss is detected and policy is active.
@@ -315,11 +315,13 @@ contract CoveredVaultWrapper is
             ownerBalance > 0 ? userPrincipal[owner].mulDiv(shares, ownerBalance, Math.Rounding.Floor) : 0;
 
         // Redeem Morpho, settle insurance, update debts — extracted to avoid stack-too-deep
-        _executeWithdrawal(owner, receiver, shares, userPrincipalForWithdrawal);
+        // Returns the actual amount transferred to receiver (net Morpho proceeds + insurance).
+        uint256 actualOut = _executeWithdrawal(owner, receiver, shares, userPrincipalForWithdrawal);
 
         totalPrincipal -= userPrincipalForWithdrawal;
 
-        emit Withdraw(caller, receiver, owner, assets, shares);
+        // ERC-4626 spec: assets in Withdraw must equal the amount actually transferred to receiver.
+        emit Withdraw(caller, receiver, owner, actualOut, shares);
     }
 
     /// @dev Computes owed premium and expected loss from the absolute-debt formula.
@@ -360,6 +362,7 @@ contract CoveredVaultWrapper is
         uint256 userPrincipalForWithdrawal_
     )
         private
+        returns (uint256 totalOut_)
     {
         WithdrawalAmounts memory a = _computeOwedAmounts(owner_, shares_);
 
@@ -380,7 +383,8 @@ contract CoveredVaultWrapper is
             assetsReceived = IVaultV2(morphoVault).redeem(userMorphoShares, address(this), address(this));
         }
 
-        uint256 premiumForWithdrawal = _settleWithdrawalTransfer(
+        uint256 premiumForWithdrawal;
+        (premiumForWithdrawal, totalOut_) = _settleWithdrawalTransfer(
             receiver_, userPrincipalForWithdrawal_, a.uncappedPremium, a.uncappedExpectedLoss, assetsReceived, owner_
         );
 
