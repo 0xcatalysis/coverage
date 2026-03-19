@@ -615,7 +615,18 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
     ///
     ///         Expected (no loss): User1 receives ~536, User2 receives ~713.
     ///         Actual: User1 receives ~536 + phantom insurance payout.
-    function test_premiumOnly_phantomShortfall_triggersInsurance() public {
+    /// @notice With per-user Morpho share tracking, cross-epoch phantom insurance is eliminated.
+    ///         Each user redeems exactly the Morpho shares they deposited, so the share/principal
+    ///         fraction mismatch that previously caused phantom shortfalls no longer affects
+    ///         Morpho proceeds distribution.
+    ///
+    ///         Timeline (same as the old phantom test, but now no spurious insurance):
+    ///           T0: User1 deposits 1000 at price 1.0
+    ///           T0→T1: 180 days, premium accrues on 1000 principal
+    ///           T1: User2 deposits 1000 at reduced share price (~0.995)
+    ///           T1→T2: 180 days, premium accrues on 2000 principal
+    ///           T2: User2 exits, then User1 exits — zero insurance in both cases
+    function test_premiumOnly_noPhantomInsurance() public {
         _deployWrapper(type(uint128).max);
 
         address user1 = address(0x1111);
@@ -624,7 +635,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         _mintAndApprove(user2, 1000 ether);
 
         // ── Realistic 1%/year premium rate ──
-        uint256 ONE_PCT_ANNUAL = uint256(1e16) / 31_536_000; // ~317 per second (WAD-scaled)
+        uint256 ONE_PCT_ANNUAL = uint256(1e16) / 31_536_000;
         vm.prank(curator);
         wrapper.setPremiumRate(ONE_PCT_ANNUAL);
 
@@ -634,36 +645,31 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         uint256 user1Shares = wrapper.balanceOf(user1);
 
-        // ── Step 2: 180 days pass → ~4.93 premium accrues on 1000 principal ──
+        // ── Step 2: 180 days of premium on 1000 principal ──
         vm.warp(block.timestamp + 180 days);
 
-        // totalAssets ≈ 1000 − 4.93 ≈ 995.07
         uint256 taBeforeUser2 = wrapper.totalAssets();
         assertApproxEqAbs(taBeforeUser2, 995 ether, 1 ether, "totalAssets after 180d at 1%/yr");
 
-        // ── Step 3: User2 deposits 1000 at slightly reduced share price ──
+        // ── Step 3: User2 deposits 1000 at lower share price ──
         vm.prank(user2);
         wrapper.deposit(1000 ether, user2);
 
         uint256 user2Shares = wrapper.balanceOf(user2);
-        // User2 entered at ~0.995 price → gets slightly more shares than User1
         assertGt(user2Shares, user1Shares, "User2 has more shares (lower entry price)");
-
         assertEq(wrapper.totalPrincipal(), 2000 ether, "totalPrincipal after both deposits");
 
-        // ── Step 4: 180 more days → ~9.86 more premium accrues on 2000 principal ──
+        // ── Step 4: 180 more days of premium on 2000 principal ──
         vm.warp(block.timestamp + 180 days);
 
-        // No loss — this is purely premium (ControllableVault has no virtual loss flag)
-
-        // ── Step 5: User2 withdraws all shares first ──
+        // ── Step 5: User2 withdraws all shares ──
         uint256 user2Before = asset.balanceOf(user2);
         vm.prank(user2);
         wrapper.redeem(user2Shares, user2, user2);
         uint256 user2Received = asset.balanceOf(user2) - user2Before;
 
         assertEq(wrapper.userPrincipal(user2), 0, "User2 principal cleared");
-        uint256 insuranceAfterUser2 = claimManager.policyClaim(POLICY_ID).totalPaidOut;
+        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 0, "No insurance for User2");
 
         // ── Step 6: User1 withdraws all shares ──
         uint256 user1Before = asset.balanceOf(user1);
@@ -674,30 +680,15 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         assertEq(wrapper.userPrincipal(user1), 0, "User1 principal cleared");
         assertEq(wrapper.totalPrincipal(), 0, "totalPrincipal zeroed");
 
-        // ── Key assertion: quantify phantom insurance at realistic rate ──
+        // ── Key assertion: ZERO phantom insurance ──
         uint256 totalInsurancePaid = claimManager.policyClaim(POLICY_ID).totalPaidOut;
+        assertEq(totalInsurancePaid, 0, "No phantom insurance with per-user Morpho tracking");
 
-        // Log actual values for visibility
-        emit log_named_uint("User1 received", user1Received);
-        emit log_named_uint("User2 received", user2Received);
-        emit log_named_uint("Insurance after User2 exit", insuranceAfterUser2);
-        emit log_named_uint("Total phantom insurance", totalInsurancePaid);
-        emit log_named_uint("Phantom as % of deposit (bps)", totalInsurancePaid * 10_000 / 1000 ether);
-
-        // At 1%/year over 360 days, the share-price gap between User1 and User2 is ~0.5%.
-        // Despite the small gap, phantom insurance is ~2.45 ether (~24.5 bps of deposit).
-        //
-        // Root cause: User2 has ~1.005x more shares per dollar of principal. On exit, Morpho
-        // redeems proportional to shares (ERC4626), so User2 takes ~50.25% of gross Morpho assets
-        // but only 50% of principal. Premium is deducted by principal (correct), but the Morpho
-        // proceeds mismatch means User1's net assets fall below their insuredBasis.
-        //
-        // This ~0.25% effect is bounded by |sharesFraction − principalFraction| and is
-        // non-exploitable (User2 doesn't profit — they just take a slightly larger share
-        // of the common Morpho pool, and User1 gets compensated via insurance).
-        assertApproxEqAbs(totalInsurancePaid, 2.45 ether, 0.1 ether, "Phantom insurance ~2.45 ETH at 1%/yr");
-        // Phantom insurance is always zero for User2 (who exited first with surplus Morpho proceeds)
-        assertEq(insuranceAfterUser2, 0, "No insurance for User2 (surplus Morpho proceeds)");
+        // Both users received their principal minus their fair premium — no cross-subsidy.
+        // User1 premium: rate × 1000 × 180d + rate × 1000 × 180d ≈ 9.86 ether (full 360d)
+        // User2 premium: rate × 1000 × 180d ≈ 4.93 ether (only period 2)
+        assertApproxEqAbs(user1Received, 990.14 ether, 0.5 ether, "User1: 1000 - ~9.86 premium");
+        assertApproxEqAbs(user2Received, 995.07 ether, 0.5 ether, "User2: 1000 - ~4.93 premium");
     }
 
     /*//////////////////////////////////////////////////////////////
