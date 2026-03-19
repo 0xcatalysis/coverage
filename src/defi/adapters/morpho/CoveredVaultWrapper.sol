@@ -148,6 +148,12 @@ contract CoveredVaultWrapper is
     /// @dev Absolute expected-loss debt — owed = principal × cumELPerUnit / WAD − debt.
     mapping(address => uint256) public userExpectedLossDebt;
 
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev Total outstanding per-user expected-loss liability not yet deducted from withdrawal proceeds.
+    ///      Mirrors totalPremiumLiability: increases on every _accruePremium call when underlyingExpectedLossBps > 0;
+    ///      decreases when a user's expected-loss debt is settled at withdrawal.
+    uint256 public totalExpectedLossLiability;
+
     /*//////////////////////////////////////////////////////////////
                             ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -377,10 +383,13 @@ contract CoveredVaultWrapper is
         );
 
         pendingPremium += premiumForWithdrawal;
-        // Saturating subtraction guards against any rounding-induced edge case where the sum of
-        // per-user uncappedPremium values could marginally exceed totalPremiumLiability.
+        // Saturating subtractions guard against any rounding-induced edge case where per-user
+        // owed values could marginally exceed their respective global liability trackers.
         totalPremiumLiability =
             totalPremiumLiability > a.uncappedPremium ? totalPremiumLiability - a.uncappedPremium : 0;
+        totalExpectedLossLiability = totalExpectedLossLiability > a.uncappedExpectedLoss
+            ? totalExpectedLossLiability - a.uncappedExpectedLoss
+            : 0;
 
         // Update absolute debts and principal
         _updateDebtsAfterWithdrawal(
@@ -428,6 +437,9 @@ contract CoveredVaultWrapper is
         uint256 elapsed = block.timestamp - lastPremiumAccrualTime;
         if (underlyingExpectedLossBps > 0 && totalPrincipal > 0 && elapsed > 0) {
             cumulativeExpectedLossPerUnit += underlyingExpectedLossBps.mulDiv(elapsed * WAD, BPS_DENOMINATOR * 365 days);
+            totalExpectedLossLiability += totalPrincipal.mulDiv(
+                underlyingExpectedLossBps * elapsed, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
+            );
         }
 
         // Compute accrued premium using the same elapsed window captured above, before advancing the timestamp.
@@ -657,9 +669,11 @@ contract CoveredVaultWrapper is
         uint256 totalPremiumTotal = totalPremiumLiability + accrued;
         uint256 netValue = morphoValue > totalPremiumTotal ? morphoValue - totalPremiumTotal : 0;
         // Also deduct global expected loss (management fee drag) so it is not counted as insurable shortfall.
-        // Global expected loss = totalPrincipal * (accumulated + pending per-unit rate) / WAD.
+        // Use the global tracker (mirrors totalPremiumLiability) to correctly account for per-user debts —
+        // totalPrincipal * cumulativeExpectedLossPerUnit / WAD would overcount by ignoring userExpectedLossDebt
+        // for users who deposited after the accumulator had already increased.
         uint256 pendingElapsedSecs = block.timestamp - lastPremiumAccrualTime;
-        uint256 totalExpectedLoss = totalPrincipal.mulDiv(cumulativeExpectedLossPerUnit, WAD, Math.Rounding.Floor);
+        uint256 totalExpectedLoss = totalExpectedLossLiability;
         if (underlyingExpectedLossBps > 0 && pendingElapsedSecs > 0) {
             totalExpectedLoss += totalPrincipal.mulDiv(
                 underlyingExpectedLossBps * pendingElapsedSecs, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor

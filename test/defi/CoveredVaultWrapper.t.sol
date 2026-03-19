@@ -741,6 +741,54 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertEq(wrapper.userShortfall(user1), 0, "Premium deductions must not appear as user shortfall");
     }
 
+    /// @dev Regression: calculateShortfall() must not overcount expected loss for late depositors.
+    ///      Bug: totalPrincipal * cumulativeExpectedLossPerUnit / WAD ignores per-user userExpectedLossDebt,
+    ///      so users who deposited after the accumulator increased were double-charged, lowering adjustedPrincipal
+    ///      and underreporting the shortfall.
+    ///      Fix: use totalExpectedLossLiability (mirrors totalPremiumLiability) which correctly subtracts debt.
+    function test_calculateShortfall_lateDepositor_expectedLossNotOvercounted() public {
+        // Use 5%/year expected loss rate (no premium to isolate the expected-loss path)
+        vm.prank(curator);
+        wrapper.setUnderlyingExpectedLossBps(500); // 5%/year
+
+        // user1 deposits at t=0
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1); // 1000 ether
+
+        // Half a year passes — ~25 ether expected loss accumulates
+        vm.warp(block.timestamp + 365 days / 2);
+        wrapper.collectPremium(); // trigger _accruePremium to advance accumulator
+
+        // user2 deposits at t=0.5y (after accumulator already increased)
+        vm.prank(user2);
+        asset.mint(user2, DEPOSIT_AMOUNT);
+        vm.prank(user2);
+        asset.approve(address(wrapper), type(uint256).max);
+        vm.prank(user2);
+        wrapper.deposit(DEPOSIT_AMOUNT, user2); // another 1000 ether
+
+        // Apply a hack loss so there is a non-zero shortfall
+        morphoVault.setLoss(20);
+
+        uint256 global = wrapper.calculateShortfall();
+        uint256 user1Sf = wrapper.userShortfall(user1);
+        uint256 user2Sf = wrapper.userShortfall(user2);
+
+        // Global shortfall must equal sum of per-user shortfalls.
+        // Before the fix, calculateShortfall() overcounted totalExpectedLoss by using
+        // totalPrincipal * cumulativeExpectedLossPerUnit / WAD, which charged user2 for
+        // the 0.5-year pre-deposit period they were not in the vault.
+        assertApproxEqAbs(
+            global, user1Sf + user2Sf, 5, "calculateShortfall must equal sum of per-user shortfalls with late depositor"
+        );
+        assertGt(global, 0, "There must be a non-zero shortfall after a real loss");
+
+        // user2 entered after the expected-loss accumulator had already advanced; their
+        // userExpectedLossDebt offsets the pre-deposit period, so their shortfall is strictly
+        // larger than user1's (user1 has more expected-loss deduction from their insured basis).
+        assertGt(user2Sf, user1Sf, "user2 (no pre-deposit EL) must have a larger shortfall than user1");
+    }
+
     /// @dev Regression: calculateShortfall() must not underreport when settled premium is outstanding.
     ///      Bug: netValue was computed as morphoValue - accrued (omitting totalPremiumLiability).
     ///      Since no Morpho shares are redeemed during accrual, morphoValue includes settled premium.
