@@ -611,4 +611,175 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         // Dust is bounded by the per-user accumulator rounding: < 1e7 for deposits up to 1M ether.
         assertLe(wrapper.totalPremiumLiability(), 1e7, "Liability dust bounded");
     }
+
+    /*//////////////////////////////////////////////////////////////
+        PER-USER MORPHO SHARE TRACKING FUZZ TEST
+    //////////////////////////////////////////////////////////////*/
+
+    struct MorphoTrackingParams {
+        uint256 deposit1A;
+        uint256 deposit1B;
+        uint256 deposit2A;
+        uint256 deposit2B;
+        uint256 yieldPct;
+        uint256 lossPct;
+        uint256 premiumRate;
+        uint256 hackLossPct;
+    }
+
+    struct WithdrawalResult {
+        uint256 received;
+        uint256 insurance;
+    }
+
+    /// @notice Fuzz test: two users each deposit twice at different Morpho share prices
+    ///         (yield or loss between deposits), then both fully withdraw.
+    ///         Verifies per-user Morpho share tracking correctly isolates each user's
+    ///         underlying position:
+    ///
+    ///           1. No phantom insurance on zero-loss scenarios (premium-only)
+    ///           2. Each user's insurance bounded by maxCoverable(insuredBasis)
+    ///           3. Users don't receive more than principal + maxInsurance
+    ///           4. Morpho shares sum always equals total held by wrapper
+    ///           5. All state (principal, shares, morpho shares) is cleaned after full exit
+    function testFuzz_perUserMorphoShares_multiDepositWithYieldAndLoss(
+        uint256 deposit1A,
+        uint256 deposit1B,
+        uint256 deposit2A,
+        uint256 deposit2B,
+        uint256 yieldPct1,
+        uint256 lossPct1,
+        uint256 premiumRate,
+        uint256 hackLossPct
+    )
+        public
+    {
+        MorphoTrackingParams memory p;
+        p.deposit1A = bound(deposit1A, 10 ether, 500_000 ether);
+        p.deposit1B = bound(deposit1B, 10 ether, 500_000 ether);
+        p.deposit2A = bound(deposit2A, 10 ether, 500_000 ether);
+        p.deposit2B = bound(deposit2B, 10 ether, 500_000 ether);
+        p.yieldPct = bound(yieldPct1, 0, 30);
+        p.lossPct = bound(lossPct1, 0, 20);
+        p.premiumRate = bound(premiumRate, 1, FIFTY_PCT_ANNUAL_RATE);
+        p.hackLossPct = bound(hackLossPct, 0, 30);
+
+        uint96 policyId = _deployWrapperWithCap(type(uint128).max);
+        _setupMorphoTrackingTest(p);
+        _executeMorphoTrackingDeposits(p);
+
+        // Guard: premium must not exceed Morpho value
+        uint256 totalPrincipal = p.deposit1A + p.deposit1B + p.deposit2A + p.deposit2B;
+        vm.assume(_approxPremium(p) < morphoVault.totalAssets() * 80 / 100);
+
+        if (p.hackLossPct > 0) _simulateLoss(p.hackLossPct);
+
+        _assertMorphoTrackingInvariants(p, policyId);
+    }
+
+    function _setupMorphoTrackingTest(MorphoTrackingParams memory p) internal {
+        vm.startPrank(curator);
+        wrapper.setDeductibleBps(0);
+        wrapper.setPremiumRate(p.premiumRate);
+        vm.stopPrank();
+
+        _mintAndApprove(address(0xAA11), p.deposit1A + p.deposit1B);
+        _mintAndApprove(address(0xBB22), p.deposit2A + p.deposit2B);
+    }
+
+    function _executeMorphoTrackingDeposits(MorphoTrackingParams memory p) internal {
+        address alice = address(0xAA11);
+        address bob = address(0xBB22);
+
+        // Round 1: both deposit at initial Morpho price
+        vm.prank(alice);
+        wrapper.deposit(p.deposit1A, alice);
+        vm.prank(bob);
+        wrapper.deposit(p.deposit2A, bob);
+
+        // 90 days of premium
+        vm.warp(block.timestamp + 90 days);
+
+        // Yield or loss changes Morpho share price before round 2
+        if (p.yieldPct > p.lossPct) _simulateProfit(p.yieldPct);
+        else if (p.lossPct > p.yieldPct) _simulateLoss(p.lossPct);
+
+        // Round 2: both deposit again at new Morpho price
+        vm.prank(alice);
+        wrapper.deposit(p.deposit1B, alice);
+        vm.prank(bob);
+        wrapper.deposit(p.deposit2B, bob);
+
+        // Morpho shares sum must equal total held by wrapper
+        assertEq(
+            wrapper.userMorphoShares(alice) + wrapper.userMorphoShares(bob),
+            morphoVault.balanceOf(address(wrapper)),
+            "Morpho shares sum = total after deposits"
+        );
+
+        // 90 more days of premium
+        vm.warp(block.timestamp + 90 days);
+    }
+
+    function _approxPremium(MorphoTrackingParams memory p) internal pure returns (uint256) {
+        uint256 p1 = (p.deposit1A + p.deposit2A) * p.premiumRate * 90 days / WAD;
+        uint256 p2 = (p.deposit1A + p.deposit1B + p.deposit2A + p.deposit2B) * p.premiumRate * 90 days / WAD;
+        return p1 + p2;
+    }
+
+    function _assertMorphoTrackingInvariants(MorphoTrackingParams memory p, uint96 policyId) internal {
+        address alice = address(0xAA11);
+        address bob = address(0xBB22);
+
+        uint256 insuranceBefore = claimManager.policyClaim(policyId).totalPaidOut;
+        WithdrawalResult memory a = _withdrawAndTrackInsurance(alice, policyId, insuranceBefore);
+        WithdrawalResult memory b = _withdrawAndTrackInsurance(bob, policyId, insuranceBefore + a.insurance);
+
+        uint256 alicePrincipal = p.deposit1A + p.deposit1B;
+        uint256 bobPrincipal = p.deposit2A + p.deposit2B;
+
+        // Invariant 1: no loss of any kind → no insurance
+        // Both hackLossPct and lossPct (between rounds) must be zero for truly zero-loss
+        if (p.hackLossPct == 0 && p.lossPct == 0) {
+            assertEq(a.insurance, 0, "No loss: Alice insurance = 0");
+            assertEq(b.insurance, 0, "No loss: Bob insurance = 0");
+        }
+
+        // Invariant 2: each user's insurance bounded by maxCoverable(principal)
+        assertLe(a.insurance, alicePrincipal * MAX_COVERABLE_LOSS_BPS / 10_000, "Alice insurance bounded");
+        assertLe(b.insurance, bobPrincipal * MAX_COVERABLE_LOSS_BPS / 10_000, "Bob insurance bounded");
+
+        // Invariant 3: received bounded by Morpho value of user's shares + maxInsurance
+        // User can receive up to their Morpho entitlement (which includes yield) + insurance.
+        // Conservative bound: principal + yield (up to 30%) + maxInsurance, minus premium
+        uint256 aliceUpperBound = alicePrincipal * 130 / 100 + a.insurance;
+        uint256 bobUpperBound = bobPrincipal * 130 / 100 + b.insurance;
+        assertLe(a.received, aliceUpperBound, "Alice received bounded");
+        assertLe(b.received, bobUpperBound, "Bob received bounded");
+
+        // Invariant 4: all state cleaned
+        assertEq(wrapper.userPrincipal(alice), 0, "Alice principal cleared");
+        assertEq(wrapper.userPrincipal(bob), 0, "Bob principal cleared");
+        assertEq(wrapper.totalPrincipal(), 0, "Total principal cleared");
+        assertEq(wrapper.balanceOf(alice), 0, "Alice shares cleared");
+        assertEq(wrapper.balanceOf(bob), 0, "Bob shares cleared");
+        assertEq(wrapper.userMorphoShares(alice), 0, "Alice Morpho shares cleared");
+        assertEq(wrapper.userMorphoShares(bob), 0, "Bob Morpho shares cleared");
+    }
+
+    function _withdrawAndTrackInsurance(
+        address user_,
+        uint96 policyId_,
+        uint256 insuranceSnapshot_
+    )
+        internal
+        returns (WithdrawalResult memory r)
+    {
+        uint256 shares = wrapper.balanceOf(user_);
+        uint256 balBefore = asset.balanceOf(user_);
+        vm.prank(user_);
+        wrapper.redeem(shares, user_, user_);
+        r.received = asset.balanceOf(user_) - balBefore;
+        r.insurance = claimManager.policyClaim(policyId_).totalPaidOut - insuranceSnapshot_;
+    }
 }
