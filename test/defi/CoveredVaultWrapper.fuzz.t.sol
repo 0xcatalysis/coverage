@@ -95,7 +95,9 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         uint256 priceChangePct2,
         bool isLoss1,
         bool isLoss2
-    ) public {
+    )
+        public
+    {
         // ── Setup: deploy wrapper with fuzzed coverage limit ──
         coverageLimit = bound(coverageLimit, 100 ether, 100_000 ether);
         uint256 cap = (coverageLimit * 10_000) / uint256(MAX_COVERABLE_LOSS_BPS);
@@ -197,7 +199,9 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         uint256 duration1,
         uint256 duration2,
         uint256 duration3
-    ) public {
+    )
+        public
+    {
         _deployWrapperWithCap(type(uint128).max);
 
         principal = bound(principal, 100 ether, 10_000_000 ether);
@@ -279,7 +283,9 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         uint256 deposit,
         uint256 yieldPct,
         uint256 premiumDays
-    ) public {
+    )
+        public
+    {
         _deployWrapperWithCap(type(uint128).max);
 
         deposit = bound(deposit, 10 ether, 1_000_000 ether);
@@ -328,10 +334,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         // ── INTENDED invariant: equal principal → equal premium ──
         // Allow 0.1% relative tolerance for rounding
         assertApproxEqRel(
-            alicePremiumPaid,
-            bobPremiumPaid,
-            0.001e18,
-            "KNOWN ISSUE: premium distributed by shares, not principal"
+            alicePremiumPaid, bobPremiumPaid, 0.001e18, "KNOWN ISSUE: premium distributed by shares, not principal"
         );
     }
 
@@ -352,7 +355,9 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         uint256 deposit2,
         uint256 transferPct,
         uint256 lossPct
-    ) public {
+    )
+        public
+    {
         uint96 policyId = _deployWrapperWithCap(type(uint128).max);
 
         deposit1 = bound(deposit1, 10 ether, 1_000_000 ether);
@@ -398,7 +403,9 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         address to,
         uint256 transferPct,
         uint256 expectedTotal
-    ) internal {
+    )
+        internal
+    {
         uint256 fromPrincipalBefore = wrapper.userPrincipal(from);
         uint256 toPrincipalBefore = wrapper.userPrincipal(to);
         uint256 fromShares = wrapper.balanceOf(from);
@@ -412,14 +419,12 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         assertEq(wrapper.totalPrincipal(), expectedTotal, "totalPrincipal unchanged after transfer");
 
         // Invariant 2: sum of principals == totalPrincipal
-        assertEq(
-            wrapper.userPrincipal(from) + wrapper.userPrincipal(to),
-            expectedTotal,
-            "sum == total after transfer"
-        );
+        assertEq(wrapper.userPrincipal(from) + wrapper.userPrincipal(to), expectedTotal, "sum == total after transfer");
 
         // Verify principal migrated correctly
-        assertEq(wrapper.userPrincipal(from), fromPrincipalBefore - expectedPrincipalMoved, "Sender principal decreased");
+        assertEq(
+            wrapper.userPrincipal(from), fromPrincipalBefore - expectedPrincipalMoved, "Sender principal decreased"
+        );
         assertEq(wrapper.userPrincipal(to), toPrincipalBefore + expectedPrincipalMoved, "Receiver principal increased");
     }
 
@@ -429,7 +434,9 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         uint96 policyId,
         uint256 alicePrincipal,
         uint256 bobPrincipal
-    ) internal {
+    )
+        internal
+    {
         uint256 insuranceBefore = claimManager.policyClaim(policyId).totalPaidOut;
 
         // ── Bob withdraws — insurance based on his NEW (inflated) principal ──
@@ -457,9 +464,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
             uint256 aliceInsurance = claimManager.policyClaim(policyId).totalPaidOut - insuranceAfterBob;
             if (alicePrincipal > 0) {
                 assertLe(
-                    aliceInsurance,
-                    alicePrincipal * MAX_COVERABLE_LOSS_BPS / 10_000,
-                    "Alice insurance bounded by cap"
+                    aliceInsurance, alicePrincipal * MAX_COVERABLE_LOSS_BPS / 10_000, "Alice insurance bounded by cap"
                 );
             }
         }
