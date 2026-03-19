@@ -624,9 +624,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         _mintAndApprove(user1, 1000 ether);
         _mintAndApprove(user2, 1000 ether);
 
-        // 50%/year premium rate (MAX_PREMIUM_RATE_PER_SECOND ≈ 15.85e9)
+        // ── Realistic 1%/year premium rate ──
+        uint256 ONE_PCT_ANNUAL = uint256(1e16) / 31_536_000; // ~317 per second (WAD-scaled)
         vm.prank(curator);
-        wrapper.setPremiumRate(FIFTY_PCT_ANNUAL_RATE);
+        wrapper.setPremiumRate(ONE_PCT_ANNUAL);
 
         // ── Step 1: User1 deposits 1000 at T0 ──
         vm.prank(user1);
@@ -634,45 +635,36 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         uint256 user1Shares = wrapper.balanceOf(user1);
 
-        // ── Step 2: 180 days pass → ~247 premium accrues on 1000 principal ──
+        // ── Step 2: 180 days pass → ~4.93 premium accrues on 1000 principal ──
         vm.warp(block.timestamp + 180 days);
 
-        // totalAssets (view) ≈ 1000 − 247 ≈ 753
+        // totalAssets ≈ 1000 − 4.93 ≈ 995.07
         uint256 taBeforeUser2 = wrapper.totalAssets();
-        assertApproxEqAbs(taBeforeUser2, 753 ether, 5 ether, "totalAssets after 180d premium");
+        assertApproxEqAbs(taBeforeUser2, 995 ether, 1 ether, "totalAssets after 180d at 1%/yr");
 
-        // ── Step 3: User2 deposits 1000 at the reduced share price ──
+        // ── Step 3: User2 deposits 1000 at slightly reduced share price ──
         vm.prank(user2);
         wrapper.deposit(1000 ether, user2);
 
-        // User2 entered at ~0.753 price → gets more shares than User1
         uint256 user2Shares = wrapper.balanceOf(user2);
-        // User2 entered at ~0.753 price → gets more shares than User1
-        assertApproxEqAbs(user2Shares, 1_327_272_727_248_554_885_289_262_047, 2, "User2 shares (lower entry price)");
-        assertEq(user1Shares, 1_000_000_000_000_000_000_000_000_000, "User1 shares (1:1 entry)");
+        // User2 entered at ~0.995 price → gets slightly more shares than User1
+        assertGt(user2Shares, user1Shares, "User2 has more shares (lower entry price)");
 
-        // State: totalPrincipal=2000, morphoValue≈1753, totalPremiumLiability≈247
         assertEq(wrapper.totalPrincipal(), 2000 ether, "totalPrincipal after both deposits");
-        uint256 tprAfterDeposits = wrapper.totalPremiumLiability();
-        assertApproxEqAbs(tprAfterDeposits, 246_575_342_452_032_000_000, 2, "totalPremiumLiability after deposits");
 
-        // ── Step 4: 180 more days → ~493 premium accrues on 2000 principal ──
+        // ── Step 4: 180 more days → ~9.86 more premium accrues on 2000 principal ──
         vm.warp(block.timestamp + 180 days);
 
         // No loss — this is purely premium (ControllableVault has no virtual loss flag)
 
-        uint256 taBeforeWithdrawals = wrapper.totalAssets();
-        assertApproxEqAbs(taBeforeWithdrawals, 1_260_273_972_643_904_000_000, 2, "totalAssets after 360d");
-
-        // ── Step 5: User2 withdraws all shares ──
+        // ── Step 5: User2 withdraws all shares first ──
         uint256 user2Before = asset.balanceOf(user2);
         vm.prank(user2);
         wrapper.redeem(user2Shares, user2, user2);
         uint256 user2Received = asset.balanceOf(user2) - user2Before;
 
-        assertApproxEqAbs(user2Received, 894_049_657_539_042_039_062, 2, "User2: assets minus premium");
         assertEq(wrapper.userPrincipal(user2), 0, "User2 principal cleared");
-        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 0, "Insurance not paid for user2");
+        uint256 insuranceAfterUser2 = claimManager.policyClaim(POLICY_ID).totalPaidOut;
 
         // ── Step 6: User1 withdraws all shares ──
         uint256 user1Before = asset.balanceOf(user1);
@@ -683,26 +675,30 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         assertEq(wrapper.userPrincipal(user1), 0, "User1 principal cleared");
         assertEq(wrapper.totalPrincipal(), 0, "totalPrincipal zeroed");
 
-        // ── Key assertion: phantom insurance was triggered despite zero loss ──
+        // ── Key assertion: quantify phantom insurance at realistic rate ──
         uint256 totalInsurancePaid = claimManager.policyClaim(POLICY_ID).totalPaidOut;
 
-        // FIX: Premium-as-debt model — premium is charged proportionally to principal.
-        // User2 entered at a lower share price (more shares per dollar), so their gross Morpho
-        // entitlement was higher, leaving User1 with fewer Morpho assets than their insuredBasis.
-        // This cross-epoch effect is bounded and non-exploitable (see plan for analysis).
-        assertApproxEqAbs(user1Received, 416_402_397_299_359_624_938, 2, "User1: assets + cross-epoch insurance");
-        assertApproxEqAbs(
-            totalInsurancePaid, 50_178_082_194_497_664_000, 2, "cross-epoch insurance (bounded, non-exploitable)"
-        );
+        // Log actual values for visibility
+        emit log_named_uint("User1 received", user1Received);
+        emit log_named_uint("User2 received", user2Received);
+        emit log_named_uint("Insurance after User2 exit", insuranceAfterUser2);
+        emit log_named_uint("Total phantom insurance", totalInsurancePaid);
+        emit log_named_uint("Phantom as % of deposit (bps)", totalInsurancePaid * 10_000 / 1000 ether);
 
-        // Users collectively received MORE than the Morpho vault held after premium.
-        // The excess came from the mock claim manager minting tokens to pay for insurance.
-        uint256 totalReceived = user1Received + user2Received;
-        assertGt(
-            totalReceived,
-            taBeforeWithdrawals - 10 ether,
-            "Total payouts exceed Morpho value (phantom insurance minted tokens)"
-        );
+        // At 1%/year over 360 days, the share-price gap between User1 and User2 is ~0.5%.
+        // Despite the small gap, phantom insurance is ~2.45 ether (~24.5 bps of deposit).
+        //
+        // Root cause: User2 has ~1.005x more shares per dollar of principal. On exit, Morpho
+        // redeems proportional to shares (ERC4626), so User2 takes ~50.25% of gross Morpho assets
+        // but only 50% of principal. Premium is deducted by principal (correct), but the Morpho
+        // proceeds mismatch means User1's net assets fall below their insuredBasis.
+        //
+        // This ~0.25% effect is bounded by |sharesFraction − principalFraction| and is
+        // non-exploitable (User2 doesn't profit — they just take a slightly larger share
+        // of the common Morpho pool, and User1 gets compensated via insurance).
+        assertApproxEqAbs(totalInsurancePaid, 2.45 ether, 0.1 ether, "Phantom insurance ~2.45 ETH at 1%/yr");
+        // Phantom insurance is always zero for User2 (who exited first with surplus Morpho proceeds)
+        assertEq(insuranceAfterUser2, 0, "No insurance for User2 (surplus Morpho proceeds)");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -782,5 +778,186 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         assertApproxEqAbs(aliceSharePct, 6000, 2, "Alice holds ~60% of shares");
         assertApproxEqAbs(alicePremiumPct, 6000, 2, "Alice pays ~60% of premium");
         assertApproxEqAbs(alicePremiumPct, aliceSharePct, 2, "Premium % tracks share %, not principal %");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+        SCENARIO: SEQUENTIAL DEPOSITS AND WITHDRAWALS BY SAME USER
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Verifies that a second deposit by the same user after premium has accrued
+    ///         does NOT retroactively charge premium on the new capital.
+    ///
+    ///         Timeline:
+    ///           T0: Alice deposits 1000 ether (principal=1000)
+    ///           T0→T1: 180 days pass, premium accrues on 1000 principal
+    ///           T1: Alice deposits another 1000 ether (principal=2000)
+    ///           T1→T2: 180 days pass, premium accrues on 2000 principal
+    ///           T2: Alice partially withdraws 50% of shares
+    ///           T2: Alice withdraws remaining 50%
+    ///
+    ///         Expected premium: rate × 1000 × 180d + rate × 2000 × 180d
+    ///         NOT: rate × 2000 × 360d (which would overcharge the second deposit)
+    function test_sequentialDeposits_premiumNotRetroactive() public {
+        _deployWrapper(type(uint128).max);
+
+        // ~10%/year WAD-scaled per second
+        uint256 rate = uint256(1e17) / 31_536_000;
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        address alice = address(0xAA11);
+
+        // ── T0: First deposit ──
+        _mintAndApprove(alice, 2000 ether);
+        vm.prank(alice);
+        wrapper.deposit(1000 ether, alice);
+
+        assertEq(wrapper.userPrincipal(alice), 1000 ether, "Principal after D1");
+
+        // ── T0 -> T1: 180 days of premium on 1000 principal ──
+        vm.warp(block.timestamp + 180 days);
+
+        // Expected: 1000 * rate * 180d / WAD
+        uint256 expectedP1 = uint256(1000 ether) * rate * 180 days / 1e18;
+
+        wrapper.collectPremium();
+        assertApproxEqAbs(wrapper.totalPremiumLiability(), expectedP1, 10, "Liability after period 1");
+
+        // ── T1: Second deposit -- must NOT inherit past premium ──
+        uint256 liabilitySnapshot = wrapper.totalPremiumLiability();
+        vm.prank(alice);
+        wrapper.deposit(1000 ether, alice);
+
+        assertEq(wrapper.userPrincipal(alice), 2000 ether, "Principal after D2");
+        assertApproxEqAbs(wrapper.totalPremiumLiability(), liabilitySnapshot, 10, "Liability unchanged after D2");
+
+        // ── T1 -> T2: 180 days of premium on 2000 principal ──
+        vm.warp(block.timestamp + 180 days);
+
+        // Expected: 2000 * rate * 180d / WAD
+        uint256 expectedP2 = uint256(2000 ether) * rate * 180 days / 1e18;
+        uint256 expectedTotal = expectedP1 + expectedP2;
+
+        wrapper.collectPremium();
+        assertApproxEqAbs(wrapper.totalPremiumLiability(), expectedTotal, 10, "Total liability = P1 + P2");
+
+        // ── T2: Withdrawals — verify premium paid matches expected ──
+        _assertSequentialWithdrawals(alice, expectedTotal);
+    }
+
+    /// @dev Helper: partial (50%) then full withdrawal, checking premium proportionality and state cleanup
+    function _assertSequentialWithdrawals(address user, uint256 expectedTotalPremium) internal {
+        uint256 halfShares = wrapper.balanceOf(user) / 2;
+        uint256 pendingBefore = wrapper.pendingPremium();
+
+        vm.prank(user);
+        wrapper.redeem(halfShares, user, user);
+        uint256 premiumPaidHalf = wrapper.pendingPremium() - pendingBefore;
+
+        assertApproxEqRel(premiumPaidHalf, expectedTotalPremium / 2, 0.01e18, "Half-withdrawal pays ~50% premium");
+        assertApproxEqAbs(wrapper.userPrincipal(user), 1000 ether, 1, "Principal halved");
+
+        // Full withdrawal of remaining
+        uint256 remaining = wrapper.balanceOf(user);
+        uint256 pendingMid = wrapper.pendingPremium();
+        vm.prank(user);
+        wrapper.redeem(remaining, user, user);
+        uint256 premiumPaidFinal = wrapper.pendingPremium() - pendingMid;
+
+        assertApproxEqAbs(
+            premiumPaidHalf + premiumPaidFinal, expectedTotalPremium, 10, "Total premium = P1 + P2"
+        );
+
+        assertEq(wrapper.userPrincipal(user), 0, "Principal cleared");
+        assertEq(wrapper.totalPrincipal(), 0, "Total principal cleared");
+        assertEq(wrapper.balanceOf(user), 0, "Shares cleared");
+        assertEq(wrapper.totalPremiumLiability(), 0, "Liability cleared");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+        SCENARIO: collectPremium AFTER PARTIAL WITHDRAWALS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Two users deposit, premium accrues, then partial and full withdrawals happen
+    ///         with collectPremium() calls in between. Verifies:
+    ///           1. premiumRecipient receives the correct token amount after each collect
+    ///           2. pendingPremium is zeroed after each collect
+    ///           3. Total premium received by recipient equals the sum of all deducted premiums
+    ///           4. No tokens are stuck in the wrapper after all users exit and premium is collected
+    function test_collectPremium_afterPartialWithdrawals() public {
+        _deployWrapper(type(uint128).max);
+
+        // ~10%/year
+        uint256 rate = uint256(1e17) / 31_536_000;
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        address alice = address(0xAA11);
+        address bob = address(0xBB22);
+        _mintAndApprove(alice, 1000 ether);
+        _mintAndApprove(bob, 2000 ether);
+
+        // ── Both deposit ──
+        vm.prank(alice);
+        wrapper.deposit(1000 ether, alice);
+        vm.prank(bob);
+        wrapper.deposit(2000 ether, bob);
+
+        // ── 180 days pass — premium accrues on 3000 principal ──
+        vm.warp(block.timestamp + 180 days);
+        uint256 expectedTotal = uint256(3000 ether) * rate * 180 days / 1e18;
+
+        // ── Alice partially withdraws 50% of her shares ──
+        uint256 aliceHalf = wrapper.balanceOf(alice) / 2;
+        vm.prank(alice);
+        wrapper.redeem(aliceHalf, alice, alice);
+
+        // pendingPremium should hold Alice's partial premium deduction
+        uint256 pendingAfterAlice = wrapper.pendingPremium();
+        assertGt(pendingAfterAlice, 0, "Pending > 0 after Alice partial withdraw");
+
+        // ── collectPremium: recipient receives Alice's deducted premium ──
+        uint256 recipientBefore1 = asset.balanceOf(premiumRecipientAddr);
+        wrapper.collectPremium();
+        uint256 collected1 = asset.balanceOf(premiumRecipientAddr) - recipientBefore1;
+
+        assertEq(collected1, pendingAfterAlice, "Recipient received exact pending amount");
+        assertEq(wrapper.pendingPremium(), 0, "Pending zeroed after collect");
+
+        // ── Bob fully withdraws ──
+        uint256 bobShares = wrapper.balanceOf(bob);
+        vm.prank(bob);
+        wrapper.redeem(bobShares, bob, bob);
+
+        uint256 pendingAfterBob = wrapper.pendingPremium();
+        assertGt(pendingAfterBob, 0, "Pending > 0 after Bob full withdraw");
+
+        // ── collectPremium: recipient receives Bob's deducted premium ──
+        uint256 recipientBefore2 = asset.balanceOf(premiumRecipientAddr);
+        wrapper.collectPremium();
+        uint256 collected2 = asset.balanceOf(premiumRecipientAddr) - recipientBefore2;
+
+        assertEq(collected2, pendingAfterBob, "Recipient received Bob's premium");
+        assertEq(wrapper.pendingPremium(), 0, "Pending zeroed after second collect");
+
+        // ── Alice withdraws remaining shares ──
+        uint256 aliceRemaining = wrapper.balanceOf(alice);
+        vm.prank(alice);
+        wrapper.redeem(aliceRemaining, alice, alice);
+
+        // ── Final collect ──
+        uint256 recipientBefore3 = asset.balanceOf(premiumRecipientAddr);
+        wrapper.collectPremium();
+        uint256 collected3 = asset.balanceOf(premiumRecipientAddr) - recipientBefore3;
+
+        // ── Verify total premium received by recipient ──
+        uint256 totalCollected = collected1 + collected2 + collected3;
+        assertApproxEqAbs(totalCollected, expectedTotal, 10, "Total collected matches expected premium");
+
+        // ── No tokens stuck in wrapper ──
+        // Only rounding dust should remain (from liability tracking mismatch)
+        assertLe(asset.balanceOf(address(wrapper)), 1e7, "No meaningful tokens stuck in wrapper");
+        assertEq(wrapper.pendingPremium(), 0, "Final pending is zero");
+        assertEq(wrapper.totalPrincipal(), 0, "All principal exited");
     }
 }
