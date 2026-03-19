@@ -86,7 +86,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
     /// @notice user1 takes 100% loss, user2 has no loss; only user1 gets insurance payout.
     ///         Premium is active but unsettleable (100% loss → morphoValue=0 → _accruePremium caps to 0).
-    ///         Insurance uses insuredBasis = principal (totalPremiumRedeemed=0), same as without premium.
+    ///         Insurance uses insuredBasis = principal (totalPremiumLiability=0), same as without premium.
     function test_multiUser_independentShortfalls() public {
         _deployWrapper(type(uint128).max);
 
@@ -111,7 +111,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         // Settle premium before loss so insuredBasis reflects premium paid.
         // Premium accrued ≈ 2000 * 50% * 180/365 ≈ 493 ether.
         wrapper.collectPremium();
-        uint256 tpr = wrapper.totalPremiumRedeemed();
+        uint256 tpr = wrapper.totalPremiumLiability();
         assertApproxEqAbs(tpr, 493_150_684_904_064_000_000, 2, "TPR after 180 days");
 
         // Simulate 100% loss in morpho vault AFTER premium settlement
@@ -366,7 +366,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
     /// @notice Scenario 8B: price drops to ~1.17 (below Bob's entry of ~1.4).
     ///         With 180 days of 50%/year premium + price drop, Alice should still be in profit.
     ///         Bob has a shortfall from the REAL price drop (not premium). Premium reduces
-    ///         insuredBasis via totalPremiumRedeemed, so Bob's insurance should cover real loss only.
+    ///         insuredBasis via totalPremiumLiability, so Bob's insurance should cover real loss only.
     function test_multiEntryPrice_scenarioB_aliceProfitBobInsured() public {
         _deployEntryPriceWrapper();
 
@@ -604,7 +604,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
     ///
     ///         Root cause: premium reduces the Morpho position proportionally to SHARES
     ///         (User1 has fewer shares → bears a smaller absolute premium via share-price
-    ///         decline). But totalPremiumRedeemed is removed proportionally to PRINCIPAL
+    ///         decline). But totalPremiumLiability is removed proportionally to PRINCIPAL
     ///         (50/50 when both deposited 1000). This under-attributes premium to User1,
     ///         inflating insuredBasis above the actual Morpho value and creating a phantom
     ///         shortfall despite no underlying loss.
@@ -651,10 +651,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         assertApproxEqAbs(user2Shares, 1_327_272_727_248_554_885_289_262_047, 2, "User2 shares (lower entry price)");
         assertEq(user1Shares, 1_000_000_000_000_000_000_000_000_000, "User1 shares (1:1 entry)");
 
-        // State: totalPrincipal=2000, morphoValue≈1753, totalPremiumRedeemed≈247
+        // State: totalPrincipal=2000, morphoValue≈1753, totalPremiumLiability≈247
         assertEq(wrapper.totalPrincipal(), 2000 ether, "totalPrincipal after both deposits");
-        uint256 tprAfterDeposits = wrapper.totalPremiumRedeemed();
-        assertApproxEqAbs(tprAfterDeposits, 246_575_342_452_032_000_000, 2, "totalPremiumRedeemed after deposits");
+        uint256 tprAfterDeposits = wrapper.totalPremiumLiability();
+        assertApproxEqAbs(tprAfterDeposits, 246_575_342_452_032_000_000, 2, "totalPremiumLiability after deposits");
 
         // ── Step 4: 180 more days → ~493 premium accrues on 2000 principal ──
         vm.warp(block.timestamp + 180 days);
