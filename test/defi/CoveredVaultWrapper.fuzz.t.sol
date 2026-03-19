@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {CoveredVaultWrapper} from "../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
-import {ICoveredVaultWrapper} from "../../src/defi/interfaces/ICoveredVaultWrapper.sol";
 
 import {MockERC20} from "./mocks/Mocks.sol";
 import {ControllableVault} from "./mocks/ControllableVault.sol";

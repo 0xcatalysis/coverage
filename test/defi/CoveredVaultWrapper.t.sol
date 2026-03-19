@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {CoveredVaultWrapper} from "../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
-import {ICoveredVaultWrapper} from "../../src/defi/interfaces/ICoveredVaultWrapper.sol";
 import {IAlerts as IA} from "../../src/defi/interfaces/IAlerts.sol";
 import {IEvents as IE} from "../../src/defi/interfaces/IEvents.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
