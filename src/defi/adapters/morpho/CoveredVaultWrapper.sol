@@ -37,8 +37,8 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 ///      - A configurable deductible (deductibleBps) is applied to every insurance claim
 ///
 ///      Share transfer invariant:
-///      - _update() migrates userPrincipal proportionally on every ERC-20 transfer
-///      - totalPrincipal is unchanged by transfers (only by deposits and withdrawals)
+///      - Shares are non-transferable (soulbound): only mints and burns are permitted
+///      - Any ERC-20 transfer between two non-zero addresses reverts with TransfersDisabled()
 contract CoveredVaultWrapper is
     ICoveredVaultWrapper,
     ERC4626Upgradeable,
@@ -132,6 +132,8 @@ contract CoveredVaultWrapper is
     error NotAuthorized();
     error InvalidData();
     error PolicyBoundAlreadyExecuted();
+    /// @notice Thrown when a share transfer between accounts is attempted.
+    error TransfersDisabled();
 
     /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
@@ -299,19 +301,14 @@ contract CoveredVaultWrapper is
         emit Withdraw(caller, receiver, owner, assets, shares);
     }
 
-    /// @notice Hook called on every ERC-20 share transfer
-    /// @dev Migrates userPrincipal proportionally on transfers. Mint (from==0) and burn (to==0)
-    ///      are intentionally excluded — those cases are handled explicitly in _deposit/_withdraw.
-    ///      IMPORTANT: super._update() is called LAST so that balanceOf(from) is still pre-transfer.
+    /// @notice Blocks ERC-20 share transfers between accounts.
+    /// @dev Shares represent an insured position. Allowing transfers would let a user
+    ///      move an underwater cost basis to another account, inflating their insurance cap.
+    ///      Only mints (from == address(0)) and burns (to == address(0)) are permitted;
+    ///      those paths are handled explicitly in _deposit and _withdraw.
     function _update(address from, address to, uint256 value) internal override {
         if (from != address(0) && to != address(0)) {
-            uint256 fromBalance = balanceOf(from); // pre-transfer balance
-            if (fromBalance > 0) {
-                uint256 principalMoved = userPrincipal[from].mulDiv(value, fromBalance, Math.Rounding.Floor);
-                userPrincipal[from] -= principalMoved;
-                userPrincipal[to] += principalMoved;
-                emit IE.PrincipalTransferred(from, to, principalMoved);
-            }
+            revert TransfersDisabled();
         }
         super._update(from, to, value);
     }
