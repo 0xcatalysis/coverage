@@ -377,7 +377,10 @@ contract CoveredVaultWrapper is
         );
 
         pendingPremium += premiumForWithdrawal;
-        totalPremiumLiability -= a.uncappedPremium;
+        // Saturating subtraction guards against any rounding-induced edge case where the sum of
+        // per-user uncappedPremium values could marginally exceed totalPremiumLiability.
+        totalPremiumLiability =
+            totalPremiumLiability > a.uncappedPremium ? totalPremiumLiability - a.uncappedPremium : 0;
 
         // Update absolute debts and principal
         _updateDebtsAfterWithdrawal(
