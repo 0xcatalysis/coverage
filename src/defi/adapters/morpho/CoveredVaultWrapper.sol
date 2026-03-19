@@ -344,7 +344,7 @@ contract CoveredVaultWrapper is
 
     /// @dev Morpho redeem, insurance settlement, premium accounting, and debt updates.
     ///      Extracted from _withdraw to avoid stack-too-deep.
-    // slither-disable-next-line reentrancy-no-eth,reentrancy-benign
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-benign,reentrancy-events
     function _executeWithdrawal(
         address owner_,
         address receiver_,
@@ -427,9 +427,15 @@ contract CoveredVaultWrapper is
             cumulativeExpectedLossPerUnit += underlyingExpectedLossBps.mulDiv(elapsed * WAD, BPS_DENOMINATOR * 365 days);
         }
 
-        uint256 accrued = _accruedPremium();
+        // Compute accrued premium using the same elapsed window captured above, before advancing the timestamp.
+        uint256 accrued =
+            totalPrincipal > 0 ? totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor) : 0;
+
+        // Always advance the timestamp once both accumulators have been updated for this period,
+        // so subsequent calls never double-count the same elapsed time (even if premium caps to zero).
+        lastPremiumAccrualTime = block.timestamp;
+
         if (accrued == 0) {
-            lastPremiumAccrualTime = block.timestamp;
             return;
         }
 
@@ -438,8 +444,6 @@ contract CoveredVaultWrapper is
         uint256 maxNewLiability = morphoValue > totalPremiumLiability ? morphoValue - totalPremiumLiability : 0;
         if (accrued > maxNewLiability) accrued = maxNewLiability;
         if (accrued == 0) return;
-
-        lastPremiumAccrualTime = block.timestamp;
         if (totalPrincipal > 0) {
             cumulativePremiumPerUnit += accrued.mulDiv(WAD, totalPrincipal);
         }
@@ -644,12 +648,11 @@ contract CoveredVaultWrapper is
         if (totalPrincipal == 0) return 0;
         uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
         uint256 accrued = _accruedPremium();
-        uint256 netValue = morphoValue > accrued ? morphoValue - accrued : 0;
-        // adjustedPrincipal must deduct BOTH already-redeemed premium AND the pending accrual,
-        // mirroring netValue which subtracts the same total from the Morpho position.
-        // Using only settled premium here would cause a phantom shortfall equal to the
-        // pending accrual even when no real loss has occurred.
+        // netValue = totalAssets(): morphoValue minus all premium liability (settled + pending).
+        // Since no Morpho shares are redeemed during accrual, morphoValue includes settled premium;
+        // subtracting only accrued would leave totalPremiumLiability in netValue and underreport shortfall.
         uint256 totalPremiumTotal = totalPremiumLiability + accrued;
+        uint256 netValue = morphoValue > totalPremiumTotal ? morphoValue - totalPremiumTotal : 0;
         // Also deduct global expected loss (management fee drag) so it is not counted as insurable shortfall.
         // Global expected loss = totalPrincipal * (accumulated + pending per-unit rate) / WAD.
         uint256 pendingElapsedSecs = block.timestamp - lastPremiumAccrualTime;

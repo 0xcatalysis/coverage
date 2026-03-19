@@ -741,6 +741,34 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertEq(wrapper.userShortfall(user1), 0, "Premium deductions must not appear as user shortfall");
     }
 
+    /// @dev Regression: calculateShortfall() must not underreport when settled premium is outstanding.
+    ///      Bug: netValue was computed as morphoValue - accrued (omitting totalPremiumLiability).
+    ///      Since no Morpho shares are redeemed during accrual, morphoValue includes settled premium.
+    ///      Fix: netValue = morphoValue - totalPremiumLiability - accrued (== totalAssets()).
+    ///      Without the fix, calculateShortfall() < userShortfall() when settled premium > 0.
+    function test_calculateShortfall_settledPremium_matchesUserShortfall() public {
+        uint256 rate = uint256(1e17) / 31_536_000; // 10%/year
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        // Let half a year pass and settle (creates non-zero totalPremiumLiability)
+        vm.warp(block.timestamp + 365 days / 2);
+        wrapper.collectPremium();
+
+        // Apply a real loss so there is a non-zero shortfall
+        morphoVault.setLoss(20); // 20% hack loss on remaining position
+
+        uint256 global = wrapper.calculateShortfall();
+        uint256 perUser = wrapper.userShortfall(user1);
+
+        // With a single user, global and per-user shortfall must match
+        assertApproxEqAbs(global, perUser, 2, "calculateShortfall must match userShortfall with settled premium");
+        assertGt(global, 0, "There must be a non-zero shortfall after a real loss");
+    }
+
     /// @dev Regression: when a user exits, their pro-rata share of totalPremiumLiability must be
     ///      removed so the (totalPrincipal − totalPremiumLiability) / totalPrincipal ratio stays
     ///      stable for remaining users.
@@ -1193,6 +1221,80 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             expected,
             100,
             "Premium must reflect only time elapsed since rate change, not retroactive period at old rate"
+        );
+    }
+
+    /// @dev Regression: cumulativeExpectedLossPerUnit must not be double-counted when premium is
+    ///      capped to zero by maxNewLiability (deep-loss state). Before the fix, the early-return
+    ///      on line `if (accrued == 0) return` skipped the lastPremiumAccrualTime update, so the
+    ///      next call to _accruePremium counted the same elapsed seconds again for expected loss.
+    function test_accruePremium_cappedPremium_noDoubleCountExpectedLoss() public {
+        // Deploy a fresh wrapper with 10% expected loss rate
+        CoveredVaultWrapper w = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            1000,
+            0,
+            premiumRecipientAddr,
+            curator,
+            "ELTest",
+            "ELT"
+        );
+        morphoVault.setCurator(address(w));
+        _createAndBindPolicy(
+            address(w),
+            address(w),
+            address(asset),
+            type(uint128).max,
+            type(uint128).max,
+            uint32(block.timestamp),
+            uint32(block.timestamp + 730 days),
+            curator,
+            address(w)
+        );
+        vm.prank(curator);
+        w.setUnderlyingExpectedLossBps(1000); // 10%/year
+
+        // Set premium rate to 50%/year so premium is very likely to be capped to 0 after a loss
+        uint256 rate = uint256(5e17) / 31_536_000;
+        vm.prank(curator);
+        w.setPremiumRate(rate);
+
+        vm.prank(user1);
+        asset.approve(address(w), type(uint256).max);
+        vm.prank(user1);
+        w.deposit(1000 ether, user1);
+
+        // Simulate 100% loss — morphoValue = 0, so maxNewLiability = 0, premium caps to 0
+        morphoVault.setLoss(100);
+
+        // Call accruePremium once — advances cumulativeExpectedLossPerUnit for elapsed period
+        uint256 t0 = block.timestamp;
+        vm.warp(t0 + 365 days);
+        w.collectPremium(); // triggers _accruePremium internally
+
+        uint256 elAfterFirst = w.cumulativeExpectedLossPerUnit();
+
+        // Call again immediately — no time has passed, so expected loss must NOT change
+        w.collectPremium();
+        assertEq(
+            w.cumulativeExpectedLossPerUnit(),
+            elAfterFirst,
+            "cumulativeExpectedLossPerUnit must not increase on back-to-back calls with no elapsed time"
+        );
+
+        // Call again after another year — expected loss should increase by exactly one more year
+        vm.warp(block.timestamp + 365 days);
+        w.collectPremium();
+        uint256 elAfterSecond = w.cumulativeExpectedLossPerUnit();
+
+        // elAfterSecond should be ~2× elAfterFirst (two years at 10%/year)
+        assertApproxEqAbs(
+            elAfterSecond,
+            2 * elAfterFirst,
+            elAfterFirst / 100, // 1% tolerance
+            "Expected loss accumulator must advance by exactly one year per year, even when premium is capped"
         );
     }
 
