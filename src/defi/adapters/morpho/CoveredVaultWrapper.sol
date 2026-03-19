@@ -63,6 +63,11 @@ contract CoveredVaultWrapper is
     // aderyn-fp-next-line(unused-state-variable) Used in inline assembly with tstore/tload
     uint256 private constant PENDING_CLAIM_AMOUNT_SLOT = 0x1;
 
+    /// @notice Transient storage slot for the actual assets transferred in the current withdrawal.
+    ///         Written by _withdraw so that overriding redeem()/withdraw() can return the real amount.
+    // aderyn-fp-next-line(unused-state-variable) Used in inline assembly with tstore/tload
+    uint256 private constant ACTUAL_OUT_SLOT = 0x2;
+
     /// @notice WAD scaling factor for premium rate
     uint256 private constant WAD = 1e18;
 
@@ -320,8 +325,27 @@ contract CoveredVaultWrapper is
 
         totalPrincipal -= userPrincipalForWithdrawal;
 
+        // Store actual transferred amount so overriding redeem()/withdraw() can return it.
+        _setActualOut(actualOut);
+
         // ERC-4626 spec: assets in Withdraw must equal the amount actually transferred to receiver.
         emit Withdraw(caller, receiver, owner, actualOut, shares);
+    }
+
+    /// @notice Redeem shares for the actual assets transferred (net Morpho proceeds + any insurance payout).
+    /// @dev Overrides OZ's redeem() whose return value is previewRedeem(shares), which does not account for
+    ///      premium deductions or insurance payouts. The correct return value is the amount actually received.
+    function redeem(
+        uint256 shares,
+        address receiver,
+        address owner
+    )
+        public
+        override (ERC4626Upgradeable, IERC4626)
+        returns (uint256)
+    {
+        super.redeem(shares, receiver, owner);
+        return _getActualOut();
     }
 
     /// @dev Computes owed premium and expected loss from the absolute-debt formula.
@@ -813,6 +837,18 @@ contract CoveredVaultWrapper is
         userExpectedLossDebt[owner_] = newRawELDebt > remainingExpectedLoss ? newRawELDebt - remainingExpectedLoss : 0;
 
         userPrincipal[owner_] = newPrincipal;
+    }
+
+    function _setActualOut(uint256 amount) private {
+        assembly {
+            tstore(ACTUAL_OUT_SLOT, amount)
+        }
+    }
+
+    function _getActualOut() private view returns (uint256 amount) {
+        assembly {
+            amount := tload(ACTUAL_OUT_SLOT)
+        }
     }
 
     function _setPendingClaim(uint256 amount) private {
