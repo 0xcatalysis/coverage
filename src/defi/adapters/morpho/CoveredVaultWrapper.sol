@@ -159,6 +159,12 @@ contract CoveredVaultWrapper is
     ///      decreases when a user's expected-loss debt is settled at withdrawal.
     uint256 public totalExpectedLossLiability;
 
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev Total number of underlying vault shares minted for user.
+    ///      Per-user Morpho share tracking for preserving each user's exact Morpho
+    ///      position while still allowing principal-based premium distribution.
+    mapping(address => uint256) public userMorphoShares;
+
     /*//////////////////////////////////////////////////////////////
                             ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -255,7 +261,8 @@ contract CoveredVaultWrapper is
         IERC20(asset()).safeTransferFrom(caller, address(this), assets);
         IERC20(asset()).forceApprove(address(morphoVault), assets);
         // slither-disable-next-line reentrancy-state-change,unused-return
-        IVaultV2(morphoVault).deposit(assets, address(this));
+        uint256 morphoSharesReceived = IVaultV2(morphoVault).deposit(assets, address(this));
+        userMorphoShares[receiver] += morphoSharesReceived;
         _mint(receiver, shares); // triggers _update(address(0), receiver, shares) — no principal migration for mints
         // Increase absolute debts so new assets don't inherit past premium/expected-loss
         userPremiumDebt[receiver] += assets.mulDiv(cumulativePremiumPerUnit, WAD, Math.Rounding.Floor);
@@ -391,20 +398,16 @@ contract CoveredVaultWrapper is
         WithdrawalAmounts memory a = _computeOwedAmounts(owner_, shares_);
 
         // Gross Morpho entitlement (MUST be computed before burn)
-        uint256 userMorphoShares;
-        {
-            uint256 ts = totalSupply();
-            userMorphoShares =
-                ts > 0 ? IVaultV2(morphoVault).balanceOf(address(this)).mulDiv(shares_, ts, Math.Rounding.Floor) : 0;
-        }
+        uint256 redeemShares = userMorphoShares[owner_].mulDiv(shares_, balanceOf(owner_), Math.Rounding.Floor);
+        userMorphoShares[owner_] -= redeemShares;
 
         _burn(owner_, shares_);
 
         // slither-disable-next-line reentrancy-no-eth,reentrancy-benign
         uint256 assetsReceived = 0;
-        if (userMorphoShares > 0) {
+        if (redeemShares > 0) {
             // slither-disable-next-line reentrancy-state-change
-            assetsReceived = IVaultV2(morphoVault).redeem(userMorphoShares, address(this), address(this));
+            assetsReceived = IVaultV2(morphoVault).redeem(redeemShares, address(this), address(this));
         }
 
         uint256 premiumForWithdrawal;
