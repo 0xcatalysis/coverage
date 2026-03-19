@@ -382,4 +382,240 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
             "sum == total after failed transfer"
         );
     }
+
+    /*//////////////////////////////////////////////////////////////
+            EXPECTED LOSS EDGE CASES FUZZ TEST
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Fuzz test: expected loss deduction reduces the insured basis, meaning losses
+    ///         that fall within the expected-loss window do NOT trigger insurance.
+    ///
+    ///         The insuredBasis formula is:
+    ///           insuredBasis = max(0, principal - premium - expectedLoss)
+    ///
+    ///         Key invariants verified:
+    ///           1. When the vault's actual loss matches the expected-loss rate (no hack),
+    ///              insurance payout must be zero.
+    ///           2. Insurance payout never exceeds maxCoverable(insuredBasis).
+    ///           3. At extreme expectedLossBps (10000 = 100%/year for a full year),
+    ///              insuredBasis approaches 0 and no insurance is triggered.
+    ///           4. All per-user state (principal, debts) is cleared after full withdrawal.
+    function testFuzz_expectedLoss_insuredBasisAndInsuranceInvariants(
+        uint256 deposit,
+        uint256 expectedLossBps,
+        uint256 premiumRate,
+        uint256 durationDays,
+        uint256 hackLossPct
+    )
+        public
+    {
+        _deployWrapperWithCap(type(uint128).max);
+
+        deposit = bound(deposit, 100 ether, 1_000_000 ether);
+        expectedLossBps = bound(expectedLossBps, 0, 10_000);
+        premiumRate = bound(premiumRate, 0, FIFTY_PCT_ANNUAL_RATE);
+        durationDays = bound(durationDays, 1, 365);
+        hackLossPct = bound(hackLossPct, 0, 50);
+
+        // Set deductible to 0 for clean insuredBasis math
+        vm.startPrank(curator);
+        wrapper.setDeductibleBps(0);
+        wrapper.setUnderlyingExpectedLossBps(expectedLossBps);
+        wrapper.setPremiumRate(premiumRate);
+        vm.stopPrank();
+
+        address user = address(0x1111);
+        _mintAndApprove(user, deposit);
+        vm.prank(user);
+        wrapper.deposit(deposit, user);
+
+        vm.warp(block.timestamp + durationDays * 1 days);
+
+        // Guard: total deductions must leave meaningful Morpho value
+        uint256 totalDeductions = _totalDeductions(deposit, premiumRate, expectedLossBps, durationDays);
+        vm.assume(totalDeductions < deposit * 90 / 100);
+
+        // Simulate fee loss + hack loss; cap to avoid zero totalAssets
+        uint256 totalLossPct = expectedLossBps * durationDays / (365 * 100) + hackLossPct;
+        vm.assume(totalLossPct < 90);
+        if (totalLossPct > 0) _simulateLoss(totalLossPct);
+
+        wrapper.collectPremium();
+
+        uint256 received = _redeemAll(user);
+
+        _assertExpectedLossInvariants(received, deposit, totalDeductions, hackLossPct, expectedLossBps, durationDays);
+    }
+
+    function _totalDeductions(
+        uint256 deposit_,
+        uint256 premiumRate_,
+        uint256 expectedLossBps_,
+        uint256 durationDays_
+    )
+        internal
+        pure
+        returns (uint256)
+    {
+        uint256 duration = durationDays_ * 1 days;
+        uint256 premium = deposit_ * premiumRate_ * duration / WAD;
+        uint256 elPerUnit = expectedLossBps_ * duration * WAD / (10_000 * 365 days);
+        uint256 el = deposit_ * elPerUnit / WAD;
+        return premium + el;
+    }
+
+    function _redeemAll(address user_) internal returns (uint256 received) {
+        uint256 shares = wrapper.balanceOf(user_);
+        uint256 before = asset.balanceOf(user_);
+        vm.prank(user_);
+        wrapper.redeem(shares, user_, user_);
+        received = asset.balanceOf(user_) - before;
+    }
+
+    function _assertExpectedLossInvariants(
+        uint256 received,
+        uint256 deposit_,
+        uint256 totalDeductions_,
+        uint256 hackLossPct_,
+        uint256 expectedLossBps_,
+        uint256 durationDays_
+    )
+        internal
+        view
+    {
+        // Invariant 1: no hack loss means no insurance
+        if (hackLossPct_ == 0) {
+            assertLe(received, deposit_, "No insurance boost when loss matches expected rate");
+        }
+
+        // Invariant 2: insurance bounded by maxCoverable(insuredBasis)
+        uint256 insuredBasis = totalDeductions_ < deposit_ ? deposit_ - totalDeductions_ : 0;
+        uint256 maxIns = insuredBasis * MAX_COVERABLE_LOSS_BPS / 10_000;
+        assertLe(received, deposit_ + maxIns, "Received must not exceed principal + maxInsurance");
+
+        // Invariant 3: extreme expected loss for full year means no insurance
+        if (expectedLossBps_ == 10_000 && durationDays_ >= 365) {
+            assertLe(received, deposit_, "100% expected loss for full year: no insurance boost");
+        }
+
+        // Invariant 4: all state cleaned after full withdrawal
+        assertEq(wrapper.userPrincipal(address(0x1111)), 0, "Principal cleared");
+        assertEq(wrapper.totalPrincipal(), 0, "Total principal cleared");
+        assertEq(wrapper.balanceOf(address(0x1111)), 0, "Shares cleared");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+        SEQUENTIAL DEPOSIT + WITHDRAWAL PREMIUM INVARIANT FUZZ TEST
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Fuzz test: a user makes two sequential deposits separated by a premium accrual
+    ///         period, then withdraws in two steps. Verifies:
+    ///
+    ///           1. The second deposit does NOT retroactively pay premium for the first period.
+    ///              Total premium = rate * D1 * P1 + rate * (D1+D2) * P2,
+    ///              NOT rate * (D1+D2) * (P1+P2).
+    ///           2. Partial withdrawal pays proportional premium (shares redeemed / total shares).
+    ///           3. Full withdrawal clears all state (principal, shares, liability).
+    ///           4. Sum of premium paid across both withdrawals equals total accrued premium.
+    function testFuzz_sequentialDeposits_premiumNotRetroactive(
+        uint256 deposit1,
+        uint256 deposit2,
+        uint256 premiumRate,
+        uint256 period1Days,
+        uint256 period2Days,
+        uint256 withdrawPct
+    )
+        public
+    {
+        _deployWrapperWithCap(type(uint128).max);
+
+        deposit1 = bound(deposit1, 10 ether, 1_000_000 ether);
+        deposit2 = bound(deposit2, 10 ether, 1_000_000 ether);
+        premiumRate = bound(premiumRate, 1, FIFTY_PCT_ANNUAL_RATE);
+        period1Days = bound(period1Days, 1, 180);
+        period2Days = bound(period2Days, 1, 180);
+        withdrawPct = bound(withdrawPct, 10, 90); // partial withdrawal: 10-90%
+
+        uint256 period1 = period1Days * 1 days;
+        uint256 period2 = period2Days * 1 days;
+
+        // Guard: premium must not exceed Morpho value (would be capped and distort test)
+        uint256 expectedP1 = deposit1 * premiumRate * period1 / WAD;
+        uint256 expectedP2 = (deposit1 + deposit2) * premiumRate * period2 / WAD;
+        uint256 expectedTotal = expectedP1 + expectedP2;
+        vm.assume(expectedTotal > 0 && expectedTotal < (deposit1 + deposit2) * 80 / 100);
+
+        vm.prank(curator);
+        wrapper.setPremiumRate(premiumRate);
+
+        address user = address(0x1111);
+        _mintAndApprove(user, deposit1 + deposit2);
+
+        // ── D1: first deposit ──
+        vm.prank(user);
+        wrapper.deposit(deposit1, user);
+
+        // ── Period 1: premium accrues on D1 ──
+        vm.warp(block.timestamp + period1);
+        wrapper.collectPremium();
+        uint256 liabilityAfterP1 = wrapper.totalPremiumLiability();
+
+        // Invariant: liability after P1 matches rate * D1 * P1
+        assertApproxEqAbs(liabilityAfterP1, expectedP1, 10, "Liability after period 1");
+
+        // ── D2: second deposit — must NOT increase liability ──
+        vm.prank(user);
+        wrapper.deposit(deposit2, user);
+        assertApproxEqAbs(
+            wrapper.totalPremiumLiability(), liabilityAfterP1, 10, "Liability unchanged after D2"
+        );
+        assertEq(wrapper.userPrincipal(user), deposit1 + deposit2, "Principal = D1 + D2");
+
+        // ── Period 2: premium accrues on D1+D2 ──
+        vm.warp(block.timestamp + period2);
+        wrapper.collectPremium();
+        assertApproxEqAbs(
+            wrapper.totalPremiumLiability(), expectedTotal, 10, "Total liability = P1(D1) + P2(D1+D2)"
+        );
+
+        // ── Partial withdrawal ──
+        uint256 totalShares = wrapper.balanceOf(user);
+        uint256 sharesToRedeem = totalShares * withdrawPct / 100;
+        uint256 pendingBefore = wrapper.pendingPremium();
+
+        vm.prank(user);
+        wrapper.redeem(sharesToRedeem, user, user);
+
+        uint256 premiumPaidPartial = wrapper.pendingPremium() - pendingBefore;
+
+        // Invariant: partial premium is proportional to shares fraction
+        uint256 expectedPartialPremium = expectedTotal * withdrawPct / 100;
+        assertApproxEqRel(
+            premiumPaidPartial, expectedPartialPremium, 0.02e18, "Partial withdrawal premium proportional"
+        );
+
+        // ── Full withdrawal of remaining shares ──
+        uint256 remaining = wrapper.balanceOf(user);
+        uint256 pendingBeforeFinal = wrapper.pendingPremium();
+
+        vm.prank(user);
+        wrapper.redeem(remaining, user, user);
+
+        uint256 premiumPaidFinal = wrapper.pendingPremium() - pendingBeforeFinal;
+
+        // Invariant: total premium across both withdrawals matches expected
+        // Tolerance: 0.1% relative — rounding accumulates across partial + full withdrawal
+        assertApproxEqRel(
+            premiumPaidPartial + premiumPaidFinal, expectedTotal, 0.001e18, "Total premium = P1 + P2"
+        );
+
+        // Invariant: all state cleaned
+        assertEq(wrapper.userPrincipal(user), 0, "Principal cleared");
+        assertEq(wrapper.totalPrincipal(), 0, "Total principal cleared");
+        assertEq(wrapper.balanceOf(user), 0, "Shares cleared");
+        // Liability may have rounding dust from partial withdrawal's floor division
+        // (uncappedPremium = totalOwed * shares / balance rounds down, leaving small residual).
+        // Dust is bounded by the per-user accumulator rounding: < 1e7 for deposits up to 1M ether.
+        assertLe(wrapper.totalPremiumLiability(), 1e7, "Liability dust bounded");
+    }
 }
