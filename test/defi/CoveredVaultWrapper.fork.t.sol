@@ -227,6 +227,10 @@ contract CoveredVaultWrapperForkTest is Test {
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFeeRecipient(address)", underlyingFeeRecipient));
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFee(uint256)", feePerSec));
 
+        // Configure wrapper to expect 2% annual loss (matches Morpho management fee)
+        vm.prank(owner);
+        wrapper.setUnderlyingExpectedLossBps(200);
+
         // User1 deposit
         uint256 depositAmount = 1000e6;
         _userDeposit(user1, depositAmount);
@@ -239,12 +243,12 @@ contract CoveredVaultWrapperForkTest is Test {
         // User redeem
         _userRedeemAll(user1);
 
-        // Check received amount
-        // Expect the user to receive principal minus underlying vault management fee
-        // The Wrapper shouldn't cover management fee as losses
-        uint256 expectedReceived = depositAmount - (depositAmount * 2 / 100);
-        assertEq(IERC20(USDC).balanceOf(user1), expectedReceived, "User received");
-        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 0, "Insurance payout wasn't triggered");
+        // The 2% Morpho management fee matches the configured expectedLossBps=200.
+        // insuredBasis = 1000e6 - 0 (no wrapper premium) - 20e6 (expected loss) = 980e6.
+        // Morpho returns ~980e6 after the fee — this exactly covers insuredBasis, so no insurance triggers.
+        // User receives: ~980 USDC (Morpho proceeds only, no insurance payout).
+        assertEq(IERC20(USDC).balanceOf(user1), 980_000_001, "User received Morpho proceeds only");
+        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 0, "No insurance: fee is expected loss");
     }
 
     function test_fork_UnderlyingVaultFee_ProfitCoversFee() public onlyFork {
@@ -255,6 +259,10 @@ contract CoveredVaultWrapperForkTest is Test {
         morphoVault.setMaxRate(MAX_MAX_RATE);
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFeeRecipient(address)", underlyingFeeRecipient));
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFee(uint256)", feePerSec));
+
+        // Configure wrapper to expect 2% annual loss (matches Morpho management fee)
+        vm.prank(owner);
+        wrapper.setUnderlyingExpectedLossBps(200);
 
         // User1 deposit
         uint256 depositAmount = 1000e6;
@@ -286,6 +294,10 @@ contract CoveredVaultWrapperForkTest is Test {
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFeeRecipient(address)", underlyingFeeRecipient));
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFee(uint256)", feePerSec));
 
+        // Configure wrapper to expect 2% annual loss (matches Morpho management fee)
+        vm.prank(owner);
+        wrapper.setUnderlyingExpectedLossBps(200);
+
         // User1 deposit
         uint256 depositAmount = 1000e6;
         _userDeposit(user1, depositAmount);
@@ -301,19 +313,14 @@ contract CoveredVaultWrapperForkTest is Test {
         // User redeem
         _userRedeemAll(user1);
 
-        // Check received amount
-        uint256 userLoss = depositAmount * 1 / 100;
-        uint256 userDepositAfterFee = depositAmount - (depositAmount * 2 / 100);
-        uint256 expectedReceive = userDepositAfterFee - userLoss + (userLoss - (userLoss * DEDUCTIBLE_BPS / 10_000));
-
-        // User's current value is 970 (20 tokens - fee, 10 tokens - loss).
-        // Current loss is 1%. Insurance should cover 9.9 assets (including deductible) only. Underlying fee shouldn't
-        // be covered User should receive 979.9 tokens in result
-        assertEq(IERC20(USDC).balanceOf(user1), expectedReceive, "User received insurance for Vault loss only");
-        assertEq(
-            claimManager.policyClaim(POLICY_ID).totalPaidOut,
-            userLoss - (userLoss * DEDUCTIBLE_BPS / 10_000),
-            "User loss covered"
-        );
+        // After 2% Morpho fee + 1% loss, Morpho returns ~970.2 USDC.
+        // expectedLoss = 1000e6 * 200/10000 = 20e6 (matches the 2% fee, deducted from insuredBasis).
+        // insuredBasis = 1000e6 - 0 (no wrapper premium) - 20e6 (expected loss) = 980e6.
+        // shortfall = max(0, 980e6 - 970.2e6) = 9.8e6 (only the 1% hack loss remains insurable).
+        //   maxInsurable = 10% of 980e6 = 98e6, capped to 9.8e6
+        //   claimAmount = 9.8e6 * 99% (1% deductible) ≈ 9.70e6
+        // User receives: ~970.2 (Morpho) + ~9.70 (insurance) ≈ 979.9 USDC
+        assertEq(IERC20(USDC).balanceOf(user1), 979_902_000, "User received insurance for hack loss only (not fee)");
+        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 9_701_999, "Insurance covers 1% hack shortfall only");
     }
 }
