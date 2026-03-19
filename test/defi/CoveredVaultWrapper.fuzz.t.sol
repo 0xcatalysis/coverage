@@ -242,21 +242,12 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         // ── Settle final period ──
         wrapper.collectPremium();
 
-        // totalPremiumRedeemed (monotonic accrual stat) should match sum of per-period calculations
+        // totalPremiumLiability should match sum of per-period calculations (no withdrawals have occurred)
         assertApproxEqAbs(
-            wrapper.totalPremiumRedeemed(),
+            wrapper.totalPremiumLiability(),
             expectedTotal,
             10,
             "Total premium must equal sum(principal * rate_i * duration_i / WAD)"
-        );
-
-        // With premium-as-debt, Morpho is NOT redeemed during accrual; premium lives as totalPremiumLiability.
-        // Verify liability equals the accrued stat (no withdrawals have occurred in this test).
-        assertApproxEqAbs(
-            wrapper.totalPremiumLiability(),
-            wrapper.totalPremiumRedeemed(),
-            1,
-            "totalPremiumLiability must equal totalPremiumRedeemed when no withdrawals have occurred"
         );
     }
 
