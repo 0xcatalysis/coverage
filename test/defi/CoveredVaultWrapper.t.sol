@@ -1520,9 +1520,11 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     ///      Expected:
     ///        - premiumForWithdrawal = 50 (capped at assetsReceived, not 100)
     ///        - netAssetsReceived = 0 (all Morpho proceeds absorbed by premium)
-    ///        - insuredBasis = 1000 − 100 = 900 (uses uncapped premium, not capped)
-    ///        - Insurance: shortfall = 900, maxInsurance = 90 (10%), claim = 89.1 (99%)
-    ///        - User receives ≈ 89.1 (insurance only, zero Morpho proceeds)
+    ///        - insuredBasis = 1000 − 50 = 950 (uses premiumForWithdrawal, not uncappedPremium)
+    ///          The 50 uncollected premium is effectively written off and does NOT reduce insuredBasis
+    ///          (penalising the user twice for the same loss event would be incorrect).
+    ///        - Insurance: shortfall = 950, maxInsurance = 95 (10%), claim ≈ 94.05 (99%)
+    ///        - User receives ≈ 94.05 (insurance only, zero Morpho proceeds)
     ///        - pendingPremium = 50 (only what Morpho could fund; 50 written off)
     function test_withdraw_deepLoss_premiumCappedAtAssetsReceived() public {
         uint256 rate = uint256(1e17) / 31_536_000; // ~10%/year
@@ -1566,8 +1568,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertEq(wrapper.totalPremiumLiability(), 0, "Full liability cleared despite partial premium collection");
 
         // ── 3. User receives only insurance (Morpho proceeds fully absorbed by premium) ──
-        // insuredBasis = 1000 − 100 = 900; maxInsurance = 90 (10%); claim = 89.1 (99%)
-        assertApproxEqAbs(insurancePaid, 89.1 ether, 2 ether, "Insurance: 10% of 900 insuredBasis * 99%");
+        // insuredBasis = 1000 − 50 = 950 (premiumForWithdrawal, not uncapped 100); maxInsurance = 95 (10%); claim ≈
+        // 94.05 (99%)
+        assertApproxEqAbs(insurancePaid, 94.05 ether, 2 ether, "Insurance: 10% of 950 insuredBasis * 99%");
         assertApproxEqAbs(received, insurancePaid, 2 ether, "User receives insurance only, zero net Morpho proceeds");
 
         // ── 4. All principal and premium state is zeroed ──
