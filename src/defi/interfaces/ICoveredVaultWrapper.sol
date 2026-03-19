@@ -40,19 +40,12 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// @notice Premium redeemed from Morpho and awaiting transfer to premiumRecipient via collectPremium()
     function pendingPremium() external view returns (uint256);
 
-    /// @notice Cumulative premium ever accrued (monotonically increasing informational stat).
-    ///         No longer used directly in insuredBasis calculations — see totalPremiumLiability.
-    function totalPremiumRedeemed() external view returns (uint256);
-
     /// @notice WAD-scaled cumulative premium per unit of principal (reward-per-token accumulator).
     ///         Increases by (accruedPremium × WAD / totalPrincipal) on every _accruePremium call.
     function cumulativePremiumPerUnit() external view returns (uint256);
 
-    /// @notice Snapshot of cumulativePremiumPerUnit at the user's last checkpoint.
+    /// @notice Absolute premium debt — owed = principal × cumPerUnit / WAD − debt.
     function userPremiumDebt(address user) external view returns (uint256);
-
-    /// @notice Settled premium owed by user (excludes uncheckpointed accrual since last checkpoint).
-    function userPremiumAccrued(address user) external view returns (uint256);
 
     /// @notice Total outstanding per-user premium debt not yet collected from withdrawal proceeds.
     function totalPremiumLiability() external view returns (uint256);
@@ -64,11 +57,8 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// @notice WAD-scaled cumulative expected loss per unit of principal (reward-per-token accumulator).
     function cumulativeExpectedLossPerUnit() external view returns (uint256);
 
-    /// @notice Snapshot of cumulativeExpectedLossPerUnit at the user's last checkpoint.
+    /// @notice Absolute expected-loss debt — owed = principal × cumELPerUnit / WAD − debt.
     function userExpectedLossDebt(address user) external view returns (uint256);
-
-    /// @notice Settled expected loss owed by user (excludes uncheckpointed accrual since last checkpoint).
-    function userExpectedLossAccrued(address user) external view returns (uint256);
 
     /// @notice Coverage limit stored from the bound policy (0 before onPolicyBound is called).
     ///         Used to recalculate depositCap when maxCoverableLossBps changes post-binding.
