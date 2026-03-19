@@ -250,12 +250,6 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.redeem(halfShares, users[0], users[0]);
         _assertPrincipalInvariant(users);
 
-        // Transfer from user[1] to user[2]
-        uint256 user1Shares = wrapper.balanceOf(users[1]);
-        vm.prank(users[1]);
-        wrapper.transfer(users[2], user1Shares / 3);
-        _assertPrincipalInvariant(users);
-
         // 15% loss before full withdrawal — may trigger insurance for user[3]
         _simulateLoss(15);
 
@@ -780,8 +774,8 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         assertGt(alicePremiumPaid, bobPremiumPaid, "Alice paid more premium (more shares)");
 
         // ── Premium splits by share ratio (60/40), NOT by principal ratio (50/50) ──
-        uint256 aliceSharePct = aliceShares * 10000 / totalShares;
-        uint256 alicePremiumPct = alicePremiumPaid * 10000 / totalPremium;
+        uint256 aliceSharePct = aliceShares * 10_000 / totalShares;
+        uint256 alicePremiumPct = alicePremiumPaid * 10_000 / totalPremium;
 
         // Alice holds ~60% of shares and pays ~60% of premium
         assertApproxEqAbs(aliceSharePct, 6000, 2, "Alice holds ~60% of shares");

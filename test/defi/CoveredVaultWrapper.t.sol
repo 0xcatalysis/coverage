@@ -298,37 +298,49 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         uint256 shares = wrapper.balanceOf(user1);
 
         vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSignature("TransfersDisabled()"));
         wrapper.transfer(user2, shares);
-
-        assertEq(wrapper.userPrincipal(user1), 0, "user1 principal cleared");
-        assertEq(wrapper.userPrincipal(user2), DEPOSIT_AMOUNT, "user2 received principal");
     }
 
     function test_transfer_partialMigratesPrincipal() public {
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
 
-        uint256 shares = wrapper.balanceOf(user1);
-        uint256 halfShares = shares / 2;
+        uint256 halfShares = wrapper.balanceOf(user1) / 2;
 
         vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSignature("TransfersDisabled()"));
         wrapper.transfer(user2, halfShares);
-
-        assertApproxEqAbs(wrapper.userPrincipal(user1), DEPOSIT_AMOUNT / 2, 1);
-        assertApproxEqAbs(wrapper.userPrincipal(user2), DEPOSIT_AMOUNT / 2, 1);
     }
 
     function test_transfer_doesNotChangeTotalPrincipal() public {
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
 
-        uint256 principalBefore = wrapper.totalPrincipal();
         uint256 shares = wrapper.balanceOf(user1);
 
         vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSignature("TransfersDisabled()"));
+        wrapper.transfer(user2, shares);
+    }
+
+    function test_transfer_reverts() public {
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        uint256 shares = wrapper.balanceOf(user1);
+
+        // transfer() reverts
+        vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSignature("TransfersDisabled()"));
         wrapper.transfer(user2, shares);
 
-        assertEq(wrapper.totalPrincipal(), principalBefore, "Transfer must not change totalPrincipal");
+        // transferFrom() reverts
+        vm.prank(user1);
+        wrapper.approve(user2, shares);
+        vm.prank(user2);
+        vm.expectRevert(abi.encodeWithSignature("TransfersDisabled()"));
+        wrapper.transferFrom(user1, user2, shares);
     }
 
     /*//////////////////////////////////////////////////////////////
