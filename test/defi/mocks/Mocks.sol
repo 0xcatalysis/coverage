@@ -337,7 +337,7 @@ contract MockClaimManager {
 }
 
 /// @title MockPolicy
-/// @notice Minimal Policy mock using IPolicyManager.PolicyMetadata
+/// @notice Minimal Policy mock using IPolicyManager.PolicyMetadata. Sets claimer = beneficiary.
 /// @dev Kept for backward compatibility; MockPolicyManager is preferred
 contract MockPolicy {
     mapping(uint96 => IPolicyManager.PolicyMetadata) private _policies;
@@ -357,7 +357,7 @@ contract MockPolicy {
         _policies[policyId].buyer = buyer;
         _policies[policyId].policyId = policyId;
         _policies[policyId].beneficiary = beneficiary;
-        _policies[policyId].claimer = buyer;
+        _policies[policyId].claimer = beneficiary;
         _policies[policyId].pool = pool;
         _policies[policyId].payoutToken = payoutToken;
         _policies[policyId].coverageLimit = coverageLimit;
