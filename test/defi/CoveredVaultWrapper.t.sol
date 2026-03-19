@@ -1503,4 +1503,75 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertApproxEqAbs(received, 360 ether, 10 ether, "Payout must use insuredBasis cap, not raw principal cap");
         assertLt(received, 430 ether, "Must NOT pay out using the over-generous raw-principal cap");
     }
+
+    /*//////////////////////////////////////////////////////////////
+                    DEEP-LOSS PREMIUM CAP TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @dev When a catastrophic loss makes Morpho proceeds smaller than the accrued premium,
+    ///      premiumForWithdrawal is capped at assetsReceived (line 273). The shortfall between
+    ///      uncappedPremium and assetsReceived is effectively written off — the premium recipient
+    ///      does not collect premium that Morpho could not fund.
+    ///
+    ///      Setup:
+    ///        - Deposit 1000, 10%/year premium, 1 year → uncappedPremium ≈ 100
+    ///        - 95% loss → Morpho returns ≈ 50 (assetsReceived < uncappedPremium)
+    ///
+    ///      Expected:
+    ///        - premiumForWithdrawal = 50 (capped at assetsReceived, not 100)
+    ///        - netAssetsReceived = 0 (all Morpho proceeds absorbed by premium)
+    ///        - insuredBasis = 1000 − 100 = 900 (uses uncapped premium, not capped)
+    ///        - Insurance: shortfall = 900, maxInsurance = 90 (10%), claim = 89.1 (99%)
+    ///        - User receives ≈ 89.1 (insurance only, zero Morpho proceeds)
+    ///        - pendingPremium = 50 (only what Morpho could fund; 50 written off)
+    function test_withdraw_deepLoss_premiumCappedAtAssetsReceived() public {
+        uint256 rate = uint256(1e17) / 31_536_000; // ~10%/year
+        vm.prank(curator);
+        wrapper.setPremiumRate(rate);
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1); // 1000 ether
+
+        // 1 year → ~100 ether premium accrues as liability (not redeemed from Morpho)
+        vm.warp(block.timestamp + 365 days);
+
+        // Settle the accumulator so totalPremiumLiability reflects the full year
+        wrapper.collectPremium();
+        uint256 liabilityBeforeLoss = wrapper.totalPremiumLiability();
+        assertGt(liabilityBeforeLoss, 90 ether, "Liability should be ~100 ether");
+        assertLt(liabilityBeforeLoss, 105 ether, "Liability should be ~100 ether");
+
+        // 95% catastrophic loss — Morpho returns only ~50 ether on full redemption
+        morphoVault.setLoss(95);
+
+        uint256 user1Before = asset.balanceOf(user1);
+        uint256 pendingBefore = wrapper.pendingPremium();
+        uint256 shares = wrapper.balanceOf(user1);
+        uint256 insuranceBefore = claimManager.policyClaim(POLICY_ID).totalPaidOut;
+
+        vm.prank(user1);
+        wrapper.redeem(shares, user1, user1);
+
+        uint256 received = asset.balanceOf(user1) - user1Before;
+        uint256 pendingAfter = wrapper.pendingPremium();
+        uint256 insuranceAfter = claimManager.policyClaim(POLICY_ID).totalPaidOut;
+        uint256 premiumCollected = pendingAfter - pendingBefore;
+        uint256 insurancePaid = insuranceAfter - insuranceBefore;
+
+        // ── 1. Premium capped at assetsReceived (~50), not uncappedPremium (~100) ──
+        assertApproxEqAbs(premiumCollected, 50 ether, 5 ether, "Premium must be capped at Morpho proceeds");
+        assertLt(premiumCollected, liabilityBeforeLoss, "Premium collected < full liability (deep-loss write-off)");
+
+        // ── 2. totalPremiumLiability fully cleared (uncapped amount removed) ──
+        assertEq(wrapper.totalPremiumLiability(), 0, "Full liability cleared despite partial premium collection");
+
+        // ── 3. User receives only insurance (Morpho proceeds fully absorbed by premium) ──
+        // insuredBasis = 1000 − 100 = 900; maxInsurance = 90 (10%); claim = 89.1 (99%)
+        assertApproxEqAbs(insurancePaid, 89.1 ether, 2 ether, "Insurance: 10% of 900 insuredBasis * 99%");
+        assertApproxEqAbs(received, insurancePaid, 2 ether, "User receives insurance only, zero net Morpho proceeds");
+
+        // ── 4. All principal and premium state is zeroed ──
+        assertEq(wrapper.userPrincipal(user1), 0, "Principal cleared");
+        assertEq(wrapper.totalPrincipal(), 0, "Total principal cleared");
+    }
 }
