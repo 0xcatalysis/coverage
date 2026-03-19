@@ -371,20 +371,16 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.setPremiumRate(rate);
 
         vm.warp(block.timestamp + 365 days / 2);
-        uint256 recipientBefore = asset.balanceOf(premiumRecipientAddr);
 
-        // Change rate again — must settle half-year accrual at old rate into pendingPremium first
+        // Change rate again — must settle half-year accrual at old rate first (via _accruePremium)
         vm.prank(curator);
         wrapper.setPremiumRate(rate * 2);
 
-        // setPremiumRate now uses pull-payment: accrual lands in pendingPremium, not the recipient.
-        // collectPremium() pushes the pending amount to the recipient.
-        wrapper.collectPremium();
-
-        uint256 premiumPaid = asset.balanceOf(premiumRecipientAddr) - recipientBefore;
+        // With premium-as-debt, accrual lands in totalPremiumLiability (not pendingPremium) until
+        // users withdraw. Verify the liability grew by the right amount.
         // ~5% of 1000 ether accrued over half-year at 10% annual rate
-        assertGt(premiumPaid, 40 ether, "Should have accrued ~5% over half year");
-        assertLt(premiumPaid, 60 ether, "Should not exceed ~5% over half year");
+        assertGt(wrapper.totalPremiumLiability(), 40 ether, "Should have accrued ~5% over half year");
+        assertLt(wrapper.totalPremiumLiability(), 60 ether, "Should not exceed ~5% over half year");
         assertEq(wrapper.premiumRatePerSecond(), rate * 2);
     }
 
@@ -434,16 +430,21 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(user1);
         wrapperWithPremium.deposit(DEPOSIT_AMOUNT, user1);
 
-        uint256 recipientBefore = asset.balanceOf(premiumRecipientAddr);
-
         // Advance 1 year
         vm.warp(block.timestamp + 365 days);
+        // collectPremium() calls _accruePremium(), recording liability. With premium-as-debt, no tokens
+        // flow to the recipient until users withdraw — verify the liability accumulated correctly instead.
         wrapperWithPremium.collectPremium();
 
-        uint256 premiumPaid = asset.balanceOf(premiumRecipientAddr) - recipientBefore;
         // ~10% of 1000 ether = ~100 ether (WAD math floors so ~99.99...)
-        assertGt(premiumPaid, 90 ether, "Should collect >90 ether premium in 1 year");
-        assertLt(premiumPaid, 105 ether, "Should collect <105 ether premium in 1 year");
+        assertGt(
+            wrapperWithPremium.totalPremiumLiability(), 90 ether, "Should accrue >90 ether premium liability in 1 year"
+        );
+        assertLt(
+            wrapperWithPremium.totalPremiumLiability(),
+            105 ether,
+            "Should accrue <105 ether premium liability in 1 year"
+        );
     }
 
     function test_totalAssets_excludesAccruedPremium() public {
@@ -669,10 +670,10 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         uint256 received = asset.balanceOf(user1) - user1BalanceBefore;
 
-        // assetsReceived ≈ 855, insuredBasis ≈ 950, shortfall ≈ 95, insurance ≈ 94 (after 1% deductible)
-        // total ≈ 855 + 94 = 949
-        // Old bug: shortfall = 1000−855 = 145, capped at effectiveMaxInsurance = 99 → total ≈ 954
-        assertApproxEqAbs(received, 949 ether, 3 ether, "Should receive assets + insurance for the loss only");
+        // With premium-as-debt: gross Morpho = 1000 (not redeemed upfront), 10% loss → assetsReceived = 900.
+        // uncappedPremium = 50; netAssetsReceived = 850; insuredBasis = 950; shortfall = 100;
+        // maxInsurance = 95 (10% of 950); claimAmount = 94 (99% after deductible); total = 850 + 94 = 944.
+        assertApproxEqAbs(received, 944 ether, 3 ether, "Should receive assets + insurance for the loss only");
     }
 
     /// @dev Regression: calculateShortfall() must return 0 when there is pending (unaccrued)
@@ -805,28 +806,28 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(user1);
         w.redeem(shares1, user1, user1);
 
-        // After user1 exits with half the principal, totalPremiumRedeemed must halve
-        uint256 premAfter = w.totalPremiumRedeemed();
+        // totalPremiumRedeemed is now a monotonically-increasing stat (never decremented).
+        // Instead, verify that totalPremiumLiability halved because user1's 100-ether debt was settled.
+        uint256 liabilityAfter = w.totalPremiumLiability();
         assertApproxEqAbs(
-            premAfter, premRedeemed / 2, 5 ether, "totalPremiumRedeemed must halve when half the principal exits"
+            liabilityAfter, premRedeemed / 2, 5 ether, "totalPremiumLiability must halve when half the principal exits"
         );
 
         // Now apply a 20% loss — only user2 remains
         morphoVault.setLoss(20);
 
-        // user2 exits:
-        //   insuredBasis = 1000 * (1000 − ~100) / 1000 ≈ 900  (correct with fix)
-        //   insuredBasis = 1000 * (1000 − ~200) / 1000 ≈ 800  (wrong without fix)
-        //   assetsReceived ≈ 720 (900 remaining × 80%)
-        //   shortfall ≈ 180, insurance ≈ 180 (< maxInsurance=200, deductible=0)
-        //   total ≈ 900
+        // user2 exits (premium-as-debt calculation):
+        //   gross Morpho = 1000 (user1's 1000 redeemed, user2's 1000 remains → 20% loss → 800)
+        //   uncappedPremium = 100; netAssetsReceived = 700
+        //   insuredBasis = 900; shortfall = 200; maxInsurance = 180 (20% of 900); insurance = 180
+        //   total = 700 + 180 = 880
         uint256 before2 = asset.balanceOf(user2);
         uint256 shares2 = w.balanceOf(user2);
         vm.prank(user2);
         w.redeem(shares2, user2, user2);
         uint256 received2 = asset.balanceOf(user2) - before2;
 
-        assertApproxEqAbs(received2, 900 ether, 5 ether, "user2 must receive correct insurance via fair insuredBasis");
+        assertApproxEqAbs(received2, 880 ether, 5 ether, "user2 must receive correct insurance via fair insuredBasis");
         assertGt(received2, 850 ether, "user2 must NOT suffer from skewed premium ratio after user1 exited");
     }
 
@@ -1178,15 +1179,18 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         uint256 U = 100;
         vm.warp(block.timestamp + U);
 
-        uint256 recipientBefore = asset.balanceOf(premiumRecipientAddr);
+        // With premium-as-debt, tokens only reach the recipient on user withdrawal; check totalPremiumRedeemed
+        // growth instead of recipient balance. The dust path is gone in the new system (no morpho-share rounding),
+        // but the timestamp invariant (no retroactive overcharge) still applies.
+        uint256 tprBefore = wrapper.totalPremiumRedeemed();
         wrapper.collectPremium();
-        uint256 collected = asset.balanceOf(premiumRecipientAddr) - recipientBefore;
+        uint256 accrualInPeriod = wrapper.totalPremiumRedeemed() - tprBefore;
 
         // Expected: 1 ether × maxRate × 100s / WAD (only 100 seconds at new rate, not 101)
         uint256 expected = uint256(1 ether) * maxRate * U / 1e18;
         // Bug would give: 1 ether × maxRate × 101s / WAD (retroactive 1-second overcharge = ~15.85 wei more)
         assertApproxEqAbs(
-            collected,
+            accrualInPeriod,
             expected,
             100,
             "Premium must reflect only time elapsed since rate change, not retroactive period at old rate"
@@ -1343,12 +1347,11 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         w.redeem(shares, user1, user1);
         uint256 received = asset.balanceOf(user1) - before;
 
-        // assetsReceived ≈ 420 (600 × 70%)
-        // insuredBasis ≈ 600; shortfall ≈ 180
-        // NEW cap = 600 × 10% = 60 → payout = 60
-        // OLD cap = 1000 × 10% = 100 → payout = 100 (wrong: covers premium losses)
-        // total ≈ 420 + 60 = 480
-        assertApproxEqAbs(received, 480 ether, 10 ether, "Payout must use insuredBasis cap, not raw principal cap");
-        assertLt(received, 530 ether, "Must NOT pay out using the over-generous raw-principal cap");
+        // With premium-as-debt: gross Morpho = 1000 (not redeemed upfront), 30% loss → 700.
+        // uncappedPremium = 400; netAssetsReceived = 300; insuredBasis = 600; shortfall = 300.
+        // cap = 600 × 10% = 60 → payout = 60; total = 300 + 60 = 360.
+        // (Old share-price system: morpho already at 600 post-premium, 30% loss → 420; total 420+60=480.)
+        assertApproxEqAbs(received, 360 ether, 10 ether, "Payout must use insuredBasis cap, not raw principal cap");
+        assertLt(received, 430 ether, "Must NOT pay out using the over-generous raw-principal cap");
     }
 }
