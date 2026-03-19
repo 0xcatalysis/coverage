@@ -586,7 +586,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
                PREMIUM × INSURANCE REGRESSION TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_totalPremiumRedeemed_tracksAccrual() public {
+    function test_totalPremiumLiability_tracksAccrual() public {
         uint256 rate = uint256(1e17) / 31_536_000; // ~10% per year
         vm.prank(curator);
         wrapper.setPremiumRate(rate);
@@ -594,14 +594,14 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
 
-        assertEq(wrapper.totalPremiumRedeemed(), 0, "No premium before time passes");
+        assertEq(wrapper.totalPremiumLiability(), 0, "No premium before time passes");
 
         vm.warp(block.timestamp + 365 days);
         wrapper.collectPremium();
 
-        uint256 redeemed = wrapper.totalPremiumRedeemed();
-        assertGt(redeemed, 90 ether, "totalPremiumRedeemed should exceed 90 ether after 1 year at 10%");
-        assertLt(redeemed, 105 ether, "totalPremiumRedeemed should be under 105 ether after 1 year at 10%");
+        uint256 redeemed = wrapper.totalPremiumLiability();
+        assertGt(redeemed, 90 ether, "totalPremiumLiability should exceed 90 ether after 1 year at 10%");
+        assertLt(redeemed, 105 ether, "totalPremiumLiability should be under 105 ether after 1 year at 10%");
         assertEq(wrapper.pendingPremium(), 0, "pendingPremium is cleared after collectPremium");
     }
 
@@ -636,7 +636,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertLt(received, 950 ether, "Insurance must NOT have been paid for premium deductions");
 
         // Confirm premium was actually taken from the Morpho position during the redeem.
-        // After the last user exits, totalPremiumRedeemed is zeroed by the pro-rata decrement
+        // After the last user exits, totalPremiumLiability is zeroed by the pro-rata decrement
         // (correct: no principal remains to carry premium history). The accrued premium is
         // instead held in pendingPremium, waiting for collectPremium() to forward it.
         assertGt(wrapper.pendingPremium(), 90 ether, "Premium must be in pendingPremium after redeem");
@@ -656,9 +656,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.collectPremium();
 
         // Confirm premium was deducted BEFORE the loss event.
-        // totalPremiumRedeemed is checked here (after collectPremium but before redeem)
+        // totalPremiumLiability is checked here (after collectPremium but before redeem)
         // because the pro-rata decrement in _withdraw() will zero it for the last exiting user.
-        assertGt(wrapper.totalPremiumRedeemed(), 40 ether, "Premium must have been deducted before loss");
+        assertGt(wrapper.totalPremiumLiability(), 40 ether, "Premium must have been deducted before loss");
 
         // 10% hack loss on the remaining ~950 ether position → ~95 ether loss
         morphoVault.setLoss(10);
@@ -680,8 +680,8 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     ///      premium but no actual loss, even before collectPremium() is called.
     ///
     ///      Bug: netValue = morphoValue − accrued (full premium deducted) but
-    ///           adjustedPrincipal = totalPrincipal − totalPremiumRedeemed (only settled premium).
-    ///           With accrued=100 and totalPremiumRedeemed=0, netValue=900 vs adjustedPrincipal=1000
+    ///           adjustedPrincipal = totalPrincipal − totalPremiumLiability (only settled premium).
+    ///           With accrued=100 and totalPremiumLiability=0, netValue=900 vs adjustedPrincipal=1000
     ///           → phantom shortfall of 100 even though no loss occurred.
     function test_calculateShortfall_pendingAccrual_noLoss_returnsZero() public {
         uint256 rate = uint256(1e17) / 31_536_000; // 10%/year
@@ -721,7 +721,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
 
         vm.warp(block.timestamp + 365 days);
-        wrapper.collectPremium(); // settle; totalPremiumRedeemed updated, morpho position reduced
+        wrapper.collectPremium(); // settle; totalPremiumLiability updated, morpho position reduced
 
         // No hack — only premium has reduced the Morpho position
         assertEq(wrapper.calculateShortfall(), 0, "Premium deductions must not appear as coverable shortfall");
@@ -741,16 +741,16 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertEq(wrapper.userShortfall(user1), 0, "Premium deductions must not appear as user shortfall");
     }
 
-    /// @dev Regression: when a user exits, their pro-rata share of totalPremiumRedeemed must be
-    ///      removed so the (totalPrincipal − totalPremiumRedeemed) / totalPrincipal ratio stays
+    /// @dev Regression: when a user exits, their pro-rata share of totalPremiumLiability must be
+    ///      removed so the (totalPrincipal − totalPremiumLiability) / totalPrincipal ratio stays
     ///      stable for remaining users.
     ///
-    ///      Bug: totalPrincipal decrements on each withdrawal but totalPremiumRedeemed never does.
-    ///      With two equal users and totalPremiumRedeemed=200:
+    ///      Bug: totalPrincipal decrements on each withdrawal but totalPremiumLiability never does.
+    ///      With two equal users and totalPremiumLiability=200:
     ///        user1 exits → insuredBasis=900 (correct)
     ///        user2 exits → insuredBasis=800 instead of 900 (bug: full 200 hangs against 1000)
     ///
-    ///      Fix: after user1 exits, totalPremiumRedeemed halves to 100.
+    ///      Fix: after user1 exits, totalPremiumLiability halves to 100.
     ///        user2 exits → insuredBasis = 1000*(1000−100)/1000 = 900 (correct)
     function test_withdrawal_preservesInsuredBasisRatioForRemainingUsers() public {
         // Fresh wrapper: 20% max coverage, 0% deductible for clean arithmetic
@@ -797,7 +797,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.warp(block.timestamp + 365 days);
         w.collectPremium();
 
-        uint256 premRedeemed = w.totalPremiumRedeemed();
+        uint256 premRedeemed = w.totalPremiumLiability();
         assertGt(premRedeemed, 180 ether, "At least 180 ether premium after 1 year");
         assertLt(premRedeemed, 220 ether, "At most 220 ether premium after 1 year");
 
@@ -806,8 +806,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(user1);
         w.redeem(shares1, user1, user1);
 
-        // totalPremiumRedeemed is now a monotonically-increasing stat (never decremented).
-        // Instead, verify that totalPremiumLiability halved because user1's 100-ether debt was settled.
+        // Verify that totalPremiumLiability halved because user1's 100-ether debt was settled.
         uint256 liabilityAfter = w.totalPremiumLiability();
         assertApproxEqAbs(
             liabilityAfter, premRedeemed / 2, 5 ether, "totalPremiumLiability must halve when half the principal exits"
@@ -1179,12 +1178,12 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         uint256 U = 100;
         vm.warp(block.timestamp + U);
 
-        // With premium-as-debt, tokens only reach the recipient on user withdrawal; check totalPremiumRedeemed
+        // With premium-as-debt, tokens only reach the recipient on user withdrawal; check totalPremiumLiability
         // growth instead of recipient balance. The dust path is gone in the new system (no morpho-share rounding),
         // but the timestamp invariant (no retroactive overcharge) still applies.
-        uint256 tprBefore = wrapper.totalPremiumRedeemed();
+        uint256 tprBefore = wrapper.totalPremiumLiability();
         wrapper.collectPremium();
-        uint256 accrualInPeriod = wrapper.totalPremiumRedeemed() - tprBefore;
+        uint256 accrualInPeriod = wrapper.totalPremiumLiability() - tprBefore;
 
         // Expected: 1 ether × maxRate × 100s / WAD (only 100 seconds at new rate, not 101)
         uint256 expected = uint256(1 ether) * maxRate * U / 1e18;
@@ -1333,7 +1332,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.warp(block.timestamp + 365 days);
         w.collectPremium();
 
-        uint256 premRedeemed = w.totalPremiumRedeemed();
+        uint256 premRedeemed = w.totalPremiumLiability();
         // insuredBasis = 1000 * (1000 - premRedeemed) / 1000 ≈ 600
         assertGt(premRedeemed, 350 ether, "Premium must be > 35% of principal");
         assertLt(premRedeemed, 450 ether, "Premium must be < 45% of principal");
