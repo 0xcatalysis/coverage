@@ -60,6 +60,9 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// @notice Absolute expected-loss debt — owed = principal × cumELPerUnit / WAD − debt.
     function userExpectedLossDebt(address user) external view returns (uint256);
 
+    /// @notice Total outstanding per-user expected-loss liability not yet deducted from withdrawal proceeds.
+    function totalExpectedLossLiability() external view returns (uint256);
+
     /// @notice Coverage limit stored from the bound policy (0 before onPolicyBound is called).
     ///         Used to recalculate depositCap when maxCoverableLossBps changes post-binding.
     function coverageLimit() external view returns (uint256);
