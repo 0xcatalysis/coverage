@@ -132,11 +132,11 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         uint256 user1Received = asset.balanceOf(user1) - user1Before;
         uint256 user2Received = asset.balanceOf(user2) - user2Before;
 
-        // Both users suffer 100% loss. Premium was already settled (~493 ether from 2000 principal).
-        // insuredBasis = 1000 * (2000 - 493.15) / 2000 ≈ 753.42 per user
-        // shortfall = 753.42, maxInsurance = 75.34 (10%), claimAmount = 74.59 (99% after deductible)
-        assertApproxEqAbs(user1Received, 74_589_041_097_248_832_000, 2, "user1: 100% loss, premium-adjusted insurance");
-        assertApproxEqAbs(user2Received, 74_589_041_097_248_832_000, 2, "user2: 100% loss, premium-adjusted insurance");
+        // Both users suffer 100% loss → assetsReceived = 0 → premiumForWithdrawal = 0 (capped at 0).
+        // insuredBasis = 1000 − 0 = 1000 per user (uncollected premium is not deducted from insuredBasis).
+        // shortfall = 1000, maxInsurance = 100 (10%), claimAmount = 99 (99% after deductible)
+        assertApproxEqAbs(user1Received, 99 ether, 2, "user1: 100% loss, premium-adjusted insurance");
+        assertApproxEqAbs(user2Received, 99 ether, 2, "user2: 100% loss, premium-adjusted insurance");
 
         // Both principals zeroed
         assertEq(wrapper.userPrincipal(user1), 0);
@@ -864,9 +864,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.redeem(remaining, user, user);
         uint256 premiumPaidFinal = wrapper.pendingPremium() - pendingMid;
 
-        assertApproxEqAbs(
-            premiumPaidHalf + premiumPaidFinal, expectedTotalPremium, 10, "Total premium = P1 + P2"
-        );
+        assertApproxEqAbs(premiumPaidHalf + premiumPaidFinal, expectedTotalPremium, 10, "Total premium = P1 + P2");
 
         assertEq(wrapper.userPrincipal(user), 0, "Principal cleared");
         assertEq(wrapper.totalPrincipal(), 0, "Total principal cleared");

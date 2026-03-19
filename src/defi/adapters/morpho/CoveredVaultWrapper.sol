@@ -278,9 +278,11 @@ contract CoveredVaultWrapper is
         // Cap: can't deduct more premium than what Morpho returned (deep-loss guard)
         premiumForWithdrawal_ = uncappedPremium_ < assetsReceived_ ? uncappedPremium_ : assetsReceived_;
 
-        // insuredBasis = principal reduced by the fair premium AND the expected underlying loss (e.g. mgmt fee).
-        // Only losses BEYOND both deductions trigger an insurance claim.
-        uint256 totalDeductions = uncappedPremium_ + uncappedExpectedLoss_;
+        // insuredBasis = principal reduced by the actually-collected premium AND the expected underlying loss.
+        // We use premiumForWithdrawal_ (not uncappedPremium_) because in a deep-loss scenario the uncollected
+        // portion of the premium is effectively forgiven — it never reaches pendingPremium — so it should not
+        // further reduce the user's insured basis (that would penalise the user twice for the same loss event).
+        uint256 totalDeductions = premiumForWithdrawal_ + uncappedExpectedLoss_;
         uint256 insuredBasis =
             userPrincipalForWithdrawal_ > totalDeductions ? userPrincipalForWithdrawal_ - totalDeductions : 0;
         uint256 netAssetsReceived = assetsReceived_ - premiumForWithdrawal_;
