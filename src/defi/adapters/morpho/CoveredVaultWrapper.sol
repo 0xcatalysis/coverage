@@ -114,15 +114,52 @@ contract CoveredVaultWrapper is
     uint256 public pendingPremium;
 
     /// @inheritdoc ICoveredVaultWrapper
-    /// @dev Monotonically increasing. On the write path (_withdraw), insuredBasis uses this value
-    ///      directly because _accruePremium() has already settled all pending accrual into it.
-    ///      On the view path, both this value and _accruedPremium() are deducted symmetrically.
+    /// @dev Monotonically increasing informational stat: total premium ever accrued.
+    ///      No longer used directly in insuredBasis calculations.
     uint256 public totalPremiumRedeemed;
 
     /// @inheritdoc ICoveredVaultWrapper
     /// @dev Persisted from onPolicyBound so that setMaxCoverableLossBps can recompute depositCap
     ///      without a second call to the policy manager.
     uint256 public coverageLimit;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev WAD-scaled cumulative premium per unit of principal (reward-per-token accumulator).
+    ///      Increases by (accruedPremium × WAD / totalPrincipal) on every _accruePremium call.
+    uint256 public cumulativePremiumPerUnit;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev Snapshot of cumulativePremiumPerUnit at each user's last checkpoint.
+    ///      Initialised to cumulativePremiumPerUnit at deposit time so pre-deposit premium
+    ///      is never charged to the new depositor.
+    mapping(address => uint256) public userPremiumDebt;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev Premium owed by user that has been settled via _checkpointUser.
+    ///      Excludes uncheckpointed accrual since the last checkpoint.
+    mapping(address => uint256) public userPremiumAccrued;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev Total outstanding per-user premium liability not yet deducted from withdrawal proceeds.
+    ///      Increases on every _accruePremium call; decreases when a user's debt is collected at withdrawal.
+    uint256 public totalPremiumLiability;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev Annual expected loss rate of the underlying Morpho vault in basis points (e.g. 200 = 2%/year).
+    ///      Losses within this rate are considered expected (e.g. management fees) and NOT covered by insurance.
+    ///      Set by the owner to match the underlying vault's management fee. Default 0 = fully insured.
+    uint256 public underlyingExpectedLossBps;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    /// @dev WAD-scaled cumulative expected loss per unit of principal. Same reward-per-token pattern as
+    ///      cumulativePremiumPerUnit. Increases on every _accruePremium call when underlyingExpectedLossBps > 0.
+    uint256 public cumulativeExpectedLossPerUnit;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    mapping(address => uint256) public userExpectedLossDebt;
+
+    /// @inheritdoc ICoveredVaultWrapper
+    mapping(address => uint256) public userExpectedLossAccrued;
 
     /*//////////////////////////////////////////////////////////////
                             ERRORS
@@ -194,12 +231,13 @@ contract CoveredVaultWrapper is
                     ERC-4626 OVERRIDES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Returns total assets managed by this wrapper, net of accrued-but-unprocessed premium
-    /// @dev This keeps the share price honest: premium is a liability against the vault's assets
+    /// @notice Returns total assets managed by this wrapper, net of total premium liability
+    /// @dev Share price is identical to the old formula: morphoValue is higher by totalPremiumLiability
+    ///      (no longer redeemed), which is then subtracted back here. Net effect is the same NAV.
     function totalAssets() public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
         uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
-        uint256 accrued = _accruedPremium();
-        return morphoValue > accrued ? morphoValue - accrued : 0;
+        uint256 totalLiability = totalPremiumLiability + _accruedPremium();
+        return morphoValue > totalLiability ? morphoValue - totalLiability : 0;
     }
 
     /// @notice Deposit assets into the wrapper
@@ -208,6 +246,8 @@ contract CoveredVaultWrapper is
     // slither-disable-next-line reentrancy-no-eth,reentrancy-benign
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override nonReentrant {
         _accruePremium();
+        _checkpointUser(receiver); // late depositors start debt at current accumulator, never charged pre-deposit
+        // premium
         IERC20(asset()).safeTransferFrom(caller, address(this), assets);
         IERC20(asset()).forceApprove(address(morphoVault), assets);
         // slither-disable-next-line reentrancy-state-change,unused-return
@@ -220,6 +260,37 @@ contract CoveredVaultWrapper is
 
     /// @notice Withdraw assets from the wrapper
     /// @dev Full override — does NOT call super._withdraw. Redeems Morpho shares proportionally.
+    /// @dev Computes insurance payout, transfers net assets + payout to receiver, and returns the amounts
+    ///      needed for accounting. Extracted from _withdraw to avoid stack-too-deep.
+    function _settleWithdrawalTransfer(
+        address owner_,
+        address receiver_,
+        uint256 ownerBalance_,
+        uint256 shares_,
+        uint256 userPrincipalForWithdrawal_,
+        uint256 uncappedPremium_,
+        uint256 assetsReceived_
+    )
+        private
+        returns (uint256 premiumForWithdrawal_, uint256 uncappedExpectedLoss_)
+    {
+        uncappedExpectedLoss_ = ownerBalance_ > 0
+            ? userExpectedLossAccrued[owner_].mulDiv(shares_, ownerBalance_, Math.Rounding.Floor)
+            : userExpectedLossAccrued[owner_];
+
+        // Cap: can't deduct more premium than what Morpho returned (deep-loss guard)
+        premiumForWithdrawal_ = uncappedPremium_ < assetsReceived_ ? uncappedPremium_ : assetsReceived_;
+
+        // insuredBasis = principal reduced by the fair premium AND the expected underlying loss (e.g. mgmt fee).
+        // Only losses BEYOND both deductions trigger an insurance claim.
+        uint256 totalDeductions = uncappedPremium_ + uncappedExpectedLoss_;
+        uint256 insuredBasis =
+            userPrincipalForWithdrawal_ > totalDeductions ? userPrincipalForWithdrawal_ - totalDeductions : 0;
+        uint256 netAssetsReceived = assetsReceived_ - premiumForWithdrawal_;
+        uint256 totalOut = netAssetsReceived + _computeInsurance(insuredBasis, netAssetsReceived, owner_);
+        if (totalOut > 0) IERC20(asset()).safeTransfer(receiver_, totalOut);
+    }
+
     ///      Insurance is paid directly to receiver if a loss is detected and policy is active.
     // slither-disable-next-line reentrancy-no-eth,reentrancy-benign,events-maths
     function _withdraw(
@@ -234,67 +305,57 @@ contract CoveredVaultWrapper is
         nonReentrant
     {
         _accruePremium();
+        _checkpointUser(owner); // settle uncheckpointed premium into userPremiumAccrued[owner]
 
         if (caller != owner) {
             _spendAllowance(owner, caller, shares);
         }
 
-        // Calculate principal attributable to these shares BEFORE burn (balanceOf still includes them)
+        // All proportional quantities computed BEFORE burn (balanceOf/totalSupply still include the redeemed shares)
         uint256 ownerBalance = balanceOf(owner);
+
+        // Principal attributable to these shares (fraction of owner's position)
         uint256 userPrincipalForWithdrawal =
             ownerBalance > 0 ? userPrincipal[owner].mulDiv(shares, ownerBalance, Math.Rounding.Floor) : 0;
 
+        // Pro-rata premium for shares being redeemed (fraction of owner's accrued premium)
+        uint256 uncappedPremium = ownerBalance > 0
+            ? userPremiumAccrued[owner].mulDiv(shares, ownerBalance, Math.Rounding.Floor)
+            : userPremiumAccrued[owner];
+
+        // Gross Morpho entitlement: user's proportional share of ALL morpho (MUST be computed before burn).
+        // Uses totalSupply() as denominator (not ownerBalance) so multi-user vaults get correct fractions.
+        // We redeem gross (not net) so premium can be funded from proceeds rather than double-deducted
+        // (totalAssets() already subtracts totalPremiumLiability, so ERC4626's `assets` is already net).
+        uint256 userMorphoShares;
+        {
+            uint256 ts = totalSupply();
+            userMorphoShares =
+                ts > 0 ? IVaultV2(morphoVault).balanceOf(address(this)).mulDiv(shares, ts, Math.Rounding.Floor) : 0;
+        }
+
         _burn(owner, shares); // triggers _update(owner, address(0), shares) — no principal migration for burns
 
-        // Redeem from Morpho: burn morpho shares proportional to wrapper shares redeemed
-        // assets == 0 when totalAssets() == 0 (e.g. 100% loss) — skip morpho redeem in that case
+        // Redeem the user's full gross Morpho entitlement (including their premium portion).
+        // slither-disable-next-line reentrancy-no-eth,reentrancy-benign
         uint256 assetsReceived = 0;
-        if (assets > 0) {
-            uint256 morphoShares = IVaultV2(morphoVault).previewWithdraw(assets);
+        if (userMorphoShares > 0) {
             // slither-disable-next-line reentrancy-state-change
-            assetsReceived = IVaultV2(morphoVault).redeem(morphoShares, address(this), address(this));
+            assetsReceived = IVaultV2(morphoVault).redeem(userMorphoShares, address(this), address(this));
         }
 
-        // Per-user insurance: only if a loss-induced shortfall exists and policy is active.
-        // insuredBasis = principal scaled down by the pro-rata premium already paid out of the vault.
-        // This ensures that premium deductions — which reduce the Morpho position but NOT userPrincipal —
-        // do not produce spurious insurance claims. Only losses BEYOND the premium-adjusted basis trigger a claim.
-        uint256 insurancePayout = 0;
-        uint256 insuredBasis = totalPrincipal > 0
-            ? userPrincipalForWithdrawal.mulDiv(
-                totalPrincipal > totalPremiumRedeemed ? totalPrincipal - totalPremiumRedeemed : 0,
-                totalPrincipal,
-                Math.Rounding.Floor
-            )
-            : 0;
-        if (insuredBasis > assetsReceived && _isPolicyActive()) {
-            uint256 shortfall = insuredBasis - assetsReceived;
-            // Using the raw principal would allow claiming for premium-period losses beyond the insured position.
-            uint256 maxInsurance = insuredBasis.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
-            // Cap to maxInsurance first, then apply deductible to the capped loss.
-            // This matches calculateShortfall() / userShortfall() which do the same two steps in order.
-            // The old order (deductible on cap, then min with shortfall) skipped the deductible entirely
-            // for any shortfall smaller than maxInsurance × (1 − deductible).
-            uint256 capped = shortfall < maxInsurance ? shortfall : maxInsurance;
-            uint256 claimAmount = capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
-            if (claimAmount > 0) {
-                insurancePayout = _claimInsurance(claimAmount, owner);
-            }
-        }
+        // Compute insurance, transfer to receiver, and return amounts needed for accounting.
+        // Extracted into a helper to avoid stack-too-deep (many live locals at this point).
+        (uint256 premiumForWithdrawal, uint256 uncappedExpectedLoss) = _settleWithdrawalTransfer(
+            owner, receiver, ownerBalance, shares, userPrincipalForWithdrawal, uncappedPremium, assetsReceived
+        );
 
-        uint256 totalOut = assetsReceived + insurancePayout;
-        if (totalOut > 0) IERC20(asset()).safeTransfer(receiver, totalOut);
+        // Premium accounting: deducted premium goes to pendingPremium; full debt settled (paid + deep-loss cancelled)
+        pendingPremium += premiumForWithdrawal;
+        totalPremiumLiability -= uncappedPremium;
+        userPremiumAccrued[owner] -= uncappedPremium;
+        userExpectedLossAccrued[owner] -= uncappedExpectedLoss;
 
-        // Pro-rata removal of totalPremiumRedeemed: without this, the full premium history
-        // hangs against a shrinking totalPrincipal after each exit, making the ratio
-        // (totalPrincipal − totalPremiumRedeemed) / totalPrincipal progressively worse and
-        // undercharging insuredBasis for remaining users. Must use current totalPrincipal
-        // as denominator before it is decremented below.
-        if (totalPrincipal > 0) {
-            totalPremiumRedeemed -= totalPremiumRedeemed.mulDiv(
-                userPrincipalForWithdrawal, totalPrincipal, Math.Rounding.Floor
-            );
-        }
         userPrincipal[owner] -= userPrincipalForWithdrawal;
         totalPrincipal -= userPrincipalForWithdrawal;
 
@@ -325,35 +386,52 @@ contract CoveredVaultWrapper is
         return totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor);
     }
 
-    /// @notice Redeems accrued premium from Morpho into pendingPremium — never transfers to recipient.
-    ///         Keeping the transfer out of this function ensures a blacklisted or reverting recipient
-    ///         cannot freeze deposits, withdrawals, or admin configuration changes.
-    // slither-disable-next-line reentrancy-no-eth,reentrancy-benign,incorrect-equality
+    /// @notice Records accrued premium as a liability in the per-user debt accumulator, and advances the
+    ///         expected loss accumulator for the elapsed period.
+    ///         No Morpho shares are redeemed here — premium is deducted from user proceeds at withdrawal.
+    ///         Keeping transfers out of this function ensures a blacklisted recipient cannot freeze the vault.
+    // slither-disable-next-line incorrect-equality
     function _accruePremium() internal {
+        // Advance expected loss accumulator for the elapsed period, regardless of whether wrapper premium accrued.
+        uint256 elapsed = block.timestamp - lastPremiumAccrualTime;
+        if (underlyingExpectedLossBps > 0 && totalPrincipal > 0 && elapsed > 0) {
+            cumulativeExpectedLossPerUnit += underlyingExpectedLossBps.mulDiv(elapsed * WAD, BPS_DENOMINATOR * 365 days);
+        }
+
         uint256 accrued = _accruedPremium();
         if (accrued == 0) {
             lastPremiumAccrualTime = block.timestamp;
             return;
         }
 
-        // Cap accrued premium at the wrapper's actual Morpho position value to prevent over-redemption
-        // after a loss or prolonged accrual gap
+        // Cap: totalPremiumLiability + accrued must not exceed current Morpho value
         uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
-        if (accrued > morphoValue) accrued = morphoValue;
-
-        uint256 morphoShares = IVaultV2(morphoVault).previewWithdraw(accrued);
-        // Only advance timestamp when an actual redemption occurs; otherwise dust
-        // carries forward into the next cycle rather than being silently dropped
-        // slither-disable-next-line incorrect-equality
-        if (morphoShares == 0) return;
+        uint256 maxNewLiability = morphoValue > totalPremiumLiability ? morphoValue - totalPremiumLiability : 0;
+        if (accrued > maxNewLiability) accrued = maxNewLiability;
+        if (accrued == 0) return;
 
         lastPremiumAccrualTime = block.timestamp;
-        // slither-disable-next-line reentrancy-state-change
-        uint256 assetsReceived = IVaultV2(morphoVault).redeem(morphoShares, address(this), address(this));
-        if (assetsReceived > 0) {
-            pendingPremium += assetsReceived;
-            totalPremiumRedeemed += assetsReceived;
+        if (totalPrincipal > 0) {
+            cumulativePremiumPerUnit += accrued.mulDiv(WAD, totalPrincipal);
         }
+        totalPremiumLiability += accrued;
+        totalPremiumRedeemed += accrued; // kept as informational monotonic stat
+    }
+
+    /// @notice Settle uncheckpointed premium and expected loss into their accrued mappings.
+    ///         MUST be called before any change to userPrincipal[user].
+    function _checkpointUser(address user) internal {
+        uint256 delta = cumulativePremiumPerUnit - userPremiumDebt[user];
+        if (delta > 0 && userPrincipal[user] > 0) {
+            userPremiumAccrued[user] += userPrincipal[user].mulDiv(delta, WAD, Math.Rounding.Floor);
+        }
+        userPremiumDebt[user] = cumulativePremiumPerUnit;
+
+        uint256 elDelta = cumulativeExpectedLossPerUnit - userExpectedLossDebt[user];
+        if (elDelta > 0 && userPrincipal[user] > 0) {
+            userExpectedLossAccrued[user] += userPrincipal[user].mulDiv(elDelta, WAD, Math.Rounding.Floor);
+        }
+        userExpectedLossDebt[user] = cumulativeExpectedLossPerUnit;
     }
 
     /// @inheritdoc ICoveredVaultWrapper
@@ -396,6 +474,17 @@ contract CoveredVaultWrapper is
             depositCap = (coverageLimit * BPS_DENOMINATOR) / uint256(newBps);
         }
         emit IE.MaxCoverableLossUpdated(oldBps, newBps);
+    }
+
+    /// @inheritdoc ICoveredVaultWrapper
+    function setUnderlyingExpectedLossBps(uint256 newBps) external onlyOwner {
+        require(newBps <= BPS_DENOMINATOR, IA.InvalidParameters());
+        // Settle accrual at the old rate before switching, same as setPremiumRate.
+        _accruePremium();
+        lastPremiumAccrualTime = block.timestamp;
+        uint256 oldBps = underlyingExpectedLossBps;
+        underlyingExpectedLossBps = newBps;
+        emit IE.UnderlyingExpectedLossUpdated(oldBps, newBps);
     }
 
     /// @inheritdoc ICoveredVaultWrapper
@@ -455,6 +544,27 @@ contract CoveredVaultWrapper is
     /*//////////////////////////////////////////////////////////////
                     INSURANCE INTERNALS
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Computes insurance payout given insuredBasis and net assets, then claims if eligible.
+    ///         Extracted to avoid stack-too-deep in _withdraw.
+    function _computeInsurance(
+        uint256 insuredBasis,
+        uint256 netAssetsReceived,
+        address owner
+    )
+        internal
+        returns (uint256 insurancePayout)
+    {
+        if (insuredBasis > netAssetsReceived && _isPolicyActive()) {
+            uint256 shortfall = insuredBasis - netAssetsReceived;
+            uint256 maxInsurance = insuredBasis.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
+            uint256 capped = shortfall < maxInsurance ? shortfall : maxInsurance;
+            uint256 claimAmount = capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
+            if (claimAmount > 0) {
+                insurancePayout = _claimInsurance(claimAmount, owner);
+            }
+        }
+    }
 
     /// @notice Claims insurance for a capped, post-deductible amount
     /// @param claimAmount The amount to claim (post-cap and post-deductible, further capped by remaining coverage)
@@ -527,8 +637,18 @@ contract CoveredVaultWrapper is
         // mirroring netValue which subtracts the same total from the Morpho position.
         // Using only totalPremiumRedeemed here would cause a phantom shortfall equal to the
         // pending accrual even when no real loss has occurred.
-        uint256 totalPremiumTotal = totalPremiumRedeemed + accrued;
-        uint256 adjustedPrincipal = totalPrincipal > totalPremiumTotal ? totalPrincipal - totalPremiumTotal : 0;
+        uint256 totalPremiumTotal = totalPremiumLiability + accrued;
+        // Also deduct global expected loss (management fee drag) so it is not counted as insurable shortfall.
+        // Global expected loss = totalPrincipal * (accumulated + pending per-unit rate) / WAD.
+        uint256 pendingElapsedSecs = block.timestamp - lastPremiumAccrualTime;
+        uint256 totalExpectedLoss = totalPrincipal.mulDiv(cumulativeExpectedLossPerUnit, WAD, Math.Rounding.Floor);
+        if (underlyingExpectedLossBps > 0 && pendingElapsedSecs > 0) {
+            totalExpectedLoss += totalPrincipal.mulDiv(
+                underlyingExpectedLossBps * pendingElapsedSecs, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
+            );
+        }
+        uint256 totalDeductions = totalPremiumTotal + totalExpectedLoss;
+        uint256 adjustedPrincipal = totalPrincipal > totalDeductions ? totalPrincipal - totalDeductions : 0;
         if (adjustedPrincipal > netValue) {
             uint256 rawShortfall = adjustedPrincipal - netValue;
             // EF-4: Cap on adjustedPrincipal so premium-period losses don't inflate the coverable amount
@@ -539,6 +659,22 @@ contract CoveredVaultWrapper is
         return 0;
     }
 
+    /// @dev Returns the total pending expected loss (accrued + uncheckpointed period) for a user.
+    ///      Extracted to reduce stack depth in userShortfall.
+    function _userTotalExpectedLoss(address user) private view returns (uint256) {
+        uint256 total = userExpectedLossAccrued[user]
+            + userPrincipal[user].mulDiv(
+                cumulativeExpectedLossPerUnit - userExpectedLossDebt[user], WAD, Math.Rounding.Floor
+            );
+        uint256 pendingElapsedSecs = block.timestamp - lastPremiumAccrualTime;
+        if (underlyingExpectedLossBps > 0 && pendingElapsedSecs > 0) {
+            total += userPrincipal[user].mulDiv(
+                underlyingExpectedLossBps * pendingElapsedSecs, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
+            );
+        }
+        return total;
+    }
+
     /// @inheritdoc ICoveredVaultWrapper
     // slither-disable-next-line incorrect-equality
     function userShortfall(address user) external view override returns (uint256) {
@@ -547,23 +683,25 @@ contract CoveredVaultWrapper is
         uint256 totalShares = totalSupply();
         uint256 morphoTotal = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
         uint256 accrued = _accruedPremium();
-        // Inline netMorphoTotal to free a stack slot for totalPremiumTotal below.
-        uint256 userMorphoValue = totalShares > 0
-            ? (morphoTotal > accrued ? morphoTotal - accrued : 0).mulDiv(userShares, totalShares, Math.Rounding.Floor)
-            : 0;
-        // Scale user's adjusted principal using total premium (redeemed + pending accrual).
-        // Must match the net Morpho value which already subtracts the same accrued amount;
-        // using only totalPremiumRedeemed would cause phantom shortfalls equal to the pending accrual.
-        uint256 totalPremiumTotal = totalPremiumRedeemed + accrued;
-        uint256 adjustedUserPrincipal = totalPrincipal > 0
-            ? userPrincipal[user].mulDiv(
-                totalPrincipal > totalPremiumTotal ? totalPrincipal - totalPremiumTotal : 0,
-                totalPrincipal,
-                Math.Rounding.Floor
-            )
-            : 0;
-        if (adjustedUserPrincipal > userMorphoValue) {
-            uint256 raw = adjustedUserPrincipal - userMorphoValue;
+
+        // Per-user premium: settled into mapping + uncheckpointed since last checkpoint + pending global accrual
+        uint256 totalUserPremium = userPremiumAccrued[user]
+            + userPrincipal[user].mulDiv(cumulativePremiumPerUnit - userPremiumDebt[user], WAD, Math.Rounding.Floor)
+            + (totalPrincipal > 0 ? userPrincipal[user].mulDiv(accrued, totalPrincipal, Math.Rounding.Floor) : 0);
+
+        // Total deductions = premium + expected underlying loss (management fee drag)
+        uint256 totalUserDeductions = totalUserPremium + _userTotalExpectedLoss(user);
+
+        // User's gross Morpho value proportional to their share count
+        uint256 userMorphoGross = totalShares > 0 ? morphoTotal.mulDiv(userShares, totalShares, Math.Rounding.Floor) : 0;
+        // Net Morpho value subtracts only premium (premium is owed to recipient, not insurable)
+        uint256 userMorphoNet = userMorphoGross > totalUserPremium ? userMorphoGross - totalUserPremium : 0;
+
+        uint256 adjustedUserPrincipal =
+            userPrincipal[user] > totalUserDeductions ? userPrincipal[user] - totalUserDeductions : 0;
+
+        if (adjustedUserPrincipal > userMorphoNet) {
+            uint256 raw = adjustedUserPrincipal - userMorphoNet;
             // EF-4: Cap on adjustedUserPrincipal so premium-period losses don't inflate the coverable amount
             uint256 maxCoverable = adjustedUserPrincipal.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
             uint256 capped = raw > maxCoverable ? maxCoverable : raw;
