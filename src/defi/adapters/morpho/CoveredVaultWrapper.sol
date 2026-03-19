@@ -644,7 +644,7 @@ contract CoveredVaultWrapper is
             });
         }
 
-        bool isValid = pendingClaimAmount == claimedAmount;
+        bool isValid = pendingClaimAmount == claimedAmount && claimant == address(this);
         result = ISpec.EvaluationResult({
             isPayable: isValid,
             notesHash: keccak256(
