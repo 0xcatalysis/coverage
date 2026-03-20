@@ -155,6 +155,11 @@ contract ClaimManagerHandler is Test {
         uint256 remaining = claimManager.remainingCoverage(POLICY_ID);
         if (remaining == 0) return;
 
+        if (claimManager.claimApprovalRequired(POLICY_ID)) {
+            vm.prank(admin);
+            claimManager.approveNextClaim(POLICY_ID);
+        }
+
         uint256 requestedAmount = bound(requestedAmountSeed, 1, remaining);
 
         collateralToken.mint(address(slashingMgr), requestedAmount);

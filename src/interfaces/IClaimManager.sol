@@ -150,6 +150,13 @@ interface IClaimManager is IAccessControl {
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
 
     /**
+     * @notice Emitted when a curator or admin approves the next claim for a policy.
+     * @param policyId Identifier of the policy.
+     * @param approver Address that granted the approval.
+     */
+    event NextClaimApproved(uint96 indexed policyId, address indexed approver);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -232,6 +239,17 @@ interface IClaimManager is IAccessControl {
      * @param slippageBps The invalid slippage value provided.
      */
     error InvalidSlippageBps(uint16 slippageBps);
+
+    /**
+     * @notice Reverts when a second or subsequent claim is filed before curator approval.
+     * @param policyId Identifier of the policy requiring approval.
+     */
+    error ClaimApprovalRequired(uint96 policyId);
+
+    /**
+     * @notice Reverts when the caller is not the pool curator or DEFAULT_ADMIN_ROLE.
+     */
+    error NotCuratorOrAdmin();
 
     /**
      * @notice Pauses claim operations.
@@ -367,4 +385,19 @@ interface IClaimManager is IAccessControl {
      * @notice Returns the maximum swap slippage tolerance in basis points.
      */
     function maxSwapSlippageBps() external view returns (uint16);
+
+    /**
+     * @notice Approves the next claim filing for a policy after a previous claim has been paid out.
+     * @dev Callable by the pool curator (ICoverPool.owner()) or DEFAULT_ADMIN_ROLE.
+     *      Reverts if the policy does not exist or the caller is not authorized.
+     * @param policyId Identifier of the policy to approve next claim for.
+     */
+    function approveNextClaim(uint96 policyId) external;
+
+    /**
+     * @notice Returns whether curator approval is required before the next claim can be filed.
+     * @param policyId Identifier of the policy.
+     * @return True if approval is required; false if the next claim may be filed freely.
+     */
+    function claimApprovalRequired(uint96 policyId) external view returns (bool);
 }
