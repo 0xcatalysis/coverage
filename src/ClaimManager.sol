@@ -173,7 +173,8 @@ contract ClaimManager is
     function approveNextClaim(uint96 policyId) external override {
         IPolicyManager.PolicyMetadata memory metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
-        require(msg.sender == ICoverPool(metadata.pool).owner(), UnauthorizedApprover());
+        address curator = ICoverPool(metadata.pool).owner();
+        require(msg.sender == curator || hasRole(DEFAULT_ADMIN_ROLE, msg.sender), NotCuratorOrAdmin());
         _claimApprovalRequired[policyId] = false;
         emit NextClaimApproved(policyId, msg.sender);
     }

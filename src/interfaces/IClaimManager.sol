@@ -150,7 +150,7 @@ interface IClaimManager is IAccessControl {
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
 
     /**
-     * @notice Emitted when the pool curator approves the next claim for a policy.
+     * @notice Emitted when a curator or admin approves the next claim for a policy.
      * @param policyId Identifier of the policy.
      * @param approver Address that granted the approval.
      */
@@ -240,9 +240,9 @@ interface IClaimManager is IAccessControl {
     error ClaimApprovalRequired(uint96 policyId);
 
     /**
-     * @notice Reverts when the caller is not the pool curator.
+     * @notice Reverts when the caller is not the pool curator or DEFAULT_ADMIN_ROLE.
      */
-    error UnauthorizedApprover();
+    error NotCuratorOrAdmin();
 
     /**
      * @notice Pauses claim operations.
@@ -380,11 +380,10 @@ interface IClaimManager is IAccessControl {
     function maxSwapSlippageBps() external view returns (uint16);
 
     /**
-     * @notice Clears the claim approval gate for a policy, allowing the next claim to be filed freely.
-     * @dev Callable only by the pool curator (ICoverPool.owner()). Idempotent: calling when the gate
-     *      is already open is a no-op (does not revert). Reverts if the policy does not exist or the
-     *      caller is not the curator.
-     * @param policyId Identifier of the policy to clear the approval gate for.
+     * @notice Approves the next claim filing for a policy after a previous claim has been paid out.
+     * @dev Callable by the pool curator (ICoverPool.owner()) or DEFAULT_ADMIN_ROLE.
+     *      Reverts if the policy does not exist or the caller is not authorized.
+     * @param policyId Identifier of the policy to approve next claim for.
      */
     function approveNextClaim(uint96 policyId) external;
 

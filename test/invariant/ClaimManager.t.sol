@@ -156,7 +156,7 @@ contract ClaimManagerHandler is Test {
         if (remaining == 0) return;
 
         if (claimManager.claimApprovalRequired(POLICY_ID)) {
-            vm.prank(curator);
+            vm.prank(admin);
             claimManager.approveNextClaim(POLICY_ID);
         }
 
