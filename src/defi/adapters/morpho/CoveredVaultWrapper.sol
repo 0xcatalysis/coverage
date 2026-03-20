@@ -741,10 +741,7 @@ contract CoveredVaultWrapper is
     /// @inheritdoc ICoveredVaultWrapper
     // slither-disable-next-line incorrect-equality
     function userShortfall(address user) external view override returns (uint256) {
-        uint256 userShares = balanceOf(user);
-        if (userShares == 0) return 0;
-        uint256 totalShares = totalSupply();
-        uint256 morphoTotal = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
+        if (balanceOf(user) == 0) return 0;
         uint256 accrued = _accruedPremium();
 
         // Per-user premium: absolute-debt formula + pending global accrual share
@@ -755,8 +752,10 @@ contract CoveredVaultWrapper is
         // Total deductions = premium + expected underlying loss (management fee drag)
         uint256 totalUserDeductions = totalUserPremium + _userTotalExpectedLoss(user);
 
-        // User's gross Morpho value proportional to their share count
-        uint256 userMorphoGross = totalShares > 0 ? morphoTotal.mulDiv(userShares, totalShares, Math.Rounding.Floor) : 0;
+        // User's gross Morpho value from their tracked Morpho shares — mirrors _executeWithdrawal exactly.
+        // Using wrapper-share ratio (morphoTotal * userShares / totalShares) diverges when users entered at
+        // different Morpho share prices, so we use the per-user Morpho share record instead.
+        uint256 userMorphoGross = IVaultV2(morphoVault).convertToAssets(userMorphoShares[user]);
         // Net Morpho value subtracts only premium (premium is owed to recipient, not insurable)
         uint256 userMorphoNet = userMorphoGross > totalUserPremium ? userMorphoGross - totalUserPremium : 0;
 
