@@ -457,7 +457,13 @@ contract CoveredVaultWrapper is
     function _accruedPremium() internal view returns (uint256) {
         if (totalPrincipal == 0) return 0;
         uint256 elapsed = block.timestamp - lastPremiumAccrualTime;
-        return totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor);
+        uint256 accrued = totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor);
+        if (accrued == 0) return 0;
+        // Apply the same Morpho-value cap as _accruePremium() so that callers (totalAssets, calculateShortfall,
+        // userShortfall) never see a larger pending premium than what would actually be settled.
+        uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
+        uint256 maxNewLiability = morphoValue > totalPremiumLiability ? morphoValue - totalPremiumLiability : 0;
+        return accrued < maxNewLiability ? accrued : maxNewLiability;
     }
 
     /// @notice Records accrued premium as a liability in the per-user debt accumulator, and advances the
