@@ -287,7 +287,8 @@ contract CoveredVaultWrapper is
     /// @dev Deducts totalExpectedLossLiability so new depositors are not disadvantaged.
     function totalAssets() public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
         uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
-        uint256 totalLiability = totalPremiumLiability + _accruedPremium() + totalExpectedLossLiability;
+        uint256 totalLiability =
+            totalPremiumLiability + _accruedPremium() + totalExpectedLossLiability + _accruedExpectedLoss();
         return morphoValue > totalLiability ? morphoValue - totalLiability : 0;
     }
 
@@ -559,11 +560,55 @@ contract CoveredVaultWrapper is
                     PREMIUM FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Returns pending (uncheckpointed) expected-loss accrual for the current elapsed window.
+    /// @dev Uses the same active-window logic as _accruedPremium() so totalAssets() remains consistent
+    ///      with calculateShortfall() and does not overstate NAV between accrual checkpoints.
+    // slither-disable-next-line incorrect-equality
+    function _accruedExpectedLoss() internal view returns (uint256) {
+        if (underlyingExpectedLossBps == 0 || totalPrincipal == 0) return 0;
+        // slither-disable-next-line uninitialized-local
+        uint256 elapsed;
+        if (_isPolicyActive()) {
+            elapsed = block.timestamp - lastPremiumAccrualTime;
+        } else if (policyId != 0) {
+            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
+            if (meta.buyer != address(0) && uint256(meta.maturityTime) > lastPremiumAccrualTime) {
+                uint256 activeStart =
+                    lastPremiumAccrualTime > uint256(meta.startTime) ? lastPremiumAccrualTime : uint256(meta.startTime);
+                if (uint256(meta.maturityTime) > activeStart) {
+                    elapsed = uint256(meta.maturityTime) - activeStart;
+                }
+            }
+        }
+        if (elapsed == 0) return 0;
+        return totalPrincipal.mulDiv(
+            underlyingExpectedLossBps * elapsed, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
+        );
+    }
+
     /// @notice Returns accrued-but-unprocessed premium owed to premiumRecipient
+    /// @dev Computes the active elapsed window:
+    ///      - If policy is currently active: full [lastCheckpoint, now] window.
+    ///      - If policy just expired and lastCheckpoint < maturityTime: only [lastCheckpoint, maturityTime].
+    ///      - Otherwise: 0 (no phantom premium after expiry is fully settled).
     // slither-disable-next-line incorrect-equality
     function _accruedPremium() internal view returns (uint256) {
-        if (totalPrincipal == 0) return 0;
-        uint256 elapsed = block.timestamp - lastPremiumAccrualTime;
+        if (totalPrincipal == 0 || premiumRatePerSecond == 0) return 0;
+        // slither-disable-next-line uninitialized-local
+        uint256 elapsed;
+        if (_isPolicyActive()) {
+            elapsed = block.timestamp - lastPremiumAccrualTime;
+        } else if (policyId != 0) {
+            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
+            if (meta.buyer != address(0) && uint256(meta.maturityTime) > lastPremiumAccrualTime) {
+                uint256 activeStart =
+                    lastPremiumAccrualTime > uint256(meta.startTime) ? lastPremiumAccrualTime : uint256(meta.startTime);
+                if (uint256(meta.maturityTime) > activeStart) {
+                    elapsed = uint256(meta.maturityTime) - activeStart;
+                }
+            }
+        }
+        if (elapsed == 0) return 0;
         uint256 accrued = totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor);
         if (accrued == 0) return 0;
         // Apply the same Morpho-value cap as _accruePremium() so that callers (totalAssets, calculateShortfall,
@@ -579,27 +624,47 @@ contract CoveredVaultWrapper is
     ///         Keeping transfers out of this function ensures a blacklisted recipient cannot freeze the vault.
     // slither-disable-next-line incorrect-equality
     function _accruePremium() internal {
-        uint256 elapsed = block.timestamp - lastPremiumAccrualTime;
+        uint256 checkpointTime = lastPremiumAccrualTime;
 
         // Always advance the timestamp unconditionally so that when a new policy is later bound,
         // there is no catch-up accrual for the inactive gap period.
         lastPremiumAccrualTime = block.timestamp;
 
-        // No accrual if no time has elapsed or if the policy is not currently active.
-        // Premium and expected-loss charges only apply while coverage is in force.
-        if (elapsed == 0 || !_isPolicyActive()) return;
+        if (block.timestamp == checkpointTime) return;
 
-        // Advance expected loss accumulator for the elapsed period.
+        // Compute the active portion of the elapsed window.
+        // When active: full [checkpointTime, now]. When just expired: only [checkpointTime, maturityTime].
+        // slither-disable-next-line uninitialized-local
+        uint256 activeElapsed;
+        if (_isPolicyActive()) {
+            activeElapsed = block.timestamp - checkpointTime;
+        } else if (policyId != 0) {
+            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
+            if (meta.buyer != address(0) && uint256(meta.maturityTime) > checkpointTime) {
+                uint256 activeStart =
+                    checkpointTime > uint256(meta.startTime) ? checkpointTime : uint256(meta.startTime);
+                if (uint256(meta.maturityTime) > activeStart) {
+                    activeElapsed = uint256(meta.maturityTime) - activeStart;
+                }
+            }
+        }
+
+        if (activeElapsed == 0) return;
+
+        // Advance expected loss accumulator for the active elapsed period.
         if (underlyingExpectedLossBps > 0 && totalPrincipal > 0) {
-            cumulativeExpectedLossPerUnit += underlyingExpectedLossBps.mulDiv(elapsed * WAD, BPS_DENOMINATOR * 365 days);
+            cumulativeExpectedLossPerUnit += underlyingExpectedLossBps.mulDiv(
+                activeElapsed * WAD, BPS_DENOMINATOR * 365 days
+            );
             totalExpectedLossLiability += totalPrincipal.mulDiv(
-                underlyingExpectedLossBps * elapsed, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
+                underlyingExpectedLossBps * activeElapsed, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
             );
         }
 
-        // Compute accrued premium using the same elapsed window.
-        uint256 accrued =
-            totalPrincipal > 0 ? totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor) : 0;
+        // Compute accrued premium using the active elapsed window.
+        uint256 accrued = totalPrincipal > 0
+            ? totalPrincipal.mulDiv(premiumRatePerSecond * activeElapsed, WAD, Math.Rounding.Floor)
+            : 0;
 
         if (accrued == 0) {
             return;
@@ -890,13 +955,7 @@ contract CoveredVaultWrapper is
         // Use the global tracker (mirrors totalPremiumLiability) to correctly account for per-user debts —
         // totalPrincipal * cumulativeExpectedLossPerUnit / WAD would overcount by ignoring userExpectedLossDebt
         // for users who deposited after the accumulator had already increased.
-        uint256 pendingElapsedSecs = block.timestamp - lastPremiumAccrualTime;
-        uint256 totalExpectedLoss = totalExpectedLossLiability;
-        if (underlyingExpectedLossBps > 0 && pendingElapsedSecs > 0) {
-            totalExpectedLoss += totalPrincipal.mulDiv(
-                underlyingExpectedLossBps * pendingElapsedSecs, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
-            );
-        }
+        uint256 totalExpectedLoss = totalExpectedLossLiability + _accruedExpectedLoss();
         uint256 totalDeductions = totalPremiumTotal + totalExpectedLoss;
         uint256 adjustedPrincipal = totalPrincipal > totalDeductions ? totalPrincipal - totalDeductions : 0;
         if (adjustedPrincipal > netValue) {

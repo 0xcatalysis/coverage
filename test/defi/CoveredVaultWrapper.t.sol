@@ -486,8 +486,8 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         uint256 ta0 = wrapperWithPremium.totalAssets();
         assertApproxEqAbs(ta0, DEPOSIT_AMOUNT, 1);
 
-        // After 1 year, totalAssets decreases by accrued premium
-        vm.warp(block.timestamp + 365 days);
+        // After 1 year (stay 1 second before maturity to keep policy active — exclusive boundary)
+        vm.warp(block.timestamp + 365 days - 1);
         uint256 ta1 = wrapperWithPremium.totalAssets();
         assertLt(ta1, ta0, "totalAssets decreases as premium accrues");
     }
