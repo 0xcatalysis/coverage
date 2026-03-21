@@ -560,26 +560,35 @@ contract CoveredVaultWrapper is
                     PREMIUM FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @dev Returns the number of seconds that should count toward accrual starting from `checkpoint`.
+    ///      - Policy active: full [checkpoint, now] window.
+    ///      - Policy expired, checkpoint < maturityTime: only [max(checkpoint, startTime), maturityTime].
+    ///      - No policy or window already settled: 0.
+    ///      Single source of truth for the active-window calculation used by _accruedExpectedLoss,
+    ///      _accruedPremium, _accruePremium, and _userTotalExpectedLoss.
+    function _activeElapsedFrom(uint256 checkpoint) private view returns (uint256) {
+        if (_isPolicyActive()) {
+            return block.timestamp - checkpoint;
+        }
+        if (policyId != 0) {
+            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
+            if (meta.buyer != address(0) && uint256(meta.maturityTime) > checkpoint) {
+                uint256 activeStart = checkpoint > uint256(meta.startTime) ? checkpoint : uint256(meta.startTime);
+                if (uint256(meta.maturityTime) > activeStart) {
+                    return uint256(meta.maturityTime) - activeStart;
+                }
+            }
+        }
+        return 0;
+    }
+
     /// @notice Returns pending (uncheckpointed) expected-loss accrual for the current elapsed window.
     /// @dev Uses the same active-window logic as _accruedPremium() so totalAssets() remains consistent
     ///      with calculateShortfall() and does not overstate NAV between accrual checkpoints.
     // slither-disable-next-line incorrect-equality
     function _accruedExpectedLoss() internal view returns (uint256) {
         if (underlyingExpectedLossBps == 0 || totalPrincipal == 0) return 0;
-        // slither-disable-next-line uninitialized-local
-        uint256 elapsed;
-        if (_isPolicyActive()) {
-            elapsed = block.timestamp - lastPremiumAccrualTime;
-        } else if (policyId != 0) {
-            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
-            if (meta.buyer != address(0) && uint256(meta.maturityTime) > lastPremiumAccrualTime) {
-                uint256 activeStart =
-                    lastPremiumAccrualTime > uint256(meta.startTime) ? lastPremiumAccrualTime : uint256(meta.startTime);
-                if (uint256(meta.maturityTime) > activeStart) {
-                    elapsed = uint256(meta.maturityTime) - activeStart;
-                }
-            }
-        }
+        uint256 elapsed = _activeElapsedFrom(lastPremiumAccrualTime);
         if (elapsed == 0) return 0;
         return totalPrincipal.mulDiv(
             underlyingExpectedLossBps * elapsed, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
@@ -594,20 +603,7 @@ contract CoveredVaultWrapper is
     // slither-disable-next-line incorrect-equality
     function _accruedPremium() internal view returns (uint256) {
         if (totalPrincipal == 0 || premiumRatePerSecond == 0) return 0;
-        // slither-disable-next-line uninitialized-local
-        uint256 elapsed;
-        if (_isPolicyActive()) {
-            elapsed = block.timestamp - lastPremiumAccrualTime;
-        } else if (policyId != 0) {
-            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
-            if (meta.buyer != address(0) && uint256(meta.maturityTime) > lastPremiumAccrualTime) {
-                uint256 activeStart =
-                    lastPremiumAccrualTime > uint256(meta.startTime) ? lastPremiumAccrualTime : uint256(meta.startTime);
-                if (uint256(meta.maturityTime) > activeStart) {
-                    elapsed = uint256(meta.maturityTime) - activeStart;
-                }
-            }
-        }
+        uint256 elapsed = _activeElapsedFrom(lastPremiumAccrualTime);
         if (elapsed == 0) return 0;
         uint256 accrued = totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor);
         if (accrued == 0) return 0;
@@ -632,22 +628,8 @@ contract CoveredVaultWrapper is
 
         if (block.timestamp == checkpointTime) return;
 
-        // Compute the active portion of the elapsed window.
-        // When active: full [checkpointTime, now]. When just expired: only [checkpointTime, maturityTime].
-        // slither-disable-next-line uninitialized-local
-        uint256 activeElapsed;
-        if (_isPolicyActive()) {
-            activeElapsed = block.timestamp - checkpointTime;
-        } else if (policyId != 0) {
-            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
-            if (meta.buyer != address(0) && uint256(meta.maturityTime) > checkpointTime) {
-                uint256 activeStart =
-                    checkpointTime > uint256(meta.startTime) ? checkpointTime : uint256(meta.startTime);
-                if (uint256(meta.maturityTime) > activeStart) {
-                    activeElapsed = uint256(meta.maturityTime) - activeStart;
-                }
-            }
-        }
+        // Compute the active portion of the elapsed window via the shared helper.
+        uint256 activeElapsed = _activeElapsedFrom(checkpointTime);
 
         if (activeElapsed == 0) return;
 
@@ -975,22 +957,9 @@ contract CoveredVaultWrapper is
     function _userTotalExpectedLoss(address user) private view returns (uint256) {
         uint256 rawOwed = userPrincipal[user].mulDiv(cumulativeExpectedLossPerUnit, WAD, Math.Rounding.Floor);
         uint256 total = rawOwed > userExpectedLossDebt[user] ? rawOwed - userExpectedLossDebt[user] : 0;
-        // Mirror _accruedExpectedLoss(): cap elapsed to the policy active window so that expected
-        // loss stops accruing at maturity rather than continuing to accumulate after expiry.
-        // slither-disable-next-line uninitialized-local
-        uint256 pendingElapsedSecs;
-        if (_isPolicyActive()) {
-            pendingElapsedSecs = block.timestamp - lastPremiumAccrualTime;
-        } else if (policyId != 0) {
-            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
-            if (meta.buyer != address(0) && uint256(meta.maturityTime) > lastPremiumAccrualTime) {
-                uint256 activeStart =
-                    lastPremiumAccrualTime > uint256(meta.startTime) ? lastPremiumAccrualTime : uint256(meta.startTime);
-                if (uint256(meta.maturityTime) > activeStart) {
-                    pendingElapsedSecs = uint256(meta.maturityTime) - activeStart;
-                }
-            }
-        }
+        // Cap elapsed to the policy active window via the shared helper so that expected loss
+        // stops accruing at maturity, consistent with _accruedExpectedLoss() and totalAssets().
+        uint256 pendingElapsedSecs = _activeElapsedFrom(lastPremiumAccrualTime);
         if (underlyingExpectedLossBps > 0 && pendingElapsedSecs > 0) {
             total += userPrincipal[user].mulDiv(
                 underlyingExpectedLossBps * pendingElapsedSecs, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor

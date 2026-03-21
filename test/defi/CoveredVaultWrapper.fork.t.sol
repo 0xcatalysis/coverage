@@ -226,6 +226,11 @@ contract CoveredVaultWrapperForkTest is Test {
         // Configure wrapper to expect 2% annual loss (matches Morpho management fee)
         vm.prank(owner);
         wrapper.setUnderlyingExpectedLossBps(200);
+        // Advance past the 2-day timelock and apply the pending parameter so that
+        // underlyingExpectedLossBps is active before the deposit.
+        skip(2 days);
+        vm.prank(owner);
+        wrapper.executeUnderlyingExpectedLossBps();
 
         // User1 deposit
         uint256 depositAmount = 1000e6;
@@ -259,6 +264,11 @@ contract CoveredVaultWrapperForkTest is Test {
         // Configure wrapper to expect 2% annual loss (matches Morpho management fee)
         vm.prank(owner);
         wrapper.setUnderlyingExpectedLossBps(200);
+        // Advance past the 2-day timelock and apply the pending parameter so that
+        // underlyingExpectedLossBps is active before the deposit.
+        skip(2 days);
+        vm.prank(owner);
+        wrapper.executeUnderlyingExpectedLossBps();
 
         // User1 deposit
         uint256 depositAmount = 1000e6;
@@ -293,6 +303,11 @@ contract CoveredVaultWrapperForkTest is Test {
         // Configure wrapper to expect 2% annual loss (matches Morpho management fee)
         vm.prank(owner);
         wrapper.setUnderlyingExpectedLossBps(200);
+        // Advance past the 2-day timelock and apply the pending parameter so that
+        // underlyingExpectedLossBps is active before the deposit.
+        skip(2 days);
+        vm.prank(owner);
+        wrapper.executeUnderlyingExpectedLossBps();
 
         // User1 deposit
         uint256 depositAmount = 1000e6;
