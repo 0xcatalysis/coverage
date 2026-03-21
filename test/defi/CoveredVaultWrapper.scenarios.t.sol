@@ -109,6 +109,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         // Settle premium before loss so insuredBasis reflects premium paid.
         // Premium accrued ≈ 2000 * 50% * 180/365 ≈ 493 ether.
+        vm.prank(curator);
         wrapper.collectPremium();
         uint256 tpr = wrapper.totalPremiumLiability();
         assertApproxEqAbs(tpr, 493_150_684_904_064_000_000, 2, "TPR after 180 days");
@@ -340,6 +341,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         assertEq(wrapper.userShortfall(bob), 0, "Bob: no shortfall after premium");
 
         // Settle premium before redemptions to avoid mock arithmetic issues
+        vm.prank(curator);
         wrapper.collectPremium();
 
         uint256 insuranceBefore = claimManager.policyClaim(POLICY_ID).totalPaidOut;
@@ -466,6 +468,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         uint256 accrualBefore = wrapper.lastPremiumAccrualTime();
 
         vm.warp(block.timestamp + 365 days);
+        vm.prank(curator);
         wrapper.collectPremium();
 
         assertEq(asset.balanceOf(premiumRecipientAddr), recipientBefore, "No premium transferred when no principal");
@@ -495,6 +498,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         vm.warp(block.timestamp + 180 days);
 
         // Settle premium before profit change to get clean accounting
+        vm.prank(curator);
         wrapper.collectPremium();
 
         // 20% profit in morpho vault (applied to post-premium _totalAssets)
@@ -810,6 +814,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         // Expected: 1000 * rate * 180d / WAD
         uint256 expectedP1 = uint256(1000 ether) * rate * 180 days / 1e18;
 
+        vm.prank(curator);
         wrapper.collectPremium();
         assertApproxEqAbs(wrapper.totalPremiumLiability(), expectedP1, 10, "Liability after period 1");
 
@@ -828,6 +833,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         uint256 expectedP2 = uint256(2000 ether) * rate * 180 days / 1e18;
         uint256 expectedTotal = expectedP1 + expectedP2;
 
+        vm.prank(curator);
         wrapper.collectPremium();
         assertApproxEqAbs(wrapper.totalPremiumLiability(), expectedTotal, 10, "Total liability = P1 + P2");
 
@@ -906,6 +912,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         // ── collectPremium: recipient receives Alice's deducted premium ──
         uint256 recipientBefore1 = asset.balanceOf(premiumRecipientAddr);
+        vm.prank(curator);
         wrapper.collectPremium();
         uint256 collected1 = asset.balanceOf(premiumRecipientAddr) - recipientBefore1;
 
@@ -922,6 +929,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         // ── collectPremium: recipient receives Bob's deducted premium ──
         uint256 recipientBefore2 = asset.balanceOf(premiumRecipientAddr);
+        vm.prank(curator);
         wrapper.collectPremium();
         uint256 collected2 = asset.balanceOf(premiumRecipientAddr) - recipientBefore2;
 
@@ -935,6 +943,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         // ── Final collect ──
         uint256 recipientBefore3 = asset.balanceOf(premiumRecipientAddr);
+        vm.prank(curator);
         wrapper.collectPremium();
         uint256 collected3 = asset.balanceOf(premiumRecipientAddr) - recipientBefore3;
 
