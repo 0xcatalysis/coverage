@@ -970,10 +970,27 @@ contract CoveredVaultWrapper is
 
     /// @dev Returns the total pending expected loss (accrued + uncheckpointed period) for a user.
     ///      Extracted to reduce stack depth in userShortfall.
+    ///      Uses the same active-window logic as _accruedExpectedLoss() so that expected loss does
+    ///      not accumulate beyond policy maturity, keeping userShortfall() consistent with totalAssets().
     function _userTotalExpectedLoss(address user) private view returns (uint256) {
         uint256 rawOwed = userPrincipal[user].mulDiv(cumulativeExpectedLossPerUnit, WAD, Math.Rounding.Floor);
         uint256 total = rawOwed > userExpectedLossDebt[user] ? rawOwed - userExpectedLossDebt[user] : 0;
-        uint256 pendingElapsedSecs = block.timestamp - lastPremiumAccrualTime;
+        // Mirror _accruedExpectedLoss(): cap elapsed to the policy active window so that expected
+        // loss stops accruing at maturity rather than continuing to accumulate after expiry.
+        // slither-disable-next-line uninitialized-local
+        uint256 pendingElapsedSecs;
+        if (_isPolicyActive()) {
+            pendingElapsedSecs = block.timestamp - lastPremiumAccrualTime;
+        } else if (policyId != 0) {
+            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
+            if (meta.buyer != address(0) && uint256(meta.maturityTime) > lastPremiumAccrualTime) {
+                uint256 activeStart =
+                    lastPremiumAccrualTime > uint256(meta.startTime) ? lastPremiumAccrualTime : uint256(meta.startTime);
+                if (uint256(meta.maturityTime) > activeStart) {
+                    pendingElapsedSecs = uint256(meta.maturityTime) - activeStart;
+                }
+            }
+        }
         if (underlyingExpectedLossBps > 0 && pendingElapsedSecs > 0) {
             total += userPrincipal[user].mulDiv(
                 underlyingExpectedLossBps * pendingElapsedSecs, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
