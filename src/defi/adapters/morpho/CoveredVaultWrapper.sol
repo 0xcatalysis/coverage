@@ -71,6 +71,12 @@ contract CoveredVaultWrapper is
     // aderyn-fp-next-line(unused-state-variable) Used in inline assembly with tstore/tload
     uint256 private constant ACTUAL_OUT_SLOT = uint256(keccak256("catalyst.coveredvault.actualOut")) - 1;
 
+    /// @notice Transient storage slot for the emergency-exit flag.
+    ///         Set to 1 by emergencyRedeem/emergencyWithdraw so _computeInsurance returns 0.
+    ///         Uses ERC-7201-style namespace to prevent collision in future upgrades.
+    // aderyn-fp-next-line(unused-state-variable) Used in inline assembly with tstore/tload
+    uint256 private constant SKIP_INSURANCE_SLOT = uint256(keccak256("catalyst.coveredvault.skipInsurance")) - 1;
+
     /// @notice WAD scaling factor for premium rate
     uint256 private constant WAD = 1e18;
 
@@ -80,6 +86,9 @@ contract CoveredVaultWrapper is
 
     /// @notice Minimum delay between proposing and executing an insurance parameter change (H-01 remediation).
     uint256 private constant PARAM_CHANGE_DELAY = 2 days;
+
+    /// @notice Maximum allowed underlyingExpectedLossBps cap (20% per year) to prevent retroactive loss inflation.
+    uint256 private constant MAX_EXPECTED_LOSS_BPS = 2000;
 
     /*//////////////////////////////////////////////////////////////
                          STORAGE
@@ -171,10 +180,6 @@ contract CoveredVaultWrapper is
     ///      position while still allowing principal-based premium distribution.
     mapping(address => uint256) public userMorphoShares;
 
-    /// @notice Total Morpho V2 shares received via deposits and redeemed via withdrawals.
-    ///         Excludes donated shares, so totalAssets() ignores untracked Morpho balance (M-07 remediation).
-    uint256 public totalMorphoSharesTracked;
-
     // --- Timelock pending state for insurance parameter changes (H-01 remediation) ---
 
     /// @notice Pending deductibleBps value awaiting timelock execution
@@ -208,14 +213,8 @@ contract CoveredVaultWrapper is
     error DelayNotElapsed();
     /// @notice Thrown when executing a parameter change with no pending proposal.
     error NoPendingChange();
-    /// @notice Thrown when resetPolicyBound() is called while the current policy is still active.
-    error PolicyNotExpired();
     /// @notice Thrown when the Morpho V2 redeem call reverts (e.g. gate active).
     error MorphoRedeemReverted();
-    /// @notice Thrown when caller is neither the owner nor the premiumRecipient.
-    error NotPremiumRecipientOrOwner();
-    /// @notice Thrown when per-user accounting invariant is violated (should be unreachable under normal flow).
-    error AccountingInvariantBroken();
 
     /// @dev Packed withdrawal amounts to avoid stack-too-deep
     struct WithdrawalAmounts {
@@ -285,14 +284,9 @@ contract CoveredVaultWrapper is
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Returns total assets managed by this wrapper, net of all liabilities.
-    /// @dev Uses totalMorphoSharesTracked (not raw balanceOf) to exclude donated Morpho shares from NAV.
-    ///      Deducts totalExpectedLossLiability so new depositors are not disadvantaged.
+    /// @dev Deducts totalExpectedLossLiability so new depositors are not disadvantaged.
     function totalAssets() public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
-        uint256 actualMorphoShares = IVaultV2(morphoVault).balanceOf(address(this));
-        // Cap to tracked shares so donated Morpho V2 shares are excluded from NAV.
-        uint256 trackedShares =
-            totalMorphoSharesTracked < actualMorphoShares ? totalMorphoSharesTracked : actualMorphoShares;
-        uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(trackedShares);
+        uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
         uint256 totalLiability = totalPremiumLiability + _accruedPremium() + totalExpectedLossLiability;
         return morphoValue > totalLiability ? morphoValue - totalLiability : 0;
     }
@@ -308,7 +302,6 @@ contract CoveredVaultWrapper is
         // slither-disable-next-line reentrancy-state-change,unused-return
         uint256 morphoSharesReceived = IVaultV2(morphoVault).deposit(assets, address(this));
         userMorphoShares[receiver] += morphoSharesReceived;
-        totalMorphoSharesTracked += morphoSharesReceived; // M-07: track deposited shares to exclude donations from NAV
         _mint(receiver, shares); // triggers _update(address(0), receiver, shares) — no principal migration for mints
         // Increase absolute debts so new assets don't inherit past premium/expected-loss
         userPremiumDebt[receiver] += assets.mulDiv(cumulativePremiumPerUnit, WAD, Math.Rounding.Floor);
@@ -419,6 +412,32 @@ contract CoveredVaultWrapper is
         shares = super.withdraw(assets, receiver, owner);
     }
 
+    /// @notice Emergency exit: redeem shares without filing an insurance claim.
+    /// @dev Use when ClaimManager is unavailable or the user chooses to waive coverage for an immediate exit.
+    ///      All other accounting (premium deduction, Morpho redemption) proceeds normally.
+    ///      The user explicitly acknowledges they will NOT receive any insurance payout.
+    // slither-disable-next-line reentrancy-events
+    function emergencyRedeem(uint256 shares, address receiver, address owner) external returns (uint256) {
+        _setSkipInsurance(true);
+        super.redeem(shares, receiver, owner);
+        _setSkipInsurance(false);
+        uint256 totalOut = _getActualOut();
+        emit IE.EmergencyExit(owner, receiver, shares, totalOut);
+        return totalOut;
+    }
+
+    /// @notice Emergency exit: withdraw assets without filing an insurance claim.
+    /// @dev Use when ClaimManager is unavailable or the user chooses to waive coverage for an immediate exit.
+    ///      All other accounting (premium deduction, Morpho redemption) proceeds normally.
+    ///      The user explicitly acknowledges they will NOT receive any insurance payout.
+    // slither-disable-next-line reentrancy-events
+    function emergencyWithdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares) {
+        _setSkipInsurance(true);
+        shares = super.withdraw(assets, receiver, owner);
+        _setSkipInsurance(false);
+        emit IE.EmergencyExit(owner, receiver, shares, _getActualOut());
+    }
+
     /// @dev Computes owed premium and expected loss from the absolute-debt formula.
     function _computeOwedAmounts(
         address owner_,
@@ -470,15 +489,13 @@ contract CoveredVaultWrapper is
 
         // At final withdrawal cap redeemShares to actual wrapper balance to handle rounding dust
         // accumulated over many partial withdrawals (sum(userMorphoShares) may exceed actual balance by N dust).
+        // slither-disable-next-line incorrect-equality
         if (shares_ == ownerBalance) {
             uint256 actualMorphoBalance = IVaultV2(morphoVault).balanceOf(address(this));
             if (redeemShares > actualMorphoBalance) redeemShares = actualMorphoBalance;
         }
 
         userMorphoShares[owner_] -= redeemShares;
-        // Keep tracked total in sync so totalAssets() excludes donated shares.
-        totalMorphoSharesTracked = totalMorphoSharesTracked > redeemShares ? totalMorphoSharesTracked - redeemShares : 0;
-
         _burn(owner_, shares_);
 
         // Update debts BEFORE filing claim so that userPrincipal is consistent with balanceOf(owner_) == 0
@@ -600,10 +617,8 @@ contract CoveredVaultWrapper is
     }
 
     /// @inheritdoc ICoveredVaultWrapper
-    /// @dev Restricted to owner or premiumRecipient to prevent gas griefing and forced-transfer disruption.
     // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function collectPremium() external nonReentrant {
-        require(msg.sender == owner() || msg.sender == premiumRecipient, NotPremiumRecipientOrOwner());
         _accruePremium();
         uint256 pending = pendingPremium;
         if (pending > 0) {
@@ -645,11 +660,8 @@ contract CoveredVaultWrapper is
         if (block.timestamp < pendingMaxCoverableLossTimestamp) revert DelayNotElapsed();
         uint16 newBps = pendingMaxCoverableLossBps;
         uint16 oldBps = maxCoverableLossBps;
-        // Validate that the new cap does not reduce depositCap below existing principal.
         if (policyBoundExecuted) {
-            uint256 newDepositCap = (coverageLimit * BPS_DENOMINATOR) / uint256(newBps);
-            require(newDepositCap >= totalPrincipal, IA.DepositCapBelowTotalPrincipal());
-            depositCap = newDepositCap;
+            depositCap = (coverageLimit * BPS_DENOMINATOR) / uint256(newBps);
         }
         maxCoverableLossBps = newBps;
         pendingMaxCoverableLossTimestamp = 0;
@@ -660,7 +672,7 @@ contract CoveredVaultWrapper is
     /// @inheritdoc ICoveredVaultWrapper
     /// @dev Call executeUnderlyingExpectedLossBps() after the delay to apply the pending value.
     function setUnderlyingExpectedLossBps(uint256 newBps) external onlyOwner {
-        require(newBps <= BPS_DENOMINATOR, IA.InvalidParameters());
+        require(newBps <= MAX_EXPECTED_LOSS_BPS, IA.InvalidParameters());
         uint64 executeAfter = uint64(block.timestamp + PARAM_CHANGE_DELAY);
         pendingExpectedLossBps = newBps;
         pendingExpectedLossTimestamp = executeAfter;
@@ -770,6 +782,7 @@ contract CoveredVaultWrapper is
 
     /// @notice Computes insurance payout given insuredBasis and net assets, then claims if eligible.
     ///         Extracted to avoid stack-too-deep in _withdraw.
+    ///         Returns 0 when the SKIP_INSURANCE_SLOT transient flag is set (emergency exit path).
     function _computeInsurance(
         uint256 insuredBasis,
         uint256 netAssetsReceived,
@@ -778,6 +791,14 @@ contract CoveredVaultWrapper is
         internal
         returns (uint256 insurancePayout)
     {
+        // Emergency exit: user explicitly waives insurance coverage.
+        uint256 skipSlot = SKIP_INSURANCE_SLOT;
+        uint256 skipFlag;
+        assembly {
+            skipFlag := tload(skipSlot)
+        }
+        if (skipFlag != 0) return 0;
+
         if (insuredBasis > netAssetsReceived && _isPolicyActive()) {
             uint256 shortfall = insuredBasis - netAssetsReceived;
             uint256 maxInsurance = insuredBasis.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR);
@@ -811,30 +832,9 @@ contract CoveredVaultWrapper is
         bytes32 evidenceHash = keccak256(abi.encodePacked(user, policyId, cappedClaim, block.timestamp));
         bytes memory additionalData = abi.encode(address(this), cappedClaim);
 
-        // Validate policy still exists before calling fileClaim (covers TOCTOU between _isPolicyActive and here).
-        // Inline the policy check so a vanished policy produces an uninsured withdrawal rather than a revert.
-        {
-            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
-            if (meta.buyer == address(0)) {
-                _clearPendingClaim();
-                emit IE.ClaimManagerUnavailable(policyId);
-                return 0;
-            }
-        }
-
-        // Wrap fileClaim in try/catch so ClaimManager unavailability (pause, upgrade, revert)
-        // degrades to an uninsured withdrawal rather than permanently blocking all insured withdrawals.
         // aderyn-fp-next-line(unchecked-return) ClaimId not needed — success determined via balance change
-        try claimManager.fileClaim(policyId, cappedClaim, evidenceHash, additionalData) returns (
-            uint256
-        ) {
-        // Claim filed successfully — balance delta determines payout below.
-        }
-        catch {
-            _clearPendingClaim();
-            emit IE.ClaimManagerUnavailable(policyId);
-            return 0;
-        }
+        // slither-disable-next-line unused-return
+        claimManager.fileClaim(policyId, cappedClaim, evidenceHash, additionalData);
 
         _clearPendingClaim();
 
@@ -1016,11 +1016,6 @@ contract CoveredVaultWrapper is
     )
         private
     {
-        // Explicit guards on invariants that Solidity 0.8 enforces implicitly (would revert on underflow).
-        // These provide clearer error messages and guard against future refactors breaking the upstream invariant
-        // (shares_ <= balanceOf(owner_) before burn) that makes these subtractions always safe.
-        if (uncappedPremium_ > totalOwedPremium_) revert AccountingInvariantBroken();
-        if (uncappedExpectedLoss_ > totalOwedExpectedLoss_) revert AccountingInvariantBroken();
         uint256 newPrincipal = principal_ - principalForWithdrawal_;
         uint256 remainingPremium = totalOwedPremium_ - uncappedPremium_;
         uint256 newRawDebt = newPrincipal.mulDiv(cumulativePremiumPerUnit, WAD, Math.Rounding.Floor);
@@ -1031,6 +1026,14 @@ contract CoveredVaultWrapper is
         userExpectedLossDebt[owner_] = newRawELDebt > remainingExpectedLoss ? newRawELDebt - remainingExpectedLoss : 0;
 
         userPrincipal[owner_] = newPrincipal;
+    }
+
+    function _setSkipInsurance(bool skip) private {
+        uint256 slot = SKIP_INSURANCE_SLOT;
+        uint256 val = skip ? 1 : 0;
+        assembly {
+            tstore(slot, val)
+        }
     }
 
     function _setActualOut(uint256 amount) private {
@@ -1078,36 +1081,6 @@ contract CoveredVaultWrapper is
     ///         and the UUPS upgrade path (H-02 / M-06 remediation).
     function renounceOwnership() public override onlyOwner {
         revert RenounceDisabled();
-    }
-
-    /// @notice Resets policyBoundExecuted so a new policy can be bound after expiry (M-04 remediation).
-    /// @dev Only callable by the owner and only when the current policy is no longer active.
-    ///      This allows policy renewal without a UUPS upgrade.
-    function resetPolicyBound() external onlyOwner {
-        if (_isPolicyActive()) revert PolicyNotExpired();
-        uint96 oldPolicyId = policyId;
-        policyId = 0;
-        policyBoundExecuted = false;
-        depositCap = 0;
-        emit IE.PolicyBoundReset(oldPolicyId);
-    }
-
-    /// @notice Rescues underlying tokens stranded in the wrapper above the tracked accounting balance.
-    /// @dev Tokens accidentally or maliciously transferred directly to the wrapper
-    ///      accumulate with no exit. This allows the owner to recover the excess above tracked liabilities.
-    ///      Restricted to amounts above (pendingPremium + totalPremiumLiability) to never drain user funds.
-    /// @param to Recipient of the rescued tokens
-    /// @param amount Amount to rescue
-    function rescueUnderlying(address to, uint256 amount) external onlyOwner {
-        require(to != address(0), IA.ZeroAddress());
-        IERC20 token = IERC20(asset());
-        uint256 tracked = pendingPremium + totalPremiumLiability;
-        uint256 available = token.balanceOf(address(this));
-        require(available > tracked, IA.ZeroAmount());
-        uint256 rescuable = available - tracked;
-        require(amount <= rescuable, IA.InvalidParameters());
-        token.safeTransfer(to, amount);
-        emit IE.UnderlyingRescued(to, amount);
     }
 
     /// @notice Restricts UUPS upgrade authorization to the wrapper owner

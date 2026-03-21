@@ -87,4 +87,7 @@ interface IEvents {
 
     /// @notice Emitted when onPolicyBound() validation fails (diagnostic, precedes revert)
     event PolicyBindingFailed(bytes32 indexed reason);
+
+    /// @notice Emitted when a user exits via emergencyRedeem/emergencyWithdraw (no insurance claim filed)
+    event EmergencyExit(address indexed owner, address indexed receiver, uint256 shares, uint256 assetsOut);
 }

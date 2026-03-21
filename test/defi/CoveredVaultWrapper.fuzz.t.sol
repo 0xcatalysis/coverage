@@ -412,16 +412,23 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         _deployWrapperWithCap(type(uint128).max);
 
         deposit = bound(deposit, 100 ether, 1_000_000 ether);
-        expectedLossBps = bound(expectedLossBps, 0, 10_000);
+        expectedLossBps = bound(expectedLossBps, 0, 2000); // capped by MAX_EXPECTED_LOSS_BPS
         premiumRate = bound(premiumRate, 0, FIFTY_PCT_ANNUAL_RATE);
         durationDays = bound(durationDays, 1, 365);
         hackLossPct = bound(hackLossPct, 0, 50);
 
-        // Set deductible to 0 for clean insuredBasis math
+        // Propose parameter changes (2-day timelock required for deductible and expectedLoss)
         vm.startPrank(curator);
-        wrapper.setDeductibleBps(0);
-        wrapper.setUnderlyingExpectedLossBps(expectedLossBps);
+        wrapper.setDeductibleBps(0); // propose
+        wrapper.setUnderlyingExpectedLossBps(expectedLossBps); // propose
         wrapper.setPremiumRate(premiumRate);
+        vm.stopPrank();
+
+        // Execute after the 2-day delay
+        vm.warp(block.timestamp + 2 days + 1);
+        vm.startPrank(curator);
+        wrapper.executeDeductibleBps();
+        wrapper.executeUnderlyingExpectedLossBps();
         vm.stopPrank();
 
         address user = address(0x1111);
