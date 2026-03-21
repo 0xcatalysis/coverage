@@ -239,6 +239,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         vm.warp(block.timestamp + duration3);
 
         // ── Settle final period ──
+        vm.prank(curator);
         wrapper.collectPremium();
 
         // totalPremiumLiability should match sum of per-period calculations (no withdrawals have occurred)
@@ -439,6 +440,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         vm.assume(totalLossPct < 90);
         if (totalLossPct > 0) _simulateLoss(totalLossPct);
 
+        vm.prank(curator);
         wrapper.collectPremium();
 
         uint256 received = _redeemAll(user);
@@ -556,6 +558,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
 
         // ── Period 1: premium accrues on D1 ──
         vm.warp(block.timestamp + period1);
+        vm.prank(curator);
         wrapper.collectPremium();
         uint256 liabilityAfterP1 = wrapper.totalPremiumLiability();
 
@@ -570,6 +573,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
 
         // ── Period 2: premium accrues on D1+D2 ──
         vm.warp(block.timestamp + period2);
+        vm.prank(curator);
         wrapper.collectPremium();
         assertApproxEqAbs(wrapper.totalPremiumLiability(), expectedTotal, 10, "Total liability = P1(D1) + P2(D1+D2)");
 
