@@ -50,4 +50,41 @@ interface IEvents {
 
     /// @notice Emitted when underlyingExpectedLossBps is updated by the owner
     event UnderlyingExpectedLossUpdated(uint256 oldBps, uint256 newBps);
+
+    // --- Timelock parameter-change events (H-01 remediation) ---
+
+    /// @notice Emitted when a deductibleBps change is proposed (2-day delay starts)
+    event DeductibleBpsProposed(uint16 indexed newBps, uint64 executeAfter);
+
+    /// @notice Emitted when a pending deductibleBps change is executed
+    event DeductibleBpsExecuted(uint16 indexed newBps);
+
+    /// @notice Emitted when a maxCoverableLossBps change is proposed (2-day delay starts)
+    event MaxCoverableLossBpsProposed(uint16 indexed newBps, uint64 executeAfter);
+
+    /// @notice Emitted when a pending maxCoverableLossBps change is executed
+    event MaxCoverableLossBpsExecuted(uint16 indexed newBps);
+
+    /// @notice Emitted when an underlyingExpectedLossBps change is proposed (2-day delay starts)
+    event UnderlyingExpectedLossBpsProposed(uint256 indexed newBps, uint64 executeAfter);
+
+    /// @notice Emitted when a pending underlyingExpectedLossBps change is executed
+    event UnderlyingExpectedLossBpsExecuted(uint256 indexed newBps);
+
+    // --- Liveness and safety events ---
+
+    /// @notice Emitted when claimManager.fileClaim() is unavailable and the claim is skipped
+    event ClaimManagerUnavailable(uint96 indexed policyId);
+
+    /// @notice Emitted when the Morpho V2 redeem call fails (gate active or other revert)
+    event MorphoRedeemFailed(uint256 redeemShares);
+
+    /// @notice Emitted when policyBoundExecuted is reset to allow a new policy binding
+    event PolicyBoundReset(uint96 indexed oldPolicyId);
+
+    /// @notice Emitted when stranded underlying tokens are rescued by the owner
+    event UnderlyingRescued(address indexed to, uint256 amount);
+
+    /// @notice Emitted when onPolicyBound() validation fails (diagnostic, precedes revert)
+    event PolicyBindingFailed(bytes32 indexed reason);
 }
