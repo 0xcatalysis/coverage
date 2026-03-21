@@ -85,7 +85,4 @@ interface IAlerts {
 
     /// @notice Thrown when not owner of Covered Vault tries to upgrade adapter.
     error NotAuthorizedUpgrader(address account);
-
-    /// @notice Thrown when setMaxCoverableLossBps would reduce depositCap below totalPrincipal
-    error DepositCapBelowTotalPrincipal();
 }
