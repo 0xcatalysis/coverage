@@ -313,11 +313,14 @@ contract CoveredVaultWrapper is
     ///      Principal is tracked for the receiver (not the caller).
     // slither-disable-next-line reentrancy-no-eth,reentrancy-benign
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override nonReentrant {
+        // Reject dust deposits that round to zero wrapper shares — prevents principal/shares desync.
+        if (shares == 0) revert InvalidData();
         _accruePremium();
         IERC20(asset()).safeTransferFrom(caller, address(this), assets);
         IERC20(asset()).forceApprove(address(morphoVault), assets);
         // slither-disable-next-line reentrancy-state-change,unused-return
         uint256 morphoSharesReceived = IVaultV2(morphoVault).deposit(assets, address(this));
+        require(morphoSharesReceived > 0, IA.ZeroSharesReceived());
         lastKnownMorphoValue = _morphoValue();
         userMorphoShares[receiver] += morphoSharesReceived;
         _mint(receiver, shares); // triggers _update(address(0), receiver, shares) — no principal migration for mints
