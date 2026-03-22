@@ -1107,6 +1107,7 @@ contract CoveredVaultWrapper is
     }
 
     /// @notice Returns a user's Morpho value, falling back to proportional cached value on revert
+    // slither-disable-next-line incorrect-equality
     function _userMorphoValue(address user) private view returns (uint256) {
         uint256 shares = userMorphoShares[user];
         if (shares == 0) return 0;
