@@ -27,13 +27,13 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
 
     uint96 POLICY_ID; // set by _deployAdapter (auto-assigned by real PolicyManager)
 
-    // ERC4626 selectors (user operations — triggers per-user principal tracking)
+    // ERC4626 selectors (user operations -- triggers per-user principal tracking)
     bytes4 constant DEPOSIT_SELECTOR = 0x6e553f65; // deposit(uint256,address)
     bytes4 constant MINT_SELECTOR = 0x94bf804d; // mint(uint256,address)
     bytes4 constant WITHDRAW_SELECTOR = 0xb460af94; // withdraw(uint256,address,address)
     bytes4 constant REDEEM_SELECTOR = 0xba087652; // redeem(uint256,address,address)
 
-    // V2 vault selectors (allocator operations — no per-user tracking)
+    // V2 vault selectors (allocator operations -- no per-user tracking)
     bytes4 constant ALLOCATE_SELECTOR = 0x5c9ce04d; // allocate(address,bytes,uint256)
     bytes4 constant DEALLOCATE_SELECTOR = 0x4b219d16; // deallocate(address,bytes,uint256)
     bytes4 constant FORCE_DEALLOCATE_SELECTOR = 0xe4d38cd8; // forceDeallocate(address,bytes,uint256,address)
@@ -56,7 +56,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
 
     /// @notice Deploy adapter with specific maxCoverableLossBps
     function _deployAdapter(uint16 maxCoverableLossBps) internal {
-        // Deploy adapter behind UUPS proxy (no policyId — set via onPolicyBound hook)
+        // Deploy adapter behind UUPS proxy (no policyId -- set via onPolicyBound hook)
         adapter = _deployAdapterProxy(
             address(parentVault),
             address(underlyingVault),
@@ -622,7 +622,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
         assertEq(adapter.currentValue(), principal, "Initial currentValue");
         assertEq(adapter.calculateShortfall(), 0, "No initial shortfall");
 
-        // Partial withdrawal with WITHDRAW_SELECTOR — allocator has tracked shares from _allocate
+        // Partial withdrawal with WITHDRAW_SELECTOR -- allocator has tracked shares from _allocate
         uint256 deallocateAmount = 300 ether;
         vm.prank(address(parentVault));
         adapter.deallocate("", deallocateAmount, WITHDRAW_SELECTOR, allocator);
@@ -644,7 +644,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
         uint256 initialDeposit = 1000 ether;
         _allocate(initialDeposit);
 
-        // Additional allocation with DEPOSIT_SELECTOR — tracks per-user principal
+        // Additional allocation with DEPOSIT_SELECTOR -- tracks per-user principal
         uint256 additionalAmount = 500 ether;
         vm.prank(address(parentVault));
         asset.transfer(address(adapter), additionalAmount);
@@ -686,7 +686,7 @@ contract CatalysisCoverAdapterScenarios is RealCoverageSetup {
         uint256 adapterBalanceBefore = asset.balanceOf(address(adapter));
         uint256 allocatorBalanceBefore = asset.balanceOf(allocator);
 
-        // Full withdrawal with WITHDRAW_SELECTOR — allocator has tracked shares
+        // Full withdrawal with WITHDRAW_SELECTOR -- allocator has tracked shares
         vm.prank(address(parentVault));
         adapter.deallocate("", currentValueBefore, WITHDRAW_SELECTOR, allocator);
 

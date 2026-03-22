@@ -128,7 +128,7 @@ contract InvCoverPool {
 }
 
 // ---------------------------------------------------------------------------
-// Handler — drives the invariant test via targeted calls
+// Handler -- drives the invariant test via targeted calls
 // ---------------------------------------------------------------------------
 
 contract ClaimManagerHandler is Test {
