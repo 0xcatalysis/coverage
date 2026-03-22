@@ -314,6 +314,7 @@ contract CoveredVaultWrapper is
     // slither-disable-next-line reentrancy-no-eth,reentrancy-benign
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override nonReentrant {
         // Reject dust deposits that round to zero wrapper shares — prevents principal/shares desync.
+        // slither-disable-next-line incorrect-equality
         if (shares == 0) revert InvalidData();
         _accruePremium();
         IERC20(asset()).safeTransferFrom(caller, address(this), assets);
