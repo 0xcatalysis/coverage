@@ -25,7 +25,7 @@ interface IVaultV2Factory {
 ///
 ///      The setUp() deploys a fresh V2 vault via the on-chain factory, deploys a CoveredVaultWrapper
 ///      pointing to it, binds a policy, and funds test users with real USDC.
-///      The V2 vault runs in idle mode (no MorphoVaultV1Adapter) — assets sit in the vault directly.
+///      The V2 vault runs in idle mode (no MorphoVaultV1Adapter) -- assets sit in the vault directly.
 ///      This is sufficient for testing the wrapper's ERC-4626 interaction with a real V2 vault.
 contract CoveredVaultWrapperForkTest is Test {
     /*//////////////////////////////////////////////////////////////
@@ -246,7 +246,7 @@ contract CoveredVaultWrapperForkTest is Test {
 
         // The 2% Morpho management fee matches the configured expectedLossBps=200.
         // insuredBasis = 1000e6 - 0 (no wrapper premium) - 20e6 (expected loss) = 980e6.
-        // Morpho returns ~980e6 after the fee — this exactly covers insuredBasis, so no insurance triggers.
+        // Morpho returns ~980e6 after the fee -- this exactly covers insuredBasis, so no insurance triggers.
         // User receives: ~980 USDC (Morpho proceeds only, no insurance payout).
         assertEq(IERC20(USDC).balanceOf(user1), 980_000_001, "User received Morpho proceeds only");
         assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 0, "No insurance: fee is expected loss");

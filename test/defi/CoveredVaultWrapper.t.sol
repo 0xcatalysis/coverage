@@ -188,7 +188,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        WITHDRAW TESTS — NO LOSS
+                        WITHDRAW TESTS -- NO LOSS
     //////////////////////////////////////////////////////////////*/
 
     function test_withdraw_noLoss_noPayout() public {
@@ -224,7 +224,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        WITHDRAW TESTS — WITH LOSS
+                        WITHDRAW TESTS -- WITH LOSS
     //////////////////////////////////////////////////////////////*/
 
     function test_withdraw_withLoss_paysInsurance() public {
@@ -271,7 +271,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
 
-        // 50% loss — beyond maxCoverableLossBps of 10%
+        // 50% loss -- beyond maxCoverableLossBps of 10%
         morphoVault.setLoss(50);
 
         uint256 user1BalanceBefore = asset.balanceOf(user1);
@@ -348,11 +348,13 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
     function test_setPremiumRate_updatesRate() public {
         uint256 newRate = uint256(1e17) / 31_536_000;
+        uint64 expectedExecuteAfter = uint64(block.timestamp + 2 days);
         vm.prank(curator);
         vm.expectEmit(false, false, false, true);
-        emit IE.PremiumRateUpdated(0, newRate);
+        emit IE.PremiumRateProposed(newRate, expectedExecuteAfter);
         wrapper.setPremiumRate(newRate);
-        assertEq(wrapper.premiumRatePerSecond(), newRate);
+        // Rate is not yet active (only proposed)
+        assertEq(wrapper.premiumRatePerSecond(), 0, "Rate must not change until executed");
     }
 
     function test_setPremiumRate_revertsIfNotOwner() public {
@@ -366,14 +368,12 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
 
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate);
+        _setPremiumRate(wrapper, rate, curator);
 
         vm.warp(block.timestamp + 365 days / 2);
 
-        // Change rate again — must settle half-year accrual at old rate first (via _accruePremium)
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate * 2);
+        // Change rate again -- executePremiumRate must settle half-year accrual at old rate first (via _accruePremium)
+        _setPremiumRate(wrapper, rate * 2, curator);
 
         // With premium-as-debt, accrual lands in totalPremiumLiability (not pendingPremium) until
         // users withdraw. Verify the liability grew by the right amount.
@@ -422,18 +422,17 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             curator,
             address(wrapperWithPremium)
         );
-        vm.prank(curator);
-        wrapperWithPremium.setPremiumRate(tenPctAnnualRate);
+        _setPremiumRate(wrapperWithPremium, tenPctAnnualRate, curator);
 
         vm.prank(user1);
         asset.approve(address(wrapperWithPremium), type(uint256).max);
         vm.prank(user1);
         wrapperWithPremium.deposit(DEPOSIT_AMOUNT, user1);
 
-        // Advance 1 year (stay 1 second before maturity to keep policy active — L-11 exclusive boundary)
+        // Advance 1 year (stay 1 second before maturity to keep policy active -- L-11 exclusive boundary)
         vm.warp(block.timestamp + 365 days - 1);
         // collectPremium() calls _accruePremium(), recording liability. With premium-as-debt, no tokens
-        // flow to the recipient until users withdraw — verify the liability accumulated correctly instead.
+        // flow to the recipient until users withdraw -- verify the liability accumulated correctly instead.
         vm.prank(curator);
         wrapperWithPremium.collectPremium();
 
@@ -474,8 +473,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             curator,
             address(wrapperWithPremium)
         );
-        vm.prank(curator);
-        wrapperWithPremium.setPremiumRate(tenPctAnnualRate);
+        _setPremiumRate(wrapperWithPremium, tenPctAnnualRate, curator);
 
         vm.prank(user1);
         asset.approve(address(wrapperWithPremium), type(uint256).max);
@@ -486,7 +484,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         uint256 ta0 = wrapperWithPremium.totalAssets();
         assertApproxEqAbs(ta0, DEPOSIT_AMOUNT, 1);
 
-        // After 1 year (stay 1 second before maturity to keep policy active — exclusive boundary)
+        // After 1 year (stay 1 second before maturity to keep policy active -- exclusive boundary)
         vm.warp(block.timestamp + 365 days - 1);
         uint256 ta1 = wrapperWithPremium.totalAssets();
         assertLt(ta1, ta0, "totalAssets decreases as premium accrues");
@@ -497,7 +495,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     function test_maxDeposit_zeroBeforeBound() public {
-        // Deploy fresh wrapper — policy not yet bound
+        // Deploy fresh wrapper -- policy not yet bound
         CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
             address(morphoVault),
             address(claimManager),
@@ -513,7 +511,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     }
 
     function test_maxDeposit_cappedAfterBound() public {
-        // wrapper is already bound in setUp — depositCap = coverageLimit * BPS / maxCoverableLossBps
+        // wrapper is already bound in setUp -- depositCap = coverageLimit * BPS / maxCoverableLossBps
         // = 10_000 ether * 10_000 / 1000 = 100_000 ether; wrapper has no deposits yet
         uint256 maxDep = wrapper.maxDeposit(user1);
         assertEq(maxDep, 100_000 ether);
@@ -589,8 +587,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
     function test_totalPremiumLiability_tracksAccrual() public {
         uint256 rate = uint256(1e17) / 31_536_000; // ~10% per year
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate);
+        _setPremiumRate(wrapper, rate, curator);
 
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
@@ -613,13 +610,12 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     ///      causing the vault to file spurious insurance claims against the coverage pool.
     function test_withdraw_premiumOnly_noInsuranceClaim() public {
         uint256 rate = uint256(1e17) / 31_536_000; // ~10% per year
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate);
+        _setPremiumRate(wrapper, rate, curator);
 
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
 
-        // 1 year passes — ~10% of principal (≈100 ether) accrues as premium, no hack
+        // 1 year passes -- ~10% of principal (≈100 ether) accrues as premium, no hack
         // Stay 1 second before maturity to keep policy active (L-11 exclusive boundary)
         vm.warp(block.timestamp + 365 days - 1);
 
@@ -630,7 +626,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         uint256 received = asset.balanceOf(user1) - user1BalanceBefore;
 
-        // User paid ~100 ether in premium, receives ~900 ether back — no insurance payout
+        // User paid ~100 ether in premium, receives ~900 ether back -- no insurance payout
         assertGt(received, 890 ether, "Should receive ~900 (principal minus premium)");
         assertLt(received, 910 ether, "Should not receive more than principal minus premium");
 
@@ -649,13 +645,12 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     /// @dev Premium reduces the insured basis; only losses BEYOND that basis trigger insurance.
     function test_withdraw_premiumPlusLoss_onlyLossInsured() public {
         uint256 rate = uint256(1e17) / 31_536_000; // ~10% per year
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate);
+        _setPremiumRate(wrapper, rate, curator);
 
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
 
-        // Advance half a year — ~50 ether premium paid; morpho position → ~950
+        // Advance half a year -- ~50 ether premium paid; morpho position → ~950
         vm.warp(block.timestamp + 365 days / 2);
         vm.prank(curator);
         wrapper.collectPremium();
@@ -690,8 +685,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     ///           → phantom shortfall of 100 even though no loss occurred.
     function test_calculateShortfall_pendingAccrual_noLoss_returnsZero() public {
         uint256 rate = uint256(1e17) / 31_536_000; // 10%/year
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate);
+        _setPremiumRate(wrapper, rate, curator);
 
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
@@ -699,15 +693,14 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         // 1 year: ~100 ether premium accrued but collectPremium() NOT called
         vm.warp(block.timestamp + 365 days);
 
-        // No loss — only pending premium. View must return 0.
+        // No loss -- only pending premium. View must return 0.
         assertEq(wrapper.calculateShortfall(), 0, "Pending accrual must not appear as shortfall");
     }
 
     /// @dev Regression: userShortfall() must return 0 with pending premium and no loss.
     function test_userShortfall_pendingAccrual_noLoss_returnsZero() public {
         uint256 rate = uint256(1e17) / 31_536_000;
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate);
+        _setPremiumRate(wrapper, rate, curator);
 
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
@@ -719,8 +712,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
     function test_calculateShortfall_premiumOnly_returnsZero() public {
         uint256 rate = uint256(1e17) / 31_536_000;
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate);
+        _setPremiumRate(wrapper, rate, curator);
 
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
@@ -729,14 +721,13 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(curator);
         wrapper.collectPremium(); // settle; totalPremiumLiability updated, morpho position reduced
 
-        // No hack — only premium has reduced the Morpho position
+        // No hack -- only premium has reduced the Morpho position
         assertEq(wrapper.calculateShortfall(), 0, "Premium deductions must not appear as coverable shortfall");
     }
 
     function test_userShortfall_premiumOnly_returnsZero() public {
         uint256 rate = uint256(1e17) / 31_536_000;
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate);
+        _setPremiumRate(wrapper, rate, curator);
 
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
@@ -766,7 +757,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1); // 1000 ether
 
-        // Half a year passes — ~25 ether expected loss accumulates
+        // Half a year passes -- ~25 ether expected loss accumulates
         vm.warp(block.timestamp + 365 days / 2);
         vm.prank(curator);
         wrapper.collectPremium(); // trigger _accruePremium to advance accumulator
@@ -808,8 +799,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     ///      Without the fix, calculateShortfall() < userShortfall() when settled premium > 0.
     function test_calculateShortfall_settledPremium_matchesUserShortfall() public {
         uint256 rate = uint256(1e17) / 31_536_000; // 10%/year
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate);
+        _setPremiumRate(wrapper, rate, curator);
 
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
@@ -869,8 +859,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         // 10%/year premium
         uint256 rate = uint256(1e17) / 31_536_000;
-        vm.prank(curator);
-        w.setPremiumRate(rate);
+        _setPremiumRate(w, rate, curator);
 
         vm.prank(user1);
         asset.approve(address(w), type(uint256).max);
@@ -892,7 +881,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertGt(premRedeemed, 180 ether, "At least 180 ether premium after 1 year");
         assertLt(premRedeemed, 220 ether, "At most 220 ether premium after 1 year");
 
-        // user1 exits at NO loss — receives ~900 (half of remaining 1800 post-premium position)
+        // user1 exits at NO loss -- receives ~900 (half of remaining 1800 post-premium position)
         uint256 shares1 = w.balanceOf(user1);
         vm.prank(user1);
         w.redeem(shares1, user1, user1);
@@ -903,7 +892,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             liabilityAfter, premRedeemed / 2, 5 ether, "totalPremiumLiability must halve when half the principal exits"
         );
 
-        // Now apply a 20% loss — only user2 remains
+        // Now apply a 20% loss -- only user2 remains
         morphoVault.setLoss(20);
 
         // user2 exits (premium-as-debt calculation):
@@ -1085,7 +1074,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     ///
     ///      Bug: write path computed effectiveInsurance = maxInsurance × (1 − deductible), then
     ///      claimAmount = min(shortfall, effectiveInsurance). When shortfall < effectiveInsurance the
-    ///      deductible was never applied and the user received the full shortfall — no deductible at all.
+    ///      deductible was never applied and the user received the full shortfall -- no deductible at all.
     ///
     ///      Fix: cap the raw shortfall first, then apply the deductible to the capped amount,
     ///      matching calculateShortfall() / userShortfall().
@@ -1141,7 +1130,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     ///      10% loss → shortfall=100, maxInsurance=100; with 50% deductible: payout=50.
     function test_setDeductibleBps_affectsInsurancePayout() public {
         vm.prank(curator);
-        wrapper.setDeductibleBps(5000); // 50% deductible — propose
+        wrapper.setDeductibleBps(5000); // 50% deductible -- propose
         vm.warp(block.timestamp + 2 days + 1);
         vm.prank(curator);
         wrapper.executeDeductibleBps(); // execute after delay
@@ -1191,13 +1180,12 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.setPremiumRecipient(newRecipient);
     }
 
-    /// @dev EF-2: setPremiumRecipient() must NOT transfer funds — it only updates the storage slot.
+    /// @dev EF-2: setPremiumRecipient() must NOT transfer funds -- it only updates the storage slot.
     ///      If the old recipient is on a token blocklist, the old flush would revert and prevent
     ///      the owner from ever switching. The owner calls collectPremium() separately if needed.
     function test_setPremiumRecipient_noFlushOnSwitch() public {
         uint256 rate = uint256(1e17) / 31_536_000; // 10%/year
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate);
+        _setPremiumRate(wrapper, rate, curator);
 
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
@@ -1215,7 +1203,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         uint256 oldRecipientBefore = asset.balanceOf(premiumRecipientAddr);
         address newRecipient = address(0xBEEF);
         uint256 newRecipientBefore = asset.balanceOf(newRecipient);
-        uint256 pendingBefore = wrapper.pendingPremium(); // 0 — not yet settled
+        uint256 pendingBefore = wrapper.pendingPremium(); // 0 -- not yet settled
 
         vm.prank(curator);
         wrapper.setPremiumRecipient(newRecipient);
@@ -1242,8 +1230,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     }
 
     function test_setPremiumRate_acceptsMaxRate() public {
-        vm.prank(curator);
-        wrapper.setPremiumRate(15_854_895_991); // exactly at cap must succeed
+        _setPremiumRate(wrapper, 15_854_895_991, curator); // exactly at cap must succeed
         assertEq(wrapper.premiumRatePerSecond(), 15_854_895_991);
     }
 
@@ -1264,8 +1251,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         // Inflate Morpho share price so previewWithdraw(1 wei) == 0
         morphoVault.setProfit(1); // totalAssets = deposits × 101/100 → share price = 1.01
 
-        vm.prank(curator);
-        wrapper.setPremiumRate(1); // 1 wei/second: 1 ether × 1 × 1s / 1e18 = 1 wei (dust with profit=1%)
+        _setPremiumRate(wrapper, 1, curator); // 1 wei/second: 1 ether × 1 × 1s / 1e18 = 1 wei (dust with profit=1%)
 
         vm.prank(user1);
         wrapper.deposit(1 ether, user1); // lastPremiumAccrualTime = t0
@@ -1273,15 +1259,21 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         uint256 t0 = block.timestamp;
         vm.warp(t0 + 1); // elapsed = 1s → accrued = 1 wei, morphoShares = 0 (dust path)
 
-        // With the fix, setPremiumRate must force lastPremiumAccrualTime = block.timestamp = t0+1
-        vm.prank(curator);
+        // With the fix, executePremiumRate must force lastPremiumAccrualTime = block.timestamp
+        // Propose the new rate
         uint256 maxRate = 15_854_895_991;
+        vm.prank(curator);
         wrapper.setPremiumRate(maxRate);
+
+        // Warp past the timelock and execute
+        vm.warp(block.timestamp + 2 days);
+        vm.prank(curator);
+        wrapper.executePremiumRate();
 
         assertEq(
             wrapper.lastPremiumAccrualTime(),
             block.timestamp,
-            "lastPremiumAccrualTime must equal block.timestamp after setPremiumRate, even via the dust path"
+            "lastPremiumAccrualTime must equal block.timestamp after executePremiumRate, even via the dust path"
         );
 
         // Advance 100 more seconds at maxRate and collect
@@ -1298,7 +1290,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         // Expected: 1 ether × maxRate × 100s / WAD (only 100 seconds at new rate, not 101)
         uint256 expected = uint256(1 ether) * maxRate * U / 1e18;
-        // Bug would give: 1 ether × maxRate × 101s / WAD (retroactive 1-second overcharge = ~15.85 wei more)
+        // Bug would give: 1 ether × maxRate × (101+2days)s / WAD (retroactive overcharge)
         assertApproxEqAbs(
             accrualInPeriod,
             expected,
@@ -1341,18 +1333,17 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         // Set premium rate to 50%/year so premium is very likely to be capped to 0 after a loss
         uint256 rate = uint256(5e17) / 31_536_000;
-        vm.prank(curator);
-        w.setPremiumRate(rate);
+        _setPremiumRate(w, rate, curator);
 
         vm.prank(user1);
         asset.approve(address(w), type(uint256).max);
         vm.prank(user1);
         w.deposit(1000 ether, user1);
 
-        // Simulate 100% loss — morphoValue = 0, so maxNewLiability = 0, premium caps to 0
+        // Simulate 100% loss -- morphoValue = 0, so maxNewLiability = 0, premium caps to 0
         morphoVault.setLoss(100);
 
-        // Call accruePremium once — advances cumulativeExpectedLossPerUnit for elapsed period
+        // Call accruePremium once -- advances cumulativeExpectedLossPerUnit for elapsed period
         uint256 t0 = block.timestamp;
         vm.warp(t0 + 365 days);
         vm.prank(curator);
@@ -1360,7 +1351,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         uint256 elAfterFirst = w.cumulativeExpectedLossPerUnit();
 
-        // Call again immediately — no time has passed, so expected loss must NOT change
+        // Call again immediately -- no time has passed, so expected loss must NOT change
         vm.prank(curator);
         w.collectPremium();
         assertEq(
@@ -1369,7 +1360,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             "cumulativeExpectedLossPerUnit must not increase on back-to-back calls with no elapsed time"
         );
 
-        // Call again after another year — expected loss should increase by exactly one more year
+        // Call again after another year -- expected loss should increase by exactly one more year
         vm.warp(block.timestamp + 365 days);
         vm.prank(curator);
         w.collectPremium();
@@ -1443,7 +1434,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(attacker);
         asset.transfer(address(morphoVault), 1 ether);
 
-        // Victim deposits 0.5 ether — should receive shares > 0 despite donation
+        // Victim deposits 0.5 ether -- should receive shares > 0 despite donation
         uint256 victimDeposit = 0.5 ether;
         asset.mint(user1, victimDeposit);
         vm.prank(user1);
@@ -1454,7 +1445,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         // With decimalsOffset=6, victim's shares must be > 0 (inflation attack defeated)
         assertGt(wrapper.balanceOf(user1), 0, "Victim must receive non-zero shares despite donation");
 
-        // Attacker redeems — gains must not exceed victim's deposit (no profit from inflation)
+        // Attacker redeems -- gains must not exceed victim's deposit (no profit from inflation)
         uint256 attackerSharesBefore = wrapper.balanceOf(attacker);
         uint256 attackerAssetsBefore = asset.balanceOf(attacker);
         vm.prank(attacker);
@@ -1470,7 +1461,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev EF-4: When shortfall > insuredBasis × maxCoverableLoss but shortfall < principal × maxCoverableLoss,
-    ///      the lower (insuredBasis-based) cap must apply — not the raw-principal cap.
+    ///      the lower (insuredBasis-based) cap must apply -- not the raw-principal cap.
     ///
     ///      Setup: principal=1000, 40% premium paid → insuredBasis=600, 10% maxCoverable, 0% deductible.
     ///      30% loss on the remaining 600:
@@ -1508,8 +1499,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         // ~40%/year premium rate: 40e16 / 31536000
         uint256 rate = (uint256(4e17)) / 31_536_000;
-        vm.prank(curator);
-        w.setPremiumRate(rate);
+        _setPremiumRate(w, rate, curator);
 
         vm.prank(user1);
         asset.approve(address(w), type(uint256).max);
@@ -1550,7 +1540,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
     /// @dev When a catastrophic loss makes Morpho proceeds smaller than the accrued premium,
     ///      premiumForWithdrawal is capped at assetsReceived (line 273). The shortfall between
-    ///      uncappedPremium and assetsReceived is effectively written off — the premium recipient
+    ///      uncappedPremium and assetsReceived is effectively written off -- the premium recipient
     ///      does not collect premium that Morpho could not fund.
     ///
     ///      Setup:
@@ -1568,8 +1558,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     ///        - pendingPremium = 50 (only what Morpho could fund; 50 written off)
     function test_withdraw_deepLoss_premiumCappedAtAssetsReceived() public {
         uint256 rate = uint256(1e17) / 31_536_000; // ~10%/year
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate);
+        _setPremiumRate(wrapper, rate, curator);
 
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1); // 1000 ether
@@ -1585,7 +1574,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertGt(liabilityBeforeLoss, 90 ether, "Liability should be ~100 ether");
         assertLt(liabilityBeforeLoss, 105 ether, "Liability should be ~100 ether");
 
-        // 95% catastrophic loss — Morpho returns only ~50 ether on full redemption
+        // 95% catastrophic loss -- Morpho returns only ~50 ether on full redemption
         morphoVault.setLoss(95);
 
         uint256 user1Before = asset.balanceOf(user1);

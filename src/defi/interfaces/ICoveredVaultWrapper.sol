@@ -108,4 +108,37 @@ interface ICoveredVaultWrapper is IERC4626 {
 
     /// @notice Called by PolicyManager when the policy is bound; sets policyId and depositCap
     function onPolicyBound(uint96 _policyId, uint256 _coverageLimit) external;
+
+    /// @notice Cached Morpho vault value used as fallback when convertToAssets() reverts
+    function lastKnownMorphoValue() external view returns (uint256);
+
+    /// @notice Whether Morpho gate is active (premium accrual paused)
+    function morphoGateActive() external view returns (bool);
+
+    /// @notice Toggles Morpho gate status to pause/resume premium accrual
+    function setMorphoGateActive(bool active) external;
+
+    /// @notice Pending UUPS implementation address awaiting timelock
+    function pendingImplementation() external view returns (address);
+
+    /// @notice Timestamp after which pending upgrade may be executed
+    function pendingUpgradeTimestamp() external view returns (uint64);
+
+    /// @notice Proposes a UUPS upgrade with timelock
+    function proposeUpgrade(address newImplementation) external;
+
+    /// @notice Executes a pending UUPS upgrade after timelock
+    function executeUpgrade() external;
+
+    /// @notice Pending premium rate awaiting timelock
+    function pendingPremiumRate() external view returns (uint256);
+
+    /// @notice Timestamp after which pending premium rate may be executed
+    function pendingPremiumRateTimestamp() external view returns (uint64);
+
+    /// @notice Executes a pending premium rate change after timelock
+    function executePremiumRate() external;
+
+    /// @notice Rescues tokens accidentally sent to this contract
+    function rescueTokens(address token, uint256 amount, address to) external;
 }
