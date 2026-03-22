@@ -9,7 +9,7 @@ import {MockPolicyManager} from "./Mocks.sol";
 /// @title ForkClaimManager
 /// @notice Claim manager for fork tests that pays insurance from pre-funded USDC balance
 ///         rather than minting a MockERC20. This lets us test with real USDC as payout token.
-///         Does NOT inherit IClaimManager (which extends IAccessControl) — only implements
+///         Does NOT inherit IClaimManager (which extends IAccessControl) -- only implements
 ///         the two methods the adapter actually calls: fileClaim() and policyClaim().
 contract ForkClaimManager {
     address public policyManager;

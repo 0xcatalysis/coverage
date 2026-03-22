@@ -28,13 +28,13 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
     uint96 POLICY_ID; // set in setUp (auto-assigned by real PolicyManager)
     uint16 constant MAX_COVERABLE_LOSS_BPS = 1000; // 10% max coverage
 
-    // ERC4626 selectors (user operations — triggers per-user principal tracking)
+    // ERC4626 selectors (user operations -- triggers per-user principal tracking)
     bytes4 constant DEPOSIT_SELECTOR = 0x6e553f65; // deposit(uint256,address)
     bytes4 constant MINT_SELECTOR = 0x94bf804d; // mint(uint256,address)
     bytes4 constant WITHDRAW_SELECTOR = 0xb460af94; // withdraw(uint256,address,address)
     bytes4 constant REDEEM_SELECTOR = 0xba087652; // redeem(uint256,address,address)
 
-    // V2 vault selectors (allocator operations — no per-user tracking)
+    // V2 vault selectors (allocator operations -- no per-user tracking)
     bytes4 constant ALLOCATE_SELECTOR = 0x5c9ce04d; // allocate(address,bytes,uint256)
     bytes4 constant DEALLOCATE_SELECTOR = 0x4b219d16; // deallocate(address,bytes,uint256)
     bytes4 constant FORCE_DEALLOCATE_SELECTOR = 0xe4d38cd8; // forceDeallocate(address,bytes,uint256,address)
@@ -56,7 +56,7 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
         vm.prank(curator);
         policyManager.setSupportedPayoutToken(address(asset), true);
 
-        // Deploy adapter behind UUPS proxy (no policyId — set via onPolicyBound hook)
+        // Deploy adapter behind UUPS proxy (no policyId -- set via onPolicyBound hook)
         adapter = _deployAdapterProxy(
             address(parentVault),
             address(underlyingVault),
@@ -309,7 +309,7 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
         assertEq(adapter.totalPrincipal(), DEPOSIT_AMOUNT);
     }
 
-    /// @dev realAssets() now returns pure currentValue() — no insurance in share price
+    /// @dev realAssets() now returns pure currentValue() -- no insurance in share price
     function test_realAssets_protectedValueLogic() public {
         // Setup: allocate 1000 ether
         vm.prank(address(parentVault));
@@ -734,7 +734,7 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
         );
 
         // Create policy with buyer=curator but adapter's parentVault.owner=0xBEEF
-        // We need a policy draft to exist — use mockBindPolicyHook as hook for this policy
+        // We need a policy draft to exist -- use mockBindPolicyHook as hook for this policy
         uint96 pid = _createAndBindPolicy(
             address(freshAdapter),
             address(freshAdapter),
@@ -743,10 +743,10 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
             uint32(block.timestamp),
             uint32(block.timestamp + 365 days),
             curator,
-            address(mockBindPolicyHook) // NOT the adapter — so onPolicyBound goes to mock
+            address(mockBindPolicyHook) // NOT the adapter -- so onPolicyBound goes to mock
         );
 
-        // Now call onPolicyBound manually — buyer=curator != pv2.owner=0xBEEF
+        // Now call onPolicyBound manually -- buyer=curator != pv2.owner=0xBEEF
         pv2.setCurator(address(freshAdapter));
         vm.expectRevert(CatalysisCoverAdapter.InvalidData.selector);
         vm.prank(address(policyManager));
@@ -782,7 +782,7 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
     }
 
     function test_onPolicyBound_emitsPolicyBoundEvent() public view {
-        // onPolicyBound was executed during setUp — verify side effects
+        // onPolicyBound was executed during setUp -- verify side effects
         assertTrue(adapter.policyBoundExecuted());
         assertEq(adapter.policyId(), POLICY_ID);
     }
@@ -805,7 +805,7 @@ contract CatalysisCoverAdapterTest is RealCoverageSetup {
             // Set adapter as curator so onPolicyBound can call submit + increaseAbsoluteCap
             pv.setCurator(address(a));
 
-            // Create and bind policy with adapter as hook — triggers onPolicyBound
+            // Create and bind policy with adapter as hook -- triggers onPolicyBound
             _createAndBindPolicy(
                 address(a),
                 address(a),

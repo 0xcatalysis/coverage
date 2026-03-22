@@ -110,7 +110,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         deposit2 = bound(deposit2, 1 ether, cap);
         deposit3 = bound(deposit3, 1 ether, cap);
 
-        // Bound price changes — losses capped at 90% to avoid zero-totalAssets edge
+        // Bound price changes -- losses capped at 90% to avoid zero-totalAssets edge
         priceChangePct1 = bound(priceChangePct1, 1, isLoss1 ? 90 : 200);
         priceChangePct2 = bound(priceChangePct2, 1, isLoss2 ? 90 : 200);
 
@@ -182,7 +182,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     uint256 constant WAD = 1e18;
-    /// @dev MAX_PREMIUM_RATE_PER_SECOND in the wrapper — equals ~50%/year WAD-scaled
+    /// @dev MAX_PREMIUM_RATE_PER_SECOND in the wrapper -- equals ~50%/year WAD-scaled
     uint256 constant FIFTY_PCT_ANNUAL_RATE = 15_854_895_991;
 
     /// @notice Fuzz test: a single user's total premium across multiple rate changes
@@ -224,18 +224,15 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         wrapper.deposit(principal, user);
 
         // ── Period 1 ──
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate1);
+        _setPremiumRate(wrapper, rate1, curator);
         vm.warp(block.timestamp + duration1);
 
-        // ── Period 2 (setPremiumRate settles period 1) ──
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate2);
+        // ── Period 2 (executePremiumRate settles period 1) ──
+        _setPremiumRate(wrapper, rate2, curator);
         vm.warp(block.timestamp + duration2);
 
-        // ── Period 3 (setPremiumRate settles period 2) ──
-        vm.prank(curator);
-        wrapper.setPremiumRate(rate3);
+        // ── Period 3 (executePremiumRate settles period 2) ──
+        _setPremiumRate(wrapper, rate3, curator);
         vm.warp(block.timestamp + duration3);
 
         // ── Settle final period ──
@@ -304,8 +301,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         assertEq(wrapper.userPrincipal(bob), deposit, "Same principal: Bob");
 
         // ── Enable premium and let time pass ──
-        vm.prank(curator);
-        wrapper.setPremiumRate(FIFTY_PCT_ANNUAL_RATE);
+        _setPremiumRate(wrapper, FIFTY_PCT_ANNUAL_RATE, curator);
         vm.warp(block.timestamp + premiumDays * 1 days);
 
         // ── Alice withdraws: measure premium deducted (pendingPremium increase) ──
@@ -417,11 +413,11 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         durationDays = bound(durationDays, 1, 365);
         hackLossPct = bound(hackLossPct, 0, 50);
 
-        // Propose parameter changes (2-day timelock required for deductible and expectedLoss)
+        // Propose parameter changes (2-day timelock required for deductible, expectedLoss, and premiumRate)
         vm.startPrank(curator);
         wrapper.setDeductibleBps(0); // propose
         wrapper.setUnderlyingExpectedLossBps(expectedLossBps); // propose
-        wrapper.setPremiumRate(premiumRate);
+        wrapper.setPremiumRate(premiumRate); // propose
         vm.stopPrank();
 
         // Execute after the 2-day delay
@@ -429,6 +425,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         vm.startPrank(curator);
         wrapper.executeDeductibleBps();
         wrapper.executeUnderlyingExpectedLossBps();
+        wrapper.executePremiumRate();
         vm.stopPrank();
 
         address user = address(0x1111);
@@ -553,8 +550,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         uint256 expectedTotal = expectedP1 + expectedP2;
         vm.assume(expectedTotal > 0 && expectedTotal < (deposit1 + deposit2) * 80 / 100);
 
-        vm.prank(curator);
-        wrapper.setPremiumRate(premiumRate);
+        _setPremiumRate(wrapper, premiumRate, curator);
 
         address user = address(0x1111);
         _mintAndApprove(user, deposit1 + deposit2);
@@ -572,7 +568,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         // Invariant: liability after P1 matches rate * D1 * P1
         assertApproxEqAbs(liabilityAfterP1, expectedP1, 10, "Liability after period 1");
 
-        // ── D2: second deposit — must NOT increase liability ──
+        // ── D2: second deposit -- must NOT increase liability ──
         vm.prank(user);
         wrapper.deposit(deposit2, user);
         assertApproxEqAbs(wrapper.totalPremiumLiability(), liabilityAfterP1, 10, "Liability unchanged after D2");
@@ -610,7 +606,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         uint256 premiumPaidFinal = wrapper.pendingPremium() - pendingBeforeFinal;
 
         // Invariant: total premium across both withdrawals matches expected
-        // Tolerance: 0.1% relative — rounding accumulates across partial + full withdrawal
+        // Tolerance: 0.1% relative -- rounding accumulates across partial + full withdrawal
         assertApproxEqRel(premiumPaidPartial + premiumPaidFinal, expectedTotal, 0.001e18, "Total premium = P1 + P2");
 
         // Invariant: all state cleaned
@@ -689,9 +685,17 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
     }
 
     function _setupMorphoTrackingTest(MorphoTrackingParams memory p) internal {
+        // Propose both timelocked changes
         vm.startPrank(curator);
         wrapper.setDeductibleBps(0);
         wrapper.setPremiumRate(p.premiumRate);
+        vm.stopPrank();
+
+        // Execute after timelock
+        vm.warp(block.timestamp + 2 days + 1);
+        vm.startPrank(curator);
+        wrapper.executeDeductibleBps();
+        wrapper.executePremiumRate();
         vm.stopPrank();
 
         _mintAndApprove(address(0xAA11), p.deposit1A + p.deposit1B);

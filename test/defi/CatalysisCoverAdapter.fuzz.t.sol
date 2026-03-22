@@ -28,13 +28,13 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
     uint96 POLICY_ID; // set in setUp (auto-assigned by real PolicyManager)
     uint16 constant MAX_COVERABLE_LOSS_BPS = 1000; // 10% max coverage
 
-    // ERC4626 selectors (user operations — triggers per-user principal tracking)
+    // ERC4626 selectors (user operations -- triggers per-user principal tracking)
     bytes4 constant DEPOSIT_SELECTOR = 0x6e553f65; // deposit(uint256,address)
     bytes4 constant MINT_SELECTOR = 0x94bf804d; // mint(uint256,address)
     bytes4 constant WITHDRAW_SELECTOR = 0xb460af94; // withdraw(uint256,address,address)
     bytes4 constant REDEEM_SELECTOR = 0xba087652; // redeem(uint256,address,address)
 
-    // V2 vault selectors (allocator operations — no per-user tracking)
+    // V2 vault selectors (allocator operations -- no per-user tracking)
     bytes4 constant ALLOCATE_SELECTOR = 0x5c9ce04d; // allocate(address,bytes,uint256)
     bytes4 constant DEALLOCATE_SELECTOR = 0x4b219d16; // deallocate(address,bytes,uint256)
     bytes4 constant FORCE_DEALLOCATE_SELECTOR = 0xe4d38cd8; // forceDeallocate(address,bytes,uint256,address)
@@ -56,7 +56,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
         vm.prank(curator);
         policyManager.setSupportedPayoutToken(address(asset), true);
 
-        // Deploy adapter behind UUPS proxy (no policyId — set via onPolicyBound hook)
+        // Deploy adapter behind UUPS proxy (no policyId -- set via onPolicyBound hook)
         adapter = _deployAdapterProxy(
             address(parentVault),
             address(underlyingVault),
@@ -403,7 +403,7 @@ contract CatalysisCoverAdapterFuzzTest is RealCoverageSetup {
         uint256 realAssets = adapter.realAssets();
         uint256 currentVal = adapter.currentValue();
 
-        // realAssets always equals currentValue — insurance is NOT baked in
+        // realAssets always equals currentValue -- insurance is NOT baked in
         assertEq(realAssets, currentVal, "realAssets should always equal currentValue");
     }
 

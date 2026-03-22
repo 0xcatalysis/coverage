@@ -526,7 +526,7 @@ contract MockVaultV2 {
         return shares;
     }
 
-    function redeem(uint256 shares, address receiver, address owner_) external returns (uint256 assets) {
+    function redeem(uint256 shares, address receiver, address owner_) public virtual returns (uint256 assets) {
         assets = convertToAssets(shares);
 
         if (msg.sender != owner_) {
