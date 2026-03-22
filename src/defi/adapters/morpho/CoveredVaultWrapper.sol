@@ -1254,10 +1254,12 @@ contract CoveredVaultWrapper is
         if (pendingUpgradeTimestamp == 0) revert NoPendingChange();
         if (block.timestamp < pendingUpgradeTimestamp) revert DelayNotElapsed();
         address impl = pendingImplementation;
+        emit IE.UpgradeExecuted(impl);
+        // NOTE: pendingImplementation and pendingUpgradeTimestamp are cleared AFTER upgradeToAndCall
+        // because _authorizeUpgrade() validates them during the upgrade call.
+        upgradeToAndCall(impl, "");
         pendingUpgradeTimestamp = 0;
         pendingImplementation = address(0);
-        emit IE.UpgradeExecuted(impl);
-        upgradeToAndCall(impl, "");
     }
 
     /// @notice Restricts UUPS upgrade authorization to the wrapper owner.
