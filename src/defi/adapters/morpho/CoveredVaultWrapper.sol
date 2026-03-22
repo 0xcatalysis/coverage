@@ -730,8 +730,7 @@ contract CoveredVaultWrapper is
 
     /// @notice Applies a pending premium rate change after the 2-day timelock elapses.
     function executePremiumRate() external onlyOwner {
-        if (pendingPremiumRateTimestamp == 0) revert NoPendingChange();
-        if (block.timestamp < pendingPremiumRateTimestamp) revert DelayNotElapsed();
+        _requireTimelockReady(pendingPremiumRateTimestamp);
         // Settle any premium accrued at the old rate before switching.
         _accruePremium();
         lastPremiumAccrualTime = block.timestamp;
@@ -754,8 +753,7 @@ contract CoveredVaultWrapper is
 
     /// @notice Applies a pending maxCoverableLossBps change after the 2-day timelock elapses.
     function executeMaxCoverableLossBps() external onlyOwner {
-        if (pendingMaxCoverableLossTimestamp == 0) revert NoPendingChange();
-        if (block.timestamp < pendingMaxCoverableLossTimestamp) revert DelayNotElapsed();
+        _requireTimelockReady(pendingMaxCoverableLossTimestamp);
         uint16 newBps = pendingMaxCoverableLossBps;
         uint16 oldBps = maxCoverableLossBps;
         if (policyBoundExecuted) {
@@ -779,8 +777,7 @@ contract CoveredVaultWrapper is
 
     /// @notice Applies a pending underlyingExpectedLossBps change after the 2-day timelock elapses.
     function executeUnderlyingExpectedLossBps() external onlyOwner {
-        if (pendingExpectedLossTimestamp == 0) revert NoPendingChange();
-        if (block.timestamp < pendingExpectedLossTimestamp) revert DelayNotElapsed();
+        _requireTimelockReady(pendingExpectedLossTimestamp);
         // Settle accrual at the old rate before switching, same as setPremiumRate.
         _accruePremium();
         lastPremiumAccrualTime = block.timestamp;
@@ -803,8 +800,7 @@ contract CoveredVaultWrapper is
 
     /// @notice Applies a pending deductibleBps change after the 2-day timelock elapses.
     function executeDeductibleBps() external onlyOwner {
-        if (pendingDeductibleTimestamp == 0) revert NoPendingChange();
-        if (block.timestamp < pendingDeductibleTimestamp) revert DelayNotElapsed();
+        _requireTimelockReady(pendingDeductibleTimestamp);
         uint16 oldBps = deductibleBps;
         deductibleBps = pendingDeductibleBps;
         pendingDeductibleTimestamp = 0;
@@ -842,26 +838,7 @@ contract CoveredVaultWrapper is
         // aderyn-fp-next-line(reentrancy-state-change) Only callable by trusted PolicyManager, executed once
         IPolicyManager.PolicyMetadata memory pol = _policyManager.policyMetadata(_policyId);
         // aderyn-fp-next-line(reentrancy-state-change) Only callable by trusted PolicyManager, executed once
-        if (pol.buyer != owner()) {
-            emit IE.PolicyBindingFailed(keccak256("buyer != owner"));
-            revert InvalidData();
-        }
-        if (pol.pool != address(coverPool)) {
-            emit IE.PolicyBindingFailed(keccak256("pool mismatch"));
-            revert InvalidData();
-        }
-        if (pol.claimer != address(this)) {
-            emit IE.PolicyBindingFailed(keccak256("claimer != this"));
-            revert InvalidData();
-        }
-        if (pol.beneficiary != address(this)) {
-            emit IE.PolicyBindingFailed(keccak256("beneficiary != this"));
-            revert InvalidData();
-        }
-        if (pol.payoutToken != asset()) {
-            emit IE.PolicyBindingFailed(keccak256("payoutToken != asset"));
-            revert InvalidData();
-        }
+        _validatePolicyBinding(pol);
 
         policyId = _policyId;
         policyBoundExecuted = true;
@@ -1185,6 +1162,36 @@ contract CoveredVaultWrapper is
         userPrincipal[owner_] = newPrincipal;
     }
 
+    /// @dev Validates that a timelocked proposal is ready to execute.
+    function _requireTimelockReady(uint64 timestamp) private view {
+        if (timestamp == 0) revert NoPendingChange();
+        if (block.timestamp < timestamp) revert DelayNotElapsed();
+    }
+
+    /// @dev Validates policy metadata matches this wrapper's configuration. Emits diagnostic event on failure.
+    function _validatePolicyBinding(IPolicyManager.PolicyMetadata memory pol) private {
+        if (pol.buyer != owner()) {
+            emit IE.PolicyBindingFailed(keccak256("buyer != owner"));
+            revert InvalidData();
+        }
+        if (pol.pool != address(coverPool)) {
+            emit IE.PolicyBindingFailed(keccak256("pool mismatch"));
+            revert InvalidData();
+        }
+        if (pol.claimer != address(this)) {
+            emit IE.PolicyBindingFailed(keccak256("claimer != this"));
+            revert InvalidData();
+        }
+        if (pol.beneficiary != address(this)) {
+            emit IE.PolicyBindingFailed(keccak256("beneficiary != this"));
+            revert InvalidData();
+        }
+        if (pol.payoutToken != asset()) {
+            emit IE.PolicyBindingFailed(keccak256("payoutToken != asset"));
+            revert InvalidData();
+        }
+    }
+
     function _setSkipInsurance(bool skip) private {
         uint256 slot = SKIP_INSURANCE_SLOT;
         uint256 val = skip ? 1 : 0;
@@ -1251,8 +1258,7 @@ contract CoveredVaultWrapper is
 
     /// @notice Executes a pending UUPS upgrade after the 2-day timelock elapses
     function executeUpgrade() external onlyOwner {
-        if (pendingUpgradeTimestamp == 0) revert NoPendingChange();
-        if (block.timestamp < pendingUpgradeTimestamp) revert DelayNotElapsed();
+        _requireTimelockReady(pendingUpgradeTimestamp);
         address impl = pendingImplementation;
         emit IE.UpgradeExecuted(impl);
         // NOTE: pendingImplementation and pendingUpgradeTimestamp are cleared AFTER upgradeToAndCall
