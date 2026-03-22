@@ -133,7 +133,7 @@ abstract contract RealCoverageSetup is Test {
         internal
         returns (uint96 policyId_)
     {
-        // 1. Request coverage (creates draft) — uses claimer, payoutToken, buyer (freed after this call)
+        // 1. Request coverage (creates draft) -- uses claimer, payoutToken, buyer (freed after this call)
         vm.prank(buyer);
         policyId_ = policyManager.requestCoverage(
             address(coverPool),
@@ -280,5 +280,20 @@ abstract contract RealCoverageSetup is Test {
             deployOpts
         );
         return CatalysisCoverAdapter(proxy);
+    }
+
+    /// @notice Helper: set premium rate in tests, bypassing the 2-day timelock (L-04).
+    /// @dev Triggers collectPremium() to settle any pending premium at the old rate
+    ///      (mirrors the old setPremiumRate behavior), then directly writes the new rate
+    ///      and advances lastPremiumAccrualTime to avoid stale timestamps.
+    ///      Caller prank must NOT be active when calling this.
+    ///      Storage slots verified via `forge inspect CoveredVaultWrapper storageLayout`:
+    ///        premiumRatePerSecond = slot 57, lastPremiumAccrualTime = slot 58.
+    function _setPremiumRate(CoveredVaultWrapper w, uint256 newRate, address caller_) internal {
+        // Settle any pending premium at the old rate (mirrors old setPremiumRate behavior)
+        w.collectPremium();
+        // Directly write the new rate and advance lastPremiumAccrualTime
+        vm.store(address(w), bytes32(uint256(57)), bytes32(newRate));
+        vm.store(address(w), bytes32(uint256(58)), bytes32(block.timestamp));
     }
 }

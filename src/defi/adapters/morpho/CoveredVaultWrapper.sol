@@ -16,7 +16,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
@@ -42,7 +42,7 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 contract CoveredVaultWrapper is
     ICoveredVaultWrapper,
     ERC4626Upgradeable,
-    OwnableUpgradeable,
+    Ownable2StepUpgradeable,
     BasePolicyInteractions,
     UUPSUpgradeable,
     ReentrancyGuardTransient,
@@ -84,7 +84,7 @@ contract CoveredVaultWrapper is
     /// @dev 50e16 / 365 days = 15_854_895_991 wei/second
     uint256 private constant MAX_PREMIUM_RATE_PER_SECOND = 15_854_895_991;
 
-    /// @notice Minimum delay between proposing and executing an insurance parameter change (H-01 remediation).
+    /// @notice Minimum delay between proposing and executing an insurance parameter change.
     uint256 private constant PARAM_CHANGE_DELAY = 2 days;
 
     /// @notice Maximum allowed underlyingExpectedLossBps cap (20% per year) to prevent retroactive loss inflation.
@@ -180,7 +180,7 @@ contract CoveredVaultWrapper is
     ///      position while still allowing principal-based premium distribution.
     mapping(address => uint256) public userMorphoShares;
 
-    // --- Timelock pending state for insurance parameter changes (H-01 remediation) ---
+    // --- Timelock pending state for insurance parameter changes ---
 
     /// @notice Pending deductibleBps value awaiting timelock execution
     uint16 public pendingDeductibleBps;
@@ -197,6 +197,22 @@ contract CoveredVaultWrapper is
     /// @notice Timestamp after which pendingExpectedLossBps may be executed (0 = no pending change)
     uint64 public pendingExpectedLossTimestamp;
 
+    /// @notice Cached Morpho vault value used as fallback when convertToAssets() reverts
+    uint256 public lastKnownMorphoValue;
+
+    /// @notice When true, premium accrual is paused (owner sets during Morpho gate lock)
+    bool public morphoGateActive;
+
+    /// @notice Pending UUPS implementation address awaiting timelock execution
+    address public pendingImplementation;
+    /// @notice Timestamp after which pendingImplementation may be executed (0 = no pending upgrade)
+    uint64 public pendingUpgradeTimestamp;
+
+    /// @notice Pending premium rate awaiting timelock execution
+    uint256 public pendingPremiumRate;
+    /// @notice Timestamp after which pendingPremiumRate may be executed (0 = no pending change)
+    uint64 public pendingPremiumRateTimestamp;
+
     /*//////////////////////////////////////////////////////////////
                             ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -207,7 +223,7 @@ contract CoveredVaultWrapper is
     error PolicyBoundAlreadyExecuted();
     /// @notice Thrown when a share transfer between accounts is attempted.
     error TransfersDisabled();
-    /// @notice Thrown when renounceOwnership() is called (disabled for safety — H-02 remediation).
+    /// @notice Thrown when renounceOwnership() is called (disabled for safety).
     error RenounceDisabled();
     /// @notice Thrown when executing a parameter change before the 2-day delay has elapsed.
     error DelayNotElapsed();
@@ -286,7 +302,7 @@ contract CoveredVaultWrapper is
     /// @notice Returns total assets managed by this wrapper, net of all liabilities.
     /// @dev Deducts totalExpectedLossLiability so new depositors are not disadvantaged.
     function totalAssets() public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
-        uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
+        uint256 morphoValue = _morphoValue();
         uint256 totalLiability =
             totalPremiumLiability + _accruedPremium() + totalExpectedLossLiability + _accruedExpectedLoss();
         return morphoValue > totalLiability ? morphoValue - totalLiability : 0;
@@ -302,6 +318,7 @@ contract CoveredVaultWrapper is
         IERC20(asset()).forceApprove(address(morphoVault), assets);
         // slither-disable-next-line reentrancy-state-change,unused-return
         uint256 morphoSharesReceived = IVaultV2(morphoVault).deposit(assets, address(this));
+        lastKnownMorphoValue = _morphoValue();
         userMorphoShares[receiver] += morphoSharesReceived;
         _mint(receiver, shares); // triggers _update(address(0), receiver, shares) — no principal migration for mints
         // Increase absolute debts so new assets don't inherit past premium/expected-loss
@@ -417,6 +434,10 @@ contract CoveredVaultWrapper is
     /// @dev Use when ClaimManager is unavailable or the user chooses to waive coverage for an immediate exit.
     ///      All other accounting (premium deduction, Morpho redemption) proceeds normally.
     ///      The user explicitly acknowledges they will NOT receive any insurance payout.
+    ///      NOTE: This function does NOT bypass the Morpho gate — if Morpho blocks redemptions,
+    ///      emergencyRedeem will also revert. Only ClaimManager dependency is bypassed.
+    ///      nonReentrant is NOT added here because super.redeem() → _withdraw() already has it;
+    ///      adding it would cause a double-lock revert (ReentrancyGuardTransient).
     // slither-disable-next-line reentrancy-events
     function emergencyRedeem(uint256 shares, address receiver, address owner) external returns (uint256) {
         _setSkipInsurance(true);
@@ -431,6 +452,8 @@ contract CoveredVaultWrapper is
     /// @dev Use when ClaimManager is unavailable or the user chooses to waive coverage for an immediate exit.
     ///      All other accounting (premium deduction, Morpho redemption) proceeds normally.
     ///      The user explicitly acknowledges they will NOT receive any insurance payout.
+    ///      NOTE: Does NOT bypass Morpho gate — see emergencyRedeem NatSpec.
+    ///      nonReentrant transitively applied via inner _withdraw().
     // slither-disable-next-line reentrancy-events
     function emergencyWithdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares) {
         _setSkipInsurance(true);
@@ -520,6 +543,8 @@ contract CoveredVaultWrapper is
             // slither-disable-next-line reentrancy-state-change
             try IVaultV2(morphoVault).redeem(redeemShares, address(this), address(this)) returns (uint256 received) {
                 assetsReceived = received;
+                // Update cached Morpho value after successful redeem
+                lastKnownMorphoValue = _morphoValue();
             } catch {
                 emit IE.MorphoRedeemFailed(redeemShares);
                 revert MorphoRedeemReverted();
@@ -538,9 +563,15 @@ contract CoveredVaultWrapper is
         // otherwise totalAssets() is inflated for remaining holders by the forgiven amount.
         totalPremiumLiability =
             totalPremiumLiability > premiumForWithdrawal ? totalPremiumLiability - premiumForWithdrawal : 0;
-        // Saturating subtraction guards against rounding-induced edge cases.
-        totalExpectedLossLiability = totalExpectedLossLiability > a.uncappedExpectedLoss
-            ? totalExpectedLossLiability - a.uncappedExpectedLoss
+        // Cap EL decrement at actually-realized amount (same logic as premium path above).
+        // In deep-loss scenarios, decrementing by the full uncappedExpectedLoss when Morpho returned less
+        // would overstate totalAssets() for remaining holders.
+        uint256 remainingAfterPremium =
+            assetsReceived > premiumForWithdrawal ? assetsReceived - premiumForWithdrawal : 0;
+        uint256 expectedLossForWithdrawal =
+            a.uncappedExpectedLoss < remainingAfterPremium ? a.uncappedExpectedLoss : remainingAfterPremium;
+        totalExpectedLossLiability = totalExpectedLossLiability > expectedLossForWithdrawal
+            ? totalExpectedLossLiability - expectedLossForWithdrawal
             : 0;
     }
 
@@ -609,7 +640,7 @@ contract CoveredVaultWrapper is
         if (accrued == 0) return 0;
         // Apply the same Morpho-value cap as _accruePremium() so that callers (totalAssets, calculateShortfall,
         // userShortfall) never see a larger pending premium than what would actually be settled.
-        uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
+        uint256 morphoValue = _morphoValue();
         uint256 maxNewLiability = morphoValue > totalPremiumLiability ? morphoValue - totalPremiumLiability : 0;
         return accrued < maxNewLiability ? accrued : maxNewLiability;
     }
@@ -628,19 +659,31 @@ contract CoveredVaultWrapper is
 
         if (block.timestamp == checkpointTime) return;
 
+        // Skip all accrual when Morpho gate is active (owner-toggled).
+        // Timestamp is still advanced above to prevent catch-up accrual when gate is lifted.
+        if (morphoGateActive) return;
+
         // Compute the active portion of the elapsed window via the shared helper.
         uint256 activeElapsed = _activeElapsedFrom(checkpointTime);
 
         if (activeElapsed == 0) return;
+
+        // Fetch Morpho value once for both premium and EL caps.
+        uint256 morphoValue = _morphoValueAndCache();
 
         // Advance expected loss accumulator for the active elapsed period.
         if (underlyingExpectedLossBps > 0 && totalPrincipal > 0) {
             cumulativeExpectedLossPerUnit += underlyingExpectedLossBps.mulDiv(
                 activeElapsed * WAD, BPS_DENOMINATOR * 365 days
             );
-            totalExpectedLossLiability += totalPrincipal.mulDiv(
+            uint256 elIncrement = totalPrincipal.mulDiv(
                 underlyingExpectedLossBps * activeElapsed, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
             );
+            // Cap totalExpectedLossLiability against morphoValue headroom
+            uint256 currentLiabilities = totalPremiumLiability + totalExpectedLossLiability;
+            uint256 elHeadroom = morphoValue > currentLiabilities ? morphoValue - currentLiabilities : 0;
+            if (elIncrement > elHeadroom) elIncrement = elHeadroom;
+            totalExpectedLossLiability += elIncrement;
         }
 
         // Compute accrued premium using the active elapsed window.
@@ -653,7 +696,6 @@ contract CoveredVaultWrapper is
         }
 
         // Cap: totalPremiumLiability + accrued must not exceed current Morpho value
-        uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
         uint256 maxNewLiability = morphoValue > totalPremiumLiability ? morphoValue - totalPremiumLiability : 0;
         if (accrued > maxNewLiability) accrued = maxNewLiability;
         if (accrued == 0) return;
@@ -677,18 +719,27 @@ contract CoveredVaultWrapper is
 
     /// @inheritdoc ICoveredVaultWrapper
     // slither-disable-next-line reentrancy-no-eth,reentrancy-events
+    /// @notice Proposes a new premium rate. Call executePremiumRate() after the delay to apply.
     function setPremiumRate(uint256 newRate) external onlyOwner {
         require(newRate <= MAX_PREMIUM_RATE_PER_SECOND, IA.InvalidParameters());
+        uint64 executeAfter = uint64(block.timestamp + PARAM_CHANGE_DELAY);
+        pendingPremiumRate = newRate;
+        pendingPremiumRateTimestamp = executeAfter;
+        emit IE.PremiumRateProposed(newRate, executeAfter);
+    }
+
+    /// @notice Applies a pending premium rate change after the 2-day timelock elapses.
+    function executePremiumRate() external onlyOwner {
+        if (pendingPremiumRateTimestamp == 0) revert NoPendingChange();
+        if (block.timestamp < pendingPremiumRateTimestamp) revert DelayNotElapsed();
         // Settle any premium accrued at the old rate before switching.
         _accruePremium();
-        // Force-advance the timestamp even if _accruePremium() hit the dust path (accrued > 0
-        // but rounds to 0 Morpho shares). Without this, lastPremiumAccrualTime stays stale and
-        // newRate would be charged retroactively over the period when oldRate was still active.
-        // We accept losing at most 1 Morpho share of carry-forward premium (<< $1 in practice).
         lastPremiumAccrualTime = block.timestamp;
         uint256 oldRate = premiumRatePerSecond;
-        premiumRatePerSecond = newRate;
-        emit IE.PremiumRateUpdated(oldRate, newRate);
+        premiumRatePerSecond = pendingPremiumRate;
+        pendingPremiumRateTimestamp = 0;
+        emit IE.PremiumRateExecuted(pendingPremiumRate);
+        emit IE.PremiumRateUpdated(oldRate, pendingPremiumRate);
     }
 
     /// @inheritdoc ICoveredVaultWrapper
@@ -863,7 +914,10 @@ contract CoveredVaultWrapper is
     /// @return payout The actual insurance payout received
     // slither-disable-next-line reentrancy-events,incorrect-equality
     function _claimInsurance(uint256 claimAmount, address user) internal returns (uint256 payout) {
-        (uint256 policyCoverageLimit, address payoutToken) = _getCoverageParams(policyId);
+        // Use local state instead of _getCoverageParams() external call.
+        // coverageLimit is stored in state (set by onPolicyBound), payoutToken is the vault asset.
+        uint256 policyCoverageLimit = coverageLimit;
+        address payoutToken = asset();
 
         uint256 paidOut = _getPaidCover(policyId);
         uint256 remainingCoverage = policyCoverageLimit > paidOut ? policyCoverageLimit - paidOut : 0;
@@ -879,9 +933,18 @@ contract CoveredVaultWrapper is
         bytes32 evidenceHash = keccak256(abi.encodePacked(user, policyId, cappedClaim, block.timestamp));
         bytes memory additionalData = abi.encode(address(this), cappedClaim);
 
+        // Wrap fileClaim in try/catch so ClaimManager pause doesn't block withdrawals.
+        // On failure, emit ClaimManagerUnavailable event and return 0 payout.
         // aderyn-fp-next-line(unchecked-return) ClaimId not needed — success determined via balance change
         // slither-disable-next-line unused-return
-        claimManager.fileClaim(policyId, cappedClaim, evidenceHash, additionalData);
+        try claimManager.fileClaim(policyId, cappedClaim, evidenceHash, additionalData) {
+        // success — fall through to balance check below
+        }
+        catch {
+            _clearPendingClaim();
+            emit IE.ClaimManagerUnavailable(policyId);
+            return 0;
+        }
 
         _clearPendingClaim();
 
@@ -926,7 +989,7 @@ contract CoveredVaultWrapper is
     // slither-disable-next-line incorrect-equality
     function calculateShortfall() external view override returns (uint256) {
         if (totalPrincipal == 0) return 0;
-        uint256 morphoValue = IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this)));
+        uint256 morphoValue = _morphoValue();
         uint256 accrued = _accruedPremium();
         // netValue = totalAssets(): morphoValue minus all premium liability (settled + pending).
         // Since no Morpho shares are redeemed during accrual, morphoValue includes settled premium;
@@ -985,7 +1048,7 @@ contract CoveredVaultWrapper is
         // User's gross Morpho value from their tracked Morpho shares — mirrors _executeWithdrawal exactly.
         // Using wrapper-share ratio (morphoTotal * userShares / totalShares) diverges when users entered at
         // different Morpho share prices, so we use the per-user Morpho share record instead.
-        uint256 userMorphoGross = IVaultV2(morphoVault).convertToAssets(userMorphoShares[user]);
+        uint256 userMorphoGross = _userMorphoValue(user);
         // Net Morpho value subtracts only premium (premium is owed to recipient, not insurable)
         uint256 userMorphoNet = userMorphoGross > totalUserPremium ? userMorphoGross - totalUserPremium : 0;
 
@@ -1000,6 +1063,22 @@ contract CoveredVaultWrapper is
             return capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR);
         }
         return 0;
+    }
+
+    /// @notice Returns maximum withdrawable assets accounting for premium deductions
+    function maxWithdraw(address owner) public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
+        uint256 shares = balanceOf(owner);
+        if (shares == 0) return 0;
+        uint256 grossAssets = _convertToAssets(shares, Math.Rounding.Floor);
+        // Estimate user's owed premium
+        uint256 rawPremium = userPrincipal[owner].mulDiv(cumulativePremiumPerUnit, WAD, Math.Rounding.Floor);
+        uint256 owedPremium = rawPremium > userPremiumDebt[owner] ? rawPremium - userPremiumDebt[owner] : 0;
+        return grossAssets > owedPremium ? grossAssets - owedPremium : 0;
+    }
+
+    /// @notice Returns maximum redeemable shares (all shares are redeemable)
+    function maxRedeem(address owner) public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
+        return balanceOf(owner);
     }
 
     /// @notice Decimal offset for inflation attack protection
@@ -1032,6 +1111,39 @@ contract CoveredVaultWrapper is
     /*//////////////////////////////////////////////////////////////
                     INTERNAL VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns the total Morpho vault value, falling back to cached value on revert
+    function _morphoValue() private view returns (uint256) {
+        try IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this))) returns (
+            uint256 val
+        ) {
+            return val;
+        } catch {
+            return lastKnownMorphoValue;
+        }
+    }
+
+    /// @notice Returns Morpho value and caches it for future fallback (non-view)
+    function _morphoValueAndCache() private returns (uint256 val) {
+        val = _morphoValue();
+        lastKnownMorphoValue = val;
+    }
+
+    /// @notice Returns a user's Morpho value, falling back to proportional cached value on revert
+    function _userMorphoValue(address user) private view returns (uint256) {
+        uint256 shares = userMorphoShares[user];
+        if (shares == 0) return 0;
+        try IVaultV2(morphoVault).convertToAssets(shares) returns (uint256 val) {
+            return val;
+        } catch {
+            // Pro-rata fallback from cached global value
+            try IVaultV2(morphoVault).balanceOf(address(this)) returns (uint256 totalShares) {
+                return totalShares > 0 ? lastKnownMorphoValue * shares / totalShares : 0;
+            } catch {
+                return 0;
+            }
+        }
+    }
 
     /// @notice Checks if the policy is currently active (bound and within coverage window)
     /// @dev Uses strict `<` for maturityTime (exclusive end boundary). If PolicyManager treats
@@ -1123,13 +1235,67 @@ contract CoveredVaultWrapper is
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Prevents ownership renunciation which would permanently brick all onlyOwner functions
-    ///         and the UUPS upgrade path (H-02 / M-06 remediation).
+    ///         and the UUPS upgrade path.
     function renounceOwnership() public override onlyOwner {
         revert RenounceDisabled();
     }
 
-    /// @notice Restricts UUPS upgrade authorization to the wrapper owner
-    function _authorizeUpgrade(address) internal view override {
+    /// @notice Proposes a UUPS upgrade with a 2-day timelock
+    function proposeUpgrade(address newImplementation) external onlyOwner {
+        require(newImplementation != address(0), IA.ZeroAddress());
+        uint64 executeAfter = uint64(block.timestamp + PARAM_CHANGE_DELAY);
+        pendingImplementation = newImplementation;
+        pendingUpgradeTimestamp = executeAfter;
+        emit IE.UpgradeProposed(newImplementation, executeAfter);
+    }
+
+    /// @notice Executes a pending UUPS upgrade after the 2-day timelock elapses
+    function executeUpgrade() external onlyOwner {
+        if (pendingUpgradeTimestamp == 0) revert NoPendingChange();
+        if (block.timestamp < pendingUpgradeTimestamp) revert DelayNotElapsed();
+        address impl = pendingImplementation;
+        pendingUpgradeTimestamp = 0;
+        pendingImplementation = address(0);
+        emit IE.UpgradeExecuted(impl);
+        upgradeToAndCall(impl, "");
+    }
+
+    /// @notice Restricts UUPS upgrade authorization to the wrapper owner.
+    ///         Verifies implementation matches pending upgrade and timelock has elapsed.
+    function _authorizeUpgrade(address newImplementation) internal override {
         require(msg.sender == owner(), IA.NotAuthorizedUpgrader(msg.sender));
+        require(
+            newImplementation == pendingImplementation && pendingUpgradeTimestamp != 0
+                && block.timestamp >= pendingUpgradeTimestamp,
+            IA.NotAuthorizedUpgrader(msg.sender)
+        );
+    }
+
+    /// @notice Toggles the Morpho gate status to pause/resume premium accrual
+    /// @param active True when Morpho gate is active (pauses premium), false to resume
+    function setMorphoGateActive(bool active) external onlyOwner {
+        morphoGateActive = active;
+        emit IE.MorphoGateStatusUpdated(active);
+    }
+
+    /// @notice Rescues tokens accidentally sent to this contract
+    /// @param token The ERC-20 token to rescue
+    /// @param amount The amount to rescue
+    /// @param to The address to send rescued tokens to
+    function rescueTokens(address token, uint256 amount, address to) external onlyOwner {
+        require(to != address(0), IA.ZeroAddress());
+        if (token == asset()) {
+            // For the underlying asset: only allow sweeping balance above pendingPremium
+            uint256 balance = IERC20(token).balanceOf(address(this));
+            uint256 reserved = pendingPremium;
+            require(amount <= balance - reserved, IA.InvalidParameters());
+        } else if (token == morphoVault) {
+            // For Morpho shares: only allow sweeping surplus above tracked user shares
+            uint256 balance = IVaultV2(morphoVault).balanceOf(address(this));
+            uint256 trackedShares = totalPrincipal > 0 ? balance : 0; // conservative: if users exist, don't sweep
+            require(amount <= balance - trackedShares, IA.InvalidParameters());
+        }
+        IERC20(token).safeTransfer(to, amount);
+        emit IE.TokensRescued(token, to, amount);
     }
 }

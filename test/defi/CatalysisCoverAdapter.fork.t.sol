@@ -546,7 +546,7 @@ contract CatalysisCoverAdapterForkTest is Test {
                 vm.roll(block.number + 1);
             }
 
-            // Must set recipient FIRST — setManagementFee requires managementFeeRecipient != address(0)
+            // Must set recipient FIRST -- setManagementFee requires managementFeeRecipient != address(0)
             vm.prank(curatorAddr);
             (bool e2,) = address(parentVault).call(recipData);
             require(e2, "execute setManagementFeeRecipient failed");
@@ -724,7 +724,7 @@ contract CatalysisCoverAdapterForkTest is Test {
         assertLe(adapter.userShortfall(user1), ALLOWED_DUST_2_WEI, "User1 should have no shortfall at deposit");
         assertLe(adapter.userShortfall(user2), ALLOWED_DUST_2_WEI, "User2 should have no shortfall at deposit");
 
-        // Advance block to clear V2 transient storage — no time warp to keep V2 allocation current
+        // Advance block to clear V2 transient storage -- no time warp to keep V2 allocation current
         vm.roll(block.number + 1);
 
         // User1 redeems all parent vault shares (V2 allocation == currentValue, so full clear)
@@ -733,7 +733,7 @@ contract CatalysisCoverAdapterForkTest is Test {
         parentVault.redeem(user1Shares, user1, user1);
 
         // User1 principal and shares fully cleared; user2 unaffected
-        // 1 wei residual is acceptable — ERC-4626 floor-on-shares rounding
+        // 1 wei residual is acceptable -- ERC-4626 floor-on-shares rounding
         assertLe(adapter.userPrincipal(user1), ALLOWED_DUST_2_WEI, "User1 principal cleared after full withdrawal");
         // With --isolate V2's accrueInterest() re-runs each call, causing sub-microUSDC
         // rounding in the underlying (18-dec) share space.  1e12 shares ≈ 0.000001 USDC.
@@ -860,7 +860,7 @@ contract CatalysisCoverAdapterForkTest is Test {
             assertEq(twoUserAdapter.currentValue(), 1000e6, "currentValue = 1000 USDC at P1");
         }
 
-        // STEP 2: 50% profit — price rises from 1.00 to 1.50
+        // STEP 2: 50% profit -- price rises from 1.00 to 1.50
         // deal() 500e6 USDC into ctrlVault → 1500e6 USDC / 1000e6 shares → P = 1.50
         deal(USDC, address(ctrlVault), 1500e6); // total USDC in ctrlVault = 1500e6
         skip(365 days);
@@ -883,7 +883,7 @@ contract CatalysisCoverAdapterForkTest is Test {
             assertEq(twoUserAdapter.currentValue(), 3000e6, "currentValue = 3000 USDC total");
         }
 
-        // STEP 4: 10% loss — drain 300 USDC out of ctrlVault
+        // STEP 4: 10% loss -- drain 300 USDC out of ctrlVault
         // ctrlVault: 3000e6 - 300e6 = 2700e6 USDC / 2000e6 shares, P = 1.35
         ctrlVault.simulateLoss(300e6);
         assertEq(twoUserAdapter.currentValue(), 2700e6, "currentValue = 2700 USDC after loss");
@@ -892,7 +892,7 @@ contract CatalysisCoverAdapterForkTest is Test {
         // Bob's 1000e6 shares → 1350e6 < 1500e6 principal: shortfall = 150e6
         assertEq(twoUserAdapter.userShortfall(bob), 150e6, "Bob shortfall = 150 USDC after loss");
 
-        // STEP 5: Alice withdraws ~1350 USDC — no insurance (above her 1000 principal)
+        // STEP 5: Alice withdraws ~1350 USDC -- no insurance (above her 1000 principal)
         //   = 1000e6 * 2700e6 / 2000e6 = 1350e6 (exact)
         // sharesToBurn in ctrlVault = 2000e6 * 1350e6 / 2700e6 = 1000e6 (exact)
         {
@@ -946,12 +946,12 @@ contract CatalysisCoverAdapterForkTest is Test {
 
     /// @notice Documents adapter behavior when a user transfers parent-vault shares to another user.
     ///
-    /// The adapter tracks per-user state keyed on `sender` — the address that calls
+    /// The adapter tracks per-user state keyed on `sender` -- the address that calls
     /// deposit/withdraw on the parent vault.  ERC20 share transfers bypass this tracking:
     /// when Alice transfers her V2 shares to Bob and Bob redeems them, the adapter doesn't see transfer
     /// and can't update principals.
     /// The adapter reverts when Bob tries to withdraw more than underlying shares stored for him.
-    /// Timeline (no profit/loss — clean at-par scenario so V2 pricing is unambiguous):
+    /// Timeline (no profit/loss -- clean at-par scenario so V2 pricing is unambiguous):
     ///   1. Alice deposits 1000 USDC → userPrincipal[alice]=1000e6, shares tracked
     ///   2. Bob   deposits 1000 USDC → userPrincipal[bob]=1000e6,   shares tracked
     ///   3. Alice transfers ALL her parent-vault ERC20 shares to Bob
@@ -1002,7 +1002,7 @@ contract CatalysisCoverAdapterForkTest is Test {
         }
 
         // STEP 3: Alice transfers half of  her parent-vault shares to Bob
-        // The parent vault is ERC20-compliant — transfers bypass adapter hooks entirely.
+        // The parent vault is ERC20-compliant -- transfers bypass adapter hooks entirely.
         // The adapter has NO transfer callback: Alice's tracked state stays exactly as-is.
         uint256 aliceParentShares;
         uint256 bobOriginalShares;
@@ -1021,7 +1021,7 @@ contract CatalysisCoverAdapterForkTest is Test {
                 "Bob holds original + transferred shares"
             );
 
-            // Adapter state is completely unchanged — transfer is invisible to the adapter
+            // Adapter state is completely unchanged -- transfer is invisible to the adapter
             assertEq(xferAdapter.userPrincipal(alice), 1000e6, "Alice principal unchanged in adapter");
             assertEq(xferAdapter.userUnderlyingShares(alice), 1000e6, "Alice ctrlVault shares unchanged in adapter");
             assertEq(xferAdapter.userPrincipal(bob), 1000e6, "Bob principal unchanged in adapter");
@@ -1031,7 +1031,7 @@ contract CatalysisCoverAdapterForkTest is Test {
             emit log_named_uint("Bob total parent shares", parentVault.balanceOf(bob));
         }
 
-        // STEP 3.5: 10% loss — drain 200 USDC from ctrlVault
+        // STEP 3.5: 10% loss -- drain 200 USDC from ctrlVault
         // ctrlVault: 2000e6 - 200e6 = 1800e6 USDC / 2000e6 shares, P = 0.90
         // The loss occurs AFTER Alice transferred her shares, so the adapter still
         // tracks both Alice's and Bob's full 1000e6 principal each (2000e6 total).
@@ -1523,7 +1523,7 @@ contract CatalysisCoverAdapterForkTest is Test {
                 vm.roll(block.number + 1);
             }
 
-            // Must set recipient FIRST — setManagementFee requires managementFeeRecipient != address(0)
+            // Must set recipient FIRST -- setManagementFee requires managementFeeRecipient != address(0)
             vm.prank(newCurator);
             (bool e2,) = address(parentVault).call(recipData);
             require(e2, "execute setManagementFeeRecipient failed");
@@ -1641,7 +1641,7 @@ contract CatalysisCoverAdapterForkTest is Test {
             // underlying shares from the adapter's pool without reducing Alice's
             // userUnderlyingShares.  When Alice redeems all V2 shares the adapter burns
             // fewer underlying shares than she has tracked, so principal isn't fully
-            // zeroed. The residual ≈ managementFee% of her principal — expected behaviour.
+            // zeroed. The residual ≈ managementFee% of her principal -- expected behaviour.
             uint256 residual = feeAdapter.userPrincipal(alice);
             //assertLe(residual, 100e6, "Alice principal residual within 100 USDC (fee dilution)");
 
@@ -1659,7 +1659,7 @@ contract CatalysisCoverAdapterForkTest is Test {
     ///   2. Bob deposits 1000 USDC → per-user tracking
     ///   3. Allocator emergency-deallocates ALL → totalPrincipal = 0, underlyingShares = 0
     ///      Per-user state (userPrincipal, userUnderlyingShares) is NOT cleared (Branch 1 doesn't touch it)
-    ///   4. Alice and Bob withdraw from parent vault idle (no adapter interaction — V2 uses idle first)
+    ///   4. Alice and Bob withdraw from parent vault idle (no adapter interaction -- V2 uses idle first)
     ///   5. Alice re-deposits 2000 USDC → fresh per-user tracking (accumulates on top of ghost state)
     ///   6. 10% loss on ctrlVault
     ///   7. Alice redeems → insurance covers shortfall based on her accumulated principal
@@ -1791,7 +1791,7 @@ contract CatalysisCoverAdapterForkTest is Test {
             );
         }
 
-        // STEP 7: Alice redeems all — insurance should cover her shortfall
+        // STEP 7: Alice redeems all -- insurance should cover her shortfall
         {
             uint256 maxCoverable = aliceNewDepositValue * 1000 / 10_000;
             uint256 expectedReceived = cycleAdapter.currentValue() + (maxCoverable - (maxCoverable * 100 / 10_000));
@@ -1818,7 +1818,7 @@ contract CatalysisCoverAdapterForkTest is Test {
         }
     }
 
-    /// @notice Direct USDC transfer to the adapter contract — verify accounting is unaffected.
+    /// @notice Direct USDC transfer to the adapter contract -- verify accounting is unaffected.
     ///
     /// The adapter tracks `underlyingShares` internally and computes `currentValue()`
     /// from `underlyingVault.convertToAssets(underlyingShares)`. USDC sent directly to
@@ -1828,7 +1828,7 @@ contract CatalysisCoverAdapterForkTest is Test {
     ///   1. Alice deposits 1000 USDC through the vault (tracked normally)
     ///   2. Random address sends 500 USDC directly to the adapter contract
     ///   3. Verify: currentValue, totalPrincipal, underlyingShares unchanged
-    ///   4. Alice redeems all — receives her expected amount
+    ///   4. Alice redeems all -- receives her expected amount
     ///   5. Verify: 500 USDC is stranded on the adapter (not recoverable via normal flow)
     function test_fork_directBalanceTransfer_usdcToAdapter() public onlyFork {
         address alice = makeAddr("alice_directXfer");

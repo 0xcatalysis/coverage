@@ -51,7 +51,7 @@ interface IEvents {
     /// @notice Emitted when underlyingExpectedLossBps is updated by the owner
     event UnderlyingExpectedLossUpdated(uint256 oldBps, uint256 newBps);
 
-    // --- Timelock parameter-change events (H-01 remediation) ---
+    // --- Timelock parameter-change events ---
 
     /// @notice Emitted when a deductibleBps change is proposed (2-day delay starts)
     event DeductibleBpsProposed(uint16 indexed newBps, uint64 executeAfter);
@@ -90,4 +90,22 @@ interface IEvents {
 
     /// @notice Emitted when a user exits via emergencyRedeem/emergencyWithdraw (no insurance claim filed)
     event EmergencyExit(address indexed owner, address indexed receiver, uint256 shares, uint256 assetsOut);
+
+    /// @notice Emitted when the Morpho gate status is toggled
+    event MorphoGateStatusUpdated(bool active);
+
+    /// @notice Emitted when a UUPS upgrade is proposed with a 2-day timelock
+    event UpgradeProposed(address indexed implementation, uint64 executeAfter);
+
+    /// @notice Emitted when a pending UUPS upgrade is executed
+    event UpgradeExecuted(address indexed implementation);
+
+    /// @notice Emitted when a premium rate change is proposed
+    event PremiumRateProposed(uint256 newRate, uint64 executeAfter);
+
+    /// @notice Emitted when a pending premium rate change is executed
+    event PremiumRateExecuted(uint256 newRate);
+
+    /// @notice Emitted when tokens are rescued by the owner
+    event TokensRescued(address indexed token, address indexed to, uint256 amount);
 }
