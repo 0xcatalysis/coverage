@@ -85,4 +85,7 @@ interface IAlerts {
 
     /// @notice Thrown when not owner of Covered Vault tries to upgrade adapter.
     error NotAuthorizedUpgrader(address account);
+
+    /// @notice Thrown when a Morpho deposit returns zero shares (dust deposit protection).
+    error ZeroSharesReceived();
 }
