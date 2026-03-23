@@ -348,7 +348,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
     function test_setPremiumRate_updatesRate() public {
         uint256 newRate = uint256(1e17) / 31_536_000;
-        uint64 expectedExecuteAfter = uint64(block.timestamp + 2 days);
+        uint64 expectedExecuteAfter = uint64(block.timestamp + 2 hours);
         vm.prank(curator);
         vm.expectEmit(false, false, false, true);
         emit IE.PremiumRateProposed(newRate, expectedExecuteAfter);
@@ -746,10 +746,10 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     ///      Fix: use totalExpectedLossLiability (mirrors totalPremiumLiability) which correctly subtracts debt.
     function test_calculateShortfall_lateDepositor_expectedLossNotOvercounted() public {
         // Use 5%/year expected loss rate (no premium to isolate the expected-loss path)
-        // H-01 timelock: propose → warp 2 days → execute
+        // Timelock: propose → warp operational delay → execute
         vm.prank(curator);
         wrapper.setUnderlyingExpectedLossBps(500); // 5%/year (propose)
-        vm.warp(block.timestamp + 2 days + 1);
+        vm.warp(block.timestamp + 2 hours + 1);
         vm.prank(curator);
         wrapper.executeUnderlyingExpectedLossBps(); // execute
 
@@ -1271,8 +1271,8 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(curator);
         wrapper.setPremiumRate(maxRate);
 
-        // Warp past the timelock and execute
-        vm.warp(block.timestamp + 2 days);
+        // Warp past the operational timelock and execute
+        vm.warp(block.timestamp + 2 hours + 1);
         vm.prank(curator);
         wrapper.executePremiumRate();
 
