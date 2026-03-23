@@ -156,14 +156,16 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
         }
         if (policyId != 0) {
             IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
+            // Use effective maturity (raw + grace period) so that premium/EL accrues through
+            // the gate grace window, consistent with _isPolicyActive().
+            uint256 effectiveMaturity = uint256(meta.maturityTime) + gateGracePeriod;
             // Guard: only fire the catch-up branch after the policy has started.
             if (
-                meta.buyer != address(0) && uint256(meta.maturityTime) > checkpoint
-                    && block.timestamp >= uint256(meta.startTime)
+                meta.buyer != address(0) && effectiveMaturity > checkpoint && block.timestamp >= uint256(meta.startTime)
             ) {
                 uint256 activeStart = checkpoint > uint256(meta.startTime) ? checkpoint : uint256(meta.startTime);
-                if (uint256(meta.maturityTime) > activeStart) {
-                    return uint256(meta.maturityTime) - activeStart;
+                if (effectiveMaturity > activeStart) {
+                    return effectiveMaturity - activeStart;
                 }
             }
         }
