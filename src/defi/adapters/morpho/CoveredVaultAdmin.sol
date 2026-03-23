@@ -188,6 +188,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     /// @dev On activation: records timestamp and caches Morpho value as fallback.
     ///      On deactivation: extends policy grace period by the gate duration.
     function setMorphoGateActive(bool active) external override onlyOwner {
+        _accruePremium();
         if (active && !morphoGateActive) {
             // Gate activated — record timestamp and try to cache current Morpho value
             gateActivatedAt = block.timestamp;
