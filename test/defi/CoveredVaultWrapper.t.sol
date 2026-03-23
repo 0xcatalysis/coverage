@@ -1157,6 +1157,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         address newRecipient = address(0xBEEF);
         vm.prank(curator);
         wrapper.setPremiumRecipient(newRecipient);
+        vm.warp(block.timestamp + 2 days + 1);
+        vm.prank(curator);
+        wrapper.executePremiumRecipient();
         assertEq(wrapper.premiumRecipient(), newRecipient);
     }
 
@@ -1175,8 +1178,8 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     function test_setPremiumRecipient_emitsEvent() public {
         address newRecipient = address(0xBEEF);
         vm.prank(curator);
-        vm.expectEmit(true, true, false, false);
-        emit IE.PremiumRecipientUpdated(premiumRecipientAddr, newRecipient);
+        vm.expectEmit(true, false, false, false);
+        emit IE.PremiumRecipientProposed(newRecipient, 0);
         wrapper.setPremiumRecipient(newRecipient);
     }
 
@@ -1207,6 +1210,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         vm.prank(curator);
         wrapper.setPremiumRecipient(newRecipient);
+        vm.warp(block.timestamp + 2 days + 1);
+        vm.prank(curator);
+        wrapper.executePremiumRecipient();
 
         // State: recipient updated, no transfer occurred, pendingPremium unchanged
         assertEq(wrapper.premiumRecipient(), newRecipient, "Recipient must be updated");

@@ -108,4 +108,13 @@ interface IEvents {
 
     /// @notice Emitted when tokens are rescued by the owner
     event TokensRescued(address indexed token, address indexed to, uint256 amount);
+
+    /// @notice Emitted when a pending timelocked proposal is superseded by a new proposal
+    event ProposalSuperseded(bytes32 indexed paramKey);
+
+    /// @notice Emitted when a pending premium recipient change is proposed (2-day delay starts)
+    event PremiumRecipientProposed(address indexed newRecipient, uint64 executeAfter);
+
+    /// @notice Emitted when a pending premium recipient change is executed
+    event PremiumRecipientExecuted(address indexed newRecipient);
 }
