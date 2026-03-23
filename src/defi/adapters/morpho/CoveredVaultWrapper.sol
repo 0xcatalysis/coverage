@@ -84,8 +84,15 @@ contract CoveredVaultWrapper is
     /// @dev 50e16 / 365 days = 15_854_895_991 wei/second
     uint256 private constant MAX_PREMIUM_RATE_PER_SECOND = 15_854_895_991;
 
-    /// @notice Minimum delay between proposing and executing an insurance parameter change.
-    uint256 private constant PARAM_CHANGE_DELAY = 2 days;
+    /// @notice Delay for UUPS upgrades (full logic replacement — maximum user notice).
+    uint256 private constant UPGRADE_DELAY = 7 days;
+
+    /// @notice Delay for coverage-term changes (maxCoverableLoss, deductible, premiumRecipient).
+    uint256 private constant STANDARD_DELAY = 2 days;
+
+    /// @notice Delay for rate parameters (premiumRate, expectedLossBps) — short because rate cap
+    ///         limits per-hour damage and operational response to Morpho stress needs speed.
+    uint256 private constant OPERATIONAL_DELAY = 2 hours;
 
     /// @notice Maximum allowed underlyingExpectedLossBps cap (20% per year) to prevent retroactive loss inflation.
     uint256 private constant MAX_EXPECTED_LOSS_BPS = 2000;
@@ -235,7 +242,7 @@ contract CoveredVaultWrapper is
     error TransfersDisabled();
     /// @notice Thrown when renounceOwnership() is called (disabled for safety).
     error RenounceDisabled();
-    /// @notice Thrown when executing a parameter change before the 2-day delay has elapsed.
+    /// @notice Thrown when executing a parameter change before the timelock delay has elapsed.
     error DelayNotElapsed();
     /// @notice Thrown when executing a parameter change with no pending proposal.
     error NoPendingChange();
@@ -738,12 +745,12 @@ contract CoveredVaultWrapper is
     /// @notice Proposes a new premium rate. Call executePremiumRate() after the delay to apply.
     function setPremiumRate(uint256 newRate) external onlyOwner {
         require(newRate <= MAX_PREMIUM_RATE_PER_SECOND, IA.InvalidParameters());
-        pendingPremiumRateTimestamp = _propose(pendingPremiumRateTimestamp, "premiumRate");
+        pendingPremiumRateTimestamp = _propose(pendingPremiumRateTimestamp, "premiumRate", OPERATIONAL_DELAY);
         pendingPremiumRate = newRate;
         emit IE.PremiumRateProposed(newRate, pendingPremiumRateTimestamp);
     }
 
-    /// @notice Applies a pending premium rate change after the 2-day timelock elapses.
+    /// @notice Applies a pending premium rate change after the operational timelock elapses.
     function executePremiumRate() external onlyOwner {
         _requireTimelockReady(pendingPremiumRateTimestamp);
         // Settle any premium accrued at the old rate before switching.
@@ -760,12 +767,13 @@ contract CoveredVaultWrapper is
     /// @dev Call executeMaxCoverableLossBps() after the delay to apply the pending value.
     function setMaxCoverableLossBps(uint16 newBps) external onlyOwner {
         require(newBps > 0 && newBps <= BPS_DENOMINATOR, IA.InvalidMaxCoverableLoss());
-        pendingMaxCoverableLossTimestamp = _propose(pendingMaxCoverableLossTimestamp, "maxCoverableLossBps");
+        pendingMaxCoverableLossTimestamp =
+            _propose(pendingMaxCoverableLossTimestamp, "maxCoverableLossBps", STANDARD_DELAY);
         pendingMaxCoverableLossBps = newBps;
         emit IE.MaxCoverableLossBpsProposed(newBps, pendingMaxCoverableLossTimestamp);
     }
 
-    /// @notice Applies a pending maxCoverableLossBps change after the 2-day timelock elapses.
+    /// @notice Applies a pending maxCoverableLossBps change after the standard timelock elapses.
     function executeMaxCoverableLossBps() external onlyOwner {
         _requireTimelockReady(pendingMaxCoverableLossTimestamp);
         uint16 newBps = pendingMaxCoverableLossBps;
@@ -783,12 +791,13 @@ contract CoveredVaultWrapper is
     /// @dev Call executeUnderlyingExpectedLossBps() after the delay to apply the pending value.
     function setUnderlyingExpectedLossBps(uint256 newBps) external onlyOwner {
         require(newBps <= MAX_EXPECTED_LOSS_BPS, IA.InvalidParameters());
-        pendingExpectedLossTimestamp = _propose(pendingExpectedLossTimestamp, "underlyingExpectedLossBps");
+        pendingExpectedLossTimestamp =
+            _propose(pendingExpectedLossTimestamp, "underlyingExpectedLossBps", OPERATIONAL_DELAY);
         pendingExpectedLossBps = newBps;
         emit IE.UnderlyingExpectedLossBpsProposed(newBps, pendingExpectedLossTimestamp);
     }
 
-    /// @notice Applies a pending underlyingExpectedLossBps change after the 2-day timelock elapses.
+    /// @notice Applies a pending underlyingExpectedLossBps change after the operational timelock elapses.
     function executeUnderlyingExpectedLossBps() external onlyOwner {
         _requireTimelockReady(pendingExpectedLossTimestamp);
         // Settle accrual at the old rate before switching, same as setPremiumRate.
@@ -805,12 +814,12 @@ contract CoveredVaultWrapper is
     /// @dev Call executeDeductibleBps() after the delay to apply the pending value.
     function setDeductibleBps(uint16 newBps) external onlyOwner {
         require(newBps < BPS_DENOMINATOR, IA.InvalidParameters());
-        pendingDeductibleTimestamp = _propose(pendingDeductibleTimestamp, "deductibleBps");
+        pendingDeductibleTimestamp = _propose(pendingDeductibleTimestamp, "deductibleBps", STANDARD_DELAY);
         pendingDeductibleBps = newBps;
         emit IE.DeductibleBpsProposed(newBps, pendingDeductibleTimestamp);
     }
 
-    /// @notice Applies a pending deductibleBps change after the 2-day timelock elapses.
+    /// @notice Applies a pending deductibleBps change after the standard timelock elapses.
     function executeDeductibleBps() external onlyOwner {
         _requireTimelockReady(pendingDeductibleTimestamp);
         uint16 oldBps = deductibleBps;
@@ -824,12 +833,13 @@ contract CoveredVaultWrapper is
     /// @dev Now uses propose/execute pattern consistent with all other parameter changes.
     function setPremiumRecipient(address newRecipient) external onlyOwner {
         require(newRecipient != address(0), IA.ZeroAddress());
-        pendingPremiumRecipientTimestamp = _propose(pendingPremiumRecipientTimestamp, "premiumRecipient");
+        pendingPremiumRecipientTimestamp =
+            _propose(pendingPremiumRecipientTimestamp, "premiumRecipient", STANDARD_DELAY);
         pendingPremiumRecipient = newRecipient;
         emit IE.PremiumRecipientProposed(newRecipient, pendingPremiumRecipientTimestamp);
     }
 
-    /// @notice Applies a pending premium recipient change after the 2-day timelock elapses.
+    /// @notice Applies a pending premium recipient change after the standard timelock elapses.
     function executePremiumRecipient() external onlyOwner {
         _requireTimelockReady(pendingPremiumRecipientTimestamp);
         address oldRecipient = premiumRecipient;
@@ -1150,9 +1160,9 @@ contract CoveredVaultWrapper is
     }
 
     /// @dev Shared propose logic: emits supersede event if overwriting, returns new execute-after timestamp.
-    function _propose(uint64 currentTimestamp, bytes32 paramKey) private returns (uint64 executeAfter) {
+    function _propose(uint64 currentTimestamp, bytes32 paramKey, uint256 delay) private returns (uint64 executeAfter) {
         if (currentTimestamp != 0) emit IE.ProposalSuperseded(paramKey);
-        executeAfter = uint64(block.timestamp + PARAM_CHANGE_DELAY);
+        executeAfter = uint64(block.timestamp + delay);
     }
 
     /// @dev Safe subtraction returning 0 on underflow. Reduces repeated ternary bytecode.
@@ -1223,15 +1233,15 @@ contract CoveredVaultWrapper is
         revert RenounceDisabled();
     }
 
-    /// @notice Proposes a UUPS upgrade with a 2-day timelock
+    /// @notice Proposes a UUPS upgrade with a 7-day timelock
     function proposeUpgrade(address newImplementation) external onlyOwner {
         require(newImplementation != address(0), IA.ZeroAddress());
-        pendingUpgradeTimestamp = _propose(pendingUpgradeTimestamp, "upgrade");
+        pendingUpgradeTimestamp = _propose(pendingUpgradeTimestamp, "upgrade", UPGRADE_DELAY);
         pendingImplementation = newImplementation;
         emit IE.UpgradeProposed(newImplementation, pendingUpgradeTimestamp);
     }
 
-    /// @notice Executes a pending UUPS upgrade after the 2-day timelock elapses
+    /// @notice Executes a pending UUPS upgrade after the 7-day timelock elapses
     function executeUpgrade() external onlyOwner {
         _requireTimelockReady(pendingUpgradeTimestamp);
         address impl = pendingImplementation;
