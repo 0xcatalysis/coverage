@@ -92,13 +92,22 @@ interface ICoveredVaultWrapper is IERC4626 {
     ///         Caller must be the owner. Reverts with InvalidMaxCoverableLoss if newBps == 0 or > 10_000.
     function setMaxCoverableLossBps(uint16 newBps) external;
 
+    /// @notice Applies a pending maxCoverableLossBps change after the standard timelock elapses.
+    function executeMaxCoverableLossBps() external;
+
     /// @notice Updates the expected annual loss rate of the underlying vault in basis points.
     ///         Accrues both premium and expected loss at the old rate first. Only callable by the owner.
     function setUnderlyingExpectedLossBps(uint256 newBps) external;
 
+    /// @notice Applies a pending underlyingExpectedLossBps change after the operational timelock elapses.
+    function executeUnderlyingExpectedLossBps() external;
+
     /// @notice Updates the deductible in basis points applied to every insurance claim.
     ///         Caller must be the owner. Reverts with InvalidParameters if newBps >= 10_000.
     function setDeductibleBps(uint16 newBps) external;
+
+    /// @notice Applies a pending deductibleBps change after the standard timelock elapses.
+    function executeDeductibleBps() external;
 
     /// @notice Proposes a new premium recipient (standard timelock). Call executePremiumRecipient() to apply.
     function setPremiumRecipient(address newRecipient) external;

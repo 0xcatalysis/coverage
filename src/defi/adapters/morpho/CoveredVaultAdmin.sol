@@ -39,8 +39,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         uint256 oldRate = premiumRatePerSecond;
         premiumRatePerSecond = pendingPremiumRate;
         pendingPremiumRateTimestamp = 0;
-        emit IE.PremiumRateExecuted(pendingPremiumRate);
-        emit IE.PremiumRateUpdated(oldRate, pendingPremiumRate);
+        emit IE.PremiumRateExecuted(oldRate, pendingPremiumRate);
     }
 
     /// @dev Call executeMaxCoverableLossBps() after the delay to apply the pending value.
@@ -53,7 +52,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     }
 
     /// @notice Applies a pending maxCoverableLossBps change after the standard timelock elapses.
-    function executeMaxCoverableLossBps() external onlyOwner {
+    function executeMaxCoverableLossBps() external override onlyOwner {
         _requireTimelockReady(pendingMaxCoverableLossTimestamp);
         uint16 newBps = pendingMaxCoverableLossBps;
         uint16 oldBps = maxCoverableLossBps;
@@ -62,8 +61,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         }
         maxCoverableLossBps = newBps;
         pendingMaxCoverableLossTimestamp = 0;
-        emit IE.MaxCoverableLossBpsExecuted(newBps);
-        emit IE.MaxCoverableLossUpdated(oldBps, newBps);
+        emit IE.MaxCoverableLossBpsExecuted(oldBps, newBps);
     }
 
     /// @dev Call executeUnderlyingExpectedLossBps() after the delay to apply the pending value.
@@ -76,7 +74,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     }
 
     /// @notice Applies a pending underlyingExpectedLossBps change after the operational timelock elapses.
-    function executeUnderlyingExpectedLossBps() external onlyOwner {
+    function executeUnderlyingExpectedLossBps() external override onlyOwner {
         _requireTimelockReady(pendingExpectedLossTimestamp);
         // Settle accrual at the old rate before switching, same as setPremiumRate.
         _accruePremium();
@@ -84,8 +82,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         uint256 oldBps = underlyingExpectedLossBps;
         underlyingExpectedLossBps = pendingExpectedLossBps;
         pendingExpectedLossTimestamp = 0;
-        emit IE.UnderlyingExpectedLossBpsExecuted(underlyingExpectedLossBps);
-        emit IE.UnderlyingExpectedLossUpdated(oldBps, underlyingExpectedLossBps);
+        emit IE.UnderlyingExpectedLossBpsExecuted(oldBps, pendingExpectedLossBps);
     }
 
     /// @dev Call executeDeductibleBps() after the delay to apply the pending value.
@@ -97,13 +94,12 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     }
 
     /// @notice Applies a pending deductibleBps change after the standard timelock elapses.
-    function executeDeductibleBps() external onlyOwner {
+    function executeDeductibleBps() external override onlyOwner {
         _requireTimelockReady(pendingDeductibleTimestamp);
         uint16 oldBps = deductibleBps;
         deductibleBps = pendingDeductibleBps;
         pendingDeductibleTimestamp = 0;
-        emit IE.DeductibleBpsExecuted(deductibleBps);
-        emit IE.DeductibleUpdated(oldBps, deductibleBps);
+        emit IE.DeductibleBpsExecuted(oldBps, pendingDeductibleBps);
     }
 
     /// @dev Now uses propose/execute pattern consistent with all other parameter changes.
@@ -121,8 +117,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         address oldRecipient = premiumRecipient;
         premiumRecipient = pendingPremiumRecipient;
         pendingPremiumRecipientTimestamp = 0;
-        emit IE.PremiumRecipientExecuted(pendingPremiumRecipient);
-        emit IE.PremiumRecipientUpdated(oldRecipient, pendingPremiumRecipient);
+        emit IE.PremiumRecipientExecuted(oldRecipient, pendingPremiumRecipient);
     }
 
     /*//////////////////////////////////////////////////////////////

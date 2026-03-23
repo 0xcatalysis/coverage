@@ -36,40 +36,25 @@ interface IEvents {
     /// @notice Emitted when premium is collected from the vault
     event PremiumCollected(address indexed recipient, uint256 amount);
 
-    /// @notice Emitted when the premium rate is updated by the owner
-    event PremiumRateUpdated(uint256 oldRate, uint256 newRate);
-
-    /// @notice Emitted when the premium recipient is updated
-    event PremiumRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
-
-    /// @notice Emitted when maxCoverableLossBps is updated by the owner
-    event MaxCoverableLossUpdated(uint16 oldBps, uint16 newBps);
-
-    /// @notice Emitted when deductibleBps is updated by the owner
-    event DeductibleUpdated(uint16 oldBps, uint16 newBps);
-
-    /// @notice Emitted when underlyingExpectedLossBps is updated by the owner
-    event UnderlyingExpectedLossUpdated(uint256 oldBps, uint256 newBps);
-
     // --- Timelock parameter-change events ---
 
     /// @notice Emitted when a deductibleBps change is proposed (standard delay starts)
     event DeductibleBpsProposed(uint16 indexed newBps, uint64 executeAfter);
 
     /// @notice Emitted when a pending deductibleBps change is executed
-    event DeductibleBpsExecuted(uint16 indexed newBps);
+    event DeductibleBpsExecuted(uint16 oldBps, uint16 indexed newBps);
 
     /// @notice Emitted when a maxCoverableLossBps change is proposed (standard delay starts)
     event MaxCoverableLossBpsProposed(uint16 indexed newBps, uint64 executeAfter);
 
     /// @notice Emitted when a pending maxCoverableLossBps change is executed
-    event MaxCoverableLossBpsExecuted(uint16 indexed newBps);
+    event MaxCoverableLossBpsExecuted(uint16 oldBps, uint16 indexed newBps);
 
     /// @notice Emitted when an underlyingExpectedLossBps change is proposed (operational delay starts)
     event UnderlyingExpectedLossBpsProposed(uint256 indexed newBps, uint64 executeAfter);
 
     /// @notice Emitted when a pending underlyingExpectedLossBps change is executed
-    event UnderlyingExpectedLossBpsExecuted(uint256 indexed newBps);
+    event UnderlyingExpectedLossBpsExecuted(uint256 oldBps, uint256 indexed newBps);
 
     // --- Liveness and safety events ---
 
@@ -104,7 +89,7 @@ interface IEvents {
     event PremiumRateProposed(uint256 newRate, uint64 executeAfter);
 
     /// @notice Emitted when a pending premium rate change is executed
-    event PremiumRateExecuted(uint256 newRate);
+    event PremiumRateExecuted(uint256 oldRate, uint256 newRate);
 
     /// @notice Emitted when tokens are rescued by the owner
     event TokensRescued(address indexed token, address indexed to, uint256 amount);
@@ -116,5 +101,5 @@ interface IEvents {
     event PremiumRecipientProposed(address indexed newRecipient, uint64 executeAfter);
 
     /// @notice Emitted when a pending premium recipient change is executed
-    event PremiumRecipientExecuted(address indexed newRecipient);
+    event PremiumRecipientExecuted(address indexed oldRecipient, address indexed newRecipient);
 }
