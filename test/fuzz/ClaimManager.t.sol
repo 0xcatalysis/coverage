@@ -174,7 +174,7 @@ contract ClaimManagerFuzzTest is Test {
                 )
             )
         );
-        claimManager = ClaimManager(proxy);
+        claimManager = ClaimManager(payable(proxy));
 
         vm.warp(START);
         _setupPolicy(COVERAGE_LIMIT());
