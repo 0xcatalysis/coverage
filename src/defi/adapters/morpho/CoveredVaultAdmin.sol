@@ -137,6 +137,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         pendingMaxCoverableLossTimestamp = 0;
         pendingExpectedLossTimestamp = 0;
         pendingUpgradeTimestamp = 0;
+        pendingImplementation = address(0);
         pendingPremiumRecipientTimestamp = 0;
     }
 
@@ -158,15 +159,22 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     function executeUpgrade() external override onlyOwner {
         _requireTimelockReady(pendingUpgradeTimestamp);
         address impl = pendingImplementation;
+        // upgradeToAndCall → _authorizeUpgrade reads pendingImplementation, so clear AFTER the call.
+        upgradeToAndCall(impl, "");
         pendingUpgradeTimestamp = 0;
         pendingImplementation = address(0);
-        upgradeToAndCall(impl, "");
         emit IE.UpgradeExecuted(impl);
     }
 
-    /// @dev UUPS authorization: only callable via executeUpgrade's upgradeToAndCall
+    /// @dev UUPS authorization gate. Since upgradeToAndCall is public on UUPSUpgradeable, this function
+    ///      is the ONLY enforcement point — it must independently verify owner, timelock, and implementation match.
     function _authorizeUpgrade(address newImplementation) internal override {
-        if (newImplementation != pendingImplementation) revert IA.NotAuthorizedUpgrader(msg.sender);
+        require(msg.sender == owner(), IA.NotAuthorizedUpgrader(msg.sender));
+        require(
+            newImplementation == pendingImplementation && pendingUpgradeTimestamp != 0
+                && block.timestamp >= pendingUpgradeTimestamp,
+            IA.NotAuthorizedUpgrader(msg.sender)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
