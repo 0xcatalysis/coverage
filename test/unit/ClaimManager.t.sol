@@ -145,7 +145,7 @@ contract ClaimManagerTest is Test {
             ),
             deployOpts
         );
-        claimManager = ClaimManager(proxy);
+        claimManager = ClaimManager(payable(proxy));
 
         vm.label(address(claimManager), "ClaimManager");
 
@@ -158,42 +158,42 @@ contract ClaimManagerTest is Test {
 
     function test_initialize_WhenAdminZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
-        ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
+        ClaimManager freshManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(address(0), specRegistry, slashingManager, swapper, policy, chainlinkPriceFeed);
     }
 
     function test_initialize_WhenSpecRegistryZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
-        ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
+        ClaimManager freshManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(admin, address(0), slashingManager, swapper, policy, chainlinkPriceFeed);
     }
 
     function test_initialize_WhenSlashingManagerZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
-        ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
+        ClaimManager freshManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(admin, specRegistry, address(0), swapper, policy, chainlinkPriceFeed);
     }
 
     function test_initialize_WhenSwapperZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
-        ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
+        ClaimManager freshManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(admin, specRegistry, slashingManager, address(0), policy, chainlinkPriceFeed);
     }
 
     function test_initialize_WhenPolicyZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
-        ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
+        ClaimManager freshManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(admin, specRegistry, slashingManager, swapper, address(0), chainlinkPriceFeed);
     }
 
     function test_initialize_WhenPriceFeedZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
-        ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
+        ClaimManager freshManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(admin, specRegistry, slashingManager, swapper, policy, address(0));
     }
@@ -1597,6 +1597,21 @@ contract ClaimManagerTest is Test {
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Rejected), "Second rejected claim should work");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                      NATIVE ETH RECEIVE (COV-02)
+    //////////////////////////////////////////////////////////////*/
+
+    function test_receive_AcceptsNativeETH() public {
+        uint256 amount = 1 ether;
+        vm.deal(address(this), amount);
+
+        uint256 balanceBefore = address(claimManager).balance;
+        (bool sent,) = address(claimManager).call{value: amount}("");
+
+        assertTrue(sent, "ClaimManager should accept native ETH");
+        assertEq(address(claimManager).balance, balanceBefore + amount, "ClaimManager balance should increase");
     }
 
     /*//////////////////////////////////////////////////////////////
