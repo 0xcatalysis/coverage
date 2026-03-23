@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {CoveredVaultWrapper} from "../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
+import {CoveredVaultStorage} from "../../src/defi/adapters/morpho/CoveredVaultStorage.sol";
 
 import {MockERC20} from "./mocks/Mocks.sol";
 import {ControllableVault} from "./mocks/ControllableVault.sol";
@@ -367,7 +368,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         // ── Transfer reverts: shares are soulbound ──
         uint256 sharesToTransfer = wrapper.balanceOf(alice) * transferPct / 100;
         vm.prank(alice);
-        vm.expectRevert(CoveredVaultWrapper.TransfersDisabled.selector);
+        vm.expectRevert(CoveredVaultStorage.TransfersDisabled.selector);
         wrapper.transfer(bob, sharesToTransfer);
 
         // Principals are unchanged since the transfer reverted
