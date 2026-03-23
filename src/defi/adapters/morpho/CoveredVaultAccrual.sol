@@ -131,10 +131,11 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
     // slither-disable-next-line incorrect-equality
     function _accruedPremiumFor(uint256 morphoVal) internal view returns (uint256) {
         if (morphoGateActive) return 0;
-        if (totalPrincipal == 0) return 0;
+        if (totalPrincipal == 0 || premiumRatePerSecond == 0) return 0;
         uint256 elapsed = _activeElapsedFrom(lastPremiumAccrualTime);
         if (elapsed == 0) return 0;
         uint256 accrued = totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor);
+        if (accrued == 0) return 0;
         uint256 maxNewLiability = _liabilityHeadroom(morphoVal);
         return accrued < maxNewLiability ? accrued : maxNewLiability;
     }

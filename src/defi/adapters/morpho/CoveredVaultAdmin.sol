@@ -159,11 +159,11 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     function executeUpgrade() external override onlyOwner {
         _requireTimelockReady(pendingUpgradeTimestamp);
         address impl = pendingImplementation;
+        emit IE.UpgradeExecuted(impl);
         // upgradeToAndCall → _authorizeUpgrade reads pendingImplementation, so clear AFTER the call.
         upgradeToAndCall(impl, "");
         pendingUpgradeTimestamp = 0;
         pendingImplementation = address(0);
-        emit IE.UpgradeExecuted(impl);
     }
 
     /// @dev UUPS authorization gate. Since upgradeToAndCall is public on UUPSUpgradeable, this function
