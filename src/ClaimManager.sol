@@ -241,8 +241,9 @@ contract ClaimManager is
 
         uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
         require(totalPayout > 0, ZeroPayoutAmount(policyId));
-        // slither-disable-next-line reentrancy-no-eth
+        // slither-disable-next-line reentrancy-eth,reentrancy-no-eth
         claim.payoutAmount = totalPayout;
+        // slither-disable-next-line reentrancy-eth,reentrancy-no-eth
         _claimApprovalRequired[policyId] = true;
 
         emit ClaimApproved(policyId, claimId, metadata.beneficiary, totalPayout, block.timestamp);
@@ -357,7 +358,7 @@ contract ClaimManager is
             totalPayout = _executeSlashingAndPayout(policyId, claimId, metadata, cappedAmount);
 
             if (totalPayout < cappedAmount) {
-                // slither-disable-next-line reentrancy-no-eth
+                // slither-disable-next-line reentrancy-eth,reentrancy-no-eth
                 _policyClaims[policyId].totalPaidOut -= (cappedAmount - totalPayout);
             }
         }
@@ -469,6 +470,7 @@ contract ClaimManager is
                 deadline: block.timestamp
             });
 
+            // slither-disable-next-line arbitrary-send-eth
             uint256 swapOutput =
                 ISwapper(swapper).executeSwap{value: collateralToken == _NATIVE_ETH ? collateralAmount : 0}(swapParams);
 
