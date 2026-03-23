@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {CoveredVaultWrapper} from "../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
+import {CoveredVaultStorage} from "../../src/defi/adapters/morpho/CoveredVaultStorage.sol";
 import {IAlerts as IA} from "../../src/defi/interfaces/IAlerts.sol";
 import {IEvents as IE} from "../../src/defi/interfaces/IEvents.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
@@ -537,13 +538,13 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             "Fresh2",
             "FR2"
         );
-        vm.expectRevert(CoveredVaultWrapper.NotAuthorized.selector);
+        vm.expectRevert(CoveredVaultStorage.NotAuthorized.selector);
         vm.prank(user1);
         freshWrapper.onPolicyBound(1, 10_000 ether);
     }
 
     function test_onPolicyBound_revertIfCalledTwice() public {
-        vm.expectRevert(CoveredVaultWrapper.PolicyBoundAlreadyExecuted.selector);
+        vm.expectRevert(CoveredVaultStorage.PolicyBoundAlreadyExecuted.selector);
         vm.prank(address(policyManager));
         wrapper.onPolicyBound(POLICY_ID, 10_000 ether);
     }
