@@ -163,8 +163,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
 
     /// @dev UUPS authorization gate. Since upgradeToAndCall is public on UUPSUpgradeable, this function
     ///      is the ONLY enforcement point — it must independently verify owner, timelock, and implementation match.
-    function _authorizeUpgrade(address newImplementation) internal override {
-        require(msg.sender == owner(), IA.NotAuthorizedUpgrader(msg.sender));
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
         require(
             newImplementation == pendingImplementation && pendingUpgradeTimestamp != 0
                 && block.timestamp >= pendingUpgradeTimestamp,
