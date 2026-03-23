@@ -6,6 +6,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
@@ -40,9 +41,11 @@ contract ClaimManager is
     ReentrancyGuard,
     IClaimManager
 {
+    using Address for address payable;
     using SafeERC20 for IERC20;
 
     uint16 private constant _MAX_SLIPPAGE_BPS = 10_000;
+    address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     address public override specRegistry;
     address public override slashingManager;
@@ -430,12 +433,20 @@ contract ClaimManager is
         private
         returns (uint256 amountOut)
     {
+        bool isNativeCollateral = collateralToken == _NATIVE_ETH;
+
         if (collateralToken == payoutToken) {
             uint256 transferAmount = collateralAmount > remainingPayout ? remainingPayout : collateralAmount;
-            IERC20(collateralToken).safeTransfer(beneficiary, transferAmount);
+            if (isNativeCollateral) {
+                payable(beneficiary).sendValue(transferAmount);
+            } else {
+                IERC20(collateralToken).safeTransfer(beneficiary, transferAmount);
+            }
             amountOut = transferAmount;
         } else {
-            IERC20(collateralToken).forceApprove(swapper, collateralAmount);
+            if (!isNativeCollateral) {
+                IERC20(collateralToken).forceApprove(swapper, collateralAmount);
+            }
 
             uint256 collateralUSD =
                 IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(collateralToken, collateralAmount);
@@ -456,12 +467,19 @@ contract ClaimManager is
                 deadline: block.timestamp
             });
 
-            uint256 swapOutput = ISwapper(swapper).executeSwap(swapParams);
+            uint256 swapOutput =
+                ISwapper(swapper).executeSwap{value: isNativeCollateral ? collateralAmount : 0}(swapParams);
 
             amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
-            IERC20(payoutToken).safeTransfer(beneficiary, amountOut);
+            if (payoutToken == _NATIVE_ETH) {
+                payable(beneficiary).sendValue(amountOut);
+            } else {
+                IERC20(payoutToken).safeTransfer(beneficiary, amountOut);
+            }
 
-            IERC20(collateralToken).forceApprove(swapper, 0);
+            if (!isNativeCollateral) {
+                IERC20(collateralToken).forceApprove(swapper, 0);
+            }
         }
 
         emit CollateralSwapped(policyId, claimId, collateralToken, collateralAmount, payoutToken, amountOut);
