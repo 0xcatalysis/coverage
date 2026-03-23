@@ -312,10 +312,10 @@ contract CoveredVaultWrapper is
     /// @notice Returns total assets managed by this wrapper, net of all liabilities.
     /// @dev Deducts totalExpectedLossLiability so new depositors are not disadvantaged.
     function totalAssets() public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
-        uint256 morphoValue = _morphoValue();
+        uint256 mv = _morphoValue();
         uint256 totalLiability =
-            totalPremiumLiability + _accruedPremium() + totalExpectedLossLiability + _accruedExpectedLoss();
-        return morphoValue > totalLiability ? morphoValue - totalLiability : 0;
+            totalPremiumLiability + _accruedPremiumFor(mv) + totalExpectedLossLiability + _accruedExpectedLossFor(mv);
+        return mv > totalLiability ? mv - totalLiability : 0;
     }
 
     /// @notice Deposit assets into the wrapper
@@ -397,12 +397,12 @@ contract CoveredVaultWrapper is
 
         // Redeem Morpho, settle insurance, update debts — extracted to avoid stack-too-deep
         // Returns the actual amount transferred to receiver (net Morpho proceeds + insurance).
-        uint256 actualOut = _executeWithdrawal(owner, receiver, shares, userPrincipalForWithdrawal);
+        uint256 actualOut = _executeWithdrawal(owner, receiver, shares, userPrincipalForWithdrawal, ownerBalance);
 
         totalPrincipal -= userPrincipalForWithdrawal;
 
         // Store actual transferred amount so overriding redeem()/withdraw() can return it.
-        _setActualOut(actualOut);
+        _tstore(ACTUAL_OUT_SLOT, actualOut);
 
         // ERC-4626 spec: assets in Withdraw must equal the amount actually transferred to receiver.
         emit Withdraw(caller, receiver, owner, actualOut, shares);
@@ -421,14 +421,14 @@ contract CoveredVaultWrapper is
         returns (uint256)
     {
         super.redeem(shares, receiver, owner);
-        return _getActualOut();
+        return _tload(ACTUAL_OUT_SLOT);
     }
 
     /// @notice ERC-4626-compliant withdraw override. Returns shares burned.
     /// @dev The base OZ implementation is already correct (returns shares), but this explicit override documents
     ///      the important caveat: the actual assets received by the caller may differ from the `assets` parameter
     ///      because premium deductions reduce proceeds and insurance payouts may increase them.
-    ///      Integrators needing exact asset-flow tracking should use redeem() and read _getActualOut() via the
+    ///      Integrators needing exact asset-flow tracking should use redeem() and read _tload(ACTUAL_OUT_SLOT) via the
     ///      Withdraw event, or call userShortfall() off-chain before withdrawing.
     function withdraw(
         uint256 assets,
@@ -452,10 +452,10 @@ contract CoveredVaultWrapper is
     ///      adding it would cause a double-lock revert (ReentrancyGuardTransient).
     // slither-disable-next-line reentrancy-events
     function emergencyRedeem(uint256 shares, address receiver, address owner) external returns (uint256) {
-        _setSkipInsurance(true);
+        _tstore(SKIP_INSURANCE_SLOT, 1);
         super.redeem(shares, receiver, owner);
-        _setSkipInsurance(false);
-        uint256 totalOut = _getActualOut();
+        _tstore(SKIP_INSURANCE_SLOT, 0);
+        uint256 totalOut = _tload(ACTUAL_OUT_SLOT);
         emit IE.EmergencyExit(owner, receiver, shares, totalOut);
         return totalOut;
     }
@@ -468,33 +468,33 @@ contract CoveredVaultWrapper is
     ///      nonReentrant transitively applied via inner _withdraw().
     // slither-disable-next-line reentrancy-events
     function emergencyWithdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares) {
-        _setSkipInsurance(true);
+        _tstore(SKIP_INSURANCE_SLOT, 1);
         shares = super.withdraw(assets, receiver, owner);
-        _setSkipInsurance(false);
-        emit IE.EmergencyExit(owner, receiver, shares, _getActualOut());
+        _tstore(SKIP_INSURANCE_SLOT, 0);
+        emit IE.EmergencyExit(owner, receiver, shares, _tload(ACTUAL_OUT_SLOT));
     }
 
     /// @dev Computes owed premium and expected loss from the absolute-debt formula.
     function _computeOwedAmounts(
         address owner_,
-        uint256 shares_
+        uint256 shares_,
+        uint256 ownerBalance_
     )
         private
         view
         returns (WithdrawalAmounts memory amounts)
     {
-        uint256 ownerBalance = balanceOf(owner_);
         uint256 principal = userPrincipal[owner_];
 
         amounts.totalOwedPremium = _calcOwedDebt(principal, cumulativePremiumPerUnit, userPremiumDebt[owner_]);
-        amounts.uncappedPremium = ownerBalance > 0
-            ? amounts.totalOwedPremium.mulDiv(shares_, ownerBalance, Math.Rounding.Floor)
+        amounts.uncappedPremium = ownerBalance_ > 0
+            ? amounts.totalOwedPremium.mulDiv(shares_, ownerBalance_, Math.Rounding.Floor)
             : amounts.totalOwedPremium;
 
         amounts.totalOwedExpectedLoss =
             _calcOwedDebt(principal, cumulativeExpectedLossPerUnit, userExpectedLossDebt[owner_]);
-        amounts.uncappedExpectedLoss = ownerBalance > 0
-            ? amounts.totalOwedExpectedLoss.mulDiv(shares_, ownerBalance, Math.Rounding.Floor)
+        amounts.uncappedExpectedLoss = ownerBalance_ > 0
+            ? amounts.totalOwedExpectedLoss.mulDiv(shares_, ownerBalance_, Math.Rounding.Floor)
             : amounts.totalOwedExpectedLoss;
     }
 
@@ -505,21 +505,21 @@ contract CoveredVaultWrapper is
         address owner_,
         address receiver_,
         uint256 shares_,
-        uint256 userPrincipalForWithdrawal_
+        uint256 userPrincipalForWithdrawal_,
+        uint256 ownerBalance_
     )
         private
         returns (uint256 totalOut_)
     {
-        WithdrawalAmounts memory a = _computeOwedAmounts(owner_, shares_);
+        WithdrawalAmounts memory a = _computeOwedAmounts(owner_, shares_, ownerBalance_);
 
         // Gross Morpho entitlement (MUST be computed before burn)
-        uint256 ownerBalance = balanceOf(owner_);
-        uint256 redeemShares = userMorphoShares[owner_].mulDiv(shares_, ownerBalance, Math.Rounding.Floor);
+        uint256 redeemShares = userMorphoShares[owner_].mulDiv(shares_, ownerBalance_, Math.Rounding.Floor);
 
         // At final withdrawal cap redeemShares to actual wrapper balance to handle rounding dust
         // accumulated over many partial withdrawals (sum(userMorphoShares) may exceed actual balance by N dust).
         // slither-disable-next-line incorrect-equality
-        if (shares_ == ownerBalance) {
+        if (shares_ == ownerBalance_) {
             uint256 actualMorphoBalance = IVaultV2(morphoVault).balanceOf(address(this));
             if (redeemShares > actualMorphoBalance) redeemShares = actualMorphoBalance;
         }
@@ -618,17 +618,16 @@ contract CoveredVaultWrapper is
     /// @notice Returns pending (uncheckpointed) expected-loss accrual for the current elapsed window.
     /// @dev Uses the same active-window logic as _accruedPremium() so totalAssets() remains consistent
     ///      with calculateShortfall() and does not overstate NAV between accrual checkpoints.
-    // slither-disable-next-line incorrect-equality
-    function _accruedExpectedLoss() internal view returns (uint256) {
-        if (morphoGateActive) return 0; // match mutation path gate guard
+    // slither-disable-next-line incorrect-equality,dead-code
+    function _accruedExpectedLossFor(uint256 morphoVal) internal view returns (uint256) {
+        if (morphoGateActive) return 0;
         if (underlyingExpectedLossBps == 0 || totalPrincipal == 0) return 0;
         uint256 elapsed = _activeElapsedFrom(lastPremiumAccrualTime);
         if (elapsed == 0) return 0;
         uint256 accrued = totalPrincipal.mulDiv(
             underlyingExpectedLossBps * elapsed, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
         );
-        // Cap against combined-liability headroom (same as mutation path)
-        uint256 elHeadroom = _liabilityHeadroom(_morphoValue());
+        uint256 elHeadroom = _liabilityHeadroom(morphoVal);
         return accrued < elHeadroom ? accrued : elHeadroom;
     }
 
@@ -639,16 +638,18 @@ contract CoveredVaultWrapper is
     ///      - Otherwise: 0 (no phantom premium after expiry is fully settled).
     // slither-disable-next-line incorrect-equality
     function _accruedPremium() internal view returns (uint256) {
-        if (morphoGateActive) return 0; // match mutation path gate guard
+        return _accruedPremiumFor(_morphoValue());
+    }
+
+    // slither-disable-next-line incorrect-equality
+    function _accruedPremiumFor(uint256 morphoVal) internal view returns (uint256) {
+        if (morphoGateActive) return 0;
         if (totalPrincipal == 0 || premiumRatePerSecond == 0) return 0;
         uint256 elapsed = _activeElapsedFrom(lastPremiumAccrualTime);
         if (elapsed == 0) return 0;
         uint256 accrued = totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor);
         if (accrued == 0) return 0;
-        // Apply the same Morpho-value cap as _accruePremium() so that callers (totalAssets, calculateShortfall,
-        // userShortfall) never see a larger pending premium than what would actually be settled.
-        // Use combined liabilities (premium + EL) for cap, matching mutation path.
-        uint256 maxNewLiability = _liabilityHeadroom(_morphoValue());
+        uint256 maxNewLiability = _liabilityHeadroom(morphoVal);
         return accrued < maxNewLiability ? accrued : maxNewLiability;
     }
 
@@ -676,45 +677,46 @@ contract CoveredVaultWrapper is
         if (activeElapsed == 0) return;
 
         // Fetch Morpho value once for both premium and EL caps.
-        uint256 morphoValue = _morphoValueAndCache();
+        uint256 morphoValue = _morphoValue();
+        lastKnownMorphoValue = morphoValue;
+
+        // Cache hot storage reads
+        uint256 _totalPrincipal = totalPrincipal;
+        uint256 _elBps = underlyingExpectedLossBps;
 
         // Advance expected loss accumulator for the active elapsed period.
-        if (underlyingExpectedLossBps > 0 && totalPrincipal > 0) {
-            uint256 elIncrement = totalPrincipal.mulDiv(
-                underlyingExpectedLossBps * activeElapsed, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
+        if (_elBps > 0 && _totalPrincipal > 0) {
+            uint256 elIncrement = _totalPrincipal.mulDiv(
+                _elBps * activeElapsed, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
             );
             // Cap totalExpectedLossLiability against morphoValue headroom
             uint256 elHeadroom = _liabilityHeadroom(morphoValue);
             if (elIncrement > elHeadroom) {
                 // Cap per-unit accumulator proportionally when headroom is exhausted.
                 uint256 cappingFactor = elHeadroom.mulDiv(WAD, elIncrement);
-                cumulativeExpectedLossPerUnit += underlyingExpectedLossBps.mulDiv(
+                cumulativeExpectedLossPerUnit += _elBps.mulDiv(
                     activeElapsed * cappingFactor, BPS_DENOMINATOR * 365 days
                 );
                 elIncrement = elHeadroom;
             } else {
-                cumulativeExpectedLossPerUnit += underlyingExpectedLossBps.mulDiv(
-                    activeElapsed * WAD, BPS_DENOMINATOR * 365 days
-                );
+                cumulativeExpectedLossPerUnit += _elBps.mulDiv(activeElapsed * WAD, BPS_DENOMINATOR * 365 days);
             }
             totalExpectedLossLiability += elIncrement;
         }
 
         // Compute accrued premium using the active elapsed window.
-        uint256 accrued = totalPrincipal > 0
-            ? totalPrincipal.mulDiv(premiumRatePerSecond * activeElapsed, WAD, Math.Rounding.Floor)
+        uint256 accrued = _totalPrincipal > 0
+            ? _totalPrincipal.mulDiv(premiumRatePerSecond * activeElapsed, WAD, Math.Rounding.Floor)
             : 0;
 
-        if (accrued == 0) {
-            return;
-        }
+        if (accrued == 0) return;
 
         // Cap: combined liabilities must not exceed current Morpho value
         uint256 maxNewLiability = _liabilityHeadroom(morphoValue);
         if (accrued > maxNewLiability) accrued = maxNewLiability;
         if (accrued == 0) return;
-        if (totalPrincipal > 0) {
-            cumulativePremiumPerUnit += accrued.mulDiv(WAD, totalPrincipal);
+        if (_totalPrincipal > 0) {
+            cumulativePremiumPerUnit += accrued.mulDiv(WAD, _totalPrincipal);
         }
         totalPremiumLiability += accrued;
     }
@@ -736,11 +738,9 @@ contract CoveredVaultWrapper is
     /// @notice Proposes a new premium rate. Call executePremiumRate() after the delay to apply.
     function setPremiumRate(uint256 newRate) external onlyOwner {
         require(newRate <= MAX_PREMIUM_RATE_PER_SECOND, IA.InvalidParameters());
-        if (pendingPremiumRateTimestamp != 0) emit IE.ProposalSuperseded("premiumRate");
-        uint64 executeAfter = uint64(block.timestamp + PARAM_CHANGE_DELAY);
+        pendingPremiumRateTimestamp = _propose(pendingPremiumRateTimestamp, "premiumRate");
         pendingPremiumRate = newRate;
-        pendingPremiumRateTimestamp = executeAfter;
-        emit IE.PremiumRateProposed(newRate, executeAfter);
+        emit IE.PremiumRateProposed(newRate, pendingPremiumRateTimestamp);
     }
 
     /// @notice Applies a pending premium rate change after the 2-day timelock elapses.
@@ -760,11 +760,9 @@ contract CoveredVaultWrapper is
     /// @dev Call executeMaxCoverableLossBps() after the delay to apply the pending value.
     function setMaxCoverableLossBps(uint16 newBps) external onlyOwner {
         require(newBps > 0 && newBps <= BPS_DENOMINATOR, IA.InvalidMaxCoverableLoss());
-        if (pendingMaxCoverableLossTimestamp != 0) emit IE.ProposalSuperseded("maxCoverableLossBps");
-        uint64 executeAfter = uint64(block.timestamp + PARAM_CHANGE_DELAY);
+        pendingMaxCoverableLossTimestamp = _propose(pendingMaxCoverableLossTimestamp, "maxCoverableLossBps");
         pendingMaxCoverableLossBps = newBps;
-        pendingMaxCoverableLossTimestamp = executeAfter;
-        emit IE.MaxCoverableLossBpsProposed(newBps, executeAfter);
+        emit IE.MaxCoverableLossBpsProposed(newBps, pendingMaxCoverableLossTimestamp);
     }
 
     /// @notice Applies a pending maxCoverableLossBps change after the 2-day timelock elapses.
@@ -785,11 +783,9 @@ contract CoveredVaultWrapper is
     /// @dev Call executeUnderlyingExpectedLossBps() after the delay to apply the pending value.
     function setUnderlyingExpectedLossBps(uint256 newBps) external onlyOwner {
         require(newBps <= MAX_EXPECTED_LOSS_BPS, IA.InvalidParameters());
-        if (pendingExpectedLossTimestamp != 0) emit IE.ProposalSuperseded("underlyingExpectedLossBps");
-        uint64 executeAfter = uint64(block.timestamp + PARAM_CHANGE_DELAY);
+        pendingExpectedLossTimestamp = _propose(pendingExpectedLossTimestamp, "underlyingExpectedLossBps");
         pendingExpectedLossBps = newBps;
-        pendingExpectedLossTimestamp = executeAfter;
-        emit IE.UnderlyingExpectedLossBpsProposed(newBps, executeAfter);
+        emit IE.UnderlyingExpectedLossBpsProposed(newBps, pendingExpectedLossTimestamp);
     }
 
     /// @notice Applies a pending underlyingExpectedLossBps change after the 2-day timelock elapses.
@@ -809,11 +805,9 @@ contract CoveredVaultWrapper is
     /// @dev Call executeDeductibleBps() after the delay to apply the pending value.
     function setDeductibleBps(uint16 newBps) external onlyOwner {
         require(newBps < BPS_DENOMINATOR, IA.InvalidParameters());
-        if (pendingDeductibleTimestamp != 0) emit IE.ProposalSuperseded("deductibleBps");
-        uint64 executeAfter = uint64(block.timestamp + PARAM_CHANGE_DELAY);
+        pendingDeductibleTimestamp = _propose(pendingDeductibleTimestamp, "deductibleBps");
         pendingDeductibleBps = newBps;
-        pendingDeductibleTimestamp = executeAfter;
-        emit IE.DeductibleBpsProposed(newBps, executeAfter);
+        emit IE.DeductibleBpsProposed(newBps, pendingDeductibleTimestamp);
     }
 
     /// @notice Applies a pending deductibleBps change after the 2-day timelock elapses.
@@ -830,11 +824,9 @@ contract CoveredVaultWrapper is
     /// @dev Now uses propose/execute pattern consistent with all other parameter changes.
     function setPremiumRecipient(address newRecipient) external onlyOwner {
         require(newRecipient != address(0), IA.ZeroAddress());
-        if (pendingPremiumRecipientTimestamp != 0) emit IE.ProposalSuperseded("premiumRecipient");
-        uint64 executeAfter = uint64(block.timestamp + PARAM_CHANGE_DELAY);
+        pendingPremiumRecipientTimestamp = _propose(pendingPremiumRecipientTimestamp, "premiumRecipient");
         pendingPremiumRecipient = newRecipient;
-        pendingPremiumRecipientTimestamp = executeAfter;
-        emit IE.PremiumRecipientProposed(newRecipient, executeAfter);
+        emit IE.PremiumRecipientProposed(newRecipient, pendingPremiumRecipientTimestamp);
     }
 
     /// @notice Applies a pending premium recipient change after the 2-day timelock elapses.
@@ -898,12 +890,7 @@ contract CoveredVaultWrapper is
         returns (uint256 insurancePayout)
     {
         // Emergency exit: user explicitly waives insurance coverage.
-        uint256 skipSlot = SKIP_INSURANCE_SLOT;
-        uint256 skipFlag;
-        assembly {
-            skipFlag := tload(skipSlot)
-        }
-        if (skipFlag != 0) return 0;
+        if (_tload(SKIP_INSURANCE_SLOT) != 0) return 0;
 
         if (insuredBasis > netAssetsReceived && _isPolicyActive()) {
             uint256 claimAmount = _capAndApplyDeductible(insuredBasis - netAssetsReceived, insuredBasis);
@@ -932,7 +919,7 @@ contract CoveredVaultWrapper is
 
         uint256 balanceBefore = IERC20(payoutToken).balanceOf(address(this));
 
-        _setPendingClaim(cappedClaim);
+        _tstore(PENDING_CLAIM_AMOUNT_SLOT, cappedClaim);
 
         // aderyn-fp-next-line(weak-randomness) evidenceHash is for claim identification, not security-critical
         bytes32 evidenceHash = keccak256(abi.encodePacked(user, policyId, cappedClaim, block.timestamp));
@@ -946,12 +933,12 @@ contract CoveredVaultWrapper is
         // success — fall through to balance check below
         }
         catch {
-            _clearPendingClaim();
+            _tstore(PENDING_CLAIM_AMOUNT_SLOT, 0);
             emit IE.ClaimManagerUnavailable(policyId);
             return 0;
         }
 
-        _clearPendingClaim();
+        _tstore(PENDING_CLAIM_AMOUNT_SLOT, 0);
 
         uint256 balanceAfter = IERC20(payoutToken).balanceOf(address(this));
         payout = balanceAfter - balanceBefore;
@@ -968,7 +955,8 @@ contract CoveredVaultWrapper is
         returns (ISpec.EvaluationResult memory result)
     {
         require(msg.sender == address(claimManager), NotAuthorized());
-        (uint256 pendingClaimAmount, bool hasPendingClaim) = _getPendingClaim();
+        uint256 pendingClaimAmount = _tload(PENDING_CLAIM_AMOUNT_SLOT);
+        bool hasPendingClaim = pendingClaimAmount > 0;
         (address claimant, uint256 claimedAmount) = abi.decode(context.additionalData, (address, uint256));
 
         if (!hasPendingClaim || policyId != context.policyId) {
@@ -989,14 +977,11 @@ contract CoveredVaultWrapper is
     // slither-disable-next-line incorrect-equality
     function calculateShortfall() external view override returns (uint256) {
         if (totalPrincipal == 0) return 0;
-        uint256 morphoValue = _morphoValue();
-        uint256 accrued = _accruedPremium();
-        // netValue = totalAssets(): morphoValue minus all premium liability (settled + pending).
-        // Since no Morpho shares are redeemed during accrual, morphoValue includes settled premium;
-        // subtracting only accrued would leave totalPremiumLiability in netValue and underreport shortfall.
+        uint256 mv = _morphoValue();
+        uint256 accrued = _accruedPremiumFor(mv);
         uint256 totalPremiumTotal = totalPremiumLiability + accrued;
-        uint256 netValue = _safeSub(morphoValue, totalPremiumTotal);
-        uint256 totalExpectedLoss = totalExpectedLossLiability + _accruedExpectedLoss();
+        uint256 netValue = _safeSub(mv, totalPremiumTotal);
+        uint256 totalExpectedLoss = totalExpectedLossLiability + _accruedExpectedLossFor(mv);
         uint256 adjustedPrincipal = _safeSub(totalPrincipal, totalPremiumTotal + totalExpectedLoss);
         if (adjustedPrincipal > netValue) {
             return _capAndApplyDeductible(adjustedPrincipal - netValue, adjustedPrincipal);
@@ -1049,8 +1034,9 @@ contract CoveredVaultWrapper is
         uint256 fraction = totalPrincipal > 0 ? principal.mulDiv(WAD, totalPrincipal) : 0;
         uint256 owedPremium = _calcOwedDebt(principal, cumulativePremiumPerUnit, userPremiumDebt[owner]);
         uint256 owedEL = _calcOwedDebt(principal, cumulativeExpectedLossPerUnit, userExpectedLossDebt[owner]);
-        uint256 totalDeductions = owedPremium + _accruedPremium().mulDiv(fraction, WAD) + owedEL
-            + _accruedExpectedLoss().mulDiv(fraction, WAD);
+        uint256 mv = _morphoValue();
+        uint256 totalDeductions = owedPremium + _accruedPremiumFor(mv).mulDiv(fraction, WAD) + owedEL
+            + _accruedExpectedLossFor(mv).mulDiv(fraction, WAD);
         return _safeSub(grossAssets, totalDeductions);
     }
 
@@ -1099,12 +1085,6 @@ contract CoveredVaultWrapper is
         } catch {
             return lastKnownMorphoValue;
         }
-    }
-
-    /// @notice Returns Morpho value and caches it for future fallback (non-view)
-    function _morphoValueAndCache() private returns (uint256 val) {
-        val = _morphoValue();
-        lastKnownMorphoValue = val;
     }
 
     /// @notice Returns a user's Morpho value, falling back to proportional cached value on revert
@@ -1169,6 +1149,12 @@ contract CoveredVaultWrapper is
         if (block.timestamp < timestamp) revert DelayNotElapsed();
     }
 
+    /// @dev Shared propose logic: emits supersede event if overwriting, returns new execute-after timestamp.
+    function _propose(uint64 currentTimestamp, bytes32 paramKey) private returns (uint64 executeAfter) {
+        if (currentTimestamp != 0) emit IE.ProposalSuperseded(paramKey);
+        executeAfter = uint64(block.timestamp + PARAM_CHANGE_DELAY);
+    }
+
     /// @dev Safe subtraction returning 0 on underflow. Reduces repeated ternary bytecode.
     function _safeSub(uint256 a, uint256 b) private pure returns (uint256) {
         return a > b ? a - b : 0;
@@ -1207,49 +1193,12 @@ contract CoveredVaultWrapper is
         revert InvalidData();
     }
 
-    function _setSkipInsurance(bool skip) private {
-        uint256 slot = SKIP_INSURANCE_SLOT;
-        uint256 val = skip ? 1 : 0;
-        assembly {
-            tstore(slot, val)
-        }
+    function _tstore(uint256 slot, uint256 value) private {
+        assembly { tstore(slot, value) }
     }
 
-    function _setActualOut(uint256 amount) private {
-        // Load constant into local var — inline assembly requires direct integer references, not computed constants.
-        uint256 slot = ACTUAL_OUT_SLOT;
-        assembly {
-            tstore(slot, amount)
-        }
-    }
-
-    function _getActualOut() private view returns (uint256 amount) {
-        uint256 slot = ACTUAL_OUT_SLOT;
-        assembly {
-            amount := tload(slot)
-        }
-    }
-
-    function _setPendingClaim(uint256 amount) private {
-        uint256 slot = PENDING_CLAIM_AMOUNT_SLOT;
-        assembly {
-            tstore(slot, amount)
-        }
-    }
-
-    function _getPendingClaim() private view returns (uint256 amount, bool hasPendingClaim) {
-        uint256 slot = PENDING_CLAIM_AMOUNT_SLOT;
-        assembly {
-            amount := tload(slot)
-            hasPendingClaim := gt(amount, 0)
-        }
-    }
-
-    function _clearPendingClaim() private {
-        uint256 slot = PENDING_CLAIM_AMOUNT_SLOT;
-        assembly {
-            tstore(slot, 0)
-        }
+    function _tload(uint256 slot) private view returns (uint256 value) {
+        assembly { value := tload(slot) }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1277,11 +1226,9 @@ contract CoveredVaultWrapper is
     /// @notice Proposes a UUPS upgrade with a 2-day timelock
     function proposeUpgrade(address newImplementation) external onlyOwner {
         require(newImplementation != address(0), IA.ZeroAddress());
-        if (pendingUpgradeTimestamp != 0) emit IE.ProposalSuperseded("upgrade");
-        uint64 executeAfter = uint64(block.timestamp + PARAM_CHANGE_DELAY);
+        pendingUpgradeTimestamp = _propose(pendingUpgradeTimestamp, "upgrade");
         pendingImplementation = newImplementation;
-        pendingUpgradeTimestamp = executeAfter;
-        emit IE.UpgradeProposed(newImplementation, executeAfter);
+        emit IE.UpgradeProposed(newImplementation, pendingUpgradeTimestamp);
     }
 
     /// @notice Executes a pending UUPS upgrade after the 2-day timelock elapses
