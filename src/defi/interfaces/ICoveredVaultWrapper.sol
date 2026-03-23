@@ -106,9 +106,6 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// @notice Applies a pending premium recipient change after the standard timelock elapses.
     function executePremiumRecipient() external;
 
-    /// @notice Returns maximum shares mintable — mirrors maxDeposit() to enforce the deposit cap via mint()
-    function maxMint(address receiver) external view returns (uint256);
-
     /// @notice Called by PolicyManager when the policy is bound; sets policyId and depositCap
     function onPolicyBound(uint96 _policyId, uint256 _coverageLimit) external;
 
