@@ -19,6 +19,7 @@ contract ClaimManagerTest is Test {
     uint256 internal constant BASE_PREMIUM = 100 ether;
     uint32 internal constant COVERAGE_DURATION = 30 days;
     uint256 internal constant SLASH_AMOUNT = 500 ether;
+    address internal constant NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     address internal admin;
     address internal claimer;
@@ -1615,6 +1616,249 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                    NATIVE ETH COLLATERAL (COV-03)
+    //////////////////////////////////////////////////////////////*/
+
+    function test_fileClaim_WhenNativeETHCollateralEqualsPayoutToken_DirectTransfersETH() public {
+        uint256 claimAmount = 500 ether;
+
+        IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.payoutToken = NATIVE_ETH;
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = NATIVE_ETH;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = claimAmount;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.deal(address(slashingManagerMock), claimAmount);
+        slashingManagerMock.setTokenToTransfer(NATIVE_ETH);
+
+        uint256 balanceBefore = beneficiary.balance;
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, claimAmount, evidenceHash, "");
+
+        assertEq(beneficiary.balance - balanceBefore, claimAmount, "Beneficiary should receive correct ETH amount");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(record.payoutAmount, claimAmount, "Payout should equal claim amount");
+    }
+
+    function test_fileClaim_WhenNativeETHDirectTransfer_CapsAtRemainingPayout() public {
+        uint256 requestedAmount = 300 ether;
+        uint256 excessiveCollateral = 500 ether;
+
+        IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.payoutToken = NATIVE_ETH;
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = NATIVE_ETH;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = excessiveCollateral;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.deal(address(slashingManagerMock), excessiveCollateral);
+        slashingManagerMock.setTokenToTransfer(NATIVE_ETH);
+
+        uint256 balanceBefore = beneficiary.balance;
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(beneficiary.balance - balanceBefore, requestedAmount, "Beneficiary should receive capped ETH amount");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(record.payoutAmount, requestedAmount, "Payout should be capped at requested amount");
+    }
+
+    function test_fileClaim_WhenNativeETHCollateral_SwapsToERC20Payout() public {
+        uint256 claimAmount = 500 ether;
+        uint256 swapOutput = 490 ether;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = NATIVE_ETH;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = claimAmount;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.deal(address(slashingManagerMock), claimAmount);
+        slashingManagerMock.setTokenToTransfer(NATIVE_ETH);
+
+        swapperMock.setSwapOutput(swapOutput);
+        swapperMock.setPayoutToken(payoutToken);
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, claimAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore, swapOutput, "Beneficiary should receive ERC20"
+        );
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(record.payoutAmount, swapOutput, "Payout should equal swap output");
+    }
+
+    function test_fileClaim_WhenNativeETHCollateralSwap_CapsOutputAtRemainingPayout() public {
+        uint256 requestedAmount = 400 ether;
+        uint256 excessiveSwapOutput = 600 ether;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = NATIVE_ETH;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.deal(address(slashingManagerMock), requestedAmount);
+        slashingManagerMock.setTokenToTransfer(NATIVE_ETH);
+
+        swapperMock.setSwapOutput(excessiveSwapOutput);
+        swapperMock.setPayoutToken(payoutToken);
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
+            requestedAmount,
+            "Beneficiary should receive capped ERC20 amount"
+        );
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(record.payoutAmount, requestedAmount, "Payout should be capped at requested amount");
+    }
+
+    function test_fileClaim_WhenERC20Collateral_SwapsToNativeETHPayout() public {
+        uint256 claimAmount = 500 ether;
+        uint256 swapOutput = 490 ether;
+
+        IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.payoutToken = NATIVE_ETH;
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = claimAmount;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), claimAmount);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+
+        swapperMock.setSwapOutput(swapOutput);
+        swapperMock.setPayoutToken(NATIVE_ETH);
+        vm.deal(address(swapperMock), swapOutput);
+
+        uint256 balanceBefore = beneficiary.balance;
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, claimAmount, evidenceHash, "");
+
+        assertEq(beneficiary.balance - balanceBefore, swapOutput, "Beneficiary should receive ETH");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(record.payoutAmount, swapOutput, "Payout should equal swap output");
+    }
+
+    function test_fileClaim_WhenERC20CollateralSwapToNativeETH_CapsOutputAtRemainingPayout() public {
+        uint256 requestedAmount = 400 ether;
+        uint256 excessiveSwapOutput = 600 ether;
+
+        IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.payoutToken = NATIVE_ETH;
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), requestedAmount);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+
+        swapperMock.setSwapOutput(excessiveSwapOutput);
+        swapperMock.setPayoutToken(NATIVE_ETH);
+        vm.deal(address(swapperMock), excessiveSwapOutput);
+
+        uint256 balanceBefore = beneficiary.balance;
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            beneficiary.balance - balanceBefore, requestedAmount, "Beneficiary should receive capped ETH amount"
+        );
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(record.payoutAmount, requestedAmount, "Payout should be capped at requested amount");
+    }
+
+    function test_fileClaim_WhenMixedNativeETHAndERC20Collateral_ProcessesBoth() public {
+        uint256 ethCollateralAmount = 200 ether;
+        uint256 erc20CollateralAmount = 300 ether;
+        uint256 ethSwapOutput = 195 ether;
+        uint256 erc20SwapOutput = 290 ether;
+        uint256 requestedAmount = ethSwapOutput + erc20SwapOutput;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](2);
+        assets[0] = NATIVE_ETH;
+        assets[1] = collateralToken;
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = ethCollateralAmount;
+        amounts[1] = erc20CollateralAmount;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.deal(address(slashingManagerMock), ethCollateralAmount);
+        slashingManagerMock.setTokenToTransfer(NATIVE_ETH);
+        collateralTokenMock.mint(address(slashingManagerMock), erc20CollateralAmount);
+        slashingManagerMock.setToken2ToTransfer(collateralToken);
+
+        MockNativeMultiSwapper nativeMultiSwapper = new MockNativeMultiSwapper();
+        nativeMultiSwapper.setSwapOutput(NATIVE_ETH, ethSwapOutput);
+        nativeMultiSwapper.setSwapOutput(collateralToken, erc20SwapOutput);
+        nativeMultiSwapper.setPayoutToken(payoutToken);
+        vm.prank(admin);
+        claimManager.setSwapper(address(nativeMultiSwapper));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
+            ethSwapOutput + erc20SwapOutput,
+            "Beneficiary should receive combined ERC20 payout"
+        );
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(record.payoutAmount, ethSwapOutput + erc20SwapOutput, "Payout should be sum of both swap outputs");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                           ATTACK SCENARIO TESTS
     //////////////////////////////////////////////////////////////*/
 
@@ -1760,6 +2004,8 @@ contract MockSpecRegistry {
 }
 
 contract MockSlashingManager {
+    address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+
     address[] private _assets;
     uint256[] private _amounts;
     address private _tokenToTransfer;
@@ -1767,6 +2013,8 @@ contract MockSlashingManager {
     uint96 public lastSlashedCommitteeId;
     address public lastBeneficiary;
     uint256 public lastSlashAmount;
+
+    receive() external payable {}
 
     function setSlashResult(address[] memory assets, uint256[] memory amounts) external {
         _assets = assets;
@@ -1795,25 +2043,42 @@ contract MockSlashingManager {
         lastSlashAmount = slashAmount;
 
         if (_tokenToTransfer != address(0)) {
-            require(
-                MockToken(_tokenToTransfer).transfer(msg.sender, MockToken(_tokenToTransfer).balanceOf(address(this))),
-                "Transfer failed"
-            );
+            if (_tokenToTransfer == _NATIVE_ETH) {
+                (bool sent,) = msg.sender.call{value: address(this).balance}("");
+                require(sent, "ETH transfer failed");
+            } else {
+                require(
+                    MockToken(_tokenToTransfer).transfer(
+                        msg.sender, MockToken(_tokenToTransfer).balanceOf(address(this))
+                    ),
+                    "Transfer failed"
+                );
+            }
         }
         if (_token2ToTransfer != address(0)) {
-            require(
-                MockToken(_token2ToTransfer)
-                    .transfer(msg.sender, MockToken(_token2ToTransfer).balanceOf(address(this))),
-                "Transfer failed"
-            );
+            if (_token2ToTransfer == _NATIVE_ETH) {
+                (bool sent,) = msg.sender.call{value: address(this).balance}("");
+                require(sent, "ETH transfer 2 failed");
+            } else {
+                require(
+                    MockToken(_token2ToTransfer).transfer(
+                        msg.sender, MockToken(_token2ToTransfer).balanceOf(address(this))
+                    ),
+                    "Transfer failed"
+                );
+            }
         }
         return (_assets, _amounts);
     }
 }
 
 contract MockSwapper {
+    address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+
     uint256 private _swapOutput;
     address private _payoutToken;
+
+    receive() external payable {}
 
     function setSwapOutput(uint256 output) external {
         _swapOutput = output;
@@ -1823,11 +2088,17 @@ contract MockSwapper {
         _payoutToken = token;
     }
 
-    function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
-        require(
-            MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn), "TransferFrom failed"
-        );
-        if (_payoutToken != address(0)) {
+    function executeSwap(ISwapper.SwapParams calldata params) external payable returns (uint256) {
+        if (params.tokenIn != _NATIVE_ETH) {
+            require(
+                MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn),
+                "TransferFrom failed"
+            );
+        }
+        if (_payoutToken == _NATIVE_ETH) {
+            (bool sent,) = params.recipient.call{value: _swapOutput}("");
+            require(sent, "ETH send failed");
+        } else if (_payoutToken != address(0)) {
             MockToken(_payoutToken).mint(params.recipient, _swapOutput);
         }
         return _swapOutput;
@@ -1928,5 +2199,36 @@ contract MockSwapperWithTracking {
             MockToken(_payoutToken).mint(params.recipient, _swapOutput);
         }
         return _swapOutput;
+    }
+}
+
+contract MockNativeMultiSwapper {
+    address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+
+    mapping(address => uint256) private _swapOutputs;
+    address private _payoutToken;
+
+    receive() external payable {}
+
+    function setSwapOutput(address tokenIn, uint256 output) external {
+        _swapOutputs[tokenIn] = output;
+    }
+
+    function setPayoutToken(address token) external {
+        _payoutToken = token;
+    }
+
+    function executeSwap(ISwapper.SwapParams calldata params) external payable returns (uint256) {
+        if (params.tokenIn != _NATIVE_ETH) {
+            require(
+                MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn),
+                "TransferFrom failed"
+            );
+        }
+        uint256 output = _swapOutputs[params.tokenIn];
+        if (_payoutToken != address(0) && output > 0) {
+            MockToken(_payoutToken).mint(params.recipient, output);
+        }
+        return output;
     }
 }
