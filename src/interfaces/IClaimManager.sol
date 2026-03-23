@@ -173,13 +173,6 @@ interface IClaimManager is IAccessControl {
     error PolicyNotFound(uint96 policyId);
 
     /**
-     * @notice Reverts when attempting to file a claim that has already been filed.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim.
-     */
-    error ClaimAlreadyFiled(uint96 policyId, uint256 claimId);
-
-    /**
      * @notice Reverts when attempting to resolve a claim that has already been resolved.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
