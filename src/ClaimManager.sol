@@ -433,20 +433,12 @@ contract ClaimManager is
         private
         returns (uint256 amountOut)
     {
-        bool isNativeCollateral = collateralToken == _NATIVE_ETH;
-
         if (collateralToken == payoutToken) {
             uint256 transferAmount = collateralAmount > remainingPayout ? remainingPayout : collateralAmount;
-            if (isNativeCollateral) {
-                payable(beneficiary).sendValue(transferAmount);
-            } else {
-                IERC20(collateralToken).safeTransfer(beneficiary, transferAmount);
-            }
+            _transferToken(collateralToken, beneficiary, transferAmount);
             amountOut = transferAmount;
         } else {
-            if (!isNativeCollateral) {
-                IERC20(collateralToken).forceApprove(swapper, collateralAmount);
-            }
+            _approveIfERC20(collateralToken, swapper, collateralAmount);
 
             uint256 collateralUSD =
                 IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(collateralToken, collateralAmount);
@@ -468,24 +460,39 @@ contract ClaimManager is
             });
 
             uint256 swapOutput =
-                ISwapper(swapper).executeSwap{value: isNativeCollateral ? collateralAmount : 0}(swapParams);
+                ISwapper(swapper).executeSwap{value: collateralToken == _NATIVE_ETH ? collateralAmount : 0}(swapParams);
 
             amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
-            if (payoutToken == _NATIVE_ETH) {
-                payable(beneficiary).sendValue(amountOut);
-            } else {
-                IERC20(payoutToken).safeTransfer(beneficiary, amountOut);
-            }
+            _transferToken(payoutToken, beneficiary, amountOut);
 
-            if (!isNativeCollateral) {
-                IERC20(collateralToken).forceApprove(swapper, 0);
-            }
+            _approveIfERC20(collateralToken, swapper, 0);
         }
 
         emit CollateralSwapped(policyId, claimId, collateralToken, collateralAmount, payoutToken, amountOut);
     }
 
     // slither-disable-end calls-loop
+
+    /**
+     * @notice Transfers `amount` of `token` to `to`, handling native ETH and ERC-20 uniformly.
+     */
+    function _transferToken(address token, address to, uint256 amount) private {
+        if (token == _NATIVE_ETH) {
+            payable(to).sendValue(amount);
+        } else {
+            IERC20(token).safeTransfer(to, amount);
+        }
+    }
+
+    /**
+     * @notice Approves `spender` to spend `amount` of `token` only when `token` is an ERC-20.
+     *         Pass `amount = 0` to revoke an existing approval.
+     */
+    function _approveIfERC20(address token, address spender, uint256 amount) private {
+        if (token != _NATIVE_ETH) {
+            IERC20(token).forceApprove(spender, amount);
+        }
+    }
 
     /**
      * @notice Evaluates the Spec for a given policy.
