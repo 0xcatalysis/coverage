@@ -53,19 +53,19 @@ interface IEvents {
 
     // --- Timelock parameter-change events ---
 
-    /// @notice Emitted when a deductibleBps change is proposed (2-day delay starts)
+    /// @notice Emitted when a deductibleBps change is proposed (standard delay starts)
     event DeductibleBpsProposed(uint16 indexed newBps, uint64 executeAfter);
 
     /// @notice Emitted when a pending deductibleBps change is executed
     event DeductibleBpsExecuted(uint16 indexed newBps);
 
-    /// @notice Emitted when a maxCoverableLossBps change is proposed (2-day delay starts)
+    /// @notice Emitted when a maxCoverableLossBps change is proposed (standard delay starts)
     event MaxCoverableLossBpsProposed(uint16 indexed newBps, uint64 executeAfter);
 
     /// @notice Emitted when a pending maxCoverableLossBps change is executed
     event MaxCoverableLossBpsExecuted(uint16 indexed newBps);
 
-    /// @notice Emitted when an underlyingExpectedLossBps change is proposed (2-day delay starts)
+    /// @notice Emitted when an underlyingExpectedLossBps change is proposed (operational delay starts)
     event UnderlyingExpectedLossBpsProposed(uint256 indexed newBps, uint64 executeAfter);
 
     /// @notice Emitted when a pending underlyingExpectedLossBps change is executed
@@ -94,7 +94,7 @@ interface IEvents {
     /// @notice Emitted when the Morpho gate status is toggled
     event MorphoGateStatusUpdated(bool active);
 
-    /// @notice Emitted when a UUPS upgrade is proposed with a 2-day timelock
+    /// @notice Emitted when a UUPS upgrade is proposed with a 7-day timelock
     event UpgradeProposed(address indexed implementation, uint64 executeAfter);
 
     /// @notice Emitted when a pending UUPS upgrade is executed
@@ -112,7 +112,7 @@ interface IEvents {
     /// @notice Emitted when a pending timelocked proposal is superseded by a new proposal
     event ProposalSuperseded(bytes32 indexed paramKey);
 
-    /// @notice Emitted when a pending premium recipient change is proposed (2-day delay starts)
+    /// @notice Emitted when a pending premium recipient change is proposed (standard delay starts)
     event PremiumRecipientProposed(address indexed newRecipient, uint64 executeAfter);
 
     /// @notice Emitted when a pending premium recipient change is executed
