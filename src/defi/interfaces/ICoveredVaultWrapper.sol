@@ -100,10 +100,10 @@ interface ICoveredVaultWrapper is IERC4626 {
     ///         Caller must be the owner. Reverts with InvalidParameters if newBps >= 10_000.
     function setDeductibleBps(uint16 newBps) external;
 
-    /// @notice Proposes a new premium recipient (2-day timelock). Call executePremiumRecipient() to apply.
+    /// @notice Proposes a new premium recipient (standard timelock). Call executePremiumRecipient() to apply.
     function setPremiumRecipient(address newRecipient) external;
 
-    /// @notice Applies a pending premium recipient change after the 2-day timelock elapses.
+    /// @notice Applies a pending premium recipient change after the standard timelock elapses.
     function executePremiumRecipient() external;
 
     /// @notice Returns maximum shares mintable — mirrors maxDeposit() to enforce the deposit cap via mint()
