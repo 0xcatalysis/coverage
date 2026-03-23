@@ -594,6 +594,68 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                            RECOVER TOKENS
+    //////////////////////////////////////////////////////////////*/
+
+    event TokensRecovered(address indexed token, address indexed to, uint256 amount);
+
+    function test_recoverTokens_ERC20_ByAdmin_Succeeds() public {
+        uint256 amount = 100 ether;
+        collateralTokenMock.mint(address(claimManager), amount);
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit TokensRecovered(collateralToken, beneficiary, amount);
+
+        vm.prank(admin);
+        claimManager.recoverTokens(collateralToken, beneficiary, amount);
+
+        assertEq(collateralTokenMock.balanceOf(beneficiary), amount, "Beneficiary should receive ERC-20 tokens");
+        assertEq(collateralTokenMock.balanceOf(address(claimManager)), 0, "ClaimManager ERC-20 balance should be zero");
+    }
+
+    function test_recoverTokens_NativeETH_ByAdmin_Succeeds() public {
+        uint256 amount = 2 ether;
+        vm.deal(address(claimManager), amount);
+
+        uint256 recipientBefore = beneficiary.balance;
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit TokensRecovered(NATIVE_ETH, beneficiary, amount);
+
+        vm.prank(admin);
+        claimManager.recoverTokens(NATIVE_ETH, beneficiary, amount);
+
+        assertEq(address(claimManager).balance, 0, "ClaimManager ETH balance should be zero");
+        assertEq(beneficiary.balance, recipientBefore + amount, "Beneficiary should receive ETH");
+    }
+
+    function test_recoverTokens_WhenCallerNotAdmin_Reverts() public {
+        collateralTokenMock.mint(address(claimManager), 1 ether);
+
+        vm.expectRevert();
+        vm.prank(unauthorized);
+        claimManager.recoverTokens(collateralToken, beneficiary, 1 ether);
+    }
+
+    function test_recoverTokens_WhenTokenZero_Reverts() public {
+        vm.expectRevert(IClaimManager.ZeroAddress.selector);
+        vm.prank(admin);
+        claimManager.recoverTokens(address(0), beneficiary, 1 ether);
+    }
+
+    function test_recoverTokens_WhenToZero_Reverts() public {
+        vm.expectRevert(IClaimManager.ZeroAddress.selector);
+        vm.prank(admin);
+        claimManager.recoverTokens(collateralToken, address(0), 1 ether);
+    }
+
+    function test_recoverTokens_WhenAmountZero_Reverts() public {
+        vm.expectRevert(IClaimManager.ZeroAmount.selector);
+        vm.prank(admin);
+        claimManager.recoverTokens(collateralToken, beneficiary, 0);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                               FILE CLAIM
     //////////////////////////////////////////////////////////////*/
 

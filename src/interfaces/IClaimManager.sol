@@ -157,6 +157,14 @@ interface IClaimManager is IAccessControl {
     event NextClaimApproved(uint96 indexed policyId, address indexed approver);
 
     /**
+     * @notice Emitted when stranded tokens or native ETH are recovered by an admin.
+     * @param token Token address recovered, or the native ETH sentinel (0xEeee...eeEE).
+     * @param to Recipient of the recovered funds.
+     * @param amount Amount recovered.
+     */
+    event TokensRecovered(address indexed token, address indexed to, uint256 amount);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -394,4 +402,14 @@ interface IClaimManager is IAccessControl {
      * @return True if approval is required; false if the next claim may be filed freely.
      */
     function claimApprovalRequired(uint96 policyId) external view returns (bool);
+
+    /**
+     * @notice Recovers stranded ERC-20 tokens or native ETH from this contract.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Use the native ETH sentinel address
+     *      (0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) for `token` to recover ETH.
+     * @param token Token address to recover, or the native ETH sentinel.
+     * @param to Recipient address.
+     * @param amount Amount to transfer.
+     */
+    function recoverTokens(address token, address to, uint256 amount) external;
 }

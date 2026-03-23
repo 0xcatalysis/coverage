@@ -178,6 +178,16 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
+    function recoverTokens(address token, address to, uint256 amount) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(token != address(0) && to != address(0), ZeroAddress());
+        require(amount != 0, ZeroAmount());
+        _transferToken(token, to, amount);
+        emit TokensRecovered(token, to, amount);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
     function approveNextClaim(uint96 policyId) external override {
         IPolicyManager.PolicyMetadata memory metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
