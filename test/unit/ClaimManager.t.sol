@@ -1702,9 +1702,7 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         uint256 claimId = claimManager.fileClaim(POLICY_ID, claimAmount, evidenceHash, "");
 
-        assertEq(
-            payoutTokenMock.balanceOf(beneficiary) - balanceBefore, swapOutput, "Beneficiary should receive ERC20"
-        );
+        assertEq(payoutTokenMock.balanceOf(beneficiary) - balanceBefore, swapOutput, "Beneficiary should receive ERC20");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
@@ -1805,9 +1803,7 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        assertEq(
-            beneficiary.balance - balanceBefore, requestedAmount, "Beneficiary should receive capped ETH amount"
-        );
+        assertEq(beneficiary.balance - balanceBefore, requestedAmount, "Beneficiary should receive capped ETH amount");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
         assertEq(record.payoutAmount, requestedAmount, "Payout should be capped at requested amount");
@@ -2048,9 +2044,8 @@ contract MockSlashingManager {
                 require(sent, "ETH transfer failed");
             } else {
                 require(
-                    MockToken(_tokenToTransfer).transfer(
-                        msg.sender, MockToken(_tokenToTransfer).balanceOf(address(this))
-                    ),
+                    MockToken(_tokenToTransfer)
+                        .transfer(msg.sender, MockToken(_tokenToTransfer).balanceOf(address(this))),
                     "Transfer failed"
                 );
             }
@@ -2061,9 +2056,8 @@ contract MockSlashingManager {
                 require(sent, "ETH transfer 2 failed");
             } else {
                 require(
-                    MockToken(_token2ToTransfer).transfer(
-                        msg.sender, MockToken(_token2ToTransfer).balanceOf(address(this))
-                    ),
+                    MockToken(_token2ToTransfer)
+                        .transfer(msg.sender, MockToken(_token2ToTransfer).balanceOf(address(this))),
                     "Transfer failed"
                 );
             }
