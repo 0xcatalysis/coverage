@@ -61,6 +61,11 @@ contract ClaimManager is
     }
 
     /**
+     * @notice Allows the ClaimManager to receive native ETH.
+     */
+    receive() external payable {}
+
+    /**
      * @notice Initializes the ClaimManager with role assignments and dependency wiring.
      * @param admin_ Address receiving DEFAULT_ADMIN_ROLE.
      * @param specRegistry_ Address of the SpecRegistry contract.
