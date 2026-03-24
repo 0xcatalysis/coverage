@@ -87,13 +87,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     event FeeRecipientSet(address indexed previousFeeRecipient, address indexed newFeeRecipient);
 
     /**
-     * @notice Emitted when the premium default status of a policy is updated.
-     * @param policyId Identifier of the policy whose default status changed.
-     * @param defaulted True if the policy is now in premium default, false if cleared.
-     */
-    event PremiumDefaultedSet(uint96 indexed policyId, bool defaulted);
-
-    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();

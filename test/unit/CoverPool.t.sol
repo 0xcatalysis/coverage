@@ -1070,16 +1070,6 @@ contract CoverPoolTest is Test {
         assertFalse(mockPolicyManager.lastPremiumDefaultedValue());
     }
 
-    function test_setPremiumDefaulted_EmitsEvent() public {
-        uint96 policyId = _createAndBindPolicy();
-
-        vm.expectEmit(true, false, false, true);
-        emit ICoverPool.PremiumDefaultedSet(policyId, true);
-
-        vm.prank(curator);
-        coverPool.setPremiumDefaulted(policyId, true);
-    }
-
     /*//////////////////////////////////////////////////////////////
                                  HELPERS
     //////////////////////////////////////////////////////////////*/
