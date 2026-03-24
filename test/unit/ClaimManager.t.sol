@@ -2305,6 +2305,9 @@ contract ClaimManagerTest is Test {
         vm.prank(operator);
         claimManager.approveNextClaim(POLICY_ID);
 
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
+
         collateralTokenMock.mint(address(slashingManagerMock), secondClaimAmount);
         payoutTokenMock.mint(address(swapperMock), secondClaimAmount);
         swapperMock.setSwapOutput(secondClaimAmount);
@@ -2401,6 +2404,68 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.swapper(), swapper);
         assertEq(claimManager.policyManager(), policy);
         assertEq(claimManager.chainlinkPriceFeed(), chainlinkPriceFeed);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          ATTACK SCENARIO TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_attack_SlippageGuardCalculatedFromOracle() public {
+        uint256 requestedAmount = 500 ether;
+        uint256 swapOutput = 450 ether;
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), requestedAmount);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(swapOutput);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim must succeed within tolerance");
+    }
+
+    function test_attack_MultiCollateralSlashingPaysoutCorrectly() public {
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](2);
+        tokens[0] = collateralToken;
+        tokens[1] = payoutToken;
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 300 ether;
+        amounts[1] = 200 ether;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+
+        collateralTokenMock.mint(address(slashingManager), 300 ether);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+        payoutTokenMock.mint(address(slashingManager), 200 ether);
+        slashingManagerMock.setToken2ToTransfer(payoutToken);
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(300 ether);
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, 500 ether, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(
+            uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Multi-collateral claim should succeed"
+        );
+
+        uint256 actualPayout = payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore;
+        assertLe(actualPayout, 500 ether, "Total payout must not exceed requested amount");
+        assertGt(actualPayout, 0, "Must pay out something");
     }
 
     /*//////////////////////////////////////////////////////////////

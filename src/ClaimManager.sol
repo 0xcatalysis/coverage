@@ -254,7 +254,6 @@ contract ClaimManager is
         require(totalPayout > 0, ZeroPayoutAmount(policyId));
         // slither-disable-next-line reentrancy-eth,reentrancy-no-eth
         claim.payoutAmount = totalPayout;
-        // slither-disable-next-line reentrancy-eth,reentrancy-no-eth
         _claimApprovalRequired[policyId] = true;
 
         emit ClaimApproved(policyId, claimId, metadata.beneficiary, totalPayout, block.timestamp);
