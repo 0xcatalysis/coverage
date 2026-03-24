@@ -123,7 +123,7 @@ contract ClaimManagerHandler is Test {
     InvToken internal collateralToken;
 
     address internal claimer;
-    address internal admin;
+    address internal curator;
 
     uint96 internal constant POLICY_ID = 1;
     uint256 internal constant COVERAGE_LIMIT = 1000 ether;
@@ -140,7 +140,7 @@ contract ClaimManagerHandler is Test {
         InvToken payoutToken_,
         InvToken collateralToken_,
         address claimer_,
-        address admin_
+        address curator_
     ) {
         claimManager = claimManager_;
         policyContract = policy_;
@@ -148,12 +148,17 @@ contract ClaimManagerHandler is Test {
         payoutToken = payoutToken_;
         collateralToken = collateralToken_;
         claimer = claimer_;
-        admin = admin_;
+        curator = curator_;
     }
 
     function fileClaim(uint256 requestedAmountSeed) external {
         uint256 remaining = claimManager.remainingCoverage(POLICY_ID);
         if (remaining == 0) return;
+
+        if (claimManager.claimApprovalRequired(POLICY_ID)) {
+            vm.prank(curator);
+            claimManager.approveNextClaim(POLICY_ID);
+        }
 
         uint256 requestedAmount = bound(requestedAmountSeed, 1, remaining);
 
@@ -214,7 +219,7 @@ contract ClaimManagerInvariantTest is StdInvariant, Test {
         _setupPolicy(policyContract, claimer, claimer);
 
         handler = new ClaimManagerHandler(
-            claimManager, policyContract, slashingMgr, payoutToken, collateralToken, claimer, admin
+            claimManager, policyContract, slashingMgr, payoutToken, collateralToken, claimer, makeAddr("operator")
         );
     }
 

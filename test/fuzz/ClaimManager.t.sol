@@ -249,6 +249,9 @@ contract ClaimManagerFuzzTest is Test {
         uint256 remainingMid = claimManager.remainingCoverage(POLICY_ID);
         assertLt(remainingMid, remainingBefore, "Remaining should decrease after first claim");
 
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
+
         payoutToken.mint(address(slashingMgr), amount2);
         slashingMgr.configure(address(payoutToken), amount2);
 
