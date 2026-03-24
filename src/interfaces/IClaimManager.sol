@@ -150,7 +150,7 @@ interface IClaimManager is IAccessControl {
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
 
     /**
-     * @notice Emitted when a curator or admin approves the next claim for a policy.
+     * @notice Emitted when the pool curator approves the next claim for a policy.
      * @param policyId Identifier of the policy.
      * @param approver Address that granted the approval.
      */
@@ -240,9 +240,9 @@ interface IClaimManager is IAccessControl {
     error ClaimApprovalRequired(uint96 policyId);
 
     /**
-     * @notice Reverts when the caller is not the pool curator or DEFAULT_ADMIN_ROLE.
+     * @notice Reverts when the caller is not the pool curator.
      */
-    error NotCuratorOrAdmin();
+    error UnauthorizedApprover();
 
     /**
      * @notice Pauses claim operations.
@@ -381,8 +381,8 @@ interface IClaimManager is IAccessControl {
 
     /**
      * @notice Approves the next claim filing for a policy after a previous claim has been paid out.
-     * @dev Callable by the pool curator (ICoverPool.owner()) or DEFAULT_ADMIN_ROLE.
-     *      Reverts if the policy does not exist or the caller is not authorized.
+     * @dev Callable only by the pool curator (ICoverPool.owner()).
+     *      Reverts if the policy does not exist or the caller is not the curator.
      * @param policyId Identifier of the policy to approve next claim for.
      */
     function approveNextClaim(uint96 policyId) external;

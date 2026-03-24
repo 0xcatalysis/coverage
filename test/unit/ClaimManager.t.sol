@@ -1530,22 +1530,18 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Second claim should be approved");
     }
 
-    function test_approveNextClaim_ByAdmin_AllowsNextClaim() public {
+    function test_approveNextClaim_ByAdmin_Reverts() public {
         _fileAndApproveClaim();
 
-        vm.expectEmit(true, true, true, true, address(claimManager));
-        emit NextClaimApproved(POLICY_ID, admin);
-
+        vm.expectRevert(IClaimManager.UnauthorizedApprover.selector);
         vm.prank(admin);
         claimManager.approveNextClaim(POLICY_ID);
-
-        assertFalse(claimManager.claimApprovalRequired(POLICY_ID), "Approval flag should be cleared by admin");
     }
 
     function test_approveNextClaim_WhenUnauthorized_Reverts() public {
         _fileAndApproveClaim();
 
-        vm.expectRevert(IClaimManager.NotCuratorOrAdmin.selector);
+        vm.expectRevert(IClaimManager.UnauthorizedApprover.selector);
         vm.prank(unauthorized);
         claimManager.approveNextClaim(POLICY_ID);
     }
