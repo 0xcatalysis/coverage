@@ -380,10 +380,11 @@ interface IClaimManager is IAccessControl {
     function maxSwapSlippageBps() external view returns (uint16);
 
     /**
-     * @notice Approves the next claim filing for a policy after a previous claim has been paid out.
-     * @dev Callable only by the pool curator (ICoverPool.owner()).
-     *      Reverts if the policy does not exist or the caller is not the curator.
-     * @param policyId Identifier of the policy to approve next claim for.
+     * @notice Clears the claim approval gate for a policy, allowing the next claim to be filed freely.
+     * @dev Callable only by the pool curator (ICoverPool.owner()). Idempotent: calling when the gate
+     *      is already open is a no-op (does not revert). Reverts if the policy does not exist or the
+     *      caller is not the curator.
+     * @param policyId Identifier of the policy to clear the approval gate for.
      */
     function approveNextClaim(uint96 policyId) external;
 
