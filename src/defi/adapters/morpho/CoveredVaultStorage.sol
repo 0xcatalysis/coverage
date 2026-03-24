@@ -59,12 +59,9 @@ abstract contract CoveredVaultStorage is
     /// @notice Delay for coverage-term changes (maxCoverableLoss, deductible, premiumRecipient).
     uint256 internal constant STANDARD_DELAY = 2 days;
 
-    /// @notice Delay for rate parameters (premiumRate, expectedLossBps) — short because rate cap
+    /// @notice Delay for rate parameters (premiumRate) — short because rate cap
     ///         limits per-hour damage and operational response to Morpho stress needs speed.
     uint256 internal constant OPERATIONAL_DELAY = 2 hours;
-
-    /// @notice Maximum allowed underlyingExpectedLossBps cap (20% per year) to prevent retroactive loss inflation.
-    uint256 internal constant MAX_EXPECTED_LOSS_BPS = 2000;
 
     /*//////////////////////////////////////////////////////////////
                          STORAGE
@@ -121,18 +118,6 @@ abstract contract CoveredVaultStorage is
     /// @notice Total outstanding per-user premium debt
     uint256 public override totalPremiumLiability;
 
-    /// @notice Annual expected loss rate of the underlying vault in basis points
-    uint256 public override underlyingExpectedLossBps;
-
-    /// @notice WAD-scaled cumulative expected loss per unit of principal
-    uint256 public override cumulativeExpectedLossPerUnit;
-
-    /// @notice Absolute expected-loss debt per user
-    mapping(address => uint256) public override userExpectedLossDebt;
-
-    /// @notice Total outstanding per-user expected-loss liability
-    uint256 public override totalExpectedLossLiability;
-
     /// @notice Number of underlying vault shares minted for each user
     mapping(address => uint256) public override userMorphoShares;
 
@@ -147,11 +132,6 @@ abstract contract CoveredVaultStorage is
     uint16 public pendingMaxCoverableLossBps;
     /// @notice Timestamp after which pendingMaxCoverableLossBps may be executed (0 = no pending change)
     uint64 public pendingMaxCoverableLossTimestamp;
-
-    /// @notice Pending underlyingExpectedLossBps value awaiting timelock execution
-    uint256 public pendingExpectedLossBps;
-    /// @notice Timestamp after which pendingExpectedLossBps may be executed (0 = no pending change)
-    uint64 public pendingExpectedLossTimestamp;
 
     /// @notice Cached Morpho vault value used as fallback when convertToAssets() reverts
     uint256 public override lastKnownMorphoValue;
@@ -205,8 +185,6 @@ abstract contract CoveredVaultStorage is
     /// @dev Packed withdrawal amounts to avoid stack-too-deep
     struct WithdrawalAmounts {
         uint256 uncappedPremium;
-        uint256 uncappedExpectedLoss;
         uint256 totalOwedPremium;
-        uint256 totalOwedExpectedLoss;
     }
 }

@@ -50,19 +50,6 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// @notice Total outstanding per-user premium debt not yet collected from withdrawal proceeds.
     function totalPremiumLiability() external view returns (uint256);
 
-    /// @notice Annual expected loss rate of the underlying vault in basis points (e.g. 200 = 2%/year).
-    ///         Losses within this rate (e.g. management fees) are NOT covered by insurance.
-    function underlyingExpectedLossBps() external view returns (uint256);
-
-    /// @notice WAD-scaled cumulative expected loss per unit of principal (reward-per-token accumulator).
-    function cumulativeExpectedLossPerUnit() external view returns (uint256);
-
-    /// @notice Absolute expected-loss debt — owed = principal × cumELPerUnit / WAD − debt.
-    function userExpectedLossDebt(address user) external view returns (uint256);
-
-    /// @notice Total outstanding per-user expected-loss liability not yet deducted from withdrawal proceeds.
-    function totalExpectedLossLiability() external view returns (uint256);
-
     /// @notice Number of underlying Vault shares minted for user's deposits.
     function userMorphoShares(address user) external view returns (uint256);
 
@@ -94,13 +81,6 @@ interface ICoveredVaultWrapper is IERC4626 {
 
     /// @notice Applies a pending maxCoverableLossBps change after the standard timelock elapses.
     function executeMaxCoverableLossBps() external;
-
-    /// @notice Updates the expected annual loss rate of the underlying vault in basis points.
-    ///         Accrues both premium and expected loss at the old rate first. Only callable by the owner.
-    function setUnderlyingExpectedLossBps(uint256 newBps) external;
-
-    /// @notice Applies a pending underlyingExpectedLossBps change after the operational timelock elapses.
-    function executeUnderlyingExpectedLossBps() external;
 
     /// @notice Updates the deductible in basis points applied to every insurance claim.
     ///         Caller must be the owner. Reverts with InvalidParameters if newBps >= 10_000.
