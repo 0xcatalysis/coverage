@@ -150,6 +150,13 @@ interface IClaimManager is IAccessControl {
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
 
     /**
+     * @notice Emitted when the pool curator approves the next claim for a policy.
+     * @param policyId Identifier of the policy.
+     * @param approver Address that granted the approval.
+     */
+    event NextClaimApproved(uint96 indexed policyId, address indexed approver);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -164,13 +171,6 @@ interface IClaimManager is IAccessControl {
      * @param policyId Identifier that failed the lookup.
      */
     error PolicyNotFound(uint96 policyId);
-
-    /**
-     * @notice Reverts when attempting to file a claim that has already been filed.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim.
-     */
-    error ClaimAlreadyFiled(uint96 policyId, uint256 claimId);
 
     /**
      * @notice Reverts when attempting to resolve a claim that has already been resolved.
@@ -232,6 +232,17 @@ interface IClaimManager is IAccessControl {
      * @param slippageBps The invalid slippage value provided.
      */
     error InvalidSlippageBps(uint16 slippageBps);
+
+    /**
+     * @notice Reverts when a second or subsequent claim is filed before curator approval.
+     * @param policyId Identifier of the policy requiring approval.
+     */
+    error ClaimApprovalRequired(uint96 policyId);
+
+    /**
+     * @notice Reverts when the caller is not the pool curator.
+     */
+    error UnauthorizedApprover();
 
     /**
      * @notice Pauses claim operations.
@@ -367,4 +378,20 @@ interface IClaimManager is IAccessControl {
      * @notice Returns the maximum swap slippage tolerance in basis points.
      */
     function maxSwapSlippageBps() external view returns (uint16);
+
+    /**
+     * @notice Clears the claim approval gate for a policy, allowing the next claim to be filed freely.
+     * @dev Callable only by the pool curator (ICoverPool.owner()). Idempotent: calling when the gate
+     *      is already open is a no-op (does not revert). Reverts if the policy does not exist or the
+     *      caller is not the curator.
+     * @param policyId Identifier of the policy to clear the approval gate for.
+     */
+    function approveNextClaim(uint96 policyId) external;
+
+    /**
+     * @notice Returns whether curator approval is required before the next claim can be filed.
+     * @param policyId Identifier of the policy.
+     * @return True if approval is required; false if the next claim may be filed freely.
+     */
+    function claimApprovalRequired(uint96 policyId) external view returns (bool);
 }

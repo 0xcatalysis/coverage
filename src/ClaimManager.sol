@@ -53,6 +53,7 @@ contract ClaimManager is
 
     mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
     mapping(uint96 policyId => PolicyClaim) private _policyClaims;
+    mapping(uint96 policyId => bool) private _claimApprovalRequired;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -169,6 +170,24 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
+    function approveNextClaim(uint96 policyId) external override {
+        IPolicyManager.PolicyMetadata memory metadata = IPolicyManager(policyManager).policyMetadata(policyId);
+        require(metadata.buyer != address(0), PolicyNotFound(policyId));
+        require(msg.sender == ICoverPool(metadata.pool).owner(), UnauthorizedApprover());
+        _claimApprovalRequired[policyId] = false;
+        emit NextClaimApproved(policyId, msg.sender);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
+    function claimApprovalRequired(uint96 policyId) external view override returns (bool) {
+        return _claimApprovalRequired[policyId];
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
     function fileClaim(
         uint96 policyId,
         uint256 requestedAmount,
@@ -181,6 +200,8 @@ contract ClaimManager is
         nonReentrant
         returns (uint256 claimId)
     {
+        require(!_claimApprovalRequired[policyId], ClaimApprovalRequired(policyId));
+
         IPolicyManager.PolicyMetadata memory metadata;
 
         (claimId, metadata) = _fileClaimWithMetadata(policyId, requestedAmount, evidenceHash);
@@ -204,6 +225,7 @@ contract ClaimManager is
         require(totalPayout > 0, ZeroPayoutAmount(policyId));
         // slither-disable-next-line reentrancy-no-eth
         claim.payoutAmount = totalPayout;
+        _claimApprovalRequired[policyId] = true;
 
         emit ClaimApproved(policyId, claimId, metadata.beneficiary, totalPayout, block.timestamp);
     }
@@ -279,7 +301,6 @@ contract ClaimManager is
 
         claimId = _policyClaims[policyId].claimCount;
         ClaimRecord storage claim = _claims[policyId][claimId];
-        require(claim.status == ClaimStatus.None, ClaimAlreadyFiled(policyId, claimId));
 
         claim.status = ClaimStatus.Filed;
         claim.reporter = msg.sender;
