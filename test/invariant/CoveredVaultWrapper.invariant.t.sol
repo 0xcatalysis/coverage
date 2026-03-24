@@ -429,16 +429,14 @@ contract CoveredVaultWrapperInvariant is StdInvariant, Test {
     }
 
     // ═══════════════════════════════════════════════════════════
-    //  INV-3: totalExpectedLossLiability + totalPremiumLiability <= morphoValue()
+    //  INV-3: totalPremiumLiability <= morphoValue()
     // ═══════════════════════════════════════════════════════════
     function invariant_combinedLiabilityBounded() public view {
         uint256 morphoShares = morphoVault.balanceOf(address(wrapper));
         uint256 morphoValue = morphoVault.convertToAssets(morphoShares);
-        uint256 totalLiability = wrapper.totalPremiumLiability() + wrapper.totalExpectedLossLiability();
-        // Combined liabilities must not exceed the Morpho backing (plus small rounding tolerance)
-        assertLe(
-            totalLiability, morphoValue + 1, "INV-3: totalPremiumLiability + totalExpectedLossLiability > morphoValue"
-        );
+        uint256 totalLiability = wrapper.totalPremiumLiability();
+        // Premium liability must not exceed the Morpho backing (plus small rounding tolerance)
+        assertLe(totalLiability, morphoValue + 1, "INV-3: totalPremiumLiability > morphoValue");
     }
 
     // ═══════════════════════════════════════════════════════════

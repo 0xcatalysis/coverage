@@ -50,12 +50,6 @@ interface IEvents {
     /// @notice Emitted when a pending maxCoverableLossBps change is executed
     event MaxCoverableLossBpsExecuted(uint16 oldBps, uint16 indexed newBps);
 
-    /// @notice Emitted when an underlyingExpectedLossBps change is proposed (operational delay starts)
-    event UnderlyingExpectedLossBpsProposed(uint256 indexed newBps, uint64 executeAfter);
-
-    /// @notice Emitted when a pending underlyingExpectedLossBps change is executed
-    event UnderlyingExpectedLossBpsExecuted(uint256 oldBps, uint256 indexed newBps);
-
     // --- Liveness and safety events ---
 
     /// @notice Emitted when claimManager.fileClaim() is unavailable and the claim is skipped

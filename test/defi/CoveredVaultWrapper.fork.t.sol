@@ -223,33 +223,27 @@ contract CoveredVaultWrapperForkTest is Test {
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFeeRecipient(address)", underlyingFeeRecipient));
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFee(uint256)", feePerSec));
 
-        // Configure wrapper to expect 2% annual loss (matches Morpho management fee)
-        vm.prank(owner);
-        wrapper.setUnderlyingExpectedLossBps(200);
-        // Advance past the 2-day timelock and apply the pending parameter so that
-        // underlyingExpectedLossBps is active before the deposit.
-        skip(2 days);
-        vm.prank(owner);
-        wrapper.executeUnderlyingExpectedLossBps();
-
         // User1 deposit
         uint256 depositAmount = 1000e6;
         _userDeposit(user1, depositAmount);
 
-        // Skip one year to accrue 2% loss
-        // Premium accrual is 0 in wrapper
-        // No loss and no yield occur in Underlying Vault
+        // Skip one year to accrue 2% Morpho management fee.
+        // Premium accrual is 0 in wrapper (premium rate already includes expected loss component).
         skip(365 days);
 
         // User redeem
         _userRedeemAll(user1);
 
-        // The 2% Morpho management fee matches the configured expectedLossBps=200.
-        // insuredBasis = 1000e6 - 0 (no wrapper premium) - 20e6 (expected loss) = 980e6.
-        // Morpho returns ~980e6 after the fee -- this exactly covers insuredBasis, so no insurance triggers.
-        // User receives: ~980 USDC (Morpho proceeds only, no insurance payout).
-        assertEq(IERC20(USDC).balanceOf(user1), 980_000_001, "User received Morpho proceeds only");
-        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 0, "No insurance: fee is expected loss");
+        // The 2% Morpho management fee is taken from underlying assets.
+        // Morpho returns ~980e6 after the fee.
+        // Since the premium rate already accounts for expected loss, no separate EL deduction occurs.
+        // insuredBasis = 1000e6 - 0 (no wrapper premium) = 1000e6.
+        // shortfall = max(0, 1000e6 - 980e6) = 20e6 (the fee is a real loss).
+        //   maxInsurable = 10% of 1000e6 = 100e6, capped to 20e6
+        //   claimAmount = 20e6 * 99% (1% deductible) = 19.8e6
+        // User receives: ~980 (Morpho) + ~19.8 (insurance) ≈ 999.8 USDC
+        assertEq(IERC20(USDC).balanceOf(user1), 999_800_000, "User received Morpho proceeds + insurance");
+        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 19_799_999, "Insurance covers fee loss");
     }
 
     function test_fork_UnderlyingVaultFee_ProfitCoversFee() public onlyFork {
@@ -261,15 +255,6 @@ contract CoveredVaultWrapperForkTest is Test {
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFeeRecipient(address)", underlyingFeeRecipient));
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFee(uint256)", feePerSec));
 
-        // Configure wrapper to expect 2% annual loss (matches Morpho management fee)
-        vm.prank(owner);
-        wrapper.setUnderlyingExpectedLossBps(200);
-        // Advance past the 2-day timelock and apply the pending parameter so that
-        // underlyingExpectedLossBps is active before the deposit.
-        skip(2 days);
-        vm.prank(owner);
-        wrapper.executeUnderlyingExpectedLossBps();
-
         // User1 deposit
         uint256 depositAmount = 1000e6;
         _userDeposit(user1, depositAmount);
@@ -278,9 +263,7 @@ contract CoveredVaultWrapperForkTest is Test {
         // This should cover underlying fee and not trigger insurance payout
         deal(USDC, address(morphoVault), depositAmount + depositAmount * 5 / 100);
 
-        // Skip one year to accrue 2% loss
-        // Premium accrual is 0 in wrapper
-        // No loss and no yield occur in Underlying Vault
+        // Skip one year to accrue 2% Morpho management fee
         skip(365 days);
 
         // User redeem
@@ -300,38 +283,27 @@ contract CoveredVaultWrapperForkTest is Test {
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFeeRecipient(address)", underlyingFeeRecipient));
         _curatorSubmitExec(abi.encodeWithSignature("setManagementFee(uint256)", feePerSec));
 
-        // Configure wrapper to expect 2% annual loss (matches Morpho management fee)
-        vm.prank(owner);
-        wrapper.setUnderlyingExpectedLossBps(200);
-        // Advance past the 2-day timelock and apply the pending parameter so that
-        // underlyingExpectedLossBps is active before the deposit.
-        skip(2 days);
-        vm.prank(owner);
-        wrapper.executeUnderlyingExpectedLossBps();
-
         // User1 deposit
         uint256 depositAmount = 1000e6;
         _userDeposit(user1, depositAmount);
 
-        // Skip one year to accrue 2% loss
-        // Premium accrual is 0 in wrapper
-        // No loss and no yield occur in Underlying Vault
+        // Skip one year to accrue 2% Morpho management fee
         skip(365 days);
 
-        // Simulate 1% Loss. Only this loss without fee should be covered
+        // Simulate 1% hack loss on top of the fee
         deal(USDC, address(morphoVault), depositAmount - depositAmount * 1 / 100);
 
         // User redeem
         _userRedeemAll(user1);
 
-        // After 2% Morpho fee + 1% loss, Morpho returns ~970.2 USDC.
-        // expectedLoss = 1000e6 * 200/10000 = 20e6 (matches the 2% fee, deducted from insuredBasis).
-        // insuredBasis = 1000e6 - 0 (no wrapper premium) - 20e6 (expected loss) = 980e6.
-        // shortfall = max(0, 980e6 - 970.2e6) = 9.8e6 (only the 1% hack loss remains insurable).
-        //   maxInsurable = 10% of 980e6 = 98e6, capped to 9.8e6
-        //   claimAmount = 9.8e6 * 99% (1% deductible) ≈ 9.70e6
-        // User receives: ~970.2 (Morpho) + ~9.70 (insurance) ≈ 979.9 USDC
-        assertEq(IERC20(USDC).balanceOf(user1), 979_902_000, "User received insurance for hack loss only (not fee)");
-        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 9_701_999, "Insurance covers 1% hack shortfall only");
+        // After 2% Morpho fee + 1% hack loss, Morpho returns ~970.2 USDC.
+        // Premium rate already includes the expected loss component, so no separate EL deduction.
+        // insuredBasis = 1000e6 - 0 (no wrapper premium) = 1000e6.
+        // shortfall = max(0, 1000e6 - 970.2e6) = 29.8e6 (fee + hack loss are both real losses).
+        //   maxInsurable = 10% of 1000e6 = 100e6, capped to 29.8e6
+        //   claimAmount = 29.8e6 * 99% (1% deductible) ≈ 29.50e6
+        // User receives: ~970.2 (Morpho) + ~29.50 (insurance) ≈ 999.7 USDC
+        assertEq(IERC20(USDC).balanceOf(user1), 999_702_000, "User received insurance for fee + hack loss");
+        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 29_501_999, "Insurance covers fee + hack shortfall");
     }
 }
