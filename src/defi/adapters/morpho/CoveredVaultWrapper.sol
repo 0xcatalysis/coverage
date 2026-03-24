@@ -102,12 +102,10 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
                     ERC-4626 OVERRIDES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Returns total assets managed by this wrapper, net of all liabilities.
-    /// @dev Deducts totalExpectedLossLiability so new depositors are not disadvantaged.
+    /// @notice Returns total assets managed by this wrapper, net of premium liabilities.
     function totalAssets() public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
         uint256 mv = _morphoValue();
-        uint256 totalLiability =
-            totalPremiumLiability + _accruedPremiumFor(mv) + totalExpectedLossLiability + _accruedExpectedLossFor(mv);
+        uint256 totalLiability = totalPremiumLiability + _accruedPremiumFor(mv);
         return mv > totalLiability ? mv - totalLiability : 0;
     }
 
@@ -128,9 +126,8 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         lastKnownMorphoValue = _morphoValue();
         userMorphoShares[receiver] += morphoSharesReceived;
         _mint(receiver, shares); // triggers _update(address(0), receiver, shares) — no principal migration for mints
-        // Increase absolute debts so new assets don't inherit past premium/expected-loss
+        // Increase absolute debt so new assets don't inherit past premium
         userPremiumDebt[receiver] += assets.mulDiv(cumulativePremiumPerUnit, WAD, Math.Rounding.Floor);
-        userExpectedLossDebt[receiver] += assets.mulDiv(cumulativeExpectedLossPerUnit, WAD, Math.Rounding.Floor);
         userPrincipal[receiver] += assets;
         totalPrincipal += assets;
         emit Deposit(caller, receiver, assets, shares);
@@ -142,7 +139,6 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         address receiver_,
         uint256 userPrincipalForWithdrawal_,
         uint256 uncappedPremium_,
-        uint256 uncappedExpectedLoss_,
         uint256 assetsReceived_,
         address owner_
     )
@@ -152,11 +148,11 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         // Cap: can't deduct more premium than what Morpho returned (deep-loss guard)
         premiumForWithdrawal_ = uncappedPremium_ < assetsReceived_ ? uncappedPremium_ : assetsReceived_;
 
-        // insuredBasis = principal reduced by the actually-collected premium AND the expected underlying loss.
+        // insuredBasis = principal reduced by the actually-collected premium.
         // We use premiumForWithdrawal_ (not uncappedPremium_) because in a deep-loss scenario the uncollected
         // portion of the premium is effectively forgiven — it never reaches pendingPremium — so it should not
         // further reduce the user's insured basis (that would penalise the user twice for the same loss event).
-        uint256 insuredBasis = _safeSub(userPrincipalForWithdrawal_, premiumForWithdrawal_ + uncappedExpectedLoss_);
+        uint256 insuredBasis = _safeSub(userPrincipalForWithdrawal_, premiumForWithdrawal_);
         uint256 netAssetsReceived = assetsReceived_ - premiumForWithdrawal_;
         totalOut_ = netAssetsReceived + _computeInsurance(insuredBasis, netAssetsReceived, owner_);
         if (totalOut_ > 0) IERC20(asset()).safeTransfer(receiver_, totalOut_);
@@ -418,8 +414,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         uint256 accrued = _accruedPremiumFor(mv);
         uint256 totalPremiumTotal = totalPremiumLiability + accrued;
         uint256 netValue = _safeSub(mv, totalPremiumTotal);
-        uint256 totalExpectedLoss = totalExpectedLossLiability + _accruedExpectedLossFor(mv);
-        uint256 adjustedPrincipal = _safeSub(totalPrincipal, totalPremiumTotal + totalExpectedLoss);
+        uint256 adjustedPrincipal = _safeSub(totalPrincipal, totalPremiumTotal);
         if (adjustedPrincipal > netValue) {
             return _capAndApplyDeductible(adjustedPrincipal - netValue, adjustedPrincipal);
         }
@@ -435,9 +430,8 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         uint256 principal = userPrincipal[user];
         uint256 totalUserPremium = _calcOwedDebt(principal, cumulativePremiumPerUnit, userPremiumDebt[user])
             + (totalPrincipal > 0 ? principal.mulDiv(accrued, totalPrincipal, Math.Rounding.Floor) : 0);
-        uint256 totalUserDeductions = totalUserPremium + _userTotalExpectedLoss(user);
         uint256 userMorphoNet = _safeSub(_userMorphoValue(user), totalUserPremium);
-        uint256 adjustedUserPrincipal = _safeSub(principal, totalUserDeductions);
+        uint256 adjustedUserPrincipal = _safeSub(principal, totalUserPremium);
         if (adjustedUserPrincipal > userMorphoNet) {
             return _capAndApplyDeductible(adjustedUserPrincipal - userMorphoNet, adjustedUserPrincipal);
         }
@@ -449,14 +443,12 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         uint256 shares = balanceOf(owner);
         if (shares == 0) return 0;
         uint256 grossAssets = _convertToAssets(shares, Math.Rounding.Floor);
-        // Include pending (uncheckpointed) premium delta and expected loss
+        // Include pending (uncheckpointed) premium delta
         uint256 principal = userPrincipal[owner];
         uint256 fraction = totalPrincipal > 0 ? principal.mulDiv(WAD, totalPrincipal) : 0;
         uint256 owedPremium = _calcOwedDebt(principal, cumulativePremiumPerUnit, userPremiumDebt[owner]);
-        uint256 owedEL = _calcOwedDebt(principal, cumulativeExpectedLossPerUnit, userExpectedLossDebt[owner]);
         uint256 mv = _morphoValue();
-        uint256 totalDeductions = owedPremium + _accruedPremiumFor(mv).mulDiv(fraction, WAD) + owedEL
-            + _accruedExpectedLossFor(mv).mulDiv(fraction, WAD);
+        uint256 totalDeductions = owedPremium + _accruedPremiumFor(mv).mulDiv(fraction, WAD);
         return _safeSub(grossAssets, totalDeductions);
     }
 
@@ -508,23 +500,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         }
     }
 
-    /// @dev Returns the total pending expected loss (accrued + uncheckpointed period) for a user.
-    ///      Uses the same active-window logic as _accruedExpectedLoss() so that expected loss does
-    ///      not accumulate beyond policy maturity, keeping userShortfall() consistent with totalAssets().
-    function _userTotalExpectedLoss(address user) private view returns (uint256) {
-        uint256 total = _calcOwedDebt(userPrincipal[user], cumulativeExpectedLossPerUnit, userExpectedLossDebt[user]);
-        // Cap elapsed to the policy active window via the shared helper so that expected loss
-        // stops accruing at maturity, consistent with _accruedExpectedLoss() and totalAssets().
-        uint256 pendingElapsedSecs = _activeElapsedFrom(lastPremiumAccrualTime);
-        if (underlyingExpectedLossBps > 0 && pendingElapsedSecs > 0) {
-            total += userPrincipal[user].mulDiv(
-                underlyingExpectedLossBps * pendingElapsedSecs, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
-            );
-        }
-        return total;
-    }
-
-    /// @dev Computes owed premium and expected loss from the absolute-debt formula.
+    /// @dev Computes owed premium from the absolute-debt formula.
     function _computeOwedAmounts(
         address owner_,
         uint256 shares_,
@@ -540,12 +516,6 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         amounts.uncappedPremium = ownerBalance_ > 0
             ? amounts.totalOwedPremium.mulDiv(shares_, ownerBalance_, Math.Rounding.Floor)
             : amounts.totalOwedPremium;
-
-        amounts.totalOwedExpectedLoss =
-            _calcOwedDebt(principal, cumulativeExpectedLossPerUnit, userExpectedLossDebt[owner_]);
-        amounts.uncappedExpectedLoss = ownerBalance_ > 0
-            ? amounts.totalOwedExpectedLoss.mulDiv(shares_, ownerBalance_, Math.Rounding.Floor)
-            : amounts.totalOwedExpectedLoss;
     }
 
     /// @dev Morpho redeem, insurance settlement, premium accounting, and debt updates.
@@ -580,13 +550,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         // Update debts BEFORE filing claim so that userPrincipal is consistent with balanceOf(owner_) == 0
         // during the evaluate() callback triggered inside _settleWithdrawalTransfer → _claimInsurance.
         _updateDebtsAfterWithdrawal(
-            owner_,
-            userPrincipal[owner_],
-            userPrincipalForWithdrawal_,
-            a.totalOwedPremium,
-            a.uncappedPremium,
-            a.totalOwedExpectedLoss,
-            a.uncappedExpectedLoss
+            owner_, userPrincipal[owner_], userPrincipalForWithdrawal_, a.totalOwedPremium, a.uncappedPremium
         );
 
         // slither-disable-next-line reentrancy-no-eth,reentrancy-benign
@@ -608,7 +572,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
 
         uint256 premiumForWithdrawal;
         (premiumForWithdrawal, totalOut_) = _settleWithdrawalTransfer(
-            receiver_, userPrincipalForWithdrawal_, a.uncappedPremium, a.uncappedExpectedLoss, assetsReceived, owner_
+            receiver_, userPrincipalForWithdrawal_, a.uncappedPremium, assetsReceived, owner_
         );
 
         pendingPremium += premiumForWithdrawal;
@@ -617,10 +581,6 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         // the forgiven delta was never collected into pendingPremium and should not reduce the liability tracker,
         // otherwise totalAssets() is inflated for remaining holders by the forgiven amount.
         totalPremiumLiability = _safeSub(totalPremiumLiability, premiumForWithdrawal);
-        uint256 remainingAfterPremium = _safeSub(assetsReceived, premiumForWithdrawal);
-        uint256 expectedLossForWithdrawal =
-            a.uncappedExpectedLoss < remainingAfterPremium ? a.uncappedExpectedLoss : remainingAfterPremium;
-        totalExpectedLossLiability = _safeSub(totalExpectedLossLiability, expectedLossForWithdrawal);
     }
 
     /// @notice Updates absolute debts and principal after a withdrawal.
@@ -629,18 +589,13 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         uint256 principal_,
         uint256 principalForWithdrawal_,
         uint256 totalOwedPremium_,
-        uint256 uncappedPremium_,
-        uint256 totalOwedExpectedLoss_,
-        uint256 uncappedExpectedLoss_
+        uint256 uncappedPremium_
     )
         private
     {
         uint256 newPrincipal = principal_ - principalForWithdrawal_;
         uint256 newRawDebt = newPrincipal.mulDiv(cumulativePremiumPerUnit, WAD, Math.Rounding.Floor);
         userPremiumDebt[owner_] = _safeSub(newRawDebt, totalOwedPremium_ - uncappedPremium_);
-
-        uint256 newRawELDebt = newPrincipal.mulDiv(cumulativeExpectedLossPerUnit, WAD, Math.Rounding.Floor);
-        userExpectedLossDebt[owner_] = _safeSub(newRawELDebt, totalOwedExpectedLoss_ - uncappedExpectedLoss_);
 
         userPrincipal[owner_] = newPrincipal;
     }

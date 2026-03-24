@@ -67,29 +67,6 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         emit IE.MaxCoverableLossBpsExecuted(oldBps, newBps);
     }
 
-    /// @dev Call executeUnderlyingExpectedLossBps() after the delay to apply the pending value.
-    function setUnderlyingExpectedLossBps(uint256 newBps) external override onlyOwner {
-        require(newBps <= MAX_EXPECTED_LOSS_BPS, IA.InvalidParameters());
-        pendingExpectedLossTimestamp =
-            _propose(pendingExpectedLossTimestamp, "underlyingExpectedLossBps", OPERATIONAL_DELAY);
-        pendingExpectedLossBps = newBps;
-        emit IE.UnderlyingExpectedLossBpsProposed(newBps, pendingExpectedLossTimestamp);
-    }
-
-    /// @notice Applies a pending underlyingExpectedLossBps change after the operational timelock elapses.
-    function executeUnderlyingExpectedLossBps() external override onlyOwner {
-        _requireTimelockReady(pendingExpectedLossTimestamp);
-        // Settle accrual at the old rate before switching, same as setPremiumRate.
-        _accruePremium();
-        lastPremiumAccrualTime = block.timestamp;
-        uint256 oldBps = underlyingExpectedLossBps;
-        uint256 newBps = pendingExpectedLossBps;
-        underlyingExpectedLossBps = newBps;
-        pendingExpectedLossBps = 0;
-        pendingExpectedLossTimestamp = 0;
-        emit IE.UnderlyingExpectedLossBpsExecuted(oldBps, newBps);
-    }
-
     /// @dev Call executeDeductibleBps() after the delay to apply the pending value.
     function setDeductibleBps(uint16 newBps) external override onlyOwner {
         require(newBps < BPS_DENOMINATOR, IA.InvalidParameters());
@@ -139,7 +116,6 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         pendingPremiumRateTimestamp = 0;
         pendingDeductibleTimestamp = 0;
         pendingMaxCoverableLossTimestamp = 0;
-        pendingExpectedLossTimestamp = 0;
         pendingUpgradeTimestamp = 0;
         pendingImplementation = address(0);
         pendingPremiumRecipientTimestamp = 0;

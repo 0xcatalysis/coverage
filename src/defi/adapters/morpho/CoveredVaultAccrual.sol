@@ -48,27 +48,6 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
 
         // Cache hot storage reads
         uint256 _totalPrincipal = totalPrincipal;
-        uint256 _elBps = underlyingExpectedLossBps;
-
-        // Advance expected loss accumulator for the active elapsed period.
-        if (_elBps > 0 && _totalPrincipal > 0) {
-            uint256 elIncrement = _totalPrincipal.mulDiv(
-                _elBps * activeElapsed, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
-            );
-            // Cap totalExpectedLossLiability against morphoValue headroom
-            uint256 elHeadroom = _liabilityHeadroom(morphoValue);
-            if (elIncrement > elHeadroom) {
-                // Cap per-unit accumulator proportionally when headroom is exhausted.
-                uint256 cappingFactor = elHeadroom.mulDiv(WAD, elIncrement);
-                cumulativeExpectedLossPerUnit += _elBps.mulDiv(
-                    activeElapsed * cappingFactor, BPS_DENOMINATOR * 365 days
-                );
-                elIncrement = elHeadroom;
-            } else {
-                cumulativeExpectedLossPerUnit += _elBps.mulDiv(activeElapsed * WAD, BPS_DENOMINATOR * 365 days);
-            }
-            totalExpectedLossLiability += elIncrement;
-        }
 
         // Compute accrued premium using the active elapsed window.
         uint256 accrued = _totalPrincipal > 0
@@ -102,22 +81,6 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
                     ACCRUAL VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Returns pending (uncheckpointed) expected-loss accrual for the current elapsed window.
-    /// @dev Uses the same active-window logic as _accruedPremium() so totalAssets() remains consistent
-    ///      with calculateShortfall() and does not overstate NAV between accrual checkpoints.
-    // slither-disable-next-line incorrect-equality,dead-code
-    function _accruedExpectedLossFor(uint256 morphoVal) internal view returns (uint256) {
-        if (morphoGateActive) return 0;
-        if (underlyingExpectedLossBps == 0 || totalPrincipal == 0) return 0;
-        uint256 elapsed = _activeElapsedFrom(lastPremiumAccrualTime);
-        if (elapsed == 0) return 0;
-        uint256 accrued = totalPrincipal.mulDiv(
-            underlyingExpectedLossBps * elapsed, BPS_DENOMINATOR * uint256(365 days), Math.Rounding.Floor
-        );
-        uint256 elHeadroom = _liabilityHeadroom(morphoVal);
-        return accrued < elHeadroom ? accrued : elHeadroom;
-    }
-
     /// @notice Returns accrued-but-unprocessed premium owed to premiumRecipient
     /// @dev Computes the active elapsed window:
     ///      - If policy is currently active: full [lastCheckpoint, now] window.
@@ -148,8 +111,8 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
     ///      - Policy active: full [checkpoint, now] window.
     ///      - Policy expired, checkpoint < maturityTime: only [max(checkpoint, startTime), maturityTime].
     ///      - No policy or window already settled: 0.
-    ///      Single source of truth for the active-window calculation used by _accruedExpectedLoss,
-    ///      _accruedPremium, _accruePremium, and _userTotalExpectedLoss.
+    ///      Single source of truth for the active-window calculation used by
+    ///      _accruedPremium and _accruePremium.
     function _activeElapsedFrom(uint256 checkpoint) internal view returns (uint256) {
         if (_isPolicyActive()) {
             return block.timestamp - checkpoint;
@@ -197,7 +160,6 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
 
     /// @dev Maximum additional liability the protocol can absorb given the current Morpho value.
     function _liabilityHeadroom(uint256 morphoVal) internal view returns (uint256) {
-        uint256 totalLiability = totalPremiumLiability + totalExpectedLossLiability;
-        return morphoVal > totalLiability ? morphoVal - totalLiability : 0;
+        return morphoVal > totalPremiumLiability ? morphoVal - totalPremiumLiability : 0;
     }
 }
