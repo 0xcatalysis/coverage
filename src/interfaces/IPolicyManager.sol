@@ -77,6 +77,8 @@ interface IPolicyManager is IAccessControl {
         bytes32 termsHash;
         /// @notice Deterministic hash representing the policy schedule.
         bytes32 policyCommit;
+        /// @notice Whether the policyholder is in premium default; set by the pool curator.
+        bool premiumDefaulted;
     }
 
     /**
@@ -173,6 +175,13 @@ interface IPolicyManager is IAccessControl {
      * @param supported Whether the token is now supported.
      */
     event PayoutTokenSet(address indexed token, bool supported);
+
+    /**
+     * @notice Emitted when a policy's premium default status is updated by the pool curator.
+     * @param policyId Identifier of the affected policy.
+     * @param defaulted True if the policy is now in premium default, false if cleared.
+     */
+    event PremiumDefaultedSet(uint96 indexed policyId, bool defaulted);
 
     /**
      * @notice Reverts when a zero address is provided where not allowed.
@@ -286,6 +295,11 @@ interface IPolicyManager is IAccessControl {
      * @param payoutToken Token address that failed validation.
      */
     error UnsupportedPayoutToken(address payoutToken);
+
+    /**
+     * @notice Reverts when the caller is not the pool that owns the policy.
+     */
+    error UnauthorizedPool();
 
     /**
      * @notice Reverts when the bound policy duration doesn't match the requested duration.
@@ -416,4 +430,13 @@ interface IPolicyManager is IAccessControl {
      * @return metadata The policy metadata struct.
      */
     function policyMetadata(uint96 policyId) external view returns (PolicyMetadata memory metadata);
+
+    /**
+     * @notice Sets or clears the premium default flag for a policy.
+     * @dev Only callable by the CoverPool that issued the policy (stored as metadata.pool).
+     *      Emits PremiumDefaultedSet.
+     * @param policyId Identifier of the policy to update.
+     * @param defaulted True to mark the policy as in premium default, false to clear.
+     */
+    function setPremiumDefaulted(uint96 policyId, bool defaulted) external;
 }
