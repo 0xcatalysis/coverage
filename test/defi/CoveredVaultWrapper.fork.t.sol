@@ -236,14 +236,14 @@ contract CoveredVaultWrapperForkTest is Test {
 
         // The 2% Morpho management fee is taken from underlying assets.
         // Morpho returns ~980e6 after the fee.
-        // Since the premium rate already accounts for expected loss, no separate EL deduction occurs.
         // insuredBasis = 1000e6 - 0 (no wrapper premium) = 1000e6.
         // shortfall = max(0, 1000e6 - 980e6) = 20e6 (the fee is a real loss).
         //   maxInsurable = 10% of 1000e6 = 100e6, capped to 20e6
-        //   claimAmount = 20e6 * 99% (1% deductible) = 19.8e6
-        // User receives: ~980 (Morpho) + ~19.8 (insurance) ≈ 999.8 USDC
-        assertEq(IERC20(USDC).balanceOf(user1), 999_800_000, "User received Morpho proceeds + insurance");
-        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 19_799_999, "Insurance covers fee loss");
+        //   deductibleAmt = 1000e6 * 1% = 10e6 (traditional deductible threshold)
+        //   claimAmount = 20e6 - 10e6 = 10e6 (loss above deductible)
+        // User receives: ~980 (Morpho) + ~10 (insurance) ≈ 990 USDC
+        assertEq(IERC20(USDC).balanceOf(user1), 990_000_000, "User received Morpho proceeds + insurance");
+        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 9_999_999, "Insurance covers loss above deductible");
     }
 
     function test_fork_UnderlyingVaultFee_ProfitCoversFee() public onlyFork {
@@ -297,13 +297,13 @@ contract CoveredVaultWrapperForkTest is Test {
         _userRedeemAll(user1);
 
         // After 2% Morpho fee + 1% hack loss, Morpho returns ~970.2 USDC.
-        // Premium rate already includes the expected loss component, so no separate EL deduction.
         // insuredBasis = 1000e6 - 0 (no wrapper premium) = 1000e6.
-        // shortfall = max(0, 1000e6 - 970.2e6) = 29.8e6 (fee + hack loss are both real losses).
+        // shortfall ≈ 29.8e6 (fee + hack loss are both real losses).
         //   maxInsurable = 10% of 1000e6 = 100e6, capped to 29.8e6
-        //   claimAmount = 29.8e6 * 99% (1% deductible) ≈ 29.50e6
-        // User receives: ~970.2 (Morpho) + ~29.50 (insurance) ≈ 999.7 USDC
-        assertEq(IERC20(USDC).balanceOf(user1), 999_702_000, "User received insurance for fee + hack loss");
-        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 29_501_999, "Insurance covers fee + hack shortfall");
+        //   deductibleAmt = 1000e6 * 1% = 10e6 (traditional deductible threshold)
+        //   claimAmount = 29.8e6 - 10e6 ≈ 19.8e6 (loss above deductible)
+        // User receives: ~970.2 (Morpho) + ~19.8 (insurance) ≈ 990 USDC
+        assertEq(IERC20(USDC).balanceOf(user1), 990_000_000, "User received insurance for fee + hack loss");
+        assertEq(claimManager.policyClaim(POLICY_ID).totalPaidOut, 19_799_999, "Insurance covers loss above deductible");
     }
 }

@@ -624,11 +624,14 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         return raw > userDebt ? raw - userDebt : 0;
     }
 
-    /// @dev Caps shortfall at maxCoverableLossBps of basis, then applies deductible.
+    /// @dev Caps shortfall at maxCoverableLossBps of basis, then subtracts a traditional deductible.
+    ///      The deductible is a fixed threshold (deductibleBps % of basis) that the policyholder absorbs
+    ///      before insurance pays anything. Losses at or below the threshold yield a $0 payout.
     function _capAndApplyDeductible(uint256 shortfall, uint256 basis) private view returns (uint256) {
         uint256 maxInsurance = basis.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR, Math.Rounding.Floor);
         uint256 capped = shortfall > maxInsurance ? maxInsurance : shortfall;
-        return capped.mulDiv(BPS_DENOMINATOR - deductibleBps, BPS_DENOMINATOR, Math.Rounding.Floor);
+        uint256 deductibleAmt = basis.mulDiv(deductibleBps, BPS_DENOMINATOR, Math.Rounding.Floor);
+        return capped > deductibleAmt ? capped - deductibleAmt : 0;
     }
 
     function _tstore(uint256 slot, uint256 value) private {
