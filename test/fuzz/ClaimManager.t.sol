@@ -199,7 +199,8 @@ contract ClaimManagerFuzzTest is Test {
                 coverageLimit: coverageLimit,
                 specId: keccak256("spec"),
                 termsHash: keccak256("terms"),
-                policyCommit: keccak256("commit")
+                policyCommit: keccak256("commit"),
+                premiumDefaulted: false
             })
         );
     }

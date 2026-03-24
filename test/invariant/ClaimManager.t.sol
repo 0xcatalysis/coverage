@@ -271,7 +271,8 @@ contract ClaimManagerInvariantTest is StdInvariant, Test {
                 coverageLimit: COVERAGE_LIMIT,
                 specId: keccak256("spec"),
                 termsHash: keccak256("terms"),
-                policyCommit: keccak256("commit")
+                policyCommit: keccak256("commit"),
+                premiumDefaulted: false
             })
         );
     }
