@@ -242,9 +242,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.redeem(shares, user1, user1);
 
         uint256 received = asset.balanceOf(user1) - user1BalanceBefore;
-        // assetsReceived ≈ 900, insurance shortfall=100, max=100, effective=99 (1% deductible)
-        // total received = 900 + 99 = 999
-        assertApproxEqAbs(received, 999 ether, 1 ether, "Should receive ~999 (assets + insurance)");
+        // assetsReceived ≈ 900, shortfall=100, max=100, capped=100
+        // deductibleAmt = 1000*1%=10, payout = 100-10=90, total = 900+90=990
+        assertApproxEqAbs(received, 990 ether, 1 ether, "Should receive ~990 (assets + insurance)");
         assertEq(wrapper.userPrincipal(user1), 0);
         assertEq(wrapper.totalPrincipal(), 0);
     }
@@ -263,8 +263,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.redeem(shares, user1, user1);
 
         uint256 received = asset.balanceOf(user1) - user1BalanceBefore;
-        // assetsReceived=0, shortfall=1000, maxInsurance=1000*10%=100, effective=99
-        assertApproxEqAbs(received, 99 ether, 1 ether, "Should receive insurance payout on 100% loss");
+        // assetsReceived=0, shortfall=1000, maxInsurance=1000*10%=100, capped=100
+        // deductibleAmt=1000*1%=10, payout=100-10=90
+        assertApproxEqAbs(received, 90 ether, 1 ether, "Should receive insurance payout on 100% loss");
         assertEq(wrapper.userPrincipal(user1), 0);
     }
 
@@ -282,9 +283,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.redeem(shares, user1, user1);
 
         uint256 received = asset.balanceOf(user1) - user1BalanceBefore;
-        // assetsReceived=500, maxInsurance=100, effective=99
-        // total = 500 + 99 = 599
-        assertApproxEqAbs(received, 599 ether, 1 ether, "Insurance capped at maxCoverableLossBps");
+        // assetsReceived=500, shortfall=500, maxInsurance=100, capped=100
+        // deductibleAmt=1000*1%=10, payout=100-10=90, total=500+90=590
+        assertApproxEqAbs(received, 590 ether, 1 ether, "Insurance capped at maxCoverableLossBps");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -564,8 +565,8 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
         morphoVault.setLoss(10);
         uint256 sf = wrapper.calculateShortfall();
-        // raw=100, capped=100 (=maxCoverable at 10%), after deductible = 100*99%=99
-        assertApproxEqAbs(sf, 99 ether, 1);
+        // raw=100, capped=100 (=maxCoverable at 10%), deductibleAmt = 1000*1%=10, payout = 100-10=90
+        assertApproxEqAbs(sf, 90 ether, 1);
     }
 
     function test_userShortfall_noLoss() public {
@@ -579,7 +580,8 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
         morphoVault.setLoss(10);
         uint256 sf = wrapper.userShortfall(user1);
-        assertApproxEqAbs(sf, 99 ether, 1);
+        // shortfall=100, capped=100, deductibleAmt=1000*1%=10, payout=90
+        assertApproxEqAbs(sf, 90 ether, 1);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -673,8 +675,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         // With premium-as-debt: gross Morpho = 1000 (not redeemed upfront), 10% loss → assetsReceived = 900.
         // uncappedPremium = 50; netAssetsReceived = 850; insuredBasis = 950; shortfall = 100;
-        // maxInsurance = 95 (10% of 950); claimAmount = 94 (99% after deductible); total = 850 + 94 = 944.
-        assertApproxEqAbs(received, 944 ether, 3 ether, "Should receive assets + insurance for the loss only");
+        // maxInsurance = 95 (10% of 950); capped = 95;
+        // deductibleAmt = 950 * 1% = 9.5; payout = 95 - 9.5 = 85.5; total = 850 + 85.5 = 935.5.
+        assertApproxEqAbs(received, 935.5 ether, 3 ether, "Should receive assets + insurance for the loss only");
     }
 
     /// @dev Regression: calculateShortfall() must return 0 when there is pending (unaccrued)
@@ -1018,26 +1021,16 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.setDeductibleBps(200);
     }
 
-    /// @dev Regression: deductible must apply to the CAPPED shortfall, not to the cap itself.
-    ///
-    ///      Bug: write path computed effectiveInsurance = maxInsurance × (1 − deductible), then
-    ///      claimAmount = min(shortfall, effectiveInsurance). When shortfall < effectiveInsurance the
-    ///      deductible was never applied and the user received the full shortfall -- no deductible at all.
-    ///
-    ///      Fix: cap the raw shortfall first, then apply the deductible to the capped amount,
-    ///      matching calculateShortfall() / userShortfall().
-    ///
-    ///      Setup: principal=1000, maxCoverable=20% (max=200), deductible=50%, 5% loss.
-    ///        shortfall = 50, maxInsurance = 200
-    ///        Bug:  effectiveInsurance = 200×50% = 100; claimAmount = min(50,100) = 50  (no deductible!)
-    ///        Fix:  capped = min(50, 200) = 50; claimAmount = 50×50% = 25
-    function test_deductible_appliedToCappedShortfall_notToCap() public {
+    /// @dev Traditional deductible: losses below the deductible threshold get $0 payout.
+    ///      Deductible = basis × deductibleBps / 10000 = 1000 × 1% = 10.
+    ///      A 5% loss (shortfall=50) exceeds the deductible (10), so payout = 50 - 10 = 40.
+    function test_deductible_traditionalThreshold_lossAboveDeductible() public {
         CoveredVaultWrapper w = _deployWrapperProxy(
             address(morphoVault),
             address(claimManager),
             address(coverPool),
             2000, // 20% max coverable loss
-            5000, // 50% deductible
+            100, // 1% deductible
             premiumRecipientAddr,
             curator,
             "DeductibleTest",
@@ -1069,14 +1062,15 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         w.redeem(shares, user1, user1);
         uint256 received = asset.balanceOf(user1) - before;
 
-        // Correct: 950 + 25 = 975.  Bug would give: 950 + 50 = 1000 (deductible skipped).
-        assertApproxEqAbs(received, 975 ether, 1 ether, "Deductible must apply to the actual shortfall");
-        assertLt(received, 990 ether, "Full shortfall must NOT be paid when deductible > 0");
+        // shortfall=50, deductibleAmt = 1000 × 1% = 10, payout = 50 - 10 = 40
+        // user receives: 950 + 40 = 990
+        assertApproxEqAbs(received, 990 ether, 1 ether, "Payout = shortfall minus deductible threshold");
     }
 
-    /// @dev Raising deductible reduces effective insurance payout proportionally.
-    ///      10% loss → shortfall=100, maxInsurance=100; with 50% deductible: payout=50.
-    function test_setDeductibleBps_affectsInsurancePayout() public {
+    /// @dev Traditional deductible: losses below the deductible threshold get $0 payout.
+    ///      Deductible = basis × 50% = 500. A 10% loss (shortfall=100) is below the threshold.
+    ///      No insurance payout — user absorbs the entire loss.
+    function test_deductible_traditionalThreshold_lossBelowDeductible() public {
         vm.prank(curator);
         wrapper.setDeductibleBps(5000); // 50% deductible -- propose
         vm.warp(block.timestamp + 2 days + 1);
@@ -1093,8 +1087,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.redeem(shares, user1, user1);
         uint256 received = asset.balanceOf(user1) - before;
 
-        // assetsReceived=900, shortfall=100, maxInsurance=100, effective=50 (50% deductible)
-        assertApproxEqAbs(received, 950 ether, 1 ether, "50% deductible halves the insurance payout");
+        // shortfall=100, deductibleAmt = 1000 × 50% = 500
+        // 100 < 500 → payout = 0, user receives only Morpho proceeds (900)
+        assertApproxEqAbs(received, 900 ether, 1 ether, "Loss below deductible threshold: $0 payout");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1485,9 +1480,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         );
 
         // ── 3. User receives only insurance (Morpho proceeds fully absorbed by premium) ──
-        // insuredBasis = 1000 − 50 = 950 (premiumForWithdrawal, not uncapped 100); maxInsurance = 95 (10%); claim ≈
-        // 94.05 (99%)
-        assertApproxEqAbs(insurancePaid, 94.05 ether, 2 ether, "Insurance: 10% of 950 insuredBasis * 99%");
+        // insuredBasis = 1000 − 50 = 950 (premiumForWithdrawal, not uncapped 100); maxInsurance = 95 (10%);
+        // deductibleAmt = 950 * 1% = 9.5; payout = 95 - 9.5 = 85.5
+        assertApproxEqAbs(insurancePaid, 85.5 ether, 2 ether, "Insurance: 10% of 950 insuredBasis minus 1% deductible");
         assertApproxEqAbs(received, insurancePaid, 2 ether, "User receives insurance only, zero net Morpho proceeds");
 
         // ── 4. All principal and premium state is zeroed ──

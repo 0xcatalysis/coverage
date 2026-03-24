@@ -133,9 +133,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         // Both users suffer 100% loss → assetsReceived = 0 → premiumForWithdrawal = 0 (capped at 0).
         // insuredBasis = 1000 − 0 = 1000 per user (uncollected premium is not deducted from insuredBasis).
-        // shortfall = 1000, maxInsurance = 100 (10%), claimAmount = 99 (99% after deductible)
-        assertApproxEqAbs(user1Received, 99 ether, 2, "user1: 100% loss, premium-adjusted insurance");
-        assertApproxEqAbs(user2Received, 99 ether, 2, "user2: 100% loss, premium-adjusted insurance");
+        // shortfall = 1000, maxInsurance = 100 (10%), capped = 100
+        // deductibleAmt = 1000 * 1% = 10, payout = 100 - 10 = 90
+        assertApproxEqAbs(user1Received, 90 ether, 2, "user1: 100% loss, premium-adjusted insurance");
+        assertApproxEqAbs(user2Received, 90 ether, 2, "user2: 100% loss, premium-adjusted insurance");
 
         // Both principals zeroed
         assertEq(wrapper.userPrincipal(user1), 0);
@@ -182,10 +183,11 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         uint256 user1Received = asset.balanceOf(user1) - user1Before;
         uint256 user2Received = asset.balanceOf(user2) - user2Before;
 
-        // 100% loss, no premium: insuredBasis=200, shortfall=200, maxInsurance=200*10%=20,
-        // claimAmount=20*99%=19.8. Coverage limit 50 > 19.8, so not exhausted per user.
-        assertApproxEqAbs(user1Received, 19.8 ether, 2, "user1: 10% cap * 99% deductible = 19.8 ether");
-        assertApproxEqAbs(user2Received, 19.8 ether, 2, "user2: same insurance as user1");
+        // 100% loss, no premium: insuredBasis=200, shortfall=200, maxInsurance=200*10%=20, capped=20.
+        // deductibleAmt = 200 * 1% = 2, payout = 20 - 2 = 18.
+        // Coverage limit 50 > 18, so not exhausted per user.
+        assertApproxEqAbs(user1Received, 18 ether, 2, "user1: 10% cap minus 1% deductible = 18 ether");
+        assertApproxEqAbs(user2Received, 18 ether, 2, "user2: same insurance as user1");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -213,9 +215,9 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         uint256 received = asset.balanceOf(user1) - user1Before;
 
-        // assetsReceived = 800, shortfall=200, maxInsurance=100, effective=99
-        // total = 800 + 99 = 899 exactly
-        assertEq(received, 899 ether, "Should receive 800 + 99 insurance = 899 after 20% loss");
+        // assetsReceived = 800, shortfall=200, maxInsurance=100, capped=100
+        // deductibleAmt = 1000*1%=10, payout=100-10=90, total = 800+90=890
+        assertEq(received, 890 ether, "Should receive 800 + 90 insurance = 890 after 20% loss");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -421,9 +423,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
             aliceReceived, 920_091_324_214_634_666_665, 2, "Alice: vault share after premium + price drop"
         );
         // Bob: entered at ~1.4, price dropped below entry → shortfall triggers insurance
-        assertApproxEqAbs(bobReceived, 735_936_073_075_798_997_335, 2, "Bob: vault share + insurance");
+        // Traditional deductible: deductibleAmt = insuredBasis * 1%, subtracted from capped shortfall
+        assertApproxEqAbs(bobReceived, 729_908_675_815_415_253_334, 2, "Bob: vault share + insurance");
         // Insurance for Bob's real shortfall from price drop
-        assertApproxEqAbs(totalInsurance, 149_178_082_194_497_664_000, 2, "Insurance for Bob's shortfall");
+        assertApproxEqAbs(totalInsurance, 143_150_684_934_113_920_000, 2, "Insurance for Bob's shortfall");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -585,9 +588,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
             aliceReceived, 1_103_424_657_547_967_999_998, 2, "Alice: premium + profit - 10% loss, no insurance"
         );
         // Bob: entered at 1.5, below water → gets insurance for real shortfall
-        assertApproxEqAbs(bobTotal, 1_092_020_547_967_825_248_002, 2, "Bob: vault share + insurance");
+        // Traditional deductible: deductibleAmt = insuredBasis * 1%, subtracted from capped shortfall
+        assertApproxEqAbs(bobTotal, 1_081_849_315_090_927_680_000, 2, "Bob: vault share + insurance");
         // Insurance triggered for Bob due to real 10% loss
-        assertApproxEqAbs(totalInsurance, 111_883_561_645_873_248_000, 2, "Insurance for Bob's real shortfall");
+        assertApproxEqAbs(totalInsurance, 101_712_328_768_975_680_000, 2, "Insurance for Bob's real shortfall");
     }
 
     /*//////////////////////////////////////////////////////////////
