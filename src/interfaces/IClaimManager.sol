@@ -278,6 +278,12 @@ interface IClaimManager is IAccessControl {
     error TooManyCollateralEntries(uint256 count);
 
     /**
+     * @notice Reverts when attempting to file a claim for a policy whose holder is in premium default.
+     * @param policyId Identifier of the policy in premium default.
+     */
+    error PremiumDefaulted(uint96 policyId);
+
+    /**
      * @notice Pauses claim operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */

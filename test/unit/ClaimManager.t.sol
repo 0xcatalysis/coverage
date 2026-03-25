@@ -1303,7 +1303,6 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved));
     }
 
-
     function test_fileClaim_MultipleClaimsExhaustCoverage_FinalClaimCapped() public {
         uint256 firstClaimAmount = COVERAGE_LIMIT / 2;
         uint256 secondClaimAmount = COVERAGE_LIMIT / 2;
