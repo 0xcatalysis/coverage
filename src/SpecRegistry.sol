@@ -106,7 +106,6 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
 
         address coverPool = msg.sender;
         require(coverPoolFactory.coverPoolExists(coverPool), InvalidCoverPool());
-        require(_approvedSpecs[address(spec)], SpecNotApproved(address(spec)));
         ISpec existingSpec = _specs[coverPool][specId];
 
         if (address(existingSpec) != address(0)) {
@@ -116,6 +115,8 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
             );
             return;
         }
+
+        require(_approvedSpecs[address(spec)], SpecNotApproved(address(spec)));
 
         _specs[coverPool][specId] = spec;
         emit SpecRegistered(coverPool, specId, address(spec));
