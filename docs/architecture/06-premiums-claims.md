@@ -211,6 +211,16 @@ Claims are accepted only while policy is active:
 
 Claim payout path is entered only if `ISpec.evaluate(context).isPayable == true`.
 
+### Evidence Hash
+
+Every call to `fileClaim` must supply a non-zero `evidenceHash` that is unique per policy. The
+`ClaimManager` maintains a per-policy set of consumed hashes and reverts with `DuplicateEvidenceHash`
+if the same hash is reused, whether the original claim was approved or rejected. This ensures each
+claim references distinct evidence and supports post-claim auditing.
+
+Callers should supply a hash that identifies a retrievable evidence document, such as an IPFS CID
+digest (`keccak256` of the CID multihash bytes), to enable off-chain verification.
+
 ## Collateral Conversion Rules
 
 In `_processCollateral(...)`:
