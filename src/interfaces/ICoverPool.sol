@@ -282,6 +282,14 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function hasBoundPolicy(uint96 policyId) external view returns (bool);
 
     /**
+     * @notice Sets or clears the premium default flag for a policy bound to this pool.
+     * @dev Only callable by the pool curator.
+     * @param policyId Identifier of the policy to update.
+     * @param defaulted True to mark the policy as in premium default, false to clear.
+     */
+    function setPremiumDefaulted(uint96 policyId, bool defaulted) external;
+
+    /**
      * @notice Pool fee expressed in basis points that is applied to premiums.
      * @return The pool fee in basis points.
      */

@@ -267,7 +267,8 @@ contract PolicyManager is
             coverageLimit: boundPolicy.coverageLimit,
             specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
-            policyCommit: policyCommit
+            policyCommit: policyCommit,
+            premiumDefaulted: false
         });
 
         _registeredPolicyCommits[policyCommit] = true;
@@ -302,6 +303,18 @@ contract PolicyManager is
     {
         metadata = _policies[policyId];
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
+    function setPremiumDefaulted(uint96 policyId, bool defaulted) external override {
+        IPolicyManager.PolicyMetadata storage metadata = _policies[policyId];
+        require(metadata.buyer != address(0), PolicyNotFound(policyId));
+        require(msg.sender == metadata.pool, UnauthorizedPool());
+
+        metadata.premiumDefaulted = defaulted;
+        emit PremiumDefaultedSet(policyId, defaulted);
     }
 
     /**

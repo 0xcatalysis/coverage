@@ -698,7 +698,8 @@ contract ClaimManagerTest is Test {
                 coverageLimit: 0,
                 specId: bytes32(0),
                 termsHash: bytes32(0),
-                policyCommit: bytes32(0)
+                policyCommit: bytes32(0),
+                premiumDefaulted: false
             })
         );
 
@@ -1049,6 +1050,47 @@ contract ClaimManagerTest is Test {
         assertEq(state.claimCount, 2);
 
         assertEq(claimManager.remainingCoverage(POLICY_ID), 0);
+    }
+
+    function test_fileClaim_WhenPremiumDefaulted_Reverts() public {
+        IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.premiumDefaulted = true;
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.PremiumDefaulted.selector, POLICY_ID));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, 100 ether, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenPremiumDefaultCleared_Succeeds() public {
+        IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.premiumDefaulted = true;
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.PremiumDefaulted.selector, POLICY_ID));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, 100 ether, evidenceHash, "");
+
+        metadata.premiumDefaulted = false;
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(slashingManager), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+        swapperMock.setSwapOutput(100 ether);
+        swapperMock.setPayoutToken(payoutToken);
+        payoutTokenMock.mint(address(swapperMock), 100 ether);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, 100 ether, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved));
     }
 
     function test_fileClaim_MultipleClaimsExhaustCoverage_FinalClaimCapped() public {
@@ -2174,7 +2216,8 @@ contract ClaimManagerTest is Test {
             coverageLimit: COVERAGE_LIMIT,
             specId: keccak256("MorphoSpec"),
             termsHash: keccak256("terms-hash"),
-            policyCommit: policyCommit
+            policyCommit: policyCommit,
+            premiumDefaulted: false
         });
     }
 
@@ -2396,14 +2439,14 @@ contract MockMultiSwapper {
 }
 
 contract MockCoverPool {
-    address private immutable _owner;
+    address private immutable _OWNER;
 
     constructor(address owner_) {
-        _owner = owner_;
+        _OWNER = owner_;
     }
 
     function owner() external view returns (address) {
-        return _owner;
+        return _OWNER;
     }
 }
 

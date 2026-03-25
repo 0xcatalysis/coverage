@@ -305,6 +305,7 @@ contract ClaimManager is
 
         metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
+        require(!metadata.premiumDefaulted, PremiumDefaulted(policyId));
 
         uint256 totalPaidOut = _policyClaims[policyId].totalPaidOut;
         uint256 remaining = totalPaidOut >= metadata.coverageLimit ? 0 : metadata.coverageLimit - totalPaidOut;
