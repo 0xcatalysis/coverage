@@ -19,7 +19,7 @@ import {SpecRegistry} from "../../src/SpecRegistry.sol";
 contract SpecRegistryHandler is Test {
     SpecRegistry internal registry;
     address internal admin;
-    address internal pool;
+    address public pool;
 
     /// @dev Fixed set of spec contracts available to the fuzzer.
     address[] internal specContracts;
@@ -33,6 +33,9 @@ contract SpecRegistryHandler is Test {
 
     /// @dev Whether the spec was approved at registration time (should always be true).
     mapping(bytes32 key => bool wasApproved) public approvedAtRegistration;
+
+    /// @dev Stores the specId for each registration key so the invariant can call resolveSpec.
+    mapping(bytes32 key => bytes32 specId) public registeredSpecId;
 
     /// @dev All registration keys seen, used for iteration.
     bytes32[] public registrationKeys;
@@ -75,6 +78,7 @@ contract SpecRegistryHandler is Test {
             if (registeredSpec[key] == address(0)) {
                 registeredSpec[key] = spec;
                 approvedAtRegistration[key] = approvedBefore;
+                registeredSpecId[key] = specId;
                 registrationKeys.push(key);
             }
         } catch {}
@@ -137,7 +141,9 @@ contract SpecRegistryInvariantTest is StdInvariant, Test {
             address expectedSpec = handler.registeredSpec(key);
             if (expectedSpec == address(0)) continue;
 
-            assertGt(expectedSpec.code.length, 0, "Registered spec contract must always have code");
+            bytes32 specId = handler.registeredSpecId(key);
+            address resolvedSpec = address(registry.resolveSpec(handler.pool(), specId));
+            assertEq(resolvedSpec, expectedSpec, "resolveSpec returned wrong spec after approve/revoke sequence");
         }
     }
 }
