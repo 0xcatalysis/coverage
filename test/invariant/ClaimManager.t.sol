@@ -252,7 +252,7 @@ contract ClaimManagerInvariantTest is StdInvariant, Test {
                 )
             )
         );
-        return ClaimManager(proxy);
+        return ClaimManager(payable(proxy));
     }
 
     function _setupPolicy(InvPolicy policyContract, address claimer, address beneficiary) private {

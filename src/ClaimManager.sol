@@ -6,6 +6,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
@@ -40,9 +41,11 @@ contract ClaimManager is
     ReentrancyGuard,
     IClaimManager
 {
+    using Address for address payable;
     using SafeERC20 for IERC20;
 
     uint16 private constant _MAX_SLIPPAGE_BPS = 10_000;
+    address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     address public override specRegistry;
     address public override slashingManager;
@@ -59,6 +62,11 @@ contract ClaimManager is
     constructor() {
         _disableInitializers();
     }
+
+    /**
+     * @notice Allows the ClaimManager to receive native ETH.
+     */
+    receive() external payable {}
 
     /**
      * @notice Initializes the ClaimManager with role assignments and dependency wiring.
@@ -170,6 +178,16 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
+    function recoverTokens(address token, address to, uint256 amount) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(token != address(0) && to != address(0), ZeroAddress());
+        require(amount != 0, ZeroAmount());
+        _transferToken(token, to, amount);
+        emit TokensRecovered(token, to, amount);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
     function approveNextClaim(uint96 policyId) external override {
         IPolicyManager.PolicyMetadata memory metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
@@ -223,8 +241,9 @@ contract ClaimManager is
 
         uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
         require(totalPayout > 0, ZeroPayoutAmount(policyId));
-        // slither-disable-next-line reentrancy-no-eth
+        // slither-disable-next-line reentrancy-eth,reentrancy-no-eth
         claim.payoutAmount = totalPayout;
+        // slither-disable-next-line reentrancy-eth,reentrancy-no-eth
         _claimApprovalRequired[policyId] = true;
 
         emit ClaimApproved(policyId, claimId, metadata.beneficiary, totalPayout, block.timestamp);
@@ -339,7 +358,7 @@ contract ClaimManager is
             totalPayout = _executeSlashingAndPayout(policyId, claimId, metadata, cappedAmount);
 
             if (totalPayout < cappedAmount) {
-                // slither-disable-next-line reentrancy-no-eth
+                // slither-disable-next-line reentrancy-eth,reentrancy-no-eth
                 _policyClaims[policyId].totalPaidOut -= (cappedAmount - totalPayout);
             }
         }
@@ -427,10 +446,10 @@ contract ClaimManager is
     {
         if (collateralToken == payoutToken) {
             uint256 transferAmount = collateralAmount > remainingPayout ? remainingPayout : collateralAmount;
-            IERC20(collateralToken).safeTransfer(beneficiary, transferAmount);
+            _transferToken(collateralToken, beneficiary, transferAmount);
             amountOut = transferAmount;
         } else {
-            IERC20(collateralToken).forceApprove(swapper, collateralAmount);
+            _approveIfERC20(collateralToken, swapper, collateralAmount);
 
             uint256 collateralUSD =
                 IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(collateralToken, collateralAmount);
@@ -451,18 +470,41 @@ contract ClaimManager is
                 deadline: block.timestamp
             });
 
-            uint256 swapOutput = ISwapper(swapper).executeSwap(swapParams);
+            // slither-disable-next-line arbitrary-send-eth
+            uint256 swapOutput =
+                ISwapper(swapper).executeSwap{value: collateralToken == _NATIVE_ETH ? collateralAmount : 0}(swapParams);
 
             amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
-            IERC20(payoutToken).safeTransfer(beneficiary, amountOut);
+            _transferToken(payoutToken, beneficiary, amountOut);
 
-            IERC20(collateralToken).forceApprove(swapper, 0);
+            _approveIfERC20(collateralToken, swapper, 0);
         }
 
         emit CollateralSwapped(policyId, claimId, collateralToken, collateralAmount, payoutToken, amountOut);
     }
 
     // slither-disable-end calls-loop
+
+    /**
+     * @notice Transfers `amount` of `token` to `to`, handling native ETH and ERC-20 uniformly.
+     */
+    function _transferToken(address token, address to, uint256 amount) private {
+        if (token == _NATIVE_ETH) {
+            payable(to).sendValue(amount);
+        } else {
+            IERC20(token).safeTransfer(to, amount);
+        }
+    }
+
+    /**
+     * @notice Approves `spender` to spend `amount` of `token` only when `token` is an ERC-20.
+     *         Pass `amount = 0` to revoke an existing approval.
+     */
+    function _approveIfERC20(address token, address spender, uint256 amount) private {
+        if (token != _NATIVE_ETH) {
+            IERC20(token).forceApprove(spender, amount);
+        }
+    }
 
     /**
      * @notice Evaluates the Spec for a given policy.
