@@ -73,8 +73,7 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
      * @inheritdoc ISpecRegistry
      */
     function approveSpec(address spec) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(spec != address(0), InvalidSpec());
-        require(spec.code.length > 0, InvalidSpec());
+        require(spec != address(0) && spec.code.length > 0, InvalidSpec());
         _approvedSpecs[spec] = true;
         emit SpecApproved(spec);
     }
