@@ -884,6 +884,7 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
 
+
     function test_fileClaim_WhenRequestedAmountZero_Reverts() public {
         vm.expectRevert(IClaimManager.ZeroAmount.selector);
         vm.prank(claimer);
@@ -1301,6 +1302,7 @@ contract ClaimManagerTest is Test {
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved));
     }
+
 
     function test_fileClaim_MultipleClaimsExhaustCoverage_FinalClaimCapped() public {
         uint256 firstClaimAmount = COVERAGE_LIMIT / 2;
@@ -2301,9 +2303,6 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, firstClaimAmount, keccak256("evidence1"), "");
 
         assertEq(claimManager.remainingCoverage(POLICY_ID), COVERAGE_LIMIT - firstClaimAmount);
-
-        vm.prank(operator);
-        claimManager.approveNextClaim(POLICY_ID);
 
         vm.prank(operator);
         claimManager.approveNextClaim(POLICY_ID);
