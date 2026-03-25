@@ -64,6 +64,11 @@ contract SpecRegistryTest is Test {
 
         specId1 = keccak256("MorphoSpec");
         specId2 = keccak256("MapleSpec");
+
+        vm.startPrank(admin);
+        registry.approveSpec(spec1);
+        registry.approveSpec(spec2);
+        vm.stopPrank();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -201,6 +206,119 @@ contract SpecRegistryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                           APPROVE SPEC
+    //////////////////////////////////////////////////////////////*/
+
+    function test_approveSpec_WhenCallerNotAdmin_Reverts() public {
+        address notAdmin = makeAddr("notAdmin");
+        address newSpec = address(new MockSpec());
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, notAdmin, ADMIN_ROLE)
+        );
+        vm.prank(notAdmin);
+        registry.approveSpec(newSpec);
+    }
+
+    function test_approveSpec_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(ISpecRegistry.InvalidSpec.selector);
+        vm.prank(admin);
+        registry.approveSpec(address(0));
+    }
+
+    function test_approveSpec_WhenNoCode_Reverts() public {
+        address eoa = makeAddr("eoaForApprove");
+        vm.expectRevert(ISpecRegistry.InvalidSpec.selector);
+        vm.prank(admin);
+        registry.approveSpec(eoa);
+    }
+
+    function test_approveSpec_WhenValid_EmitsEventAndSetsApproval() public {
+        address newSpec = address(new MockSpec());
+        assertFalse(registry.isSpecApproved(newSpec), "Should not be approved before call");
+
+        vm.expectEmit(true, false, false, false, address(registry));
+        emit ISpecRegistry.SpecApproved(newSpec);
+
+        vm.prank(admin);
+        registry.approveSpec(newSpec);
+
+        assertTrue(registry.isSpecApproved(newSpec), "Spec should be approved after call");
+    }
+
+    function test_approveSpec_WhenAlreadyApproved_Idempotent() public {
+        address newSpec = address(new MockSpec());
+
+        vm.startPrank(admin);
+        registry.approveSpec(newSpec);
+        registry.approveSpec(newSpec);
+        vm.stopPrank();
+
+        assertTrue(registry.isSpecApproved(newSpec), "Spec should remain approved");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           REVOKE SPEC
+    //////////////////////////////////////////////////////////////*/
+
+    function test_revokeSpec_WhenCallerNotAdmin_Reverts() public {
+        address notAdmin = makeAddr("notAdmin");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, notAdmin, ADMIN_ROLE)
+        );
+        vm.prank(notAdmin);
+        registry.revokeSpec(spec1);
+    }
+
+    function test_revokeSpec_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(ISpecRegistry.InvalidSpec.selector);
+        vm.prank(admin);
+        registry.revokeSpec(address(0));
+    }
+
+    function test_revokeSpec_WhenApproved_EmitsEventAndClearsApproval() public {
+        assertTrue(registry.isSpecApproved(spec1), "Precondition: spec1 should be approved");
+
+        vm.expectEmit(true, false, false, false, address(registry));
+        emit ISpecRegistry.SpecRevoked(spec1);
+
+        vm.prank(admin);
+        registry.revokeSpec(spec1);
+
+        assertFalse(registry.isSpecApproved(spec1), "Spec should not be approved after revoke");
+    }
+
+    function test_revokeSpec_WhenAlreadyRevoked_Idempotent() public {
+        vm.startPrank(admin);
+        registry.revokeSpec(spec1);
+        registry.revokeSpec(spec1);
+        vm.stopPrank();
+
+        assertFalse(registry.isSpecApproved(spec1), "Spec should remain revoked");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          IS SPEC APPROVED
+    //////////////////////////////////////////////////////////////*/
+
+    function test_isSpecApproved_WhenApproved_ReturnsTrue() public view {
+        assertTrue(registry.isSpecApproved(spec1), "Approved spec should return true");
+        assertTrue(registry.isSpecApproved(spec2), "Approved spec should return true");
+    }
+
+    function test_isSpecApproved_WhenNotApproved_ReturnsFalse() public {
+        address newSpec = address(new MockSpec());
+        assertFalse(registry.isSpecApproved(newSpec), "Unapproved spec should return false");
+    }
+
+    function test_isSpecApproved_WhenRevoked_ReturnsFalse() public {
+        vm.prank(admin);
+        registry.revokeSpec(spec1);
+        assertFalse(registry.isSpecApproved(spec1), "Revoked spec should return false");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                            REGISTER SPEC
     //////////////////////////////////////////////////////////////*/
 
@@ -313,6 +431,38 @@ contract SpecRegistryTest is Test {
 
         assertEq(address(resolved1), spec1, "SpecId1 mismatch");
         assertEq(address(resolved2), spec2, "SpecId2 mismatch");
+    }
+
+    function test_registerSpec_WhenSpecNotApproved_Reverts() public {
+        address unapprovedSpec = address(new MockSpec());
+
+        vm.expectRevert(abi.encodeWithSelector(ISpecRegistry.SpecNotApproved.selector, unapprovedSpec));
+        vm.prank(pool1);
+        registry.registerSpec(specId1, ISpec(unapprovedSpec));
+    }
+
+    function test_registerSpec_WhenSpecApprovedThenRevoked_Reverts() public {
+        address newSpec = address(new MockSpec());
+
+        vm.startPrank(admin);
+        registry.approveSpec(newSpec);
+        registry.revokeSpec(newSpec);
+        vm.stopPrank();
+
+        vm.expectRevert(abi.encodeWithSelector(ISpecRegistry.SpecNotApproved.selector, newSpec));
+        vm.prank(pool1);
+        registry.registerSpec(specId1, ISpec(newSpec));
+    }
+
+    function test_registerSpec_WhenSpecRevoked_ExistingResolveStillWorks() public {
+        vm.prank(pool1);
+        registry.registerSpec(specId1, ISpec(spec1));
+
+        vm.prank(admin);
+        registry.revokeSpec(spec1);
+
+        ISpec resolved = registry.resolveSpec(pool1, specId1);
+        assertEq(address(resolved), spec1, "Already-registered spec must remain resolvable after revoke");
     }
 
     /*//////////////////////////////////////////////////////////////
