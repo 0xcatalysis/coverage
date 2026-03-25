@@ -144,6 +144,14 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
+    function setPremiumDefaulted(uint96 policyId, bool defaulted) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(boundPolicies[policyId].policyId != 0, PolicyNotFound(policyId));
+        IPolicyManager(policyManager).setPremiumDefaulted(policyId, defaulted);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
     function bindPolicyForRequest(
         uint96 policyId,
         Quote calldata quote,

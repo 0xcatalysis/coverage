@@ -2054,6 +2054,91 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                         SET PREMIUM DEFAULTED
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setPremiumDefaulted_WhenPolicyNotFound_Reverts() public {
+        uint96 nonExistentPolicyId = 999;
+        vm.prank(address(coverPool));
+        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.PolicyNotFound.selector, nonExistentPolicyId));
+        policyManager.setPremiumDefaulted(nonExistentPolicyId, true);
+    }
+
+    function test_setPremiumDefaulted_WhenCallerIsNotPool_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, request.coverageAmount, true);
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        address unauthorized = makeAddr("unauthorized");
+        vm.prank(unauthorized);
+        vm.expectRevert(IPolicyManager.UnauthorizedPool.selector);
+        policyManager.setPremiumDefaulted(request.policyId, true);
+    }
+
+    function test_setPremiumDefaulted_WhenCalledByPool_SetsFlag() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, request.coverageAmount, true);
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        assertFalse(policyManager.policyMetadata(request.policyId).premiumDefaulted);
+
+        vm.prank(address(coverPool));
+        policyManager.setPremiumDefaulted(request.policyId, true);
+
+        assertTrue(policyManager.policyMetadata(request.policyId).premiumDefaulted);
+    }
+
+    function test_setPremiumDefaulted_WhenClearingFlag_ClearsFlag() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, request.coverageAmount, true);
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        vm.prank(address(coverPool));
+        policyManager.setPremiumDefaulted(request.policyId, true);
+        assertTrue(policyManager.policyMetadata(request.policyId).premiumDefaulted);
+
+        vm.prank(address(coverPool));
+        policyManager.setPremiumDefaulted(request.policyId, false);
+        assertFalse(policyManager.policyMetadata(request.policyId).premiumDefaulted);
+    }
+
+    function test_setPremiumDefaulted_EmitsEvent() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, request.coverageAmount, true);
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        vm.expectEmit(true, false, false, true);
+        emit IPolicyManager.PremiumDefaultedSet(request.policyId, true);
+
+        vm.prank(address(coverPool));
+        policyManager.setPremiumDefaulted(request.policyId, true);
+    }
+
+    function test_bindPolicy_DefaultsPremiumDefaultedToFalse() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, request.coverageAmount, true);
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
+        assertFalse(metadata.premiumDefaulted);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                                  HELPERS
     //////////////////////////////////////////////////////////////*/
 
@@ -2363,18 +2448,18 @@ contract MockInvalidHook is ERC165 {
 
 // Hook that queries policy metadata during callback
 contract MockBindPolicyHookWithQuery is IBindPolicyHook, ERC165 {
-    address private immutable policyManager;
+    address private immutable POLICY_MANAGER;
     bool public metadataQuerySucceeded;
     address public queriedBeneficiary;
     uint256 public queriedCoverageLimit;
 
     constructor(address policyManager_) {
-        policyManager = policyManager_;
+        POLICY_MANAGER = policyManager_;
     }
 
     function onPolicyBound(uint96 policyId, uint256) external override {
         // Query policy metadata during the callback
-        try IPolicyManager(policyManager).policyMetadata(policyId) returns (
+        try IPolicyManager(POLICY_MANAGER).policyMetadata(policyId) returns (
             IPolicyManager.PolicyMetadata memory metadata
         ) {
             metadataQuerySucceeded = true;

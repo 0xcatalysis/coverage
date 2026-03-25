@@ -1026,8 +1026,76 @@ contract CoverPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                         SET PREMIUM DEFAULTED
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setPremiumDefaulted_WhenCallerNotCurator_Reverts() public {
+        address unauthorized = makeAddr("unauthorized");
+        bytes32 adminRole = coverPool.DEFAULT_ADMIN_ROLE();
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, unauthorized, adminRole)
+        );
+        vm.prank(unauthorized);
+        coverPool.setPremiumDefaulted(1, true);
+    }
+
+    function test_setPremiumDefaulted_WhenPolicyNotBound_Reverts() public {
+        uint96 unboundPolicyId = 999;
+        vm.prank(curator);
+        vm.expectRevert(abi.encodeWithSelector(ICoverPool.PolicyNotFound.selector, unboundPolicyId));
+        coverPool.setPremiumDefaulted(unboundPolicyId, true);
+    }
+
+    function test_setPremiumDefaulted_WhenPolicyBound_DelegatesToPolicyManager() public {
+        uint96 policyId = _createAndBindPolicy();
+
+        vm.prank(curator);
+        coverPool.setPremiumDefaulted(policyId, true);
+
+        assertEq(mockPolicyManager.setPremiumDefaultedCallCount(), 1);
+        assertEq(mockPolicyManager.lastPremiumDefaultedPolicyId(), policyId);
+        assertTrue(mockPolicyManager.lastPremiumDefaultedValue());
+    }
+
+    function test_setPremiumDefaulted_WhenClearingFlag_DelegatesToPolicyManager() public {
+        uint96 policyId = _createAndBindPolicy();
+
+        vm.prank(curator);
+        coverPool.setPremiumDefaulted(policyId, true);
+
+        vm.prank(curator);
+        coverPool.setPremiumDefaulted(policyId, false);
+
+        assertEq(mockPolicyManager.setPremiumDefaultedCallCount(), 2);
+        assertFalse(mockPolicyManager.lastPremiumDefaultedValue());
+    }
+
+    /*//////////////////////////////////////////////////////////////
                                  HELPERS
     //////////////////////////////////////////////////////////////*/
+
+    function _createAndBindPolicy() private returns (uint96 policyId) {
+        policyId = _createDraft();
+        ICoverPool.Quote memory quote = _defaultQuote();
+        quote.policyId = policyId;
+        quote.beneficiary = beneficiary;
+        bytes memory signature = _signQuote(quote);
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault1");
+        address spec = makeAddr("spec");
+
+        vm.mockCall(
+            specRegistry, abi.encodeWithSignature("registerSpec(bytes32,address)", quote.specId, spec), abi.encode()
+        );
+        vm.mockCall(
+            stakeManager,
+            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encode()
+        );
+
+        vm.prank(curator);
+        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
+    }
 
     function _createDraft() private returns (uint96 policyId) {
         vm.mockCall(stakeManager, abi.encodeWithSignature("createCommittee(uint96,uint256,address,uint32)"), "");
@@ -1092,6 +1160,10 @@ contract MockPolicyManager {
     IPolicyManager.BindPolicyRequest private _lastBindRequest;
     ICoverPool.BoundPolicy private _lastBoundPolicy;
     mapping(uint256 => IPolicyManager.PolicyDraft) private _drafts;
+    mapping(uint96 => bool) public premiumDefaulted;
+    uint256 public setPremiumDefaultedCallCount;
+    uint96 public lastPremiumDefaultedPolicyId;
+    bool public lastPremiumDefaultedValue;
 
     function bindPolicy(
         IPolicyManager.BindPolicyRequest calldata request,
@@ -1144,5 +1216,12 @@ contract MockPolicyManager {
 
     function getCoverPoolFactory() external pure returns (address) {
         return address(0);
+    }
+
+    function setPremiumDefaulted(uint96 policyId, bool defaulted) external {
+        setPremiumDefaultedCallCount++;
+        lastPremiumDefaultedPolicyId = policyId;
+        lastPremiumDefaultedValue = defaulted;
+        premiumDefaulted[policyId] = defaulted;
     }
 }
