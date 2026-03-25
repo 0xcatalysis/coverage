@@ -18,6 +18,7 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
     ICoverPoolFactory public coverPoolFactory;
 
     mapping(address coverPool => mapping(bytes32 specId => ISpec spec)) private _specs;
+    mapping(address spec => bool approved) private _approvedSpecs;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -71,6 +72,32 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
     /**
      * @inheritdoc ISpecRegistry
      */
+    function approveSpec(address spec) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(spec != address(0), InvalidSpec());
+        require(spec.code.length > 0, InvalidSpec());
+        _approvedSpecs[spec] = true;
+        emit SpecApproved(spec);
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
+     */
+    function revokeSpec(address spec) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(spec != address(0), InvalidSpec());
+        _approvedSpecs[spec] = false;
+        emit SpecRevoked(spec);
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
+     */
+    function isSpecApproved(address spec) external view override returns (bool) {
+        return _approvedSpecs[spec];
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
+     */
     function registerSpec(bytes32 specId, ISpec spec) external override whenNotPaused {
         require(specId != bytes32(0), InvalidSpecId());
         require(address(spec) != address(0), InvalidSpec());
@@ -79,6 +106,7 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
 
         address coverPool = msg.sender;
         require(coverPoolFactory.coverPoolExists(coverPool), InvalidCoverPool());
+        require(_approvedSpecs[address(spec)], SpecNotApproved(address(spec)));
         ISpec existingSpec = _specs[coverPool][specId];
 
         if (address(existingSpec) != address(0)) {
