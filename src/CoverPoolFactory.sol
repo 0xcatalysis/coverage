@@ -104,8 +104,7 @@ contract CoverPoolFactory is
                 params.curator, params.quoteSigner, policyManager, stakeManager, specRegistry, params.poolFeeBps
             );
 
-        // slither-disable-next-line unused-return
-        _pools.add(coverPool);
+        require(_pools.add(coverPool), CoverPoolCreationFailure());
 
         emit CoverPoolCreated(coverPool, params.curator, params.quoteSigner, policyManager, params.poolFeeBps);
     }

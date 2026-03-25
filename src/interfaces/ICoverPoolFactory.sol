@@ -72,6 +72,11 @@ interface ICoverPoolFactory is IAccessControl {
     error InvalidLimit();
 
     /**
+     * @notice Reverts when a newly deployed pool cannot be added to the internal registry.
+     */
+    error CoverPoolCreationFailure();
+
+    /**
      * @notice Pauses cover pool creation.
      */
     function pause() external;
