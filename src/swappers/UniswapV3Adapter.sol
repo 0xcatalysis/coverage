@@ -36,9 +36,6 @@ interface IV3SwapRouter {
  *      guard. At execution time, the adapter dynamically resolves `amountIn` from the Swapper's
  *      ERC-20 approval.
  *
- *      Access control: `swap()` is restricted to the single Swapper address recorded at
- *      construction time, enforcing the principle of least privilege.
- *
  *      Integration pattern (called by Swapper._performSwap):
  *        1. Swapper approves adapter for `amountIn` of tokenIn
  *        2. Swapper calls `swap(tokenIn, tokenOut, fee, amountOutMinimum)` via stored calldata
