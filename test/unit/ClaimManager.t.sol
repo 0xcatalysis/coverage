@@ -676,6 +676,78 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, bytes32(0), "");
     }
 
+    function test_fileClaim_WhenDuplicateEvidenceHash_Reverts() public {
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+        payoutTokenMock.mint(address(swapperMock), SLASH_AMOUNT);
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(SLASH_AMOUNT);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
+
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.DuplicateEvidenceHash.selector, POLICY_ID, evidenceHash));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenDuplicateEvidenceHashDifferentPolicy_Succeeds() public {
+        uint96 policyId2 = 999;
+        IPolicyManager.PolicyMetadata memory metadata2 = _defaultMetadata();
+        metadata2.policyId = policyId2;
+        metadata2.claimer = claimer;
+        policyMock.setPolicyMetadata(policyId2, metadata2);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
+        payoutTokenMock.mint(address(swapperMock), SLASH_AMOUNT);
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(SLASH_AMOUNT);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
+
+        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
+        payoutTokenMock.mint(address(swapperMock), SLASH_AMOUNT);
+
+        vm.prank(claimer);
+        uint256 claimId2 = claimManager.fileClaim(policyId2, SLASH_AMOUNT, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(policyId2, claimId2);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Second policy claim must succeed");
+    }
+
+    function test_fileClaim_WhenRejectedClaimEvidenceReused_Reverts() public {
+        specMock.setEvaluationResult(false, keccak256("rejected"));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, 0);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Rejected), "Claim should be rejected");
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.DuplicateEvidenceHash.selector, POLICY_ID, evidenceHash));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
     function test_fileClaim_WhenRequestedAmountZero_Reverts() public {
         vm.expectRevert(IClaimManager.ZeroAmount.selector);
         vm.prank(claimer);
