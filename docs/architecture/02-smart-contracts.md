@@ -176,18 +176,22 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 ### 7) SpecRegistry
 
-**Role:** Immutable-style mapping of `(coverPool, specId)` to `ISpec`.
+**Role:** Immutable-style mapping of `(coverPool, specId)` to `ISpec`, with admin-controlled spec approval.
 
 **Pattern and state:**
 
 - UUPS upgradeable proxy.
 - Registration is idempotent for the same target and rejects remapping to a different spec.
 - Enforces caller is a factory-created pool.
+- Maintains an admin-approved whitelist of `ISpec` implementation addresses. A spec must be approved before any pool can register it.
 
 **Key functions:**
 
-- `registerSpec(specId, spec)` called by pool during bind.
-- `resolveSpec(pool, specId)` called by `ClaimManager`.
+- `approveSpec(spec)` called by admin to whitelist a trusted `ISpec` implementation.
+- `revokeSpec(spec)` called by admin to remove an `ISpec` from the whitelist.
+- `isSpecApproved(spec)` view helper to check whether a spec is currently approved.
+- `registerSpec(specId, spec)` called by pool during bind; reverts with `SpecNotApproved` if the spec is not on the whitelist.
+- `resolveSpec(pool, specId)` called by `ClaimManager`; resolution is not gated by approval status so in-flight claims on existing policies are unaffected by revocations.
 
 ### 8) Swapper
 
@@ -270,6 +274,9 @@ Typical control planes:
   - `QUOTE_SIGNER_ROLE` on pools,
   - `PREMIUM_COLLECTOR_ROLE` on premium manager,
   - `SWAP_MANAGER_ROLE` / `SWAP_EXECUTOR_ROLE` on swapper.
+- On `SpecRegistry`, `DEFAULT_ADMIN_ROLE` additionally controls the spec approval whitelist
+  (`approveSpec` / `revokeSpec`). Only admin-approved `ISpec` implementations may be registered
+  by cover pool curators.
 
 ## Integration Dependencies
 

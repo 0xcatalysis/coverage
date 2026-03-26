@@ -109,6 +109,32 @@ contract MockSpecRegistry is ISpecRegistry {
 
     /**
      * @inheritdoc ISpecRegistry
+     * @dev Mock: all specs are considered approved; approval tracking is not enforced.
+     */
+    function approveSpec(address spec) external override onlyOwner {
+        require(spec != address(0), InvalidSpec());
+        emit SpecApproved(spec);
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
+     * @dev Mock: revocation is not enforced.
+     */
+    function revokeSpec(address spec) external override onlyOwner {
+        require(spec != address(0), InvalidSpec());
+        emit SpecRevoked(spec);
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
+     * @dev Mock: always returns true so all specs can be registered freely.
+     */
+    function isSpecApproved(address) external pure override returns (bool) {
+        return true;
+    }
+
+    /**
+     * @inheritdoc ISpecRegistry
      */
     function pause() external override onlyOwner {
         _paused = true;

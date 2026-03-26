@@ -87,7 +87,9 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 
 ### 3.2 Core and Spec Registration
 
-- `SpecRegistry.registerSpec(specId, spec)` called by pool.
+- `SpecRegistry.registerSpec(specId, spec)` called by pool. The `ISpec` implementation must be
+  pre-approved by the protocol admin via `SpecRegistry.approveSpec(spec)` before this call will
+  succeed; an unapproved spec causes the entire bind transaction to revert.
 - `StakeManager.addCommitteeVaults(policyId, vaults[])` binds committee backing vaults.
 
 ### 3.3 PolicyManager Finalization
@@ -158,6 +160,8 @@ Evaluation and resolution:
 - Ensure vault list is valid and non-empty at bind.
 - Ensure bind hook address is ERC165-compatible.
 - Ensure swap routes are configured before enabling live claim payouts.
+- Ensure the `ISpec` implementation is approved via `SpecRegistry.approveSpec()` before attempting
+  policy binding. An unapproved spec causes `bindPolicyForRequest` to revert.
 
 ## Next Steps
 

@@ -11,6 +11,7 @@ import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 import {IClaimManager} from "../../src/interfaces/IClaimManager.sol";
 import {IPremiumCollector} from "../../src/interfaces/IPremiumCollector.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
+import {ISpecRegistry} from "../../src/interfaces/ISpecRegistry.sol";
 import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 import {ISwapper} from "../../src/interfaces/ISwapper.sol";
 
@@ -50,6 +51,8 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   - CLAIM_MANAGER: ClaimManager proxy address
  *   - PREMIUM_COLLECTOR: PremiumCollector proxy address
  *   - PREMIUM_MANAGER: PremiumManager proxy address
+ *   - SPEC_REGISTRY: SpecRegistry proxy address (optional but recommended; enables pre-flight
+ *       approval check in Phase 4 — if omitted, an unapproved spec only fails at the contract level)
  *
  *   Core Contracts:
  *   - STAKE_MANAGER: StakeManager proxy address
@@ -65,7 +68,7 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   - BIND_POLICY_HOOK: Hook contract for policy binding callback
  *
  *   Policy Binding Params:
- *   - SPEC_ADDRESS: ISpec implementation contract address
+ *   - SPEC_ADDRESS: ISpec implementation contract address (must be approved in SpecRegistry first)
  *   - VAULTS: Comma-separated vault addresses
  *   - COVERAGE_LIMIT: Coverage limit in payout token units
  *   - BASE_PREMIUM: Base premium amount
@@ -117,6 +120,7 @@ contract CompleteCoverageFlow is Script {
     address public claimManager;
     address public premiumCollector;
     address public premiumManager;
+    address public specRegistry;
 
     // ── Core Contracts ──
     address public stakeManager;
@@ -323,6 +327,14 @@ contract CompleteCoverageFlow is Script {
         });
 
         bytes memory signature = _signQuote(quote);
+
+        if (specRegistry != address(0)) {
+            bool approved = ISpecRegistry(specRegistry).isSpecApproved(specAddress);
+            console.log("Spec approved in SpecRegistry:", approved);
+            require(approved, "SPEC_ADDRESS is not approved in SpecRegistry -- call approveSpec() first");
+        } else {
+            console.log("[WARN] SPEC_REGISTRY not set -- skipping spec approval pre-flight check");
+        }
 
         vm.startBroadcast(curatorPrivateKey);
         ICoverPool(coverPool).bindPolicyForRequest(policyId, quote, specAddress, vaults, signature);
@@ -659,6 +671,7 @@ contract CompleteCoverageFlow is Script {
         claimManager = vm.envAddress("CLAIM_MANAGER");
         premiumCollector = vm.envAddress("PREMIUM_COLLECTOR");
         premiumManager = vm.envAddress("PREMIUM_MANAGER");
+        specRegistry = vm.envOr("SPEC_REGISTRY", address(0));
 
         stakeManager = vm.envAddress("STAKE_MANAGER");
     }
