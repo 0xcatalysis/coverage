@@ -294,6 +294,40 @@ contract CoverPoolFactoryTest is Test {
         assertEq(deployed.poolFeeBps(), params.poolFeeBps, "Pool fee mismatch");
     }
 
+    function test_createCoverPool_WhenValid_PoolAddedToInternalSet() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+        address predicted = factory.computeCoverPoolAddress(params);
+
+        vm.prank(creator);
+        factory.createCoverPool(params);
+
+        assertTrue(factory.coverPoolExists(predicted), "Pool must be present in registry after creation");
+        assertEq(factory.totalCoverPools(), 1, "totalCoverPools must reflect the addition");
+        assertEq(factory.coverPoolAt(0), predicted, "coverPoolAt(0) must equal the predicted address");
+    }
+
+    function test_createCoverPool_WhenPoolAddressAlreadyInRegistry_RevertsWithCoverPoolCreationFailure() public {
+        ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
+        address predicted = factory.computeCoverPoolAddress(params);
+
+        uint256 poolsSlot = 4;
+        bytes32 valuesLenSlot = bytes32(poolsSlot);
+        bytes32 valuesDataSlot = keccak256(abi.encode(valuesLenSlot));
+        bytes32 positionsMappingSlot = bytes32(poolsSlot + 1);
+        bytes32 entry = bytes32(uint256(uint160(predicted)));
+        bytes32 positionKeySlot = keccak256(abi.encode(entry, positionsMappingSlot));
+
+        vm.store(address(factory), valuesLenSlot, bytes32(uint256(1)));
+        vm.store(address(factory), valuesDataSlot, entry);
+        vm.store(address(factory), positionKeySlot, bytes32(uint256(1)));
+
+        assertTrue(factory.coverPoolExists(predicted), "Precondition: predicted address must appear registered");
+
+        vm.expectRevert(ICoverPoolFactory.CoverPoolCreationFailure.selector);
+        vm.prank(creator);
+        factory.createCoverPool(params);
+    }
+
     function test_createCoverPool_WhenParamsReused_Reverts() public {
         ICoverPoolFactory.CreateCoverPoolParams memory params = _defaultCreateParams();
 
