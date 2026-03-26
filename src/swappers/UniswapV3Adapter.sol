@@ -31,12 +31,14 @@ interface IV3SwapRouter {
  *      a direct route impossible for variable claim amounts.
  *
  *      This adapter is registered as the `swapTarget` in Swapper routes. The stored route
- *      calldata encodes `swap(tokenIn, tokenOut, fee)` — all static per route. At execution
- *      time, the adapter dynamically resolves `amountIn` from the Swapper's ERC-20 approval.
+ *      calldata encodes `swap(tokenIn, tokenOut, fee, amountOutMinimum)` — all static per route,
+ *      with `amountOutMinimum` encoded as `0` so the Swapper's own slippage check is the primary
+ *      guard. At execution time, the adapter dynamically resolves `amountIn` from the Swapper's
+ *      ERC-20 approval.
  *
  *      Integration pattern (called by Swapper._performSwap):
  *        1. Swapper approves adapter for `amountIn` of tokenIn
- *        2. Swapper calls `swap(tokenIn, tokenOut, fee)` via stored calldata
+ *        2. Swapper calls `swap(tokenIn, tokenOut, fee, amountOutMinimum)` via stored calldata
  *        3. Adapter reads allowance to obtain amountIn
  *        4. Adapter pulls tokenIn from Swapper via transferFrom
  *        5. Adapter approves SwapRouter02 for amountIn
@@ -92,12 +94,21 @@ contract UniswapV3Adapter {
      *      that `msg.sender` has explicitly granted to it, so no third party can
      *      exploit the call.
      *
-     * @param tokenIn  Source token address (e.g. WETH).
-     * @param tokenOut Destination token address (e.g. USDC).
-     * @param fee      Uniswap V3 pool fee tier (e.g. 3000 = 0.3%, 500 = 0.05%).
+     * @param tokenIn          Source token address (e.g. WETH).
+     * @param tokenOut         Destination token address (e.g. USDC).
+     * @param fee              Uniswap V3 pool fee tier (e.g. 3000 = 0.3%, 500 = 0.05%).
+     * @param amountOutMinimum Minimum amount of tokenOut the router must return; reverts if not met.
      * @return amountOut Amount of tokenOut received by the Swapper.
      */
-    function swap(address tokenIn, address tokenOut, uint24 fee) external returns (uint256 amountOut) {
+    function swap(
+        address tokenIn,
+        address tokenOut,
+        uint24 fee,
+        uint256 amountOutMinimum
+    )
+        external
+        returns (uint256 amountOut)
+    {
         uint256 amountIn = IERC20(tokenIn).allowance(msg.sender, address(this));
         require(amountIn != 0, ZeroAllowance());
 
@@ -110,7 +121,7 @@ contract UniswapV3Adapter {
             fee: fee,
             recipient: msg.sender,
             amountIn: amountIn,
-            amountOutMinimum: 0,
+            amountOutMinimum: amountOutMinimum,
             sqrtPriceLimitX96: 0
         });
 
