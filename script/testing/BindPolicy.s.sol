@@ -5,6 +5,7 @@ import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
+import {ISpecRegistry} from "../../src/interfaces/ISpecRegistry.sol";
 import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 
 /**
@@ -32,6 +33,8 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *   - POLICY_MANAGER: PolicyManager proxy address
  *   - STAKE_MANAGER: StakeManager proxy address from core
  *   - POLICY_ID: Policy ID (from RequestCoverage output)
+ *   - SPEC_REGISTRY: SpecRegistry proxy address (optional but recommended; enables pre-flight
+ *       approval check — if omitted, an unapproved spec only fails at the contract level)
  *   - SPEC_ADDRESS: ISpec implementation contract for this policy
  *   - VAULTS: Comma-separated vault addresses to bind (e.g. "0x123...,0x456...")
  *   - COVERAGE_LIMIT: Coverage limit in payout token units
@@ -48,6 +51,8 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *   - Policy draft must exist in PolicyManager (status = Created)
  *   - Sufficient stake must exist in the committee's duration vault (restaker deposits via
  *     StrategyManager.depositIntoStrategy(durationVault, token, amount) independently)
+ *   - SPEC_ADDRESS must be approved in SpecRegistry via approveSpec() before this script is run;
+ *     binding will revert on-chain with SpecNotApproved otherwise
  */
 contract BindPolicy is Script {
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
@@ -74,6 +79,9 @@ contract BindPolicy is Script {
 
     /// @notice Policy ID to bind
     uint96 public policyId;
+
+    /// @notice SpecRegistry proxy address (optional; enables pre-flight approval check)
+    address public specRegistry;
 
     /// @notice ISpec implementation address
     address public specAddress;
@@ -106,6 +114,7 @@ contract BindPolicy is Script {
         coverPool = vm.envAddress("COVER_POOL");
         policyManager = vm.envAddress("POLICY_MANAGER");
         stakeManager = vm.envAddress("STAKE_MANAGER");
+        specRegistry = vm.envOr("SPEC_REGISTRY", address(0));
         policyId = uint96(vm.envUint("POLICY_ID"));
         specAddress = vm.envAddress("SPEC_ADDRESS");
 
@@ -190,6 +199,14 @@ contract BindPolicy is Script {
         console.log("Draft pool matches CoverPool");
 
         console.log("Required coverage amount:", draft.coverageAmount);
+
+        if (specRegistry != address(0)) {
+            bool approved = ISpecRegistry(specRegistry).isSpecApproved(specAddress);
+            console.log("Spec approved in SpecRegistry:", approved);
+            require(approved, "SPEC_ADDRESS is not approved in SpecRegistry -- call approveSpec() first");
+        } else {
+            console.log("[WARN] SPEC_REGISTRY not set -- skipping spec approval pre-flight check");
+        }
 
         console.log("[OK] Prerequisites verified");
     }
