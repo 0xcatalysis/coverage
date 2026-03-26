@@ -47,6 +47,7 @@ interface IAdapterView {
 
 interface IPolicyManagerView {
     function stakeManager() external view returns (address);
+    function chainlinkPriceFeed() external view returns (address);
 }
 
 interface IClaimManagerView {
@@ -220,6 +221,12 @@ contract VerifySepoliaConfig is Script {
 
     function _checkFlow5_bindPolicy() internal {
         console2.log("--- Flow 5: BindPolicy ---");
+
+        _check(
+            "PolicyManager.chainlinkPriceFeed",
+            IPolicyManagerView(POLICY_MANAGER).chainlinkPriceFeed(),
+            CHAINLINK_PRICE_FEED
+        );
 
         // addCommitteeVaults checks getVaultModule != NONE for each vault
         uint8 module = ISSPRouterView(SSP_ROUTER).getVaultModule(WETH_EL_STRATEGY);
