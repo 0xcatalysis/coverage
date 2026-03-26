@@ -104,7 +104,7 @@ contract UniswapV3AdapterTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            SWAP - REVERTS
+                               SWAP
     //////////////////////////////////////////////////////////////*/
 
     function test_swap_WhenZeroAllowance_Reverts() public {
@@ -129,10 +129,6 @@ contract UniswapV3AdapterTest is Test {
         vm.prank(caller);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, minimumRequired);
     }
-
-    /*//////////////////////////////////////////////////////////////
-                         SWAP - HAPPY PATH
-    //////////////////////////////////////////////////////////////*/
 
     function test_swap_WhenZeroAmountOutMinimum_ForwardsToRouter() public {
         uint256 amountIn = 100 ether;
