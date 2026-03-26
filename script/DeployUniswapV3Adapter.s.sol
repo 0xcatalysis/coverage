@@ -50,7 +50,7 @@ contract DeployUniswapV3Adapter is Script {
         ISwapper(swapper).setSwapTargetWhitelist(address(adapter), true);
         console.log("Adapter whitelisted in Swapper");
 
-        bytes memory routeCalldata = abi.encodeCall(UniswapV3Adapter.swap, (tokenIn, tokenOut, poolFee));
+        bytes memory routeCalldata = abi.encodeCall(UniswapV3Adapter.swap, (tokenIn, tokenOut, poolFee, 0));
         ISwapper(swapper).setSwapRoute(tokenIn, tokenOut, address(adapter), true, routeCalldata);
         console.log("Swap route configured: tokenIn -> tokenOut via adapter");
 
