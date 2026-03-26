@@ -118,6 +118,7 @@ contract UniswapV3Adapter {
     {
         require(msg.sender == SWAPPER, UnauthorizedCaller());
 
+
         uint256 amountIn = IERC20(tokenIn).allowance(msg.sender, address(this));
         require(amountIn != 0, ZeroAllowance());
 
