@@ -130,8 +130,6 @@ contract UniswapV3AdapterTest is Test {
         adapter.swap(address(tokenIn), address(tokenOut), FEE, minimumRequired);
     }
 
-
-
     function test_swap_WhenZeroAmountOutMinimum_ForwardsToRouter() public {
         uint256 amountIn = 100 ether;
         uint256 routerOutput = 95 ether;
