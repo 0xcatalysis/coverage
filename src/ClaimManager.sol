@@ -57,6 +57,7 @@ contract ClaimManager is
     mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
     mapping(uint96 policyId => PolicyClaim) private _policyClaims;
     mapping(uint96 policyId => bool) private _claimApprovalRequired;
+    mapping(uint96 policyId => mapping(bytes32 evidenceHash => bool used)) private _usedEvidenceHashes;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -300,8 +301,9 @@ contract ClaimManager is
         private
         returns (uint256 claimId, IPolicyManager.PolicyMetadata memory metadata)
     {
-        require(evidenceHash != bytes32(0), InvalidEvidenceHash());
         require(requestedAmount > 0, ZeroAmount());
+        require(evidenceHash != bytes32(0), InvalidEvidenceHash());
+        require(!_usedEvidenceHashes[policyId][evidenceHash], DuplicateEvidenceHash(policyId, evidenceHash));
 
         metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
@@ -318,6 +320,8 @@ contract ClaimManager is
             block.timestamp >= metadata.startTime && block.timestamp <= metadata.maturityTime,
             ClaimOutsideCoverageWindow(policyId, metadata.startTime, metadata.maturityTime, uint32(block.timestamp))
         );
+
+        _usedEvidenceHashes[policyId][evidenceHash] = true;
 
         claimId = _policyClaims[policyId].claimCount;
         ClaimRecord storage claim = _claims[policyId][claimId];

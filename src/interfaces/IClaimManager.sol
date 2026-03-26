@@ -228,6 +228,13 @@ interface IClaimManager is IAccessControl {
     error InvalidEvidenceHash();
 
     /**
+     * @notice Reverts when an evidence hash has already been used for a previous claim on the same policy.
+     * @param policyId Identifier of the policy.
+     * @param evidenceHash The evidence hash that was already used.
+     */
+    error DuplicateEvidenceHash(uint96 policyId, bytes32 evidenceHash);
+
+    /**
      * @notice Reverts when the requested amount exceeds the policy's remaining coverage.
      * @param policyId Identifier of the policy.
      * @param requestedAmount Amount requested by the claimant.
