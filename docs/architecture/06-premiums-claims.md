@@ -98,7 +98,9 @@ Guardrail:
 ### Components
 
 - `ClaimManager` - claim intake, evaluation, and settlement.
-- `SpecRegistry` + `ISpec` - payability decision logic.
+- `SpecRegistry` + `ISpec` - payability decision logic. Only admin-approved `ISpec` implementations
+  can be registered; once registered, a spec remains resolvable for existing policies regardless of
+  subsequent revocation.
 - Core `ChainlinkPriceFeed` - payout token amount -> USD slash target.
 - Core `SlashingManager` - committee slashing execution.
 - `Swapper` - collateral token conversion.

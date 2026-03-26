@@ -24,6 +24,18 @@ interface ISpecRegistry {
     event SpecRegistered(address indexed coverPool, bytes32 indexed specId, address indexed spec);
 
     /**
+     * @notice Emitted when an admin approves a spec implementation for registration.
+     * @param spec Address of the approved ISpec implementation contract.
+     */
+    event SpecApproved(address indexed spec);
+
+    /**
+     * @notice Emitted when an admin revokes approval for a spec implementation.
+     * @param spec Address of the revoked ISpec implementation contract.
+     */
+    event SpecRevoked(address indexed spec);
+
+    /**
      * @notice Reverts when spec identifier is invalid (zero).
      */
     error InvalidSpecId();
@@ -60,6 +72,12 @@ interface ISpecRegistry {
     error SpecNotRegistered(address coverPool, bytes32 specId);
 
     /**
+     * @notice Reverts when attempting to register a spec that has not been approved by the admin.
+     * @param spec Address of the spec that is not on the approved whitelist.
+     */
+    error SpecNotApproved(address spec);
+
+    /**
      * @notice Pauses all spec registration operations.
      * @dev Can only be called by accounts with DEFAULT_ADMIN_ROLE.
      */
@@ -72,9 +90,34 @@ interface ISpecRegistry {
     function unpause() external;
 
     /**
+     * @notice Approves a spec implementation, allowing it to be registered by cover pools.
+     * @dev Can only be called by accounts with DEFAULT_ADMIN_ROLE.
+     *      The spec address must be a deployed contract. Re-approving is idempotent.
+     * @param spec Address of the ISpec implementation contract to approve.
+     */
+    function approveSpec(address spec) external;
+
+    /**
+     * @notice Revokes approval for a spec implementation, preventing future registrations.
+     * @dev Can only be called by accounts with DEFAULT_ADMIN_ROLE.
+     *      Already-registered (pool, specId) mappings remain valid; revocation only blocks
+     *      new registrations. Re-revoking is idempotent.
+     * @param spec Address of the ISpec implementation contract to revoke.
+     */
+    function revokeSpec(address spec) external;
+
+    /**
+     * @notice Returns whether a spec implementation has been approved by the admin.
+     * @param spec Address of the ISpec implementation contract to query.
+     * @return True if the spec is currently approved, false otherwise.
+     */
+    function isSpecApproved(address spec) external view returns (bool);
+
+    /**
      * @notice Registers a Spec implementation for the caller CoverPool.
-     * @dev Can only be called by a CoverPool. Once registered, the same (coverPool, specId) pair
-     *      cannot be changed to a different spec address. Re-registering the same spec is idempotent.
+     * @dev Can only be called by a CoverPool. The spec must be admin-approved before registration.
+     *      Once registered, the same (coverPool, specId) pair cannot be changed to a different spec
+     *      address. Re-registering the same spec is idempotent only if the spec is still approved.
      * @param specId Identifier referencing the parametric product.
      * @param spec Address of the ISpec implementation contract.
      */
