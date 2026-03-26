@@ -59,17 +59,17 @@ contract UniswapV3AdapterFuzzTest is Test {
     FuzzERC20 internal tokenIn;
     FuzzERC20 internal tokenOut;
 
-    address internal caller;
+    address internal swapper;
     uint24 internal constant FEE = 3000;
 
     function setUp() public {
-        caller = makeAddr("caller");
+        swapper = makeAddr("swapper");
 
         router = new FuzzSwapRouter();
         tokenIn = new FuzzERC20("Token In", "TIN");
         tokenOut = new FuzzERC20("Token Out", "TOUT");
 
-        adapter = new UniswapV3Adapter(address(router));
+        adapter = new UniswapV3Adapter(address(router), swapper);
     }
 
     function testFuzz_swap_ForwardsAmountOutMinimum(uint256 amountIn, uint256 routerOutput, uint256 minimum) public {
@@ -77,14 +77,14 @@ contract UniswapV3AdapterFuzzTest is Test {
         routerOutput = bound(routerOutput, 1, type(uint128).max);
         minimum = bound(minimum, 0, routerOutput);
 
-        tokenIn.mint(caller, amountIn);
+        tokenIn.mint(swapper, amountIn);
         tokenOut.mint(address(router), routerOutput);
         router.setOutputAmount(routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         tokenIn.approve(address(adapter), amountIn);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         uint256 amountOut = adapter.swap(address(tokenIn), address(tokenOut), FEE, minimum);
 
         assertEq(amountOut, routerOutput, "amountOut mismatch");
@@ -102,21 +102,28 @@ contract UniswapV3AdapterFuzzTest is Test {
         routerOutput = bound(routerOutput, 0, type(uint128).max - 1);
         minimum = bound(minimum, routerOutput + 1, type(uint128).max);
 
-        tokenIn.mint(caller, amountIn);
+        tokenIn.mint(swapper, amountIn);
         tokenOut.mint(address(router), routerOutput);
         router.setOutputAmount(routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         tokenIn.approve(address(adapter), amountIn);
 
         vm.expectRevert("FuzzSwapRouter: insufficient output");
-        vm.prank(caller);
+        vm.prank(swapper);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, minimum);
     }
 
     function testFuzz_swap_WhenZeroAllowance_Reverts(uint256 minimum) public {
         vm.expectRevert(UniswapV3Adapter.ZeroAllowance.selector);
-        vm.prank(caller);
+        vm.prank(swapper);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, minimum);
+    }
+
+    function testFuzz_swap_WhenCallerIsNotSwapper_Reverts(address randomCaller) public {
+        vm.assume(randomCaller != swapper);
+        vm.expectRevert(UniswapV3Adapter.UnauthorizedCaller.selector);
+        vm.prank(randomCaller);
+        adapter.swap(address(tokenIn), address(tokenOut), FEE, 0);
     }
 }
