@@ -44,7 +44,7 @@ contract DeployUniswapV3Adapter is Script {
 
         vm.startBroadcast(deployerKey);
 
-        UniswapV3Adapter adapter = new UniswapV3Adapter(swapRouter);
+        UniswapV3Adapter adapter = new UniswapV3Adapter(swapRouter, swapper);
         console.log("UniswapV3Adapter deployed at:", address(adapter));
 
         ISwapper(swapper).setSwapTargetWhitelist(address(adapter), true);
