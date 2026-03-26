@@ -78,7 +78,8 @@ Sequence:
    - `SSPRouter._checkDelegation` runs internally and reverts with `InsufficientDelegationAmount`
      if `EigenAdapter.getStrategiesStakeUSD(vaults)` < `committeeMaxStake` (= `coverageAmount`).
 3. `PolicyManager.bindPolicy(...)` checks:
-   - committee has at least one vault (`getCommitteeVaults`).
+   - committee has at least one vault (`getCommitteeVaults`),
+   - committee total stake (USD) >= `coverageLimit` converted to USD via `ChainlinkPriceFeed`.
 
 Outcome:
 

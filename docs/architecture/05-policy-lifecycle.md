@@ -100,7 +100,7 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 - request data matches draft values,
 - duration matches quote window,
 - committee has at least one vault,
-   - committee total stake (USD) >= requested `coverageAmount`,
+   - committee total stake (USD) >= `coverageLimit` converted to USD via ChainlinkPriceFeed,
 - policy commit is unique.
 
 Then it:
