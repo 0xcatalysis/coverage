@@ -7,6 +7,7 @@ import {ISpecRegistry} from "coverage/interfaces/ISpecRegistry.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
 import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {IChainlinkPriceFeed} from "coverage/interfaces/IChainlinkPriceFeed.sol";
 
 /// @title MockStakeManager
 /// @notice Minimal StakeManager mock for testing with real PolicyManager and CoverPool
@@ -72,6 +73,20 @@ contract MockSpecRegistry {
 
     function resolveSpec(address coverPool, bytes32 specId) external view returns (ISpec) {
         return ISpec(_specs[specId][coverPool]);
+    }
+}
+
+/// @title MockChainlinkPriceFeed
+/// @notice Minimal ChainlinkPriceFeed mock that always approves stake validation
+/// @dev Returns type(uint256).max for getUSDValue so the stake check always passes when
+///      MockStakeManager.getCommitteeTotalStakeUSD also returns type(uint256).max.
+contract MockChainlinkPriceFeed is IChainlinkPriceFeed {
+    function getUSDValue(address, uint256) external pure override returns (uint256) {
+        return 0; // 0 <= type(uint256).max always passes the InsufficientStake check
+    }
+
+    function getTokenAmount(address, uint256) external pure override returns (uint256) {
+        return 0;
     }
 }
 

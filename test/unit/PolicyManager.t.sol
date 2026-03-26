@@ -38,6 +38,7 @@ contract PolicyManagerTest is Test {
     MockClaimManager internal mockClaimManager;
     MockCoverPoolFactory internal mockCoverPoolFactory;
     MockBindPolicyHook internal defaultHook;
+    MockChainlinkPriceFeed internal mockPriceFeed;
 
     bytes32 internal policyCommit;
     bytes32 internal specId;
@@ -78,6 +79,7 @@ contract PolicyManagerTest is Test {
         mockClaimManager = new MockClaimManager();
         mockCoverPoolFactory = new MockCoverPoolFactory();
         mockCoverPoolFactory.registerPool(address(coverPool));
+        mockPriceFeed = new MockChainlinkPriceFeed();
 
         policyCommit = keccak256("policy-commit");
         specId = keccak256("spec-id");
@@ -100,6 +102,7 @@ contract PolicyManagerTest is Test {
                     address(mockStakeManager),
                     address(mockClaimManager),
                     address(mockCoverPoolFactory),
+                    address(mockPriceFeed),
                     initialTokens
                 )
             ),
@@ -121,7 +124,12 @@ contract PolicyManagerTest is Test {
         address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
         freshManager.initialize(
-            address(0), address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory), empty
+            address(0),
+            address(mockStakeManager),
+            address(mockClaimManager),
+            address(mockCoverPoolFactory),
+            address(mockPriceFeed),
+            empty
         );
     }
 
@@ -130,7 +138,9 @@ contract PolicyManagerTest is Test {
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
         address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(0), address(mockClaimManager), address(mockCoverPoolFactory), empty);
+        freshManager.initialize(
+            admin, address(0), address(mockClaimManager), address(mockCoverPoolFactory), address(mockPriceFeed), empty
+        );
     }
 
     function test_initialize_WhenClaimManagerZero_Reverts() public {
@@ -138,7 +148,9 @@ contract PolicyManagerTest is Test {
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
         address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(mockStakeManager), address(0), address(mockCoverPoolFactory), empty);
+        freshManager.initialize(
+            admin, address(mockStakeManager), address(0), address(mockCoverPoolFactory), address(mockPriceFeed), empty
+        );
     }
 
     function test_initialize_WhenCoverPoolFactoryZero_Reverts() public {
@@ -146,7 +158,24 @@ contract PolicyManagerTest is Test {
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
         address[] memory empty = new address[](0);
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
-        freshManager.initialize(admin, address(mockStakeManager), address(mockClaimManager), address(0), empty);
+        freshManager.initialize(
+            admin, address(mockStakeManager), address(mockClaimManager), address(0), address(mockPriceFeed), empty
+        );
+    }
+
+    function test_initialize_WhenChainlinkPriceFeedZero_Reverts() public {
+        PolicyManager implementation = new PolicyManager();
+        PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
+        address[] memory empty = new address[](0);
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        freshManager.initialize(
+            admin,
+            address(mockStakeManager),
+            address(mockClaimManager),
+            address(mockCoverPoolFactory),
+            address(0),
+            empty
+        );
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -427,7 +456,6 @@ contract PolicyManagerTest is Test {
         mockStakeManager.setOperatorCommitteeStake(committeeId, 100e8);
 
         request.coverageAmount = 500_000e8;
-
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
         vm.expectRevert(
             abi.encodeWithSelector(IPolicyManager.InsufficientStake.selector, committeeId, 500_000e8, 100e8)
@@ -468,6 +496,29 @@ contract PolicyManagerTest is Test {
         mockStakeManager.setOperatorCommitteeStake(committeeId, 500_000e8);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+    }
+
+    function test_bindPolicy_WhenCoverageLimitUSDExceedsStake_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        uint96 committeeId = request.quote.policyId;
+
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault1");
+        mockStakeManager.createCommittee(committeeId, 1_000_000e8, address(coverPool), COVERAGE_DURATION);
+        mockStakeManager.addOperatorToCommittee(curator, committeeId);
+        mockStakeManager.addCommitteeVaults(committeeId, vaults);
+
+        uint256 stakeUSD = 600_000e8;
+        uint256 coverageLimitUSD = 700_000e8;
+        mockStakeManager.setOperatorCommitteeStake(committeeId, stakeUSD);
+        mockPriceFeed.setUSDValue(coverageLimitUSD);
+
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+        vm.expectRevert(
+            abi.encodeWithSelector(IPolicyManager.InsufficientStake.selector, committeeId, coverageLimitUSD, stakeUSD)
+        );
         vm.prank(address(coverPool));
         policyManager.bindPolicy(request, boundPolicy);
     }
@@ -777,6 +828,39 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                      SET CHAINLINK PRICE FEED
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setChainlinkPriceFeed_WhenCallerNotAdmin_Reverts() public {
+        address newFeed = makeAddr("newFeed");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(buyer);
+        policyManager.setChainlinkPriceFeed(newFeed);
+    }
+
+    function test_setChainlinkPriceFeed_WhenAddressZero_Reverts() public {
+        vm.expectRevert(IPolicyManager.ZeroAddress.selector);
+        vm.prank(admin);
+        policyManager.setChainlinkPriceFeed(address(0));
+    }
+
+    function test_setChainlinkPriceFeed_WhenValidAddress_UpdatesStateAndEmits() public {
+        address newFeed = makeAddr("newFeed");
+
+        vm.expectEmit(true, true, true, true);
+        emit IPolicyManager.ChainlinkPriceFeedSet(newFeed);
+
+        vm.prank(admin);
+        policyManager.setChainlinkPriceFeed(newFeed);
+
+        assertEq(policyManager.chainlinkPriceFeed(), newFeed, "chainlinkPriceFeed not updated");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                           AUTHORIZE UPGRADE
     //////////////////////////////////////////////////////////////*/
 
@@ -942,7 +1026,12 @@ contract PolicyManagerTest is Test {
 
         vm.prank(admin);
         freshManager.initialize(
-            admin, address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory), tokens
+            admin,
+            address(mockStakeManager),
+            address(mockClaimManager),
+            address(mockCoverPoolFactory),
+            address(mockPriceFeed),
+            tokens
         );
 
         assertTrue(freshManager.supportedPayoutTokens(tokenA));
@@ -959,7 +1048,12 @@ contract PolicyManagerTest is Test {
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
         vm.prank(admin);
         freshManager.initialize(
-            admin, address(mockStakeManager), address(mockClaimManager), address(mockCoverPoolFactory), tokens
+            admin,
+            address(mockStakeManager),
+            address(mockClaimManager),
+            address(mockCoverPoolFactory),
+            address(mockPriceFeed),
+            tokens
         );
     }
 
@@ -1600,17 +1694,18 @@ contract PolicyManagerTest is Test {
         IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
         assertEq(metadata.coverageLimit, COVERAGE_LIMIT, "Coverage limit stored in metadata");
         assertTrue(
-            mockStakeManager.getCommitteeTotalStakeUSD(request.quote.policyId) >= request.coverageAmount,
-            "Stake should cover coverageAmount"
+            mockStakeManager.getCommitteeTotalStakeUSD(request.quote.policyId)
+                >= mockPriceFeed.getUSDValue(request.payoutToken, COVERAGE_LIMIT),
+            "Stake should cover coverageLimitUSD"
         );
     }
 
-    function test_bindPolicy_CoverageLimitGreaterThanStake_AllowedIfStakeCoversAmount() public {
+    function test_bindPolicy_WhenCoverageLimitUSDEqualsStake_Succeeds() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint96 committeeId = request.quote.policyId;
 
         request.coverageAmount = 500_000e8;
-        request.quote.coverageLimit = 1_000_000e18; // Larger limit for economic payouts
+        request.quote.coverageLimit = 1_000_000e18;
 
         _seedCommitteeForTesting(committeeId, curator, request.coverageAmount, true);
         mockStakeManager.setOperatorCommitteeStake(committeeId, 500_000e8);
@@ -2479,5 +2574,25 @@ contract MockBindPolicyHookWithQuery is IBindPolicyHook, ERC165 {
 contract MockRevertingHook {
     function supportsInterface(bytes4) external pure returns (bool) {
         revert("supportsInterface: always reverts");
+    }
+}
+
+contract MockChainlinkPriceFeed {
+    uint256 private _usdValue;
+
+    constructor() {
+        _usdValue = 500_000e8;
+    }
+
+    function setUSDValue(uint256 usdValue_) external {
+        _usdValue = usdValue_;
+    }
+
+    function getUSDValue(address, uint256) external view returns (uint256) {
+        return _usdValue;
+    }
+
+    function getTokenAmount(address, uint256) external pure returns (uint256) {
+        return 0;
     }
 }
