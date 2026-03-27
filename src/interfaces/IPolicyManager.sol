@@ -177,12 +177,6 @@ interface IPolicyManager is IAccessControl {
     event PayoutTokenSet(address indexed token, bool supported);
 
     /**
-     * @notice Emitted when the ChainlinkPriceFeed dependency is set or updated.
-     * @param chainlinkPriceFeed_ Address of the Chainlink price feed contract.
-     */
-    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed_);
-
-    /**
      * @notice Emitted when a policy's premium default status is updated by the pool curator.
      * @param policyId Identifier of the affected policy.
      * @param defaulted True if the policy is now in premium default, false if cleared.

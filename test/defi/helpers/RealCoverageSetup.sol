@@ -42,7 +42,6 @@ abstract contract RealCoverageSetup is Test {
     MockCoverPoolFactory internal mockCoverPoolFactory;
     MockSpecRegistry internal mockSpecRegistry;
     MockBindPolicyHook internal mockBindPolicyHook;
-    MockChainlinkPriceFeed internal mockChainlinkPriceFeed;
 
     // ── EIP-712 quote signing ──
     uint256 internal quoteSignerKey;
@@ -77,7 +76,7 @@ abstract contract RealCoverageSetup is Test {
         claimManager = new MockClaimManager(expectedPmProxy);
 
         // ── Deploy MockChainlinkPriceFeed (returns 0 so totalStake >= 0 always passes) ──
-        mockChainlinkPriceFeed = new MockChainlinkPriceFeed();
+        mockChainlinkPriceFeed = new MockChainlinkPriceFeedDefi();
 
         // ── Deploy real PolicyManager behind UUPS proxy ──
         PolicyManager pmImpl = new PolicyManager();
