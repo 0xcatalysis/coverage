@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {UniswapV3Adapter} from "../src/swappers/UniswapV3Adapter.sol";
+import {UniswapV3Adapter} from "../src/adapters/UniswapV3Adapter.sol";
 import {ISwapper} from "../src/interfaces/ISwapper.sol";
 
 /**
@@ -18,6 +18,8 @@ import {ISwapper} from "../src/interfaces/ISwapper.sol";
  *   - SWAPPER: Swapper proxy address (read from ClaimManager.swapper() if unknown)
  *   - SWAP_ROUTER: Uniswap V3 SwapRouter02 address
  *                  Sepolia default: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E
+ *   - QUOTER: Uniswap V3 QuoterV2 address
+ *   - ADAPTER_OWNER: Address that will own the adapter (for setPairFee); defaults to deployer
  *   - TOKEN_IN: Collateral token address (e.g. Uniswap-native WETH on Sepolia:
  * 0xfff9976782d46cc05630d1f6ebab18b2324d6b14)
  *   - TOKEN_OUT: Payout token address (e.g. Circle Sepolia USDC: 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238)
@@ -30,6 +32,8 @@ contract DeployUniswapV3Adapter is Script {
 
         address swapper = vm.envAddress("SWAPPER");
         address swapRouter = vm.envOr("SWAP_ROUTER", address(0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E));
+        address quoter = vm.envAddress("QUOTER");
+        address adapterOwner = vm.envOr("ADAPTER_OWNER", deployer);
         address tokenIn = vm.envAddress("TOKEN_IN");
         address tokenOut = vm.envAddress("TOKEN_OUT");
         uint24 poolFee = uint24(vm.envUint("POOL_FEE"));
@@ -38,13 +42,15 @@ contract DeployUniswapV3Adapter is Script {
         console.log("Deployer:", deployer);
         console.log("Swapper:", swapper);
         console.log("SwapRouter:", swapRouter);
+        console.log("Quoter:", quoter);
+        console.log("Adapter owner:", adapterOwner);
         console.log("TokenIn (collateral):", tokenIn);
         console.log("TokenOut (payout):", tokenOut);
         console.log("Pool fee tier:", poolFee);
 
         vm.startBroadcast(deployerKey);
 
-        UniswapV3Adapter adapter = new UniswapV3Adapter(swapRouter, swapper);
+        UniswapV3Adapter adapter = new UniswapV3Adapter(swapRouter, swapper, quoter, adapterOwner);
         console.log("UniswapV3Adapter deployed at:", address(adapter));
 
         ISwapper(swapper).setSwapTargetWhitelist(address(adapter), true);
@@ -53,6 +59,11 @@ contract DeployUniswapV3Adapter is Script {
         bytes memory routeCalldata = abi.encodeCall(UniswapV3Adapter.swap, (tokenIn, tokenOut, poolFee, 0));
         ISwapper(swapper).setSwapRoute(tokenIn, tokenOut, address(adapter), true, routeCalldata);
         console.log("Swap route configured: tokenIn -> tokenOut via adapter");
+
+        // Sync the quoting fee with the swap fee so Swapper.quoteSwap returns estimates
+        // from the same pool that will be used for execution.
+        adapter.setPairFee(tokenIn, tokenOut, poolFee);
+        console.log("Quote fee synced to pool fee tier:", poolFee);
 
         vm.stopBroadcast();
 

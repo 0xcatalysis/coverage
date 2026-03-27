@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Test} from "forge-std/Test.sol";
-import {UniswapV3Adapter} from "../../src/swappers/UniswapV3Adapter.sol";
+import {UniswapV3Adapter} from "../../src/adapters/UniswapV3Adapter.sol";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -53,23 +53,48 @@ contract FuzzSwapRouter {
 // Fuzz suite
 // ---------------------------------------------------------------------------
 
+/**
+ * @notice Minimal stub for IQuoterV2 used in fuzz tests; always returns zero.
+ */
+contract FuzzQuoterV2 {
+    struct QuoteExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint256 amountIn;
+        uint24 fee;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    function quoteExactInputSingle(QuoteExactInputSingleParams calldata)
+        external
+        pure
+        returns (uint256, uint160, uint32, uint256)
+    {
+        return (0, 0, 0, 0);
+    }
+}
+
 contract UniswapV3AdapterFuzzTest is Test {
     UniswapV3Adapter internal adapter;
     FuzzSwapRouter internal router;
+    FuzzQuoterV2 internal quoter;
     FuzzERC20 internal tokenIn;
     FuzzERC20 internal tokenOut;
 
     address internal swapper;
+    address internal owner;
     uint24 internal constant FEE = 3000;
 
     function setUp() public {
         swapper = makeAddr("swapper");
+        owner = makeAddr("owner");
 
         router = new FuzzSwapRouter();
+        quoter = new FuzzQuoterV2();
         tokenIn = new FuzzERC20("Token In", "TIN");
         tokenOut = new FuzzERC20("Token Out", "TOUT");
 
-        adapter = new UniswapV3Adapter(address(router), swapper);
+        adapter = new UniswapV3Adapter(address(router), swapper, address(quoter), owner);
     }
 
     function testFuzz_swap_ForwardsAmountOutMinimum(uint256 amountIn, uint256 routerOutput, uint256 minimum) public {

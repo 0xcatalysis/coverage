@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Test} from "forge-std/Test.sol";
-import {UniswapV3Adapter} from "../../src/swappers/UniswapV3Adapter.sol";
+import {UniswapV3Adapter} from "../../src/adapters/UniswapV3Adapter.sol";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -67,13 +67,42 @@ contract MockSwapRouter {
 // Unit test suite
 // ---------------------------------------------------------------------------
 
+/**
+ * @notice Minimal mock for IQuoterV2; returns a preset amountOut for quoteExactInputSingle.
+ */
+contract MockQuoterV2 {
+    uint256 private _amountOut;
+
+    struct QuoteExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint256 amountIn;
+        uint24 fee;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    function setAmountOut(uint256 amount) external {
+        _amountOut = amount;
+    }
+
+    function quoteExactInputSingle(QuoteExactInputSingleParams calldata)
+        external
+        view
+        returns (uint256 amountOut, uint160, uint32, uint256)
+    {
+        return (_amountOut, 0, 0, 0);
+    }
+}
+
 contract UniswapV3AdapterTest is Test {
     UniswapV3Adapter internal adapter;
     MockSwapRouter internal router;
+    MockQuoterV2 internal quoter;
     MockERC20 internal tokenIn;
     MockERC20 internal tokenOut;
 
     address internal swapper;
+    address internal owner;
     uint24 internal constant FEE = 3000;
 
     event AdapterSwapExecuted(
@@ -82,12 +111,14 @@ contract UniswapV3AdapterTest is Test {
 
     function setUp() public {
         swapper = makeAddr("swapper");
+        owner = makeAddr("owner");
 
         router = new MockSwapRouter();
+        quoter = new MockQuoterV2();
         tokenIn = new MockERC20("Token In", "TIN");
         tokenOut = new MockERC20("Token Out", "TOUT");
 
-        adapter = new UniswapV3Adapter(address(router), swapper);
+        adapter = new UniswapV3Adapter(address(router), swapper, address(quoter), owner);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -96,12 +127,22 @@ contract UniswapV3AdapterTest is Test {
 
     function test_constructor_WhenRouterZero_Reverts() public {
         vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
-        new UniswapV3Adapter(address(0), swapper);
+        new UniswapV3Adapter(address(0), swapper, address(quoter), owner);
     }
 
     function test_constructor_WhenSwapperZero_Reverts() public {
         vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
-        new UniswapV3Adapter(address(router), address(0));
+        new UniswapV3Adapter(address(router), address(0), address(quoter), owner);
+    }
+
+    function test_constructor_WhenQuoterZero_Reverts() public {
+        vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
+        new UniswapV3Adapter(address(router), swapper, address(0), owner);
+    }
+
+    function test_constructor_WhenOwnerZero_Reverts() public {
+        vm.expectRevert(abi.encodeWithSignature("OwnableInvalidOwner(address)", address(0)));
+        new UniswapV3Adapter(address(router), swapper, address(quoter), address(0));
     }
 
     function test_constructor_SetsSwapRouter() public view {
@@ -110,6 +151,14 @@ contract UniswapV3AdapterTest is Test {
 
     function test_constructor_SetsSwapper() public view {
         assertEq(adapter.SWAPPER(), swapper, "SWAPPER mismatch");
+    }
+
+    function test_constructor_SetsQuoter() public view {
+        assertEq(address(adapter.QUOTER()), address(quoter), "QUOTER mismatch");
+    }
+
+    function test_constructor_SetsOwner() public view {
+        assertEq(adapter.owner(), owner, "owner mismatch");
     }
 
     /*//////////////////////////////////////////////////////////////
