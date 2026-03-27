@@ -66,18 +66,27 @@ contract UniswapV3Adapter {
     /// @notice Reverts when the allowance read from the caller is zero.
     error ZeroAllowance();
 
+    /// @notice Reverts when called by any address other than the authorized Swapper.
+    error UnauthorizedCaller();
+
     /// @notice Uniswap V3 SwapRouter02 address (immutable, set at construction).
     IV3SwapRouter public immutable SWAP_ROUTER;
+
+    /// @notice Authorized Swapper address; the only caller permitted to invoke `swap()`.
+    address public immutable SWAPPER;
 
     /**
      * @notice Deploys the adapter pointing at a specific SwapRouter02 instance.
      * @param swapRouter_ Uniswap V3 SwapRouter02 address.
      *                    Sepolia: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E
      *                    Mainnet: 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45
+     * @param swapper_    Swapper contract address; the only caller authorized to invoke `swap()`.
      */
-    constructor(address swapRouter_) {
+    constructor(address swapRouter_, address swapper_) {
         require(swapRouter_ != address(0), ZeroAddress());
+        require(swapper_ != address(0), ZeroAddress());
         SWAP_ROUTER = IV3SwapRouter(swapRouter_);
+        SWAPPER = swapper_;
     }
 
     /**
@@ -90,9 +99,7 @@ contract UniswapV3Adapter {
      *      Output tokens are sent directly to `msg.sender` (the Swapper) by the
      *      UniV3 router, so this adapter never holds the output token.
      *
-     *      No access control is required: the adapter only consumes the allowance
-     *      that `msg.sender` has explicitly granted to it, so no third party can
-     *      exploit the call.
+     *      Only the authorized Swapper (stored as `SWAPPER`) may call this function.
      *
      * @param tokenIn          Source token address (e.g. WETH).
      * @param tokenOut         Destination token address (e.g. USDC).
@@ -109,6 +116,8 @@ contract UniswapV3Adapter {
         external
         returns (uint256 amountOut)
     {
+        require(msg.sender == SWAPPER, UnauthorizedCaller());
+
         uint256 amountIn = IERC20(tokenIn).allowance(msg.sender, address(this));
         require(amountIn != 0, ZeroAllowance());
 
