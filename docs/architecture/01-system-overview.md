@@ -25,7 +25,7 @@ Core contracts manage:
 Coverage and Core share a canonical identifier:
 
 - `policyId` (Coverage) is the same value as `committeeId` (Core).
-- committee-level capacity in Core is set from requested `coverageAmount`.
+- committee-level vault configuration in Core is set at bind via `setCommitteeVaults(policyId, vaults, coverageLimit)`.
 - slashing is executed by committee, which means per policy.
 
 Coverage request actor mapping:

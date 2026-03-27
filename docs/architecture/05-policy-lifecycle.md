@@ -114,7 +114,7 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 - `SpecRegistry.registerSpec(specId, spec)` called by pool. The `ISpec` implementation must be
   pre-approved by the protocol admin via `SpecRegistry.approveSpec(spec)` before this call will
   succeed; an unapproved spec causes the entire bind transaction to revert.
-- `StakeManager.addCommitteeVaults(policyId, vaults[])` binds committee backing vaults.
+- `StakeManager.setCommitteeVaults(policyId, vaults[], coverageLimit)` binds committee backing vaults.
 
 ### 3.3 PolicyManager Finalization
 
