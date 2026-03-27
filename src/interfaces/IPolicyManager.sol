@@ -177,6 +177,12 @@ interface IPolicyManager is IAccessControl {
     event PayoutTokenSet(address indexed token, bool supported);
 
     /**
+     * @notice Emitted when the ChainlinkPriceFeed dependency is set or updated.
+     * @param chainlinkPriceFeed_ Address of the Chainlink price feed contract.
+     */
+    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed_);
+
+    /**
      * @notice Emitted when a policy's premium default status is updated by the pool curator.
      * @param policyId Identifier of the affected policy.
      * @param defaulted True if the policy is now in premium default, false if cleared.
@@ -342,6 +348,13 @@ interface IPolicyManager is IAccessControl {
     function setCoverPoolFactory(address coverPoolFactory_) external;
 
     /**
+     * @notice Sets the ChainlinkPriceFeed contract used for stake validation at bind time.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Emits ChainlinkPriceFeedSet.
+     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed implementation.
+     */
+    function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
+
+    /**
      * @notice Requests coverage from a specified pool (user-facing entrypoint).
      * @dev Allows users to request coverage by specifying which pool they want coverage from.
      *      The caller becomes the buyer and is responsible for paying premiums.
@@ -409,6 +422,11 @@ interface IPolicyManager is IAccessControl {
      * @notice Returns the configured CoverPoolFactory address.
      */
     function coverPoolFactory() external view returns (address);
+
+    /**
+     * @notice Returns the configured ChainlinkPriceFeed address.
+     */
+    function chainlinkPriceFeed() external view returns (address);
 
     /**
      * @notice Adds or removes a payout token from the supported whitelist.
