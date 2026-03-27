@@ -73,7 +73,7 @@ contract UniswapV3AdapterTest is Test {
     MockERC20 internal tokenIn;
     MockERC20 internal tokenOut;
 
-    address internal caller;
+    address internal swapper;
     uint24 internal constant FEE = 3000;
 
     event AdapterSwapExecuted(
@@ -81,13 +81,13 @@ contract UniswapV3AdapterTest is Test {
     );
 
     function setUp() public {
-        caller = makeAddr("caller");
+        swapper = makeAddr("swapper");
 
         router = new MockSwapRouter();
         tokenIn = new MockERC20("Token In", "TIN");
         tokenOut = new MockERC20("Token Out", "TOUT");
 
-        adapter = new UniswapV3Adapter(address(router));
+        adapter = new UniswapV3Adapter(address(router), swapper);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -96,20 +96,36 @@ contract UniswapV3AdapterTest is Test {
 
     function test_constructor_WhenRouterZero_Reverts() public {
         vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
-        new UniswapV3Adapter(address(0));
+        new UniswapV3Adapter(address(0), swapper);
+    }
+
+    function test_constructor_WhenSwapperZero_Reverts() public {
+        vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
+        new UniswapV3Adapter(address(router), address(0));
     }
 
     function test_constructor_SetsSwapRouter() public view {
         assertEq(address(adapter.SWAP_ROUTER()), address(router), "SWAP_ROUTER mismatch");
     }
 
+    function test_constructor_SetsSwapper() public view {
+        assertEq(adapter.SWAPPER(), swapper, "SWAPPER mismatch");
+    }
+
     /*//////////////////////////////////////////////////////////////
                                SWAP
     //////////////////////////////////////////////////////////////*/
 
+    function test_swap_WhenCallerIsNotSwapper_Reverts() public {
+        address notSwapper = makeAddr("notSwapper");
+        vm.expectRevert(UniswapV3Adapter.UnauthorizedCaller.selector);
+        vm.prank(notSwapper);
+        adapter.swap(address(tokenIn), address(tokenOut), FEE, 0);
+    }
+
     function test_swap_WhenZeroAllowance_Reverts() public {
         vm.expectRevert(UniswapV3Adapter.ZeroAllowance.selector);
-        vm.prank(caller);
+        vm.prank(swapper);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, 0);
     }
 
@@ -118,15 +134,15 @@ contract UniswapV3AdapterTest is Test {
         uint256 routerOutput = 90 ether;
         uint256 minimumRequired = 95 ether;
 
-        tokenIn.mint(caller, amountIn);
+        tokenIn.mint(swapper, amountIn);
         tokenOut.mint(address(router), routerOutput);
         router.setOutputAmount(routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         tokenIn.approve(address(adapter), amountIn);
 
         vm.expectRevert("MockSwapRouter: insufficient output");
-        vm.prank(caller);
+        vm.prank(swapper);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, minimumRequired);
     }
 
@@ -134,14 +150,14 @@ contract UniswapV3AdapterTest is Test {
         uint256 amountIn = 100 ether;
         uint256 routerOutput = 95 ether;
 
-        tokenIn.mint(caller, amountIn);
+        tokenIn.mint(swapper, amountIn);
         tokenOut.mint(address(router), routerOutput);
         router.setOutputAmount(routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         tokenIn.approve(address(adapter), amountIn);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         uint256 amountOut = adapter.swap(address(tokenIn), address(tokenOut), FEE, 0);
 
         assertEq(amountOut, routerOutput, "amountOut mismatch");
@@ -153,14 +169,14 @@ contract UniswapV3AdapterTest is Test {
         uint256 routerOutput = 95 ether;
         uint256 minimumRequired = 90 ether;
 
-        tokenIn.mint(caller, amountIn);
+        tokenIn.mint(swapper, amountIn);
         tokenOut.mint(address(router), routerOutput);
         router.setOutputAmount(routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         tokenIn.approve(address(adapter), amountIn);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         uint256 amountOut = adapter.swap(address(tokenIn), address(tokenOut), FEE, minimumRequired);
 
         assertEq(amountOut, routerOutput, "amountOut mismatch");
@@ -171,54 +187,54 @@ contract UniswapV3AdapterTest is Test {
         uint256 amountIn = 100 ether;
         uint256 routerOutput = 95 ether;
 
-        tokenIn.mint(caller, amountIn);
+        tokenIn.mint(swapper, amountIn);
         tokenOut.mint(address(router), routerOutput);
         router.setOutputAmount(routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         tokenIn.approve(address(adapter), amountIn);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         uint256 amountOut = adapter.swap(address(tokenIn), address(tokenOut), FEE, routerOutput);
 
         assertEq(amountOut, routerOutput, "amountOut mismatch");
         assertEq(router.lastAmountOutMinimum(), routerOutput, "amountOutMinimum must equal routerOutput");
     }
 
-    function test_swap_TransfersTokenInFromCaller() public {
+    function test_swap_TransfersTokenInFromSwapper() public {
         uint256 amountIn = 100 ether;
         uint256 routerOutput = 95 ether;
 
-        tokenIn.mint(caller, amountIn);
+        tokenIn.mint(swapper, amountIn);
         tokenOut.mint(address(router), routerOutput);
         router.setOutputAmount(routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         tokenIn.approve(address(adapter), amountIn);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, 0);
 
-        assertEq(tokenIn.balanceOf(caller), 0, "caller should have sent all tokenIn");
+        assertEq(tokenIn.balanceOf(swapper), 0, "swapper should have sent all tokenIn");
         assertEq(tokenIn.balanceOf(address(adapter)), 0, "adapter should not hold tokenIn");
         assertEq(tokenIn.balanceOf(address(router)), amountIn, "router should have received tokenIn");
     }
 
-    function test_swap_SendsTokenOutToCaller() public {
+    function test_swap_SendsTokenOutToSwapper() public {
         uint256 amountIn = 100 ether;
         uint256 routerOutput = 95 ether;
 
-        tokenIn.mint(caller, amountIn);
+        tokenIn.mint(swapper, amountIn);
         tokenOut.mint(address(router), routerOutput);
         router.setOutputAmount(routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         tokenIn.approve(address(adapter), amountIn);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, 0);
 
-        assertEq(tokenOut.balanceOf(caller), routerOutput, "caller should receive tokenOut from router");
+        assertEq(tokenOut.balanceOf(swapper), routerOutput, "swapper should receive tokenOut from router");
         assertEq(tokenOut.balanceOf(address(adapter)), 0, "adapter should not hold tokenOut");
     }
 
@@ -226,14 +242,14 @@ contract UniswapV3AdapterTest is Test {
         uint256 amountIn = 100 ether;
         uint256 routerOutput = 95 ether;
 
-        tokenIn.mint(caller, amountIn);
+        tokenIn.mint(swapper, amountIn);
         tokenOut.mint(address(router), routerOutput);
         router.setOutputAmount(routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         tokenIn.approve(address(adapter), amountIn);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, 0);
 
         assertEq(tokenIn.allowance(address(adapter), address(router)), 0, "Router approval must be cleared after swap");
@@ -244,38 +260,38 @@ contract UniswapV3AdapterTest is Test {
         uint256 routerOutput = 95 ether;
         uint24 fee = 500;
 
-        tokenIn.mint(caller, amountIn);
+        tokenIn.mint(swapper, amountIn);
         tokenOut.mint(address(router), routerOutput);
         router.setOutputAmount(routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         tokenIn.approve(address(adapter), amountIn);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         adapter.swap(address(tokenIn), address(tokenOut), fee, 0);
 
         assertEq(router.lastTokenIn(), address(tokenIn), "tokenIn mismatch");
         assertEq(router.lastTokenOut(), address(tokenOut), "tokenOut mismatch");
         assertEq(router.lastFee(), fee, "fee mismatch");
         assertEq(router.lastAmountIn(), amountIn, "amountIn mismatch");
-        assertEq(router.lastRecipient(), caller, "recipient must be msg.sender (caller)");
+        assertEq(router.lastRecipient(), swapper, "recipient must be msg.sender (swapper)");
     }
 
     function test_swap_EmitsAdapterSwapExecuted() public {
         uint256 amountIn = 100 ether;
         uint256 routerOutput = 95 ether;
 
-        tokenIn.mint(caller, amountIn);
+        tokenIn.mint(swapper, amountIn);
         tokenOut.mint(address(router), routerOutput);
         router.setOutputAmount(routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         tokenIn.approve(address(adapter), amountIn);
 
         vm.expectEmit(true, true, false, true, address(adapter));
         emit AdapterSwapExecuted(address(tokenIn), address(tokenOut), FEE, amountIn, routerOutput);
 
-        vm.prank(caller);
+        vm.prank(swapper);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, 0);
     }
 }

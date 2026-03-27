@@ -235,9 +235,15 @@ from the allowance the Swapper grants it.
 **Slippage protection:** The `amountOutMinimum` parameter is forwarded directly to the Uniswap V3
 router, enabling defense-in-depth slippage protection at the adapter level.
 
-**Deployment:** `script/DeployUniswapV3Adapter.s.sol` deploys the adapter, whitelists it in
-`Swapper`, and configures the route in one transaction. Since `UniswapV3Adapter` is an immutable
-contract. So any change to the adapter requires deploying a new instance and reconfiguring the Swapper route via `setSwapTargetWhitelist` + `setSwapRoute`.
+**Access control:** `swap()` is restricted to the `SWAPPER` address recorded at construction time.
+Only the authorized Swapper contract may invoke the adapter, enforcing the principle of least
+privilege. Any third-party call is rejected with `UnauthorizedCaller()`.
+
+**Deployment:** `script/DeployUniswapV3Adapter.s.sol` deploys the adapter (passing the `SWAPPER`
+address as a constructor argument), whitelists it in `Swapper`, and configures the route in one
+transaction. Since `UniswapV3Adapter` is an immutable contract, any change to the adapter requires
+deploying a new instance and reconfiguring the Swapper route via `setSwapTargetWhitelist` +
+`setSwapRoute`.
 
 | Network | SwapRouter02 |
 |---------|-------------|
