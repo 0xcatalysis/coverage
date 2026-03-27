@@ -12,7 +12,6 @@ import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 import {IStakeManager} from "./interfaces/IStakeManager.sol";
 import {IBindPolicyHook} from "./interfaces/IBindPolicyHook.sol";
-import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
 
 /**
  * @title PolicyManager
