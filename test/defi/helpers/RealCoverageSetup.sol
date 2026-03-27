@@ -16,7 +16,13 @@ import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 
 import {MockClaimManager} from "../mocks/Mocks.sol";
-import {MockStakeManager, MockCoverPoolFactory, MockSpecRegistry, MockBindPolicyHook} from "../mocks/CoverageMocks.sol";
+import {
+    MockStakeManager,
+    MockCoverPoolFactory,
+    MockSpecRegistry,
+    MockBindPolicyHook,
+    MockChainlinkPriceFeed
+} from "../mocks/CoverageMocks.sol";
 
 /// @title RealCoverageSetup
 /// @notice Abstract base contract that deploys real PolicyManager + real CoverPool for adapter tests
@@ -35,6 +41,7 @@ abstract contract RealCoverageSetup is Test {
     MockCoverPoolFactory internal mockCoverPoolFactory;
     MockSpecRegistry internal mockSpecRegistry;
     MockBindPolicyHook internal mockBindPolicyHook;
+    MockChainlinkPriceFeed internal mockChainlinkPriceFeed;
 
     // ── EIP-712 quote signing ──
     uint256 internal quoteSignerKey;
@@ -62,10 +69,14 @@ abstract contract RealCoverageSetup is Test {
         quoteSigner = vm.addr(quoteSignerKey);
 
         // ── Deploy MockClaimManager with pre-computed PolicyManager proxy address ──
-        // Nonce layout: +0 = MockClaimManager, +1 = PolicyManager impl, +2 = ERC1967Proxy (= PM proxy)
+        // Nonce layout: +0 = MockClaimManager, +1 = MockChainlinkPriceFeed, +2 = PolicyManager impl,
+        //               +3 = ERC1967Proxy (= PM proxy)
         uint256 nonce = vm.getNonce(address(this));
-        address expectedPmProxy = vm.computeCreateAddress(address(this), nonce + 2);
+        address expectedPmProxy = vm.computeCreateAddress(address(this), nonce + 3);
         claimManager = new MockClaimManager(expectedPmProxy);
+
+        // ── Deploy MockChainlinkPriceFeed (returns 0 so totalStake >= 0 always passes) ──
+        mockChainlinkPriceFeed = new MockChainlinkPriceFeed();
 
         // ── Deploy real PolicyManager behind UUPS proxy ──
         PolicyManager pmImpl = new PolicyManager();
@@ -80,6 +91,7 @@ abstract contract RealCoverageSetup is Test {
                             address(mockStakeManager),
                             address(claimManager),
                             address(mockCoverPoolFactory),
+                            address(mockChainlinkPriceFeed),
                             new address[](0)
                         )
                     )

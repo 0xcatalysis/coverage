@@ -11,6 +11,7 @@ import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 import {IStakeManager} from "./interfaces/IStakeManager.sol";
 import {IBindPolicyHook} from "./interfaces/IBindPolicyHook.sol";
+import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
 
 /**
  * @title PolicyManager
@@ -37,6 +38,7 @@ contract PolicyManager is
     mapping(uint96 policyId => IPolicyManager.PolicyMetadata) private _policies;
     mapping(bytes32 policyCommit => bool registered) private _registeredPolicyCommits;
     mapping(address token => bool supported) public override supportedPayoutTokens;
+    address public override chainlinkPriceFeed;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -50,6 +52,7 @@ contract PolicyManager is
      * @param stakeManager_ Address of the StakeManager contract.
      * @param claimManager_ Address of the ClaimManager contract.
      * @param coverPoolFactory_ Address of the CoverPoolFactory contract.
+     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract used for coverageLimit USD conversion.
      * @param initialPayoutTokens_ Payout tokens marked as supported on deployment.
      */
     function initialize(
@@ -57,6 +60,7 @@ contract PolicyManager is
         address stakeManager_,
         address claimManager_,
         address coverPoolFactory_,
+        address chainlinkPriceFeed_,
         address[] calldata initialPayoutTokens_
     )
         external
@@ -64,7 +68,7 @@ contract PolicyManager is
     {
         require(
             admin_ != address(0) && stakeManager_ != address(0) && claimManager_ != address(0)
-                && coverPoolFactory_ != address(0),
+                && coverPoolFactory_ != address(0) && chainlinkPriceFeed_ != address(0),
             ZeroAddress()
         );
 
@@ -76,6 +80,7 @@ contract PolicyManager is
         stakeManager = stakeManager_;
         claimManager = claimManager_;
         coverPoolFactory = coverPoolFactory_;
+        chainlinkPriceFeed = chainlinkPriceFeed_;
 
         uint256 tokensLength = initialPayoutTokens_.length;
         for (uint256 i = 0; i < tokensLength; ++i) {
@@ -124,6 +129,15 @@ contract PolicyManager is
         require(coverPoolFactory_ != address(0), ZeroAddress());
         coverPoolFactory = coverPoolFactory_;
         emit CoverPoolFactorySet(coverPoolFactory_);
+    }
+
+    /**
+     * @inheritdoc IPolicyManager
+     */
+    function setChainlinkPriceFeed(address chainlinkPriceFeed_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(chainlinkPriceFeed_ != address(0), ZeroAddress());
+        chainlinkPriceFeed = chainlinkPriceFeed_;
+        emit ChainlinkPriceFeedSet(chainlinkPriceFeed_);
     }
 
     /**
@@ -249,7 +263,9 @@ contract PolicyManager is
         require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));
 
         uint256 totalStake = IStakeManager(stakeManager).getCommitteeTotalStakeUSD(policyId);
-        require(totalStake >= request.coverageAmount, InsufficientStake(policyId, request.coverageAmount, totalStake));
+        uint256 coverageLimitUSD =
+            IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(request.payoutToken, boundPolicy.coverageLimit);
+        require(totalStake >= coverageLimitUSD, InsufficientStake(policyId, coverageLimitUSD, totalStake));
 
         bytes32 policyCommit = boundPolicy.policyCommit;
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
