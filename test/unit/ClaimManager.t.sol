@@ -137,7 +137,7 @@ contract ClaimManagerTest is Test {
             abi.encodeCall(ClaimManager.initialize, (admin, specRegistry, slashingManager, swapper, policy)),
             deployOpts
         );
-        claimManager = ClaimManager(proxy);
+        claimManager = ClaimManager(payable(proxy));
 
         vm.label(address(claimManager), "ClaimManager");
 
@@ -150,35 +150,35 @@ contract ClaimManagerTest is Test {
 
     function test_initialize_WhenAdminZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
-        ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
+        ClaimManager freshManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(address(0), specRegistry, slashingManager, swapper, policy);
     }
 
     function test_initialize_WhenSpecRegistryZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
-        ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
+        ClaimManager freshManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(admin, address(0), slashingManager, swapper, policy);
     }
 
     function test_initialize_WhenSlashingManagerZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
-        ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
+        ClaimManager freshManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(admin, specRegistry, address(0), swapper, policy);
     }
 
     function test_initialize_WhenSwapperZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
-        ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
+        ClaimManager freshManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(admin, specRegistry, slashingManager, address(0), policy);
     }
 
     function test_initialize_WhenPolicyZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
-        ClaimManager freshManager = ClaimManager(address(new ERC1967Proxy(address(implementation), "")));
+        ClaimManager freshManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         freshManager.initialize(admin, specRegistry, slashingManager, swapper, address(0));
     }
@@ -786,6 +786,9 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         uint256 claimId1 = claimManager.fileClaim(POLICY_ID, halfCoverage, evidenceHash1, "");
 
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
+
         bytes32 evidenceHash2 = keccak256("evidence-2");
         collateralTokenMock.mint(address(slashingManager), halfCoverage);
 
@@ -904,7 +907,8 @@ contract ClaimManagerTest is Test {
                 coverageLimit: 0,
                 specId: bytes32(0),
                 termsHash: bytes32(0),
-                policyCommit: bytes32(0)
+                policyCommit: bytes32(0),
+                premiumDefaulted: false
             })
         );
 
@@ -1418,12 +1422,18 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, firstClaimAmount, keccak256("evidence1"), "");
 
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
+
         collateralTokenMock.mint(address(slashingManagerMock), secondClaimAmount);
         payoutTokenMock.mint(address(swapperMock), secondClaimAmount);
         swapperMock.setSwapOutput(secondClaimAmount);
 
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, secondClaimAmount, keccak256("evidence2"), "");
+
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -1459,6 +1469,9 @@ contract ClaimManagerTest is Test {
 
         uint256 remainingAfterFirst = claimManager.remainingCoverage(POLICY_ID);
         assertEq(remainingAfterFirst, COVERAGE_LIMIT - firstClaimAmount, "Remaining should decrement after first claim");
+
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
 
         collateralTokenMock.mint(address(slashingManagerMock), secondClaimAmount);
         payoutTokenMock.mint(address(swapperMock), secondClaimAmount);
