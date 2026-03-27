@@ -98,7 +98,7 @@ contract PremiumCollector is
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         require(vault != address(0) && pool != address(0), ZeroAddress());
-        require(policyId != 0, ZeroAmount());
+        require(policyId != 0, InvalidPolicyId());
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
         require(!_vaultConfigs[vault].registered, VaultAlreadyRegistered(vault));
 
@@ -147,7 +147,7 @@ contract PremiumCollector is
     function updateVault(address vault, address pool, uint96 policyId) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(_vaultConfigs[vault].registered, VaultNotRegistered(vault));
         require(pool != address(0), ZeroAddress());
-        require(policyId != 0, ZeroAmount());
+        require(policyId != 0, InvalidPolicyId());
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
 
         VaultConfig storage config = _vaultConfigs[vault];

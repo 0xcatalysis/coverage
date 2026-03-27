@@ -13,7 +13,7 @@ interface IRewardsManager {
      * @dev Called by PremiumReserve after policy maturity to distribute escrowed premiums.
      * @param policyId The policy identifier backing the coverage (1:1 with committee).
      * @param operator The operator address whose stake backed the coverage.
-     * @param rewardAmount Amount of reward token to distribute.
+     * @param rewardAmount Amount of reward token to distribute (in token-native units, not USD).
      * @param rewardToken The ERC20 token used for rewards.
      * @param taskId Unique identifier for this distribution task, used to prevent replay attacks.
      */
