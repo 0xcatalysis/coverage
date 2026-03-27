@@ -33,7 +33,8 @@ interface IPolicyManager is IAccessControl {
         address claimer;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
-        /// @notice Coverage amount requested (stake requirement in USD with 8 decimals).
+        /// @notice Coverage amount requested as stake requirement, denominated in USD with 8 decimals (Chainlink
+        /// standard).
         uint256 coverageAmount;
         /// @notice Coverage duration requested (in seconds).
         uint32 duration;
@@ -96,7 +97,8 @@ interface IPolicyManager is IAccessControl {
         address claimer;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
-        /// @notice Coverage amount as the stake requirement for committee creation (in USD with 8 decimals).
+        /// @notice Coverage amount as the stake requirement for committee creation, denominated in USD with 8 decimals
+        /// (Chainlink standard).
         uint256 coverageAmount;
         /// @notice Coverage quote from a single CoverPool.
         ICoverPool.Quote quote;
@@ -111,7 +113,7 @@ interface IPolicyManager is IAccessControl {
      * @param buyer Buyer address requesting coverage.
      * @param beneficiary Beneficiary address for claims.
      * @param claimer Account authorized to trigger claims.
-     * @param coverageAmount Requested coverage amount (stake requirement).
+     * @param coverageAmount Requested coverage amount as stake requirement, denominated in USD with 8 decimals.
      * @param duration Requested coverage duration (in seconds).
      */
     event CoverageRequested(
@@ -363,7 +365,8 @@ interface IPolicyManager is IAccessControl {
      * @param beneficiary Address receiving payouts upon approved claims.
      * @param claimer Account authorized to trigger claims for the policy.
      * @param payoutToken ERC20 token used for claim payouts.
-     * @param coverageAmount Requested coverage amount (stake requirement in USD with 8 decimals).
+     * @param coverageAmount Requested coverage amount as stake requirement, denominated in USD with 8 decimals
+     * (Chainlink standard).
      * @param duration Requested coverage duration (in seconds).
      * @param bindPolicyHook Callback target invoked when policy is bound.
      * @return policyId Identifier reserved for binding and minting.

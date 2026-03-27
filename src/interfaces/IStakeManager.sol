@@ -31,11 +31,11 @@ interface IStakeManager {
 
     /// @notice Creates a committee by setting up operator sets and network limits across protocols.
     /// @param committeeId The committee ID (1:1 with policyId).
-    /// @param maxStakeForCommittee The maximum stake limit in USD (8 decimals).
+    /// @param maxStakeForCommitteeUSD The maximum stake limit in USD (8 decimals).
     /// @param duration The duration in seconds for the vault lock period.
     function createCommittee(
         uint96 committeeId,
-        uint256 maxStakeForCommittee,
+        uint256 maxStakeForCommitteeUSD,
         address coverPool,
         uint32 duration
     )

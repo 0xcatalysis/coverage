@@ -146,9 +146,9 @@ contract PremiumCollectorTest is Test {
         premiumCollector.registerVault(vault1, address(0), POLICY_ID);
     }
 
-    function test_registerVault_WhenCommitteeIdZero_Reverts() public {
+    function test_registerVault_WhenPolicyIdZero_Reverts() public {
         vm.prank(admin);
-        vm.expectRevert(IPremiumCollector.ZeroAmount.selector);
+        vm.expectRevert(IPremiumCollector.InvalidPolicyId.selector);
         premiumCollector.registerVault(vault1, pool, 0);
     }
 
@@ -363,7 +363,7 @@ contract PremiumCollectorTest is Test {
         premiumCollector.registerVault(vault1, pool, POLICY_ID);
 
         vm.prank(admin);
-        vm.expectRevert(IPremiumCollector.ZeroAmount.selector);
+        vm.expectRevert(IPremiumCollector.InvalidPolicyId.selector);
         premiumCollector.updateVault(vault1, pool, 0);
     }
 

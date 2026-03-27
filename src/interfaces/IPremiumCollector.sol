@@ -105,9 +105,9 @@ interface IPremiumCollector is IAccessControl {
     error ZeroAddress();
 
     /**
-     * @notice Reverts when a zero amount is provided where not allowed.
+     * @notice Reverts when a zero policy ID is provided where not allowed.
      */
-    error ZeroAmount();
+    error InvalidPolicyId();
 
     /**
      * @notice Reverts when an invalid distribute interval is provided.
