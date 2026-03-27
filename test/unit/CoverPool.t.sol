@@ -1113,7 +1113,9 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature(
+                "setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, quote.coverageLimit
+            ),
             abi.encode()
         );
 

@@ -126,8 +126,8 @@ contract MockSpecRegistry {
 
 /// @title MockChainlinkPriceFeed
 /// @notice Minimal ChainlinkPriceFeed mock that always approves stake validation
-/// @dev Returns type(uint256).max for getUSDValue so the stake check always passes when
-///      MockStakeManager.getCommitteeTotalStakeUSD also returns type(uint256).max.
+/// @dev Returns zero for getUSDValue, so PolicyManager's totalStakeUSD >= coverageLimitUSD check passes
+///      in these lightweight defi mocks.
 contract MockChainlinkPriceFeed is IChainlinkPriceFeed {
     function getUSDValue(address, uint256) external pure override returns (uint256) {
         return 0; // 0 <= type(uint256).max always passes the InsufficientStake check
