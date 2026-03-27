@@ -16,6 +16,7 @@ import {ISpec} from "./interfaces/ISpec.sol";
 import {ISpecRegistry} from "./interfaces/ISpecRegistry.sol";
 import {ISlashingManager} from "./interfaces/ISlashingManager.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
+import {IWETH} from "./interfaces/IWETH.sol";
 
 /**
  * @title ClaimManager
@@ -486,11 +487,14 @@ contract ClaimManager is
 
     /**
      * @notice Converts a vault's stake to its payout-token equivalent value.
-     * @dev Returns the stake directly when the collateral token matches the payout token; otherwise
-     *      calls quoteSwap and returns 0 on failure so the vault is excluded from slash distribution.
+     * @dev Both tokens are resolved through nativeWrapper before comparison so that a WETH/NATIVE_ETH
+     *      pair is treated as 1:1 (quoteSwap returns 0 for that pair because both sides resolve to the
+     *      same nativeWrapper address internally, which would otherwise silently exclude the vault).
+     *      Returns 0 on quote failure so the vault is excluded from slash distribution.
      */
     function _toPayoutEquivalent(address token, address payoutToken, uint256 stake) private returns (uint256) {
-        if (token == payoutToken) {
+        // slither-disable-next-line calls-loop
+        if (_resolveNative(token) == _resolveNative(payoutToken)) {
             return stake;
         }
         // slither-disable-next-line calls-loop
@@ -499,6 +503,13 @@ contract ClaimManager is
         } catch {
             return 0;
         }
+    }
+
+    /**
+     * @notice Resolves the NATIVE_ETH sentinel to the Swapper's nativeWrapper address.
+     */
+    function _resolveNative(address token) private view returns (address) {
+        return token == _NATIVE_ETH ? ISwapper(swapper).nativeWrapper() : token;
     }
 
     /**
@@ -522,7 +533,8 @@ contract ClaimManager is
         if (slashAmount > tokenStake) {
             slashAmount = tokenStake;
         }
-        if (slashAmount == 0 || token == payoutToken) {
+        // slither-disable-next-line calls-loop
+        if (slashAmount == 0 || _resolveNative(token) == _resolveNative(payoutToken)) {
             return slashAmount;
         }
 
@@ -583,48 +595,77 @@ contract ClaimManager is
         private
         returns (uint256 amountOut)
     {
-        if (collateralToken == payoutToken) {
+        address resolvedCollateral = _resolveNative(collateralToken);
+        address resolvedPayout = _resolveNative(payoutToken);
+
+        if (resolvedCollateral == resolvedPayout) {
             uint256 transferAmount = collateralAmount > remainingPayout ? remainingPayout : collateralAmount;
-            _transferToken(collateralToken, beneficiary, transferAmount);
+            if (collateralToken != payoutToken) {
+                if (collateralToken == _NATIVE_ETH) {
+                    IWETH(resolvedPayout).deposit{value: transferAmount}();
+                } else {
+                    IWETH(resolvedCollateral).withdraw(transferAmount);
+                }
+            }
+            _transferToken(payoutToken, beneficiary, transferAmount);
             amountOut = transferAmount;
         } else {
-            _approveIfERC20(collateralToken, swapper, collateralAmount);
-
-            uint256 amountOutMin = 1;
-            // slither-disable-next-line calls-loop
-            try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 quoted) {
-                if (quoted > 0) {
-                    amountOutMin = quoted * (10_000 - maxSwapSlippageBps) / 10_000;
-                    if (amountOutMin == 0) {
-                        amountOutMin = 1;
-                    }
-                }
-            } catch {}
-
-            ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
-                tokenIn: collateralToken,
-                tokenOut: payoutToken,
-                amountIn: collateralAmount,
-                amountOutMin: amountOutMin,
-                recipient: address(this),
-                swapCalldata: "",
-                deadline: block.timestamp
-            });
-
-            // slither-disable-next-line arbitrary-send-eth
-            uint256 swapOutput =
-                ISwapper(swapper).executeSwap{value: collateralToken == _NATIVE_ETH ? collateralAmount : 0}(swapParams);
-
-            amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
-            _transferToken(payoutToken, beneficiary, amountOut);
-
-            _approveIfERC20(collateralToken, swapper, 0);
+            amountOut =
+                _executeCollateralSwap(collateralToken, collateralAmount, payoutToken, beneficiary, remainingPayout);
         }
 
         emit CollateralSwapped(policyId, claimId, collateralToken, collateralAmount, payoutToken, amountOut);
     }
 
     // slither-disable-end calls-loop
+
+    /**
+     * @notice Routes collateral through the Swapper and delivers payout to the beneficiary.
+     * @return amountOut Amount of payout token delivered (capped at remainingPayout).
+     */
+    // slither-disable-next-line calls-loop
+    function _executeCollateralSwap(
+        address collateralToken,
+        uint256 collateralAmount,
+        address payoutToken,
+        address beneficiary,
+        uint256 remainingPayout
+    )
+        private
+        returns (uint256 amountOut)
+    {
+        _approveIfERC20(collateralToken, swapper, collateralAmount);
+
+        uint256 amountOutMin = 1;
+        // slither-disable-next-line calls-loop
+        try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 quoted) {
+            if (quoted > 0) {
+                amountOutMin = quoted * (10_000 - maxSwapSlippageBps) / 10_000;
+                if (amountOutMin == 0) {
+                    amountOutMin = 1;
+                }
+            }
+        } catch {}
+
+        ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
+            tokenIn: collateralToken,
+            tokenOut: payoutToken,
+            amountIn: collateralAmount,
+            amountOutMin: amountOutMin,
+            recipient: address(this),
+            swapCalldata: "",
+            deadline: block.timestamp
+        });
+
+        // slither-disable-next-line arbitrary-send-eth
+        uint256 swapOutput =
+            ISwapper(swapper).executeSwap{value: collateralToken == _NATIVE_ETH ? collateralAmount : 0}(swapParams);
+
+        amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
+        _transferToken(payoutToken, beneficiary, amountOut);
+
+        _approveIfERC20(collateralToken, swapper, 0);
+    }
 
     /**
      * @notice Transfers `amount` of `token` to `to`, handling native ETH and ERC-20 uniformly.
