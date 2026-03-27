@@ -225,15 +225,19 @@ from the allowance the Swapper grants it.
 **Integration pattern** (called by `Swapper._performSwap`):
 
 1. Swapper approves adapter for `amountIn` of `tokenIn`.
-2. Swapper calls `adapter.swap(tokenIn, tokenOut, fee)` via stored static calldata.
+2. Swapper calls `adapter.swap(tokenIn, tokenOut, fee, amountOutMinimum)` via stored static calldata.
 3. Adapter reads `allowance(Swapper, adapter)` to obtain `amountIn`.
 4. Adapter pulls `tokenIn` from Swapper via `transferFrom`.
-5. Adapter calls `SwapRouter02.exactInputSingle` with `recipient = Swapper`.
+5. Adapter calls `SwapRouter02.exactInputSingle` forwarding `amountOutMinimum` for router-level slippage enforcement.
 6. Router delivers `tokenOut` directly to Swapper.
 7. Adapter clears residual approval to the router.
 
+**Slippage protection:** The `amountOutMinimum` parameter is forwarded directly to the Uniswap V3
+router, enabling defense-in-depth slippage protection at the adapter level.
+
 **Deployment:** `script/DeployUniswapV3Adapter.s.sol` deploys the adapter, whitelists it in
-`Swapper`, and configures the route in one transaction.
+`Swapper`, and configures the route in one transaction. Since `UniswapV3Adapter` is an immutable
+contract. So any change to the adapter requires deploying a new instance and reconfiguring the Swapper route via `setSwapTargetWhitelist` + `setSwapRoute`.
 
 | Network | SwapRouter02 |
 |---------|-------------|
