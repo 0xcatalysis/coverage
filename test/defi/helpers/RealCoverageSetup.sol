@@ -75,7 +75,7 @@ abstract contract RealCoverageSetup is Test {
         address expectedPmProxy = vm.computeCreateAddress(address(this), nonce + 3);
         claimManager = new MockClaimManager(expectedPmProxy);
 
-        // ── Deploy MockChainlinkPriceFeed (returns 0 so totalStake >= 0 always passes) ──
+        // ── Deploy MockChainlinkPriceFeed (returns input amount as USD value) ──
         mockChainlinkPriceFeed = new MockChainlinkPriceFeedDefi();
 
         // ── Deploy real PolicyManager behind UUPS proxy ──
@@ -100,11 +100,6 @@ abstract contract RealCoverageSetup is Test {
         );
         require(address(pm) == expectedPmProxy, "PM proxy address mismatch");
         policyManager = pm;
-
-        // ── Configure ChainlinkPriceFeed on PolicyManager ──
-        mockChainlinkPriceFeed = new MockChainlinkPriceFeedDefi();
-        vm.prank(admin);
-        pm.setChainlinkPriceFeed(address(mockChainlinkPriceFeed));
 
         // ── Deploy real CoverPool via minimal proxy clone ──
         CoverPool cpImpl = new CoverPool();
