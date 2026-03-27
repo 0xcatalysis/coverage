@@ -474,6 +474,7 @@ contract ClaimManager is
      * @notice Resolves the NATIVE_ETH sentinel to the Swapper's nativeWrapper address.
      */
     function _resolveNative(address token) private view returns (address) {
+        // slither-disable-next-line calls-loop
         return token == _NATIVE_ETH ? ISwapper(swapper).nativeWrapper() : token;
     }
 
@@ -567,6 +568,7 @@ contract ClaimManager is
             uint256 transferAmount = collateralAmount > remainingPayout ? remainingPayout : collateralAmount;
             if (collateralToken != payoutToken) {
                 if (collateralToken == _NATIVE_ETH) {
+                    // slither-disable-next-line arbitrary-send-eth
                     IWETH(resolvedPayout).deposit{value: transferAmount}();
                 } else {
                     IWETH(resolvedCollateral).withdraw(transferAmount);
