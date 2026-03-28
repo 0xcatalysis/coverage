@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {IStakeManager} from "coverage/interfaces/IStakeManager.sol";
-import {ICoverPoolFactory} from "coverage/interfaces/ICoverPoolFactory.sol";
-import {ISpecRegistry} from "coverage/interfaces/ISpecRegistry.sol";
+import {ISlashingManager} from "coverage/interfaces/ISlashingManager.sol";
+import {IChainlinkPriceFeed} from "coverage/interfaces/IChainlinkPriceFeed.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
 import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";

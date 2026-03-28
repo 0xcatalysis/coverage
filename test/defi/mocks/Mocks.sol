@@ -379,7 +379,7 @@ contract MockCoverPool {
 }
 
 /// @title MockVaultV2
-/// @notice Morpho Vault V2 mock for testing CatalysisCoverAdapter
+/// @notice Morpho Vault V2 mock for testing covered vault wrappers
 contract MockVaultV2 {
     MockERC20 private _asset;
     string public name;

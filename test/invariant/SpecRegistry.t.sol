@@ -6,7 +6,6 @@ import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {Test} from "forge-std/Test.sol";
 import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
 import {ISpec} from "../../src/interfaces/ISpec.sol";
-import {ISpecRegistry} from "../../src/interfaces/ISpecRegistry.sol";
 import {MockSpec} from "../../src/mocks/MockSpec.sol";
 import {SpecRegistry} from "../../src/SpecRegistry.sol";
 
