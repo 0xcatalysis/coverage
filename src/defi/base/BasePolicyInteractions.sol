@@ -89,7 +89,7 @@ abstract contract BasePolicyInteractions is Initializable, ISpec {
 
     /**
      * @notice Internal function to file and resolve a claim against a policy atomically.
-     * @dev Used by CatalysisCoverAdapter. CoveredVaultWrapper uses claimManager.fileClaim() directly.
+     * @dev Used by coverage adapters. CoveredVaultWrapper uses claimManager.fileClaim() directly.
      * @param policyId The policy ID to file claim against.
      * @param requestedAmount The requested payout amount in payout token terms.
      * @param evidenceHash Hash of evidence supporting the claim.

@@ -50,7 +50,6 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
             address(wrapper),
             address(asset),
             coverageLimit,
-            coverageLimit,
             uint32(block.timestamp),
             uint32(block.timestamp + 365 days),
             curator,

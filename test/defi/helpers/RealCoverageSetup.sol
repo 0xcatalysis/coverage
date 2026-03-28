@@ -6,9 +6,6 @@ import "forge-std/Test.sol";
 import {PolicyManager} from "coverage/PolicyManager.sol";
 import {CoverPool} from "coverage/CoverPool.sol";
 import {ICoverPool} from "coverage/interfaces/ICoverPool.sol";
-import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
-import {IClaimManager} from "coverage/interfaces/IClaimManager.sol";
-import {CatalysisCoverAdapter} from "../../../src/defi/adapters/morpho/CatalysisCoverAdapter.sol";
 import {CoveredVaultWrapper} from "../../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -242,30 +239,6 @@ abstract contract RealCoverageSetup is Test {
             deployOpts
         );
         return CoveredVaultWrapper(proxy);
-    }
-
-    /// @notice Deploys CatalysisCoverAdapter behind a UUPS proxy using the Upgrades library
-    function _deployAdapterProxy(
-        address parentVault_,
-        address underlyingVault_,
-        address claimManager_,
-        address coverPool_,
-        uint16 maxCoverableLossBps_
-    )
-        internal
-        returns (CatalysisCoverAdapter)
-    {
-        Options memory deployOpts;
-        deployOpts.unsafeSkipAllChecks = true;
-        address proxy = Upgrades.deployUUPSProxy(
-            "CatalysisCoverAdapter.sol",
-            abi.encodeCall(
-                CatalysisCoverAdapter.initialize,
-                (parentVault_, underlyingVault_, claimManager_, coverPool_, maxCoverableLossBps_)
-            ),
-            deployOpts
-        );
-        return CatalysisCoverAdapter(proxy);
     }
 
     /// @notice Helper: set premium rate in tests, bypassing the 2-day timelock (L-04).
