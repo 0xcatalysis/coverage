@@ -84,7 +84,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         require(_claimManager != address(0), IA.ZeroAddress());
         require(_premiumRecipient != address(0), IA.ZeroAddress());
         require(_maxCoverableLossBps > 0 && _maxCoverableLossBps <= BPS_DENOMINATOR, IA.InvalidMaxCoverableLoss());
-        require(_deductibleBps < BPS_DENOMINATOR, IA.InvalidParameters());
+        require(_deductibleBps < _maxCoverableLossBps, IA.InvalidParameters());
 
         __ERC4626_init(IERC20(IVaultV2(_morphoVault).asset()));
         __ERC20_init(_name, _symbol);

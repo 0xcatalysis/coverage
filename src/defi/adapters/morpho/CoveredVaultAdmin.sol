@@ -57,6 +57,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     function executeMaxCoverableLossBps() external override onlyOwner {
         _requireTimelockReady(pendingMaxCoverableLossTimestamp);
         uint16 newBps = pendingMaxCoverableLossBps;
+        require(newBps > deductibleBps, IA.InvalidMaxCoverableLoss());
         uint16 oldBps = maxCoverableLossBps;
         if (policyBoundExecuted) {
             depositCap = (coverageLimit * BPS_DENOMINATOR) / uint256(newBps);
@@ -80,6 +81,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         _requireTimelockReady(pendingDeductibleTimestamp);
         uint16 oldBps = deductibleBps;
         uint16 newBps = pendingDeductibleBps;
+        require(newBps < maxCoverableLossBps, IA.InvalidParameters());
         deductibleBps = newBps;
         pendingDeductibleBps = 0;
         pendingDeductibleTimestamp = 0;
