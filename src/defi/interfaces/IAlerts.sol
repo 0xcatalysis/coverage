@@ -64,7 +64,7 @@ interface IAlerts {
     error InvalidMaxCoverableLoss();
 
     /// @notice Thrown when parentVault and underlyingVault are the same address
-    // aderyn-fp-next-line(unused-error) Declared locally in CatalysisCoverAdapter
+    // aderyn-fp-next-line(unused-error) Reserved for external protocol integrations
     error SameVault();
 
     /// @notice Thrown when policyId is zero (adapter requires a valid policy)

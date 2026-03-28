@@ -261,12 +261,13 @@ These components typically live outside this repository but are first-class arch
 - sets management-fee style premium parameters (via curator controls),
 - allocates/deallocates through the adapter.
 
-### CatalysisCoverAdapter
+### CoveredVaultWrapper
 
-- implements Morpho adapter interface,
-- tracks principal/reference accounting for shortfall detection,
-- calls Coverage policy and claims entrypoints (`requestCoverage`, `fileClaim`) as integration policy dictates,
-- receives claim payout and forwards make-whole assets through withdrawal path.
+- ERC-4626 wrapper around a Morpho vault,
+- accrues and collects premiums from depositors,
+- tracks reference accounting for shortfall detection,
+- calls Coverage claim entrypoints (`fileClaim`) on shortfall,
+- receives claim payout and tops up withdrawals to make depositors whole.
 
 ### Base Vault (Morpho V1/V2)
 
@@ -301,6 +302,5 @@ Coverage contracts rely on Core interfaces:
 ## Next Steps
 
 - [Core Integration](./03-core-integration.md)
-- [Covered Vault Integration](./07-covered-vault-integration.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
 - [Premiums and Claims](./06-premiums-claims.md)
