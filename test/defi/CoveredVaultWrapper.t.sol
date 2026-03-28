@@ -1063,27 +1063,46 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     }
 
     /// @dev Traditional deductible: losses below the deductible threshold get $0 payout.
-    ///      Deductible = basis × 50% = 500. A 10% loss (shortfall=100) is below the threshold.
+    ///      maxCoverableLoss=50%, deductible=20%. A 10% loss (shortfall=100) is below deductibleAmt=200.
     ///      No insurance payout — user absorbs the entire loss.
     function test_deductible_traditionalThreshold_lossBelowDeductible() public {
-        vm.prank(curator);
-        wrapper.setDeductibleBps(5000); // 50% deductible -- propose
-        vm.warp(block.timestamp + 2 days + 1);
-        vm.prank(curator);
-        wrapper.executeDeductibleBps(); // execute after delay
+        CoveredVaultWrapper w = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            5000, // 50% max coverable loss
+            2000, // 20% deductible
+            premiumRecipientAddr,
+            curator,
+            "DeductibleTest2",
+            "DT2"
+        );
+        morphoVault.setCurator(address(w));
+        _createAndBindPolicy(
+            address(w),
+            address(w),
+            address(asset),
+            type(uint128).max,
+            uint32(block.timestamp),
+            uint32(block.timestamp + 365 days),
+            curator,
+            address(w)
+        );
 
         vm.prank(user1);
-        wrapper.deposit(DEPOSIT_AMOUNT, user1);
-        morphoVault.setLoss(10);
+        asset.approve(address(w), type(uint256).max);
+        vm.prank(user1);
+        w.deposit(1000 ether, user1);
+        morphoVault.setLoss(10); // 10% loss → shortfall=100 ether
 
         uint256 before = asset.balanceOf(user1);
-        uint256 shares = wrapper.balanceOf(user1);
+        uint256 shares = w.balanceOf(user1);
         vm.prank(user1);
-        wrapper.redeem(shares, user1, user1);
+        w.redeem(shares, user1, user1);
         uint256 received = asset.balanceOf(user1) - before;
 
-        // shortfall=100, deductibleAmt = 1000 × 50% = 500
-        // 100 < 500 → payout = 0, user receives only Morpho proceeds (900)
+        // shortfall=100, deductibleAmt = 1000 × 20% = 200
+        // 100 < 200 → payout = 0, user receives only Morpho proceeds (900)
         assertApproxEqAbs(received, 900 ether, 1 ether, "Loss below deductible threshold: $0 payout");
     }
 
