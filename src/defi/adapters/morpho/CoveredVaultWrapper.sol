@@ -413,8 +413,11 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         uint256 mv = _morphoValue();
         uint256 accrued = _accruedPremiumFor(mv);
         uint256 totalPremiumTotal = totalPremiumLiability + accrued;
-        uint256 netValue = _safeSub(mv, totalPremiumTotal);
-        uint256 adjustedPrincipal = _safeSub(totalPrincipal, totalPremiumTotal);
+        // Mirror the deep-loss guard in _settleWithdrawalTransfer: cap premium deduction at
+        // available Morpho assets so the view matches the actual withdrawal path in all scenarios.
+        uint256 cappedPremium = totalPremiumTotal < mv ? totalPremiumTotal : mv;
+        uint256 netValue = mv - cappedPremium;
+        uint256 adjustedPrincipal = _safeSub(totalPrincipal, cappedPremium);
         if (adjustedPrincipal > netValue) {
             return _capAndApplyDeductible(adjustedPrincipal - netValue, adjustedPrincipal);
         }
@@ -430,8 +433,12 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         uint256 principal = userPrincipal[user];
         uint256 totalUserPremium = _calcOwedDebt(principal, cumulativePremiumPerUnit, userPremiumDebt[user])
             + (totalPrincipal > 0 ? principal.mulDiv(accrued, totalPrincipal, Math.Rounding.Floor) : 0);
-        uint256 userMorphoNet = _safeSub(_userMorphoValue(user), totalUserPremium);
-        uint256 adjustedUserPrincipal = _safeSub(principal, totalUserPremium);
+        // Mirror the deep-loss guard in _settleWithdrawalTransfer: cap the premium deduction at
+        // the user's available Morpho assets so the view matches the actual withdrawal path.
+        uint256 userMorphoVal = _userMorphoValue(user);
+        uint256 cappedUserPremium = totalUserPremium < userMorphoVal ? totalUserPremium : userMorphoVal;
+        uint256 userMorphoNet = userMorphoVal - cappedUserPremium;
+        uint256 adjustedUserPrincipal = _safeSub(principal, cappedUserPremium);
         if (adjustedUserPrincipal > userMorphoNet) {
             return _capAndApplyDeductible(adjustedUserPrincipal - userMorphoNet, adjustedUserPrincipal);
         }
