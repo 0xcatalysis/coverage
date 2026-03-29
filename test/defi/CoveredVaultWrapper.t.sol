@@ -1537,5 +1537,4 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertApproxEqAbs(userSf, 85.5 ether, 2 ether, "userShortfall must use capped premium basis");
         assertApproxEqAbs(vaultSf, 85.5 ether, 2 ether, "calculateShortfall must use capped premium basis");
     }
-
 }
