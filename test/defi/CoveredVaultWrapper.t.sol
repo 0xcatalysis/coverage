@@ -1502,4 +1502,40 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertEq(wrapper.userPrincipal(user1), 0, "Principal cleared");
         assertEq(wrapper.totalPrincipal(), 0, "Total principal cleared");
     }
+
+    /// @dev Regression: in a deep-loss scenario, userShortfall() and calculateShortfall() must cap
+    ///      the premium deduction at available Morpho assets (matching _settleWithdrawalTransfer's guard),
+    ///      not use the full uncapped premium. Otherwise basis and shortfall are understated, making the
+    ///      view return a smaller payout than the user actually receives.
+    ///
+    ///      Setup mirrors test_withdraw_deepLoss_premiumCappedAtAssetsReceived:
+    ///        principal=1000, uncappedPremium≈100, morphoReturn≈50 (95% loss)
+    ///        cappedPremium = min(100, 50) = 50
+    ///        adjustedPrincipal = 1000 - 50 = 950  ← must NOT be 900 (uncapped path)
+    ///        shortfall = 950 - 0 = 950
+    ///        payout = min(950, 10% of 950) - 1% of 950 ≈ 85.5 ether
+    function test_shortfall_views_cappedAtMorphoAssets_deepLoss() public {
+        uint256 rate = uint256(1e17) / 31_536_000; // ~10%/year
+        _setPremiumRate(wrapper, rate, curator);
+
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        vm.warp(block.timestamp + 365 days - 1);
+
+        vm.prank(curator);
+        wrapper.collectPremium();
+
+        // 95% catastrophic loss
+        morphoVault.setLoss(95);
+
+        uint256 userSf = wrapper.userShortfall(user1);
+        uint256 vaultSf = wrapper.calculateShortfall();
+
+        // With capped premium (50), insuredBasis = 950, maxInsurable = 95 (10%), deductible = 9.5 (1%)
+        // payout ≈ 85.5. With uncapped premium (100), basis = 900 → payout ≈ 81. Must be ~85.5.
+        assertApproxEqAbs(userSf, 85.5 ether, 2 ether, "userShortfall must use capped premium basis");
+        assertApproxEqAbs(vaultSf, 85.5 ether, 2 ether, "calculateShortfall must use capped premium basis");
+    }
+
 }
