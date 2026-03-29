@@ -8,6 +8,9 @@ out/
 .idea
 .claude/
 .plamen_audit/
+.plamen/
+AUDIT_REPORT.md
+test/plamen/
 *.log
 .DS_Store
 .env
