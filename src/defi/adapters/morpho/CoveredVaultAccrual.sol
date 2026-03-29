@@ -114,26 +114,26 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
     ///      Single source of truth for the active-window calculation used by
     ///      _accruedPremium and _accruePremium.
     function _activeElapsedFrom(uint256 checkpoint) internal view returns (uint256) {
-        if (_isPolicyActive()) {
-            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
-            // Clamp checkpoint to startTime so users who deposited before the policy
+        if (policyId == 0) return 0;
+        // Fetch metadata once for both the active check and the window calculation.
+        IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
+        uint256 effectiveMaturity = uint256(meta.maturityTime) + gateGracePeriod;
+        if (
+            meta.buyer != address(0) && block.timestamp >= uint256(meta.startTime)
+                && block.timestamp < effectiveMaturity
+        ) {
+            // Policy is active: clamp checkpoint to startTime so users who deposited before the policy
             // started are not charged premium for the pre-coverage gap.
             uint256 activeStart = checkpoint < uint256(meta.startTime) ? uint256(meta.startTime) : checkpoint;
             return block.timestamp - activeStart;
         }
-        if (policyId != 0) {
-            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
-            // Use effective maturity (raw + grace period) so that premium/EL accrues through
-            // the gate grace window, consistent with _isPolicyActive().
-            uint256 effectiveMaturity = uint256(meta.maturityTime) + gateGracePeriod;
-            // Guard: only fire the catch-up branch after the policy has started.
-            if (
-                meta.buyer != address(0) && effectiveMaturity > checkpoint && block.timestamp >= uint256(meta.startTime)
-            ) {
-                uint256 activeStart = checkpoint > uint256(meta.startTime) ? checkpoint : uint256(meta.startTime);
-                if (effectiveMaturity > activeStart) {
-                    return effectiveMaturity - activeStart;
-                }
+        // Policy expired: use effective maturity (raw + grace period) so that premium/EL accrues through
+        // the gate grace window, consistent with _isPolicyActive().
+        // Guard: only fire the catch-up branch after the policy has started.
+        if (meta.buyer != address(0) && effectiveMaturity > checkpoint && block.timestamp >= uint256(meta.startTime)) {
+            uint256 activeStart = checkpoint > uint256(meta.startTime) ? checkpoint : uint256(meta.startTime);
+            if (effectiveMaturity > activeStart) {
+                return effectiveMaturity - activeStart;
             }
         }
         return 0;
