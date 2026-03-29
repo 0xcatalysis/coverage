@@ -349,7 +349,6 @@ abstract contract Deploy is Script {
         contracts.coverPoolFactoryImpl = Upgrades.getImplementationAddress(contracts.coverPoolFactoryProxy);
 
         PolicyManager(contracts.policyManagerProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
-        PolicyManager(contracts.policyManagerProxy).setChainlinkPriceFeed(external_.chainlinkPriceFeed);
         SpecRegistry(contracts.specRegistryProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
 
         uint64 distributeInterval = 86_400; // 24 hours
