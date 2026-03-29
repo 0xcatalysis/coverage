@@ -236,6 +236,7 @@ abstract contract Deploy is Script {
                     external_.stakeManager,
                     roles.deployer, // Temporary placeholder for claimManager, will be set after ClaimManager deployment
                     roles.deployer, // Temporary placeholder for coverPoolFactory, will be set after factory deployment
+                    external_.chainlinkPriceFeed,
                     getInitialPayoutTokens()
                 )
             ),

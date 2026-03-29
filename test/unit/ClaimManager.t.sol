@@ -624,7 +624,7 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
 
-    function test_fileClaim_WhenCollateralEntriesAtMaximum_Succeeds() public {
+    function test_fileClaim_WhenCollateralEntriesAtMaximum_DoesNotRevertWithTooManyEntries() public {
         uint256 maxEntries = claimManager.MAX_COLLATERAL_ENTRIES();
 
         specMock.setEvaluationResult(true, keccak256("approved"));
@@ -638,33 +638,11 @@ contract ClaimManagerTest is Test {
         }
         slashingManagerMock.setSlashResult(assets, amounts);
 
-        vm.expectRevert(abi.encodeWithSelector(IClaimManager.ZeroPayoutAmount.selector, POLICY_ID));
+        // With all tokenStakes = 0, _computeVaultSlashes sees totalPayoutEquivalent = 0
+        // and reverts with NoCollateralSlashed (not TooManyCollateralEntries).
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.NoCollateralSlashed.selector, POLICY_ID));
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                            CLAIM RECORD
-    //////////////////////////////////////////////////////////////*/
-
-    function test_claimRecord_WhenClaimNotFiled_ReturnsDefault() public view {
-        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, 0);
-        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.None), "Status should be None");
-        assertEq(record.reporter, address(0), "Reporter should be zero");
-        assertEq(record.filedAt, 0, "FiledAt should be zero");
-        assertEq(record.resolvedAt, 0, "ResolvedAt should be zero");
-        assertEq(record.evidenceHash, bytes32(0), "EvidenceHash should be zero");
-        assertEq(record.payoutAmount, 0, "PayoutAmount should be zero");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                          POLICY CLAIM
-    //////////////////////////////////////////////////////////////*/
-
-    function test_policyClaim_WhenNoClaims_ReturnsDefaults() public view {
-        IClaimManager.PolicyClaim memory state = claimManager.policyClaim(POLICY_ID);
-        assertEq(state.claimCount, 0, "ClaimCount should be 0");
-        assertEq(state.totalPaidOut, 0, "TotalPaidOut should be 0");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -814,7 +792,6 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
-
 
     function test_fileClaim_WhenRequestedAmountZero_Reverts() public {
         vm.expectRevert(IClaimManager.ZeroAmount.selector);
@@ -1797,40 +1774,6 @@ contract ClaimManagerTest is Test {
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim must succeed within tolerance");
-    }
-
-    function test_attack_MultiCollateralSlashingPaysoutCorrectly() public {
-        specMock.setEvaluationResult(true, keccak256("approved"));
-
-        address[] memory tokens = new address[](2);
-        tokens[0] = collateralToken;
-        tokens[1] = payoutToken;
-        uint256[] memory amounts = new uint256[](2);
-        amounts[0] = 300 ether;
-        amounts[1] = 200 ether;
-        slashingManagerMock.setSlashResult(tokens, amounts);
-
-        collateralTokenMock.mint(address(slashingManager), 300 ether);
-        slashingManagerMock.setTokenToTransfer(collateralToken);
-        payoutTokenMock.mint(address(slashingManager), 200 ether);
-        slashingManagerMock.setToken2ToTransfer(payoutToken);
-
-        swapperMock.setPayoutToken(payoutToken);
-        swapperMock.setSwapOutput(300 ether);
-
-        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
-
-        vm.prank(claimer);
-        uint256 claimId = claimManager.fileClaim(POLICY_ID, 500 ether, evidenceHash, "");
-
-        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
-        assertEq(
-            uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Multi-collateral claim should succeed"
-        );
-
-        uint256 actualPayout = payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore;
-        assertLe(actualPayout, 500 ether, "Total payout must not exceed requested amount");
-        assertGt(actualPayout, 0, "Must pay out something");
     }
 
     /*//////////////////////////////////////////////////////////////

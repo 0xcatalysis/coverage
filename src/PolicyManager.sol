@@ -196,10 +196,10 @@ contract PolicyManager is
             bindPolicyHook: bindPolicyHook
         });
 
-        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, pool, duration);
+        IStakeManager(stakeManager).createCommittee(policyId, pool, duration);
         IStakeManager(stakeManager).addOperatorToCommittee(curator, policyId);
 
-        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount, duration);
+        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, duration);
     }
 
     /**

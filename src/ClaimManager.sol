@@ -51,7 +51,6 @@ contract ClaimManager is
     address public override slashingManager;
     address public override swapper;
     address public override policyManager;
-    address public override chainlinkPriceFeed;
     address public override excessCollateralRecipient;
     uint16 public override maxSwapSlippageBps;
 
@@ -190,7 +189,7 @@ contract ClaimManager is
     function approveNextClaim(uint96 policyId) external override {
         IPolicyManager.PolicyMetadata memory metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
-        require(msg.sender == ICoverPool(metadata.pool).owner(), UnauthorizedApprover());
+        require(msg.sender == metadata.curator, UnauthorizedApprover());
         _claimApprovalRequired[policyId] = false;
         emit NextClaimApproved(policyId, msg.sender);
     }
@@ -368,6 +367,65 @@ contract ClaimManager is
     }
 
     /**
+     * @notice Builds the per-vault slash array by previewing stake, computing payout equivalents,
+     *         and calculating proportional token-native slash amounts with slippage inflation.
+     * @dev Reverts with NoCollateralSlashed when the preview returns no vaults, when total payout
+     *      equivalent is zero (all stakes zero or unquotable), or when all computed slash amounts
+     *      round down to zero.
+     * @param policyId Policy identifier (used for error reporting).
+     * @param payoutToken Token in which the payout will be denominated.
+     * @param curator Operator whose stake backs the committee.
+     * @param requestedAmount Maximum payout amount in payout token terms.
+     * @return vaultSlashes Per-vault slash specifications ready for executeSlashing.
+     */
+    function _computeVaultSlashes(
+        uint96 policyId,
+        address payoutToken,
+        address curator,
+        uint256 requestedAmount
+    )
+        private
+        returns (ISlashingManager.VaultSlash[] memory vaultSlashes)
+    {
+        // slither-disable-next-line calls-loop
+        (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes) =
+            ISlashingManager(slashingManager).previewSlashing(policyId, curator);
+
+        uint256 vaultsLength = vaults.length;
+        require(
+            vaultsLength > 0 && vaultsLength == tokens.length && vaultsLength == tokenStakes.length,
+            NoCollateralSlashed(policyId)
+        );
+        require(vaultsLength <= MAX_COLLATERAL_ENTRIES, TooManyCollateralEntries(vaultsLength));
+
+        uint256[] memory payoutEquivalents = new uint256[](vaultsLength);
+        uint256 totalPayoutEquivalent = 0;
+        for (uint256 i = 0; i < vaultsLength; ++i) {
+            uint256 equiv = _toPayoutEquivalent(tokens[i], payoutToken, tokenStakes[i]);
+            payoutEquivalents[i] = equiv;
+            totalPayoutEquivalent += equiv;
+        }
+        require(totalPayoutEquivalent > 0, NoCollateralSlashed(policyId));
+
+        vaultSlashes = new ISlashingManager.VaultSlash[](vaultsLength);
+        uint256 count = 0;
+        for (uint256 i = 0; i < vaultsLength; ++i) {
+            uint256 slashAmount = _calculateVaultSlash(
+                tokens[i], payoutToken, tokenStakes[i], payoutEquivalents[i], requestedAmount, totalPayoutEquivalent
+            );
+            if (slashAmount > 0) {
+                vaultSlashes[count] =
+                    ISlashingManager.VaultSlash({vault: vaults[i], token: tokens[i], amount: slashAmount});
+                count++;
+            }
+        }
+        // Trim array to actual non-zero entries.
+        assembly {
+            mstore(vaultSlashes, count)
+        }
+    }
+
+    /**
      * @notice Executes slashing and collateral swapping for payout directly.
      * @dev Uses previewSlashing to obtain per-vault stake data, computes token-native slash amounts
      *      with per-vault slippage inflation, executes slashing, then swaps/transfers collateral.
@@ -386,7 +444,8 @@ contract ClaimManager is
         private
         returns (uint256 totalPayout)
     {
-        address operator = ICoverPool(metadata.pool).owner();
+        ISlashingManager.VaultSlash[] memory vaultSlashes =
+            _computeVaultSlashes(metadata.policyId, metadata.payoutToken, metadata.curator, requestedAmount);
 
         // taskId is deterministic per (policyId, claimId) pair to prevent replay attacks.
         // slither-disable-next-line calls-loop
@@ -394,7 +453,7 @@ contract ClaimManager is
             .executeSlashing(
                 metadata.policyId,
                 metadata.curator,
-                slashAmountUSD,
+                vaultSlashes,
                 keccak256(abi.encodePacked(metadata.policyId, claimId))
             );
 

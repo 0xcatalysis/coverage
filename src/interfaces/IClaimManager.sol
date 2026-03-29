@@ -272,12 +272,6 @@ interface IClaimManager is IAccessControl {
     error TooManyCollateralEntries(uint256 count);
 
     /**
-     * @notice Reverts when attempting to file a claim for a policy whose holder is in premium default.
-     * @param policyId Identifier of the policy in premium default.
-     */
-    error PremiumDefaulted(uint96 policyId);
-
-    /**
      * @notice Pauses claim operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
@@ -417,13 +411,6 @@ interface IClaimManager is IAccessControl {
      * @notice Returns the maximum number of collateral token entries that can be processed in a single claim.
      */
     function MAX_COLLATERAL_ENTRIES() external view returns (uint256);
-
-    /**
-     * @notice Sets the excess collateral recipient address.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param recipient_ New recipient address for excess/stranded collateral.
-     */
-    function setExcessCollateralRecipient(address recipient_) external;
 
     /**
      * @notice Clears the claim approval gate for a policy, allowing the next claim to be filed freely.

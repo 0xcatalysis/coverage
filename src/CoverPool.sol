@@ -180,7 +180,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
 
         ISpecRegistry(specRegistry).registerSpec(quote.specId, ISpec(spec));
 
-        IStakeManager(stakeManager).addCommitteeVaults(policyId, vaults);
+        IStakeManager(stakeManager).setCommitteeVaults(policyId, vaults, quote.coverageLimit);
 
         IPolicyManager(policyManager)
             .bindPolicy(
