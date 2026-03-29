@@ -115,7 +115,11 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
     ///      _accruedPremium and _accruePremium.
     function _activeElapsedFrom(uint256 checkpoint) internal view returns (uint256) {
         if (_isPolicyActive()) {
-            return block.timestamp - checkpoint;
+            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
+            // Clamp checkpoint to startTime so users who deposited before the policy
+            // started are not charged premium for the pre-coverage gap.
+            uint256 activeStart = checkpoint < uint256(meta.startTime) ? uint256(meta.startTime) : checkpoint;
+            return block.timestamp - activeStart;
         }
         if (policyId != 0) {
             IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);

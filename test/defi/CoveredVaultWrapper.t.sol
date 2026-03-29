@@ -552,6 +552,63 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     }
 
     /*//////////////////////////////////////////////////////////////
+                  PRE-POLICY PHANTOM PREMIUM REGRESSION (L-03)
+    //////////////////////////////////////////////////////////////*/
+
+    function test_noPremium_chargedBeforePolicyStart() public {
+        // Deploy a fresh wrapper whose policy starts 1 day in the future
+        uint32 futureStart = uint32(block.timestamp + 1 days);
+        uint32 maturity = uint32(block.timestamp + 366 days);
+        CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            MAX_COVERABLE_LOSS_BPS,
+            DEDUCTIBLE_BPS,
+            premiumRecipientAddr,
+            curator,
+            "Fresh3",
+            "FR3"
+        );
+        _createAndBindPolicy(
+            address(freshWrapper),
+            address(freshWrapper),
+            address(asset),
+            10_000 ether,
+            futureStart,
+            maturity,
+            curator,
+            address(freshWrapper)
+        );
+
+        // User deposits BEFORE startTime (checkpoint = now < futureStart)
+        vm.prank(user1);
+        asset.approve(address(freshWrapper), type(uint256).max);
+        vm.prank(user1);
+        freshWrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        // Set a non-zero premium rate
+        _setPremiumRate(freshWrapper, 1e9, curator);
+
+        // Warp to exactly 30 days AFTER startTime
+        vm.warp(futureStart + 30 days);
+
+        // Trigger accrual by reading totalPremiumLiability via a second deposit
+        vm.prank(user1);
+        freshWrapper.deposit(1, user1);
+
+        uint256 liability = freshWrapper.totalPremiumLiability();
+
+        // 30 days of premium at 1e9 rate on 1000 ether principal
+        // The pre-start gap (1 day) must NOT be included
+        uint256 thirtyDayPremium = (DEPOSIT_AMOUNT * 1e9 * 30 days) / 1e18;
+        uint256 thirtyOneDayPremium = (DEPOSIT_AMOUNT * 1e9 * 31 days) / 1e18;
+
+        assertLe(liability, thirtyDayPremium * 2, "liability must not include pre-start gap");
+        assertLt(liability, thirtyOneDayPremium, "liability must be < 31 days (no phantom premium)");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                      MAX WITHDRAW ERC-4626 COMPLIANCE
     //////////////////////////////////////////////////////////////*/
 
