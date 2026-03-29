@@ -552,6 +552,32 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     }
 
     /*//////////////////////////////////////////////////////////////
+                     MAX WITHDRAW ERC-4626 COMPLIANCE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_maxWithdraw_equalsPreviewRedeem_withAccruedPremium() public {
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        // Accrue premium for 30 days
+        _setPremiumRate(wrapper, 1e9, curator);
+        vm.warp(block.timestamp + 30 days);
+
+        uint256 maxW = wrapper.maxWithdraw(user1);
+        uint256 maxR = wrapper.maxRedeem(user1);
+        assertEq(maxW, wrapper.previewRedeem(maxR), "maxWithdraw must equal previewRedeem(maxRedeem)");
+
+        uint256 balBefore = asset.balanceOf(user1);
+        vm.prank(user1);
+        wrapper.withdraw(maxW, user1, user1);
+        assertApproxEqAbs(
+            asset.balanceOf(user1) - balBefore, maxW, 1, "withdraw(maxWithdraw) transfers reported amount"
+        );
+        // Floor rounding may leave a negligible dust of shares (< 1e4); ensure position is effectively drained
+        assertLe(wrapper.balanceOf(user1), 1e4, "only rounding dust remains after withdraw(maxWithdraw)");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                         SHORTFALL VIEW TESTS
     //////////////////////////////////////////////////////////////*/
 

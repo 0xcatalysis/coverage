@@ -449,14 +449,10 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
     function maxWithdraw(address owner) public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
         uint256 shares = balanceOf(owner);
         if (shares == 0) return 0;
-        uint256 grossAssets = _convertToAssets(shares, Math.Rounding.Floor);
-        // Include pending (uncheckpointed) premium delta
-        uint256 principal = userPrincipal[owner];
-        uint256 fraction = totalPrincipal > 0 ? principal.mulDiv(WAD, totalPrincipal) : 0;
-        uint256 owedPremium = _calcOwedDebt(principal, cumulativePremiumPerUnit, userPremiumDebt[owner]);
-        uint256 mv = _morphoValue();
-        uint256 totalDeductions = owedPremium + _accruedPremiumFor(mv).mulDiv(fraction, WAD);
-        return _safeSub(grossAssets, totalDeductions);
+        // totalAssets() already deducts totalPremiumLiability + _accruedPremiumFor(mv),
+        // so _convertToAssets produces a share price net of all premium obligations.
+        // Subtracting owedPremium again would double-count the liability.
+        return _convertToAssets(shares, Math.Rounding.Floor);
     }
 
     /// @notice Returns maximum redeemable shares (all shares are redeemable)
