@@ -35,7 +35,6 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         _requireTimelockReady(pendingPremiumRateTimestamp);
         // Settle any premium accrued at the old rate before switching.
         _accruePremium();
-        lastPremiumAccrualTime = block.timestamp;
         uint256 oldRate = premiumRatePerSecond;
         uint256 newRate = pendingPremiumRate;
         premiumRatePerSecond = newRate;
