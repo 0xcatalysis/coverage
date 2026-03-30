@@ -88,7 +88,8 @@ abstract contract CoveredVaultStorage is
     /// @notice Total cost-basis principal across all users
     uint256 public override totalPrincipal;
 
-    /// @notice Premium rate per second (WAD-scaled)
+    /// @notice Premium rate per second, WAD-scaled (1e18 = 100% per second).
+    ///         Example: 1e16 / 31_536_000 ≈ 0.1% per year.
     uint256 public override premiumRatePerSecond;
 
     /// @notice Timestamp of the last premium accrual
@@ -106,7 +107,7 @@ abstract contract CoveredVaultStorage is
     uint256 public override pendingPremium;
 
     /// @notice Coverage limit stored from the bound policy
-    /// @dev Persisted from onPolicyBound so that setMaxCoverableLossBps can recompute depositCap.
+    /// @dev Persisted from onPolicyBound so that setDepositCap can validate against the formula ceiling.
     uint256 public override coverageLimit;
 
     /// @notice WAD-scaled cumulative premium per unit of principal (reward-per-token accumulator)
@@ -127,11 +128,6 @@ abstract contract CoveredVaultStorage is
     uint16 public pendingDeductibleBps;
     /// @notice Timestamp after which pendingDeductibleBps may be executed (0 = no pending change)
     uint64 public pendingDeductibleTimestamp;
-
-    /// @notice Pending maxCoverableLossBps value awaiting timelock execution
-    uint16 public pendingMaxCoverableLossBps;
-    /// @notice Timestamp after which pendingMaxCoverableLossBps may be executed (0 = no pending change)
-    uint64 public pendingMaxCoverableLossTimestamp;
 
     /// @notice Cached Morpho vault value used as fallback when convertToAssets() reverts
     uint256 public override lastKnownMorphoValue;
@@ -154,10 +150,15 @@ abstract contract CoveredVaultStorage is
     /// @notice Timestamp after which pendingPremiumRecipient may be executed (0 = no pending change)
     uint64 public pendingPremiumRecipientTimestamp;
 
-    /// @notice Timestamp when the Morpho gate was activated (0 = not gated)
-    uint256 public gateActivatedAt;
-    /// @notice Grace period extension on policy maturity to compensate for gate overlap
-    uint256 public gateGracePeriod;
+    /// @notice Pending depositCap value awaiting timelock execution
+    uint256 public pendingDepositCap;
+    /// @notice Timestamp after which pendingDepositCap may be executed (0 = no pending change)
+    uint64 public pendingDepositCapTimestamp;
+
+    /// @notice Timestamp at which the policy was bound (i.e. onPolicyBound block.timestamp).
+    ///         Used as the premium accrual start anchor instead of PolicyMetadata.startTime,
+    ///         since onPolicyBound is also when deposits open and the coverage window begins.
+    uint256 public policyStartTime;
 
     /*//////////////////////////////////////////////////////////////
                             ERRORS
