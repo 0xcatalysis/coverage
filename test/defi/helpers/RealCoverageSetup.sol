@@ -119,22 +119,19 @@ abstract contract RealCoverageSetup is Test {
     }
 
     /// @notice Creates a policy draft and binds it through the real PolicyManager + CoverPool flow
-    /// @dev Uses the full requestCoverage → signQuote → bindPolicyForRequest pipeline
-    /// @param beneficiary Address that receives claim payouts (typically the adapter address)
-    /// @param claimer Address authorized to file claims (typically the adapter address)
+    /// @param beneficiary Address that receives claim payouts
+    /// @param claimer Address authorized to file claims
     /// @param payoutToken ERC20 token used for claim payouts
-    /// @param coverageAmount Stake requirement (in USD 8 decimals)
     /// @param coverageLimit Maximum payout notional (in payout token units)
     /// @param startTime Policy coverage start timestamp
     /// @param maturityTime Policy coverage end timestamp
-    /// @param buyer Address requesting coverage (typically the curator)
-    /// @param bindPolicyHook_ Address of the hook contract to be notified on bind (typically the adapter)
+    /// @param buyer Address requesting coverage
+    /// @param bindPolicyHook_ Hook contract notified on bind
     /// @return policyId_ The bound policy ID
     function _createAndBindPolicy(
         address beneficiary,
         address claimer,
         address payoutToken,
-        uint256 coverageAmount,
         uint256 coverageLimit,
         uint32 startTime,
         uint32 maturityTime,
@@ -144,34 +141,23 @@ abstract contract RealCoverageSetup is Test {
         internal
         returns (uint96 policyId_)
     {
-        // 1. Request coverage (creates draft) — uses claimer, payoutToken, buyer (freed after this call)
         vm.prank(buyer);
         policyId_ = policyManager.requestCoverage(
-            address(coverPool),
-            beneficiary,
-            claimer,
-            payoutToken,
-            coverageAmount,
-            maturityTime - startTime, // duration
-            bindPolicyHook_
+            address(coverPool), beneficiary, claimer, payoutToken, maturityTime - startTime, bindPolicyHook_
         );
 
-        // 2-5. Build quote, sign, and bind policy
-        _bindPolicy(policyId_, beneficiary, coverageAmount, coverageLimit, startTime, maturityTime);
+        _bindPolicy(policyId_, beneficiary, coverageLimit, startTime, maturityTime);
     }
 
-    /// @notice Builds a quote, signs it, and binds the policy through the CoverPool
     function _bindPolicy(
         uint96 policyId_,
         address beneficiary,
-        uint256 coverageAmount,
         uint256 coverageLimit,
         uint32 startTime,
         uint32 maturityTime
     )
         private
     {
-        // 2. Build quote
         ICoverPool.Quote memory quote = ICoverPool.Quote({
             pool: address(coverPool),
             policyId: policyId_,
@@ -182,28 +168,16 @@ abstract contract RealCoverageSetup is Test {
             beneficiary: beneficiary,
             startTime: startTime,
             maturityTime: maturityTime,
-            expirationTime: maturityTime // quote valid until maturity
+            expirationTime: maturityTime
         });
 
-        // 3. Sign quote (EIP-712)
         bytes memory signature = _signQuote(quote);
 
-        // 4. Set sufficient operator stake
-        address curator_ = coverPool.owner();
-        mockStakeManager.setOperatorStake(curator_, policyId_, coverageAmount);
-
-        // 5. Bind policy (as curator = pool admin)
         address[] memory vaults = new address[](1);
-        vaults[0] = address(0xDEAD); // placeholder vault for committee
+        vaults[0] = address(0xDEAD);
 
-        vm.prank(curator_);
-        coverPool.bindPolicyForRequest(
-            policyId_,
-            quote,
-            beneficiary, // spec address = beneficiary (adapter implements ISpec)
-            vaults,
-            signature
-        );
+        vm.prank(coverPool.owner());
+        coverPool.bindPolicyForRequest(policyId_, quote, beneficiary, vaults, signature);
     }
 
     /// @notice Signs a CoverPool quote using the quoteSignerKey

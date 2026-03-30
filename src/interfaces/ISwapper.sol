@@ -222,6 +222,17 @@ interface ISwapper is IAccessControl {
         external;
 
     /**
+     * @notice Quotes the expected output for a token swap without executing it.
+     * @dev Uses the configured swap route's quoter (e.g., Uniswap V3 QuoterV2). Not a view function because
+     *      QuoterV2's quoteExactInputSingle uses swap simulation with revert, which is not staticcall-safe.
+     * @param tokenIn Source token address.
+     * @param tokenOut Destination token address.
+     * @param amountIn Amount of tokenIn to quote for.
+     * @return amountOut Expected amount of tokenOut that would be received.
+     */
+    function quoteSwap(address tokenIn, address tokenOut, uint256 amountIn) external returns (uint256 amountOut);
+
+    /**
      * @notice Executes a token swap using a configured route.
      * @dev Requires SWAP_EXECUTOR_ROLE (typically granted to ClaimManager).
      *

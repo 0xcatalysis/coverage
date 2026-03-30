@@ -555,11 +555,14 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
-        vm.expectCall(stakeManager, abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults));
+        vm.expectCall(
+            stakeManager,
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether)
+        );
 
         vm.prank(curator);
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
@@ -600,7 +603,7 @@ contract CoverPoolTest is Test {
 
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -641,7 +644,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -672,7 +675,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -701,7 +704,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -711,7 +714,7 @@ contract CoverPoolTest is Test {
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
     }
 
-    function test_bindPolicyForRequest_CallsStakeManagerAddCommitteeVaults() public {
+    function test_bindPolicyForRequest_CallsStakeManagerSetCommitteeVaults() public {
         uint96 policyId = _createDraft();
         ICoverPool.Quote memory quote = _defaultQuote();
         quote.policyId = policyId;
@@ -726,7 +729,10 @@ contract CoverPoolTest is Test {
             specRegistry, abi.encodeWithSignature("registerSpec(bytes32,address)", quote.specId, spec), abi.encode()
         );
 
-        vm.expectCall(stakeManager, abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults));
+        vm.expectCall(
+            stakeManager,
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether)
+        );
 
         vm.prank(curator);
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
@@ -775,7 +781,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -802,7 +808,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -1089,7 +1095,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -1098,7 +1104,7 @@ contract CoverPoolTest is Test {
     }
 
     function _createDraft() private returns (uint96 policyId) {
-        vm.mockCall(stakeManager, abi.encodeWithSignature("createCommittee(uint96,uint256,address,uint32)"), "");
+        vm.mockCall(stakeManager, abi.encodeWithSignature("createCommittee(uint96,address,uint32)"), "");
 
         vm.mockCall(
             address(mockPolicyManager),
@@ -1192,7 +1198,6 @@ contract MockPolicyManager {
             claimer: address(0),
             payoutToken: address(0),
             curator: address(0),
-            coverageAmount: 1_000_000e8,
             duration: 30 days,
             policyId: policyId,
             status: IPolicyManager.PolicyStatus.Created,

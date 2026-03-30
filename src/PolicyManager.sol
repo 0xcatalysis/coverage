@@ -157,7 +157,6 @@ contract PolicyManager is
         address beneficiary,
         address claimer,
         address payoutToken,
-        uint256 coverageAmount,
         uint32 duration,
         address bindPolicyHook
     )
@@ -170,7 +169,6 @@ contract PolicyManager is
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
         require(beneficiary != address(0) && claimer != address(0) && payoutToken != address(0), ZeroAddress());
         require(supportedPayoutTokens[payoutToken], UnsupportedPayoutToken(payoutToken));
-        require(coverageAmount != 0, InvalidCoverageAmount());
         require(duration != 0, InvalidDuration());
         require(bindPolicyHook != address(0), InvalidBindPolicyHook());
 
@@ -192,17 +190,16 @@ contract PolicyManager is
             claimer: claimer,
             payoutToken: payoutToken,
             curator: curator,
-            coverageAmount: coverageAmount,
             duration: duration,
             policyId: policyId,
             status: PolicyStatus.Created,
             bindPolicyHook: bindPolicyHook
         });
 
-        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount, duration);
+        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, duration);
 
         // Create committee in core contracts using policyId as committeeId (1:1 mapping).
-        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, pool, duration);
+        IStakeManager(stakeManager).createCommittee(policyId, pool, duration);
         IStakeManager(stakeManager).addOperatorToCommittee(curator, policyId);
     }
 
@@ -245,7 +242,7 @@ contract PolicyManager is
 
         require(
             request.buyer == draft.buyer && request.beneficiary == draft.beneficiary && request.claimer == draft.claimer
-                && request.payoutToken == draft.payoutToken && request.coverageAmount == draft.coverageAmount,
+                && request.payoutToken == draft.payoutToken,
             RequestDraftMismatch()
         );
 
@@ -262,10 +259,19 @@ contract PolicyManager is
         // Query core contracts using policyId as committeeId (1:1 mapping).
         require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));
 
-        uint256 totalStake = IStakeManager(stakeManager).getCommitteeTotalStakeUSD(policyId);
+        // Bind-time sufficiency check: compare total USD-equivalent token stakes against coverage limit in USD.
+        (, address[] memory tokens, uint256[] memory tokenStakes) =
+            IStakeManager(stakeManager).getCommitteeTokenStakes(policyId);
+
+        uint256 totalStakeUSD = 0;
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (tokenStakes[i] > 0) {
+                totalStakeUSD += IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(tokens[i], tokenStakes[i]);
+            }
+        }
         uint256 coverageLimitUSD =
             IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(request.payoutToken, boundPolicy.coverageLimit);
-        require(totalStake >= coverageLimitUSD, InsufficientStake(policyId, coverageLimitUSD, totalStake));
+        require(totalStakeUSD >= coverageLimitUSD, InsufficientStake(policyId, coverageLimitUSD, totalStakeUSD));
 
         bytes32 policyCommit = boundPolicy.policyCommit;
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
@@ -360,7 +366,6 @@ contract PolicyManager is
         require(request.quote.pool == msg.sender, UnauthorizedCaller());
         require(request.quote.policyId != 0, InvalidPolicyId());
         require(request.quote.coverageLimit != 0, InvalidCoverageLimit());
-        require(request.coverageAmount != 0, InvalidCoverageAmount());
         require(
             request.quote.startTime < request.quote.maturityTime && request.quote.maturityTime > block.timestamp,
             InvalidCoverageWindow(request.quote.startTime, request.quote.maturityTime)

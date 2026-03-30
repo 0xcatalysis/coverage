@@ -10,6 +10,7 @@ import {Test} from "forge-std/Test.sol";
 import {ClaimManager} from "../../src/ClaimManager.sol";
 import {IClaimManager} from "../../src/interfaces/IClaimManager.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
+import {ISlashingManager} from "../../src/interfaces/ISlashingManager.sol";
 import {ISpec} from "../../src/interfaces/ISpec.sol";
 import {ISwapper} from "../../src/interfaces/ISwapper.sol";
 
@@ -28,7 +29,6 @@ contract ClaimManagerTest is Test {
     address internal slashingManager;
     address internal swapper;
     address internal policy;
-    address internal chainlinkPriceFeed;
     address internal buyer;
     address internal beneficiary;
     address internal operator;
@@ -43,7 +43,6 @@ contract ClaimManagerTest is Test {
     MockSlashingManager internal slashingManagerMock;
     MockSwapper internal swapperMock;
     MockPolicy internal policyMock;
-    MockChainlinkPriceFeed internal chainlinkPriceFeedMock;
     MockToken internal collateralTokenMock;
     MockToken internal payoutTokenMock;
     MockCoverPool internal mockPool;
@@ -79,7 +78,6 @@ contract ClaimManagerTest is Test {
     event SlashingManagerSet(address indexed slashingManager);
     event SwapperSet(address indexed swapper);
     event PolicyManagerSet(address indexed policyManager);
-    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed);
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
     event NextClaimApproved(uint96 indexed policyId, address indexed approver);
 
@@ -117,7 +115,6 @@ contract ClaimManagerTest is Test {
         slashingManagerMock = new MockSlashingManager();
         swapperMock = new MockSwapper();
         policyMock = new MockPolicy();
-        chainlinkPriceFeedMock = new MockChainlinkPriceFeed();
         collateralTokenMock = new MockToken("Collateral", "COL");
         payoutTokenMock = new MockToken("Payout", "PAY");
 
@@ -125,7 +122,6 @@ contract ClaimManagerTest is Test {
         slashingManager = address(slashingManagerMock);
         swapper = address(swapperMock);
         policy = address(policyMock);
-        chainlinkPriceFeed = address(chainlinkPriceFeedMock);
         collateralToken = address(collateralTokenMock);
         payoutToken = address(payoutTokenMock);
 
@@ -133,7 +129,6 @@ contract ClaimManagerTest is Test {
         vm.label(slashingManager, "SlashingManager");
         vm.label(swapper, "Swapper");
         vm.label(policy, "Policy");
-        vm.label(chainlinkPriceFeed, "ChainlinkPriceFeed");
         vm.label(collateralToken, "CollateralToken");
         vm.label(payoutToken, "PayoutToken");
 
@@ -141,9 +136,7 @@ contract ClaimManagerTest is Test {
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
             "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize, (admin, specRegistry, slashingManager, swapper, policy, chainlinkPriceFeed)
-            ),
+            abi.encodeCall(ClaimManager.initialize, (admin, specRegistry, slashingManager, swapper, policy)),
             deployOpts
         );
         claimManager = ClaimManager(payable(proxy));
@@ -161,42 +154,35 @@ contract ClaimManagerTest is Test {
         ClaimManager implementation = new ClaimManager();
         ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(address(0), specRegistry, slashingManager, swapper, policy, chainlinkPriceFeed);
+        newClaimManager.initialize(address(0), specRegistry, slashingManager, swapper, policy);
     }
 
     function test_initialize_WhenSpecRegistryZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
         ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(admin, address(0), slashingManager, swapper, policy, chainlinkPriceFeed);
+        newClaimManager.initialize(admin, address(0), slashingManager, swapper, policy);
     }
 
     function test_initialize_WhenSlashingManagerZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
         ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(admin, specRegistry, address(0), swapper, policy, chainlinkPriceFeed);
+        newClaimManager.initialize(admin, specRegistry, address(0), swapper, policy);
     }
 
     function test_initialize_WhenSwapperZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
         ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(admin, specRegistry, slashingManager, address(0), policy, chainlinkPriceFeed);
+        newClaimManager.initialize(admin, specRegistry, slashingManager, address(0), policy);
     }
 
     function test_initialize_WhenPolicyZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
         ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(admin, specRegistry, slashingManager, swapper, address(0), chainlinkPriceFeed);
-    }
-
-    function test_initialize_WhenPriceFeedZero_Reverts() public {
-        ClaimManager implementation = new ClaimManager();
-        ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
-        vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(admin, specRegistry, slashingManager, swapper, policy, address(0));
+        newClaimManager.initialize(admin, specRegistry, slashingManager, swapper, address(0));
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -205,7 +191,6 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.slashingManager(), slashingManager);
         assertEq(claimManager.swapper(), swapper);
         assertEq(claimManager.policyManager(), policy);
-        assertEq(claimManager.chainlinkPriceFeed(), chainlinkPriceFeed);
         assertFalse(claimManager.paused());
     }
 
@@ -215,7 +200,7 @@ contract ClaimManagerTest is Test {
 
     function test_initialize_WhenAlreadyInitialized_Reverts() public {
         vm.expectRevert();
-        claimManager.initialize(admin, specRegistry, slashingManager, swapper, policy, chainlinkPriceFeed);
+        claimManager.initialize(admin, specRegistry, slashingManager, swapper, policy);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -407,41 +392,6 @@ contract ClaimManagerTest is Test {
         claimManager.setPolicyManager(newPolicyManager);
 
         assertEq(claimManager.policyManager(), newPolicyManager);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                       SET CHAINLINK PRICE FEED
-    //////////////////////////////////////////////////////////////*/
-
-    function test_setChainlinkPriceFeed_WhenCallerNotAdmin_Reverts() public {
-        address newChainlinkPriceFeed = makeAddr("newChainlinkPriceFeed");
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                unauthorized,
-                claimManager.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        vm.prank(unauthorized);
-        claimManager.setChainlinkPriceFeed(newChainlinkPriceFeed);
-    }
-
-    function test_setChainlinkPriceFeed_WhenAddressZero_Reverts() public {
-        vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        vm.prank(admin);
-        claimManager.setChainlinkPriceFeed(address(0));
-    }
-
-    function test_setChainlinkPriceFeed_WhenValid_UpdatesState() public {
-        address newChainlinkPriceFeed = makeAddr("newChainlinkPriceFeed");
-
-        vm.expectEmit(true, true, true, true, address(claimManager));
-        emit ChainlinkPriceFeedSet(newChainlinkPriceFeed);
-
-        vm.prank(admin);
-        claimManager.setChainlinkPriceFeed(newChainlinkPriceFeed);
-
-        assertEq(claimManager.chainlinkPriceFeed(), newChainlinkPriceFeed);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -864,7 +814,7 @@ contract ClaimManagerTest is Test {
         amounts[0] = 0;
         slashingManagerMock.setSlashResult(tokens, amounts);
 
-        vm.expectRevert(abi.encodeWithSelector(IClaimManager.ZeroPayoutAmount.selector, POLICY_ID));
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.NoCollateralSlashed.selector, POLICY_ID));
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
@@ -1543,15 +1493,10 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
 
-        assertEq(
-            slashingManagerMock.lastBeneficiary(), operator, "Should pass pool curator/operator to SlashingManager"
-        );
+        assertEq(slashingManagerMock.lastOperator(), operator, "Should pass pool curator/operator to SlashingManager");
     }
 
-    function test_fileClaim_WhenOraclePriceVerySmall_AmountOutMinFlooredToOne() public {
-        chainlinkPriceFeedMock.setPrice(collateralToken, 1);
-        chainlinkPriceFeedMock.setPrice(payoutToken, 1e30);
-
+    function test_fileClaim_WhenQuoteVerySmall_AmountOutMinFlooredToOne() public {
         uint256 slashAmount = 1;
 
         specMock.setEvaluationResult(true, keccak256("approved"));
@@ -2263,7 +2208,6 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.slashingManager(), slashingManager);
         assertEq(claimManager.swapper(), swapper);
         assertEq(claimManager.policyManager(), policy);
-        assertEq(claimManager.chainlinkPriceFeed(), chainlinkPriceFeed);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -2358,11 +2302,12 @@ contract MockSlashingManager {
     address private _tokenToTransfer;
     address private _token2ToTransfer;
     uint96 public lastSlashedCommitteeId;
-    address public lastBeneficiary;
+    address public lastOperator;
     uint256 public lastSlashAmount;
 
     receive() external payable {}
 
+    /// @dev Also configures preview data from the same arrays (min-length safe).
     function setSlashResult(address[] memory assets, uint256[] memory amounts) external {
         _assets = assets;
         _amounts = amounts;
@@ -2376,18 +2321,39 @@ contract MockSlashingManager {
         _token2ToTransfer = token;
     }
 
+    /// @dev Returns preview using the same assets/amounts set via setSlashResult.
+    ///      Uses min(assets.length, amounts.length) to stay safe with mismatched test data.
+    function previewSlashing(
+        uint96,
+        address
+    )
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        uint256 len = _assets.length < _amounts.length ? _assets.length : _amounts.length;
+        vaults = new address[](len);
+        tokens = new address[](len);
+        tokenStakes = new uint256[](len);
+        for (uint256 i = 0; i < len; ++i) {
+            vaults[i] = address(uint160(i + 1));
+            tokens[i] = _assets[i];
+            tokenStakes[i] = _amounts[i];
+        }
+    }
+
     function executeSlashing(
         uint96 committeeId,
-        address beneficiary,
-        uint256 slashAmount,
+        address operator,
+        ISlashingManager.VaultSlash[] memory vaultSlashes,
         bytes32 /*taskId*/
     )
         external
         returns (address[] memory, uint256[] memory)
     {
         lastSlashedCommitteeId = committeeId;
-        lastBeneficiary = beneficiary;
-        lastSlashAmount = slashAmount;
+        lastOperator = operator;
+        if (vaultSlashes.length > 0) lastSlashAmount = vaultSlashes[0].amount;
 
         if (_tokenToTransfer != address(0)) {
             if (_tokenToTransfer == _NATIVE_ETH) {
@@ -2431,6 +2397,11 @@ contract MockSwapper {
 
     function setPayoutToken(address token) external {
         _payoutToken = token;
+    }
+
+    /// @dev Returns amountIn (1:1 ratio) so _computeVaultSlashes proportional math works in tests.
+    function quoteSwap(address, address, uint256 amountIn) external pure returns (uint256) {
+        return amountIn;
     }
 
     function executeSwap(ISwapper.SwapParams calldata params) external payable returns (uint256) {
@@ -2498,6 +2469,11 @@ contract MockMultiSwapper {
         _payoutToken = token;
     }
 
+    function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
+        uint256 out = _swapOutputs[tokenIn];
+        return out > 0 ? out : amountIn;
+    }
+
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
         require(
             MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn), "TransferFrom failed"
@@ -2535,6 +2511,10 @@ contract MockSwapperWithTracking {
         _payoutToken = token;
     }
 
+    function quoteSwap(address, address, uint256 amountIn) external pure returns (uint256) {
+        return amountIn;
+    }
+
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
         lastAmountOutMin = params.amountOutMin;
         require(
@@ -2561,6 +2541,11 @@ contract MockNativeMultiSwapper {
 
     function setPayoutToken(address token) external {
         _payoutToken = token;
+    }
+
+    function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
+        uint256 out = _swapOutputs[tokenIn];
+        return out > 0 ? out : amountIn;
     }
 
     function executeSwap(ISwapper.SwapParams calldata params) external payable returns (uint256) {

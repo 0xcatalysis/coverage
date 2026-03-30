@@ -198,8 +198,6 @@ contract BindPolicy is Script {
         require(draft.pool == coverPool, "Draft pool mismatch");
         console.log("Draft pool matches CoverPool");
 
-        console.log("Required coverage amount:", draft.coverageAmount);
-
         if (specRegistry != address(0)) {
             bool approved = ISpecRegistry(specRegistry).isSpecApproved(specAddress);
             console.log("Spec approved in SpecRegistry:", approved);

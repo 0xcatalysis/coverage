@@ -309,8 +309,7 @@ abstract contract Deploy is Script {
                     contracts.specRegistryProxy,
                     external_.slashingManager,
                     contracts.swapperProxy,
-                    contracts.policyManagerProxy,
-                    external_.chainlinkPriceFeed
+                    contracts.policyManagerProxy
                 )
             ),
             opts

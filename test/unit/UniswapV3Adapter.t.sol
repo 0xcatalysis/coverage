@@ -63,6 +63,30 @@ contract MockSwapRouter {
     }
 }
 
+contract MockQuoterV2 {
+    struct QuoteExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint256 amountIn;
+        uint24 fee;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    uint256 private _output;
+
+    function setOutput(uint256 output) external {
+        _output = output;
+    }
+
+    function quoteExactInputSingle(QuoteExactInputSingleParams memory params)
+        external
+        view
+        returns (uint256 amountOut, uint160, uint32, uint256)
+    {
+        return (_output > 0 ? _output : params.amountIn, 0, 0, 0);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Unit test suite
 // ---------------------------------------------------------------------------
@@ -70,6 +94,7 @@ contract MockSwapRouter {
 contract UniswapV3AdapterTest is Test {
     UniswapV3Adapter internal adapter;
     MockSwapRouter internal router;
+    MockQuoterV2 internal quoter;
     MockERC20 internal tokenIn;
     MockERC20 internal tokenOut;
 
@@ -84,10 +109,11 @@ contract UniswapV3AdapterTest is Test {
         swapper = makeAddr("swapper");
 
         router = new MockSwapRouter();
+        quoter = new MockQuoterV2();
         tokenIn = new MockERC20("Token In", "TIN");
         tokenOut = new MockERC20("Token Out", "TOUT");
 
-        adapter = new UniswapV3Adapter(address(router), swapper);
+        adapter = new UniswapV3Adapter(address(router), address(quoter), swapper);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -96,16 +122,25 @@ contract UniswapV3AdapterTest is Test {
 
     function test_constructor_WhenRouterZero_Reverts() public {
         vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
-        new UniswapV3Adapter(address(0), swapper);
+        new UniswapV3Adapter(address(0), address(quoter), swapper);
+    }
+
+    function test_constructor_WhenQuoterZero_Reverts() public {
+        vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
+        new UniswapV3Adapter(address(router), address(0), swapper);
     }
 
     function test_constructor_WhenSwapperZero_Reverts() public {
         vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
-        new UniswapV3Adapter(address(router), address(0));
+        new UniswapV3Adapter(address(router), address(quoter), address(0));
     }
 
     function test_constructor_SetsSwapRouter() public view {
         assertEq(address(adapter.SWAP_ROUTER()), address(router), "SWAP_ROUTER mismatch");
+    }
+
+    function test_constructor_SetsQuoter() public view {
+        assertEq(address(adapter.QUOTER()), address(quoter), "QUOTER mismatch");
     }
 
     function test_constructor_SetsSwapper() public view {

@@ -8,6 +8,7 @@ import {Test} from "forge-std/Test.sol";
 import {ClaimManager} from "../../src/ClaimManager.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 import {ISpec} from "../../src/interfaces/ISpec.sol";
+import {ISlashingManager} from "../../src/interfaces/ISlashingManager.sol";
 import {ISwapper} from "../../src/interfaces/ISwapper.sol";
 
 // ---------------------------------------------------------------------------
@@ -42,15 +43,37 @@ contract InvSpecRegistry {
 
 contract InvSlashingManager {
     address private _token;
+    uint256 private _amount;
 
     function setToken(address t) external {
         _token = t;
     }
 
+    function setAmount(uint256 a) external {
+        _amount = a;
+    }
+
+    function previewSlashing(
+        uint96,
+        address
+    )
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        if (_token == address(0) || _amount == 0) return (new address[](0), new address[](0), new uint256[](0));
+        vaults = new address[](1);
+        tokens = new address[](1);
+        tokenStakes = new uint256[](1);
+        vaults[0] = address(1);
+        tokens[0] = _token;
+        tokenStakes[0] = _amount;
+    }
+
     function executeSlashing(
         uint96,
         address,
-        uint256 slashAmount,
+        ISlashingManager.VaultSlash[] memory vaultSlashes,
         bytes32
     )
         external
@@ -59,31 +82,26 @@ contract InvSlashingManager {
         address[] memory tokens = new address[](1);
         uint256[] memory amounts = new uint256[](1);
         tokens[0] = _token;
-        amounts[0] = slashAmount;
-        if (_token != address(0)) {
+        uint256 slashAmt = vaultSlashes.length > 0 ? vaultSlashes[0].amount : _amount;
+        amounts[0] = slashAmt;
+        if (_token != address(0) && slashAmt > 0) {
             // forge-lint: disable-next-line(erc20-unchecked-transfer)
-            InvToken(_token).transfer(msg.sender, slashAmount);
+            InvToken(_token).transfer(msg.sender, slashAmt);
         }
         return (tokens, amounts);
     }
 }
 
 contract InvSwapper {
+    function quoteSwap(address, address, uint256 amountIn) external pure returns (uint256) {
+        return amountIn;
+    }
+
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         InvToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn);
         InvToken(params.tokenOut).mint(params.recipient, params.amountIn);
         return params.amountIn;
-    }
-}
-
-contract InvPriceFeed {
-    function getUSDValue(address, uint256 amount) external pure returns (uint256) {
-        return amount;
-    }
-
-    function getTokenAmount(address, uint256 usdValue) external pure returns (uint256) {
-        return usdValue;
     }
 }
 
@@ -164,6 +182,7 @@ contract ClaimManagerHandler is Test {
 
         collateralToken.mint(address(slashingMgr), requestedAmount);
         slashingMgr.setToken(address(collateralToken));
+        slashingMgr.setAmount(requestedAmount);
 
         uint256 beneficiaryBefore = payoutToken.balanceOf(claimer);
 
@@ -234,21 +253,13 @@ contract ClaimManagerInvariantTest is StdInvariant, Test {
         returns (ClaimManager)
     {
         InvSpecRegistry specRegistry = new InvSpecRegistry(address(spec));
-        InvPriceFeed priceFeed = new InvPriceFeed();
         ClaimManager impl = new ClaimManager();
         address proxy = address(
             new ERC1967Proxy(
                 address(impl),
                 abi.encodeCall(
                     ClaimManager.initialize,
-                    (
-                        admin,
-                        address(specRegistry),
-                        address(slashingMgr),
-                        address(swapper),
-                        address(policyContract),
-                        address(priceFeed)
-                    )
+                    (admin, address(specRegistry), address(slashingMgr), address(swapper), address(policyContract))
                 )
             )
         );

@@ -3,11 +3,11 @@ pragma solidity 0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IQuotableAdapter} from "../interfaces/IQuotableAdapter.sol";
+import {IQuoterV2} from "../interfaces/IQuoterV2.sol";
 
 /**
  * @notice Minimal Uniswap V3 SwapRouter02 interface.
- * @dev Avoids importing the full Uniswap dependency tree.
- *      Based on https://github.com/Uniswap/swap-router-contracts/blob/main/contracts/interfaces/IV3SwapRouter.sol
  */
 interface IV3SwapRouter {
     struct ExactInputSingleParams {
@@ -31,81 +31,46 @@ interface IV3SwapRouter {
  *      a direct route impossible for variable claim amounts.
  *
  *      This adapter is registered as the `swapTarget` in Swapper routes. The stored route
- *      calldata encodes `swap(tokenIn, tokenOut, fee, amountOutMinimum)` — all static per route,
- *      with `amountOutMinimum` encoded as `0` so the Swapper's own slippage check is the primary
- *      guard. At execution time, the adapter dynamically resolves `amountIn` from the Swapper's
- *      ERC-20 approval.
+ *      calldata encodes `swap(tokenIn, tokenOut, fee, amountOutMinimum)` — all static per route.
+ *      At execution time, the adapter dynamically resolves `amountIn` from the Swapper's ERC-20 approval.
  *
- *      Integration pattern (called by Swapper._performSwap):
- *        1. Swapper approves adapter for `amountIn` of tokenIn
- *        2. Swapper calls `swap(tokenIn, tokenOut, fee, amountOutMinimum)` via stored calldata
- *        3. Adapter reads allowance to obtain amountIn
- *        4. Adapter pulls tokenIn from Swapper via transferFrom
- *        5. Adapter approves SwapRouter02 for amountIn
- *        6. Adapter calls exactInputSingle with recipient = Swapper (msg.sender)
- *        7. SwapRouter02 sends tokenOut directly to Swapper
- *        8. Swapper measures balance diff to determine amountOut
- *        9. Adapter clears residual approval to SwapRouter02
+ *      Also implements `IQuotableAdapter.quote` via QuoterV2 for slippage-free pre-swap price estimation
+ *      used by ClaimManager._computeVaultSlashes and _processCollateral.
  *
  *      Deployment: deployed separately from the main Coverage suite; configured via
  *      Swapper.setSwapTargetWhitelist() and Swapper.setSwapRoute() by SWAP_MANAGER_ROLE.
  *
  *      Sepolia SwapRouter02: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E
+ *      Mainnet SwapRouter02: 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45
+ *      Sepolia QuoterV2:     0xEd1f6473345F45b75833fd55D191EBE6d13fB0cB
+ *      Mainnet QuoterV2:     0x61fFE014bA17989E743c5F6cB21bF9697530B21e
  */
-contract UniswapV3Adapter {
+contract UniswapV3Adapter is IQuotableAdapter {
     using SafeERC20 for IERC20;
 
-    /// @notice Emitted when a swap is executed through the adapter.
     event AdapterSwapExecuted(
         address indexed tokenIn, address indexed tokenOut, uint24 fee, uint256 amountIn, uint256 amountOut
     );
 
-    /// @notice Reverts when called with a zero address.
     error ZeroAddress();
-
-    /// @notice Reverts when the allowance read from the caller is zero.
     error ZeroAllowance();
-
-    /// @notice Reverts when called by any address other than the authorized Swapper.
     error UnauthorizedCaller();
 
-    /// @notice Uniswap V3 SwapRouter02 address (immutable, set at construction).
     IV3SwapRouter public immutable SWAP_ROUTER;
-
-    /// @notice Authorized Swapper address; the only caller permitted to invoke `swap()`.
+    IQuoterV2 public immutable QUOTER;
     address public immutable SWAPPER;
 
-    /**
-     * @notice Deploys the adapter pointing at a specific SwapRouter02 instance.
-     * @param swapRouter_ Uniswap V3 SwapRouter02 address.
-     *                    Sepolia: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E
-     *                    Mainnet: 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45
-     * @param swapper_    Swapper contract address; the only caller authorized to invoke `swap()`.
-     */
-    constructor(address swapRouter_, address swapper_) {
-        require(swapRouter_ != address(0), ZeroAddress());
-        require(swapper_ != address(0), ZeroAddress());
+    constructor(address swapRouter_, address quoter_, address swapper_) {
+        require(swapRouter_ != address(0) && quoter_ != address(0) && swapper_ != address(0), ZeroAddress());
         SWAP_ROUTER = IV3SwapRouter(swapRouter_);
+        QUOTER = IQuoterV2(quoter_);
         SWAPPER = swapper_;
     }
 
     /**
      * @notice Executes a single-hop Uniswap V3 swap on behalf of the Swapper.
-     * @dev Called by the Swapper via stored route calldata. The `amountIn` is resolved
-     *      dynamically from `allowance(msg.sender, address(this))` rather than being
-     *      encoded in the calldata, enabling a single static calldata entry to handle
-     *      any claim amount.
-     *
-     *      Output tokens are sent directly to `msg.sender` (the Swapper) by the
-     *      UniV3 router, so this adapter never holds the output token.
-     *
-     *      Only the authorized Swapper (stored as `SWAPPER`) may call this function.
-     *
-     * @param tokenIn          Source token address (e.g. WETH).
-     * @param tokenOut         Destination token address (e.g. USDC).
-     * @param fee              Uniswap V3 pool fee tier (e.g. 3000 = 0.3%, 500 = 0.05%).
-     * @param amountOutMinimum Minimum amount of tokenOut the router must return; reverts if not met.
-     * @return amountOut Amount of tokenOut received by the Swapper.
+     * @dev `amountIn` is resolved dynamically from `allowance(msg.sender, address(this))`.
+     *      Only the authorized Swapper may call this function.
      */
     function swap(
         address tokenIn,
@@ -140,5 +105,27 @@ contract UniswapV3Adapter {
 
         // slither-disable-next-line reentrancy-events
         emit AdapterSwapExecuted(tokenIn, tokenOut, fee, amountIn, amountOut);
+    }
+
+    /**
+     * @inheritdoc IQuotableAdapter
+     * @dev Decodes (tokenIn, tokenOut, fee) from the stored swapCalldata (skipping 4-byte selector),
+     *      then calls QuoterV2.quoteExactInputSingle. Returns 0 on any revert.
+     */
+    function quote(uint256 amountIn, bytes calldata swapCalldata) external override returns (uint256 amountOut) {
+        // swapCalldata = selector(4) + tokenIn(32) + tokenOut(32) + fee(32) + amountOutMinimum(32)
+        if (swapCalldata.length < 100) return 0;
+        (address tokenIn, address tokenOut, uint24 fee,) =
+            abi.decode(swapCalldata[4:], (address, address, uint24, uint256));
+
+        IQuoterV2.QuoteExactInputSingleParams memory params = IQuoterV2.QuoteExactInputSingleParams({
+            tokenIn: tokenIn, tokenOut: tokenOut, amountIn: amountIn, fee: fee, sqrtPriceLimitX96: 0
+        });
+
+        try QUOTER.quoteExactInputSingle(params) returns (uint256 out, uint160, uint32, uint256) {
+            return out;
+        } catch {
+            return 0;
+        }
     }
 }

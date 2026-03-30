@@ -29,7 +29,6 @@ import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
  *   - BENEFICIARY: Address to receive claim payouts
  *   - CLAIMER: Address authorized to trigger claims
  *   - PAYOUT_TOKEN: ERC20 token for claim payouts
- *   - COVERAGE_AMOUNT: Coverage amount (stake requirement in USD with 8 decimals)
  *   - DURATION: Coverage duration in seconds (e.g. 2592000 = 30 days)
  *   - BIND_POLICY_HOOK: Callback contract invoked when policy is bound (e.g. adapter address)
  *
@@ -66,9 +65,6 @@ contract RequestCoverage is Script {
     /// @notice ERC20 token for payouts
     address public payoutToken;
 
-    /// @notice Coverage amount (stake requirement, USD 8 decimals)
-    uint256 public coverageAmount;
-
     /// @notice Coverage duration in seconds
     uint32 public duration;
 
@@ -82,9 +78,7 @@ contract RequestCoverage is Script {
     ICoverPoolFactory public factoryContract;
 
     /// @notice Emitted when coverage is requested
-    event CoverageRequestCreated(
-        uint96 indexed policyId, address indexed pool, address indexed buyer, uint256 coverageAmount, uint32 duration
-    );
+    event CoverageRequestCreated(uint96 indexed policyId, address indexed pool, address indexed buyer, uint32 duration);
 
     constructor() {
         buyerPrivateKey = vm.envUint("BUYER_PRIVATE_KEY");
@@ -96,7 +90,6 @@ contract RequestCoverage is Script {
         beneficiary = vm.envAddress("BENEFICIARY");
         claimer = vm.envAddress("CLAIMER");
         payoutToken = vm.envAddress("PAYOUT_TOKEN");
-        coverageAmount = vm.envUint("COVERAGE_AMOUNT");
         duration = uint32(vm.envUint("DURATION"));
         bindPolicyHook = vm.envAddress("BIND_POLICY_HOOK");
 
@@ -112,7 +105,6 @@ contract RequestCoverage is Script {
         console.log("Beneficiary:", beneficiary);
         console.log("Claimer:", claimer);
         console.log("Payout Token:", payoutToken);
-        console.log("Coverage Amount:", coverageAmount);
         console.log("Duration (seconds):", duration);
         console.log("BindPolicyHook:", bindPolicyHook);
 
@@ -122,7 +114,7 @@ contract RequestCoverage is Script {
         vm.startBroadcast(buyerPrivateKey);
 
         uint96 policyId = policyManagerContract.requestCoverage(
-            coverPool, beneficiary, claimer, payoutToken, coverageAmount, duration, bindPolicyHook
+            coverPool, beneficiary, claimer, payoutToken, duration, bindPolicyHook
         );
 
         vm.stopBroadcast();
@@ -135,7 +127,7 @@ contract RequestCoverage is Script {
         console.log("\n=== COVERAGE REQUEST & COMMITTEE CREATION COMPLETED ===");
         console.log("Committee ID (same as Policy ID):", policyId);
         console.log("Next: Restakers delegate to Duration Vaults, then curator binds policy");
-        emit CoverageRequestCreated(policyId, coverPool, buyer, coverageAmount, duration);
+        emit CoverageRequestCreated(policyId, coverPool, buyer, duration);
     }
 
     function _verifyPoolExists() internal view {
@@ -175,9 +167,6 @@ contract RequestCoverage is Script {
 
         console.log("Draft payoutToken:", draft.payoutToken);
         require(draft.payoutToken == payoutToken, "Draft payoutToken mismatch");
-
-        console.log("Draft coverageAmount:", draft.coverageAmount);
-        require(draft.coverageAmount == coverageAmount, "Draft coverageAmount mismatch");
 
         console.log("Draft duration:", draft.duration);
         require(draft.duration == duration, "Draft duration mismatch");

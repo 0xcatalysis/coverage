@@ -18,6 +18,24 @@ contract FuzzERC20 is ERC20 {
     }
 }
 
+contract FuzzQuoterV2 {
+    struct QuoteExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint256 amountIn;
+        uint24 fee;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    function quoteExactInputSingle(QuoteExactInputSingleParams memory params)
+        external
+        pure
+        returns (uint256 amountOut, uint160, uint32, uint256)
+    {
+        return (params.amountIn, 0, 0, 0);
+    }
+}
+
 contract FuzzSwapRouter {
     uint256 public lastAmountOutMinimum;
 
@@ -56,6 +74,7 @@ contract FuzzSwapRouter {
 contract UniswapV3AdapterFuzzTest is Test {
     UniswapV3Adapter internal adapter;
     FuzzSwapRouter internal router;
+    FuzzQuoterV2 internal quoter;
     FuzzERC20 internal tokenIn;
     FuzzERC20 internal tokenOut;
 
@@ -66,10 +85,11 @@ contract UniswapV3AdapterFuzzTest is Test {
         swapper = makeAddr("swapper");
 
         router = new FuzzSwapRouter();
+        quoter = new FuzzQuoterV2();
         tokenIn = new FuzzERC20("Token In", "TIN");
         tokenOut = new FuzzERC20("Token Out", "TOUT");
 
-        adapter = new UniswapV3Adapter(address(router), swapper);
+        adapter = new UniswapV3Adapter(address(router), address(quoter), swapper);
     }
 
     function testFuzz_swap_ForwardsAmountOutMinimum(uint256 amountIn, uint256 routerOutput, uint256 minimum) public {

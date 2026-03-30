@@ -9,21 +9,18 @@ import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IChainlinkPriceFeed} from "coverage/interfaces/IChainlinkPriceFeed.sol";
 
-/// @title MockStakeManager
-/// @notice Minimal StakeManager mock for testing with real PolicyManager and CoverPool
 contract MockStakeManager {
     mapping(uint96 => address[]) private _committeeVaults;
-    mapping(bytes32 => uint256) private _operatorStakes;
+    mapping(uint96 => address[]) private _committeeTokens;
+    mapping(uint96 => uint256[]) private _committeeTokenStakes;
 
-    function createCommittee(uint96, uint256, address, uint32) external {
-        // No-op: just accept the call from PolicyManager.requestCoverage
-    }
+    function createCommittee(uint96, address, uint32) external {}
 
-    function addOperatorToCommittee(address, uint96) external {
-        // No-op: just accept the call from PolicyManager.requestCoverage
-    }
+    function addOperatorToCommittee(address, uint96) external {}
 
-    function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external {
+    function removeOperatorFromCommittee(address, uint96) external {}
+
+    function setCommitteeVaults(uint96 committeeId, address[] calldata vaults, uint256) external {
         for (uint256 i = 0; i < vaults.length; i++) {
             _committeeVaults[committeeId].push(vaults[i]);
         }
@@ -33,22 +30,34 @@ contract MockStakeManager {
         return _committeeVaults[committeeId];
     }
 
-    function getOperatorCommitteeStake(address operator, uint96 committeeId) external view returns (uint256) {
-        return _operatorStakes[keccak256(abi.encode(operator, committeeId))];
+    function getCommitteeTokenStakes(uint96 committeeId)
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        vaults = _committeeVaults[committeeId];
+        tokens = _committeeTokens[committeeId];
+        tokenStakes = _committeeTokenStakes[committeeId];
+
+        if (tokens.length == 0 && vaults.length > 0) {
+            tokens = new address[](vaults.length);
+            tokenStakes = new uint256[](vaults.length);
+        }
     }
 
-    function getCommitteeTotalStakeUSD(uint96) external pure returns (uint256) {
-        return type(uint256).max; // Return maximum value to avoid InsufficientStake errors
-    }
-
-    /// @notice Test helper to set the stake for an operator in a committee
-    function setOperatorStake(address operator, uint96 committeeId, uint256 stake) external {
-        _operatorStakes[keccak256(abi.encode(operator, committeeId))] = stake;
+    /// @notice Test helper: set per-vault token stakes for a committee
+    function setCommitteeTokenStakes(
+        uint96 committeeId,
+        address[] calldata tokens,
+        uint256[] calldata stakes
+    )
+        external
+    {
+        _committeeTokens[committeeId] = tokens;
+        _committeeTokenStakes[committeeId] = stakes;
     }
 }
 
-/// @title MockCoverPoolFactory
-/// @notice Minimal CoverPoolFactory mock that tracks registered pools
 contract MockCoverPoolFactory {
     mapping(address => bool) private _pools;
 
@@ -56,14 +65,11 @@ contract MockCoverPoolFactory {
         return _pools[pool];
     }
 
-    /// @notice Test helper to register a pool
     function register(address pool) external {
         _pools[pool] = true;
     }
 }
 
-/// @title MockSpecRegistry
-/// @notice Minimal SpecRegistry mock that accepts registerSpec calls
 contract MockSpecRegistry {
     mapping(bytes32 => mapping(address => address)) private _specs;
 
@@ -76,13 +82,10 @@ contract MockSpecRegistry {
     }
 }
 
-/// @title MockChainlinkPriceFeed
-/// @notice Minimal ChainlinkPriceFeed mock that always approves stake validation
-/// @dev Returns type(uint256).max for getUSDValue so the stake check always passes when
-///      MockStakeManager.getCommitteeTotalStakeUSD also returns type(uint256).max.
+/// @notice Returns 0 for getUSDValue so coverageLimitUSD=0 <= totalStakeUSD=0 always passes.
 contract MockChainlinkPriceFeed is IChainlinkPriceFeed {
     function getUSDValue(address, uint256) external pure override returns (uint256) {
-        return 0; // 0 <= type(uint256).max always passes the InsufficientStake check
+        return 0;
     }
 
     function getTokenAmount(address, uint256) external pure override returns (uint256) {
@@ -90,13 +93,8 @@ contract MockChainlinkPriceFeed is IChainlinkPriceFeed {
     }
 }
 
-/// @title MockBindPolicyHook
-/// @notice Minimal IBindPolicyHook mock for the chicken-and-egg problem
-/// @dev Used as the hook during requestCoverage since the real adapter doesn't exist yet
 contract MockBindPolicyHook is IBindPolicyHook {
-    function onPolicyBound(uint96, uint256) external override {
-        // No-op
-    }
+    function onPolicyBound(uint96, uint256) external override {}
 
     function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
         return interfaceId == type(IBindPolicyHook).interfaceId || interfaceId == type(IERC165).interfaceId;
