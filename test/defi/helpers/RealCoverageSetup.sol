@@ -73,7 +73,7 @@ abstract contract RealCoverageSetup is Test {
         address expectedPmProxy = vm.computeCreateAddress(address(this), nonce + 3);
         claimManager = new MockClaimManager(expectedPmProxy);
 
-        // ── Deploy MockChainlinkPriceFeed (returns input amount as USD value) ──
+        // ── Deploy MockChainlinkPriceFeedDefi (returns input amount as USD value) ──
         mockChainlinkPriceFeed = new MockChainlinkPriceFeedDefi();
 
         // ── Deploy real PolicyManager behind UUPS proxy ──
