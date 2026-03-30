@@ -225,6 +225,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     /// @dev Shared propose logic: emits supersede event if overwriting, returns new execute-after timestamp.
     function _propose(uint64 currentTimestamp, bytes32 paramKey, uint256 delay) private returns (uint64 executeAfter) {
         if (currentTimestamp != 0) emit IE.ProposalSuperseded(paramKey);
+        // forge-lint: disable-next-line(unsafe-typecast)
         executeAfter = uint64(block.timestamp + delay);
     }
 }

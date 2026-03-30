@@ -13,7 +13,7 @@ import {MockPolicyManager} from "./Mocks.sol";
 ///         the two methods the adapter actually calls: fileClaim() and policyClaim().
 contract ForkClaimManager {
     address public policyManager;
-    IERC20 public immutable usdc;
+    IERC20 public immutable USDC;
 
     struct PolicyClaim {
         uint256 totalPaidOut;
@@ -24,7 +24,7 @@ contract ForkClaimManager {
 
     constructor(address policyManager_, address usdc_) {
         policyManager = policyManager_;
-        usdc = IERC20(usdc_);
+        USDC = IERC20(usdc_);
     }
 
     function policyClaim(uint96 policyId) external view returns (PolicyClaim memory) {
@@ -63,7 +63,7 @@ contract ForkClaimManager {
         if (result.isPayable) {
             (, uint256 claimedAmount) = abi.decode(additionalData, (address, uint256));
             // Transfer pre-funded USDC to the adapter (beneficiary) as insurance payout
-            usdc.transfer(meta.beneficiary, claimedAmount);
+            require(USDC.transfer(meta.beneficiary, claimedAmount));
             _policyClaims[policyId].totalPaidOut += claimedAmount;
             _policyClaims[policyId].claimCount++;
         }

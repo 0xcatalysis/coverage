@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "forge-std/Test.sol";
-
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
@@ -144,7 +142,7 @@ contract MockVault is IERC4626 {
         shares = convertToShares(assets);
         if (shares == 0 && assets > 0) shares = assets; // 1:1 for first deposit
 
-        _asset.transferFrom(msg.sender, address(this), assets);
+        require(_asset.transferFrom(msg.sender, address(this), assets));
         _shares[receiver] += shares;
         _totalShares += shares;
         _totalAssets += assets;
@@ -155,7 +153,7 @@ contract MockVault is IERC4626 {
     function mint(uint256 shares, address receiver) external returns (uint256 assets) {
         assets = _totalShares == 0 ? shares : shares * totalAssets() / _totalShares;
 
-        _asset.transferFrom(msg.sender, address(this), assets);
+        require(_asset.transferFrom(msg.sender, address(this), assets));
         _shares[receiver] += shares;
         _totalShares += shares;
         _totalAssets += assets;
@@ -174,7 +172,7 @@ contract MockVault is IERC4626 {
         _totalShares -= shares;
         _totalAssets -= assets;
 
-        _asset.transfer(receiver, assets);
+        require(_asset.transfer(receiver, assets));
 
         return shares;
     }
@@ -190,7 +188,7 @@ contract MockVault is IERC4626 {
         _totalShares -= shares;
         _totalAssets -= assets;
 
-        _asset.transfer(receiver, assets);
+        require(_asset.transfer(receiver, assets));
 
         return assets;
     }
@@ -502,7 +500,7 @@ contract MockVaultV2 {
         shares = convertToShares(assets);
         if (shares == 0 && assets > 0) shares = assets;
 
-        _asset.transferFrom(msg.sender, address(this), assets);
+        require(_asset.transferFrom(msg.sender, address(this), assets));
         _shares[receiver] += shares;
         _totalShares += shares;
         _totalAssets += assets;
@@ -521,7 +519,7 @@ contract MockVaultV2 {
         _totalShares -= shares;
         _totalAssets -= assets;
 
-        _asset.transfer(receiver, assets);
+        require(_asset.transfer(receiver, assets));
 
         return shares;
     }
@@ -538,7 +536,7 @@ contract MockVaultV2 {
         // Safe subtraction: with simulated profit, convertToAssets can exceed _totalAssets
         _totalAssets = assets >= _totalAssets ? 0 : _totalAssets - assets;
 
-        _asset.transfer(receiver, assets);
+        require(_asset.transfer(receiver, assets));
 
         return assets;
     }
@@ -569,8 +567,7 @@ contract MockVaultV2 {
 
     // Simulate allocate call from parent vault
     function allocate(address adapter, uint256 assets) external {
-        // Transfer assets to adapter
-        _asset.transfer(adapter, assets);
+        require(_asset.transfer(adapter, assets));
     }
 
     // ERC4626-like interface for underlying vault compatibility

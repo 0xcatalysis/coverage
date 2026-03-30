@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "forge-std/Test.sol";
 import {CoveredVaultWrapper} from "../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
 import {CoveredVaultStorage} from "../../src/defi/adapters/morpho/CoveredVaultStorage.sol";
 import {IAlerts as IA} from "../../src/defi/interfaces/IAlerts.sol";
@@ -299,6 +298,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSignature("TransfersDisabled()"));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         wrapper.transfer(user2, shares);
     }
 
@@ -310,6 +310,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSignature("TransfersDisabled()"));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         wrapper.transfer(user2, halfShares);
     }
 
@@ -321,6 +322,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSignature("TransfersDisabled()"));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         wrapper.transfer(user2, shares);
     }
 
@@ -333,6 +335,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         // transfer() reverts
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSignature("TransfersDisabled()"));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         wrapper.transfer(user2, shares);
 
         // transferFrom() reverts
@@ -340,6 +343,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.approve(user2, shares);
         vm.prank(user2);
         vm.expectRevert(abi.encodeWithSignature("TransfersDisabled()"));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         wrapper.transferFrom(user1, user2, shares);
     }
 
@@ -1319,7 +1323,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         // Attacker donates 1 ether directly to the Morpho vault to inflate share price
         vm.prank(attacker);
-        asset.transfer(address(morphoVault), 1 ether);
+        require(asset.transfer(address(morphoVault), 1 ether));
 
         // Victim deposits 0.5 ether -- should receive shares > 0 despite donation
         uint256 victimDeposit = 0.5 ether;

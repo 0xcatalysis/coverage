@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "forge-std/Test.sol";
 import {CoveredVaultWrapper} from "../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
 import {CoveredVaultStorage} from "../../src/defi/adapters/morpho/CoveredVaultStorage.sol";
 
@@ -368,6 +367,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         uint256 sharesToTransfer = wrapper.balanceOf(alice) * transferPct / 100;
         vm.prank(alice);
         vm.expectRevert(CoveredVaultStorage.TransfersDisabled.selector);
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         wrapper.transfer(bob, sharesToTransfer);
 
         // Principals are unchanged since the transfer reverted
