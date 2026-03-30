@@ -166,6 +166,8 @@ abstract contract CoveredVaultStorage is
     error InvalidPolicyId();
     error NotAuthorized();
     error InvalidData();
+    /// @notice Thrown when onPolicyBound() validation fails; code identifies which check failed (1–5).
+    error PolicyBindingFailed(bytes32 code);
     error PolicyBoundAlreadyExecuted();
     /// @notice Thrown when a share transfer between accounts is attempted.
     error TransfersDisabled();

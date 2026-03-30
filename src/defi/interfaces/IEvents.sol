@@ -58,15 +58,6 @@ interface IEvents {
     /// @notice Emitted when the Morpho V2 redeem call fails (gate active or other revert)
     event MorphoRedeemFailed(uint256 redeemShares);
 
-    /// @notice Emitted when policyBoundExecuted is reset to allow a new policy binding
-    event PolicyBoundReset(uint96 indexed oldPolicyId);
-
-    /// @notice Emitted when stranded underlying tokens are rescued by the owner
-    event UnderlyingRescued(address indexed to, uint256 amount);
-
-    /// @notice Emitted when onPolicyBound() validation fails (diagnostic, precedes revert)
-    event PolicyBindingFailed(bytes32 indexed reason);
-
     /// @notice Emitted when a user exits via emergencyRedeem/emergencyWithdraw (no insurance claim filed)
     event EmergencyExit(address indexed owner, address indexed receiver, uint256 shares, uint256 assetsOut);
 
