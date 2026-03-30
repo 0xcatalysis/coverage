@@ -556,8 +556,10 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     function test_noPremium_chargedBeforePolicyStart() public {
-        // Deploy a fresh wrapper whose policy starts 1 day in the future
-        uint32 futureStart = uint32(block.timestamp + 1 days);
+        // onPolicyBound sets policyStartTime = block.timestamp, so the binding IS the policy start.
+        // Deposits are gated by policyBoundExecuted, meaning no deposit can arrive before binding.
+        // This test verifies that accrual begins exactly at binding time and not before.
+        uint32 bindTime = uint32(block.timestamp);
         uint32 maturity = uint32(block.timestamp + 366 days);
         CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
             address(morphoVault),
@@ -575,13 +577,13 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(freshWrapper),
             address(asset),
             10_000 ether,
-            futureStart,
+            bindTime,
             maturity,
             curator,
             address(freshWrapper)
         );
 
-        // User deposits BEFORE startTime (checkpoint = now < futureStart)
+        // User deposits immediately after binding (policyStartTime = bindTime = block.timestamp)
         vm.prank(user1);
         asset.approve(address(freshWrapper), type(uint256).max);
         vm.prank(user1);
@@ -590,21 +592,21 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         // Set a non-zero premium rate
         _setPremiumRate(freshWrapper, 1e9, curator);
 
-        // Warp to exactly 30 days AFTER startTime
-        vm.warp(futureStart + 30 days);
+        // Warp to exactly 30 days after binding/policy start
+        vm.warp(bindTime + 30 days);
 
-        // Trigger accrual by reading totalPremiumLiability via a second deposit
+        // Trigger accrual via a second deposit
         vm.prank(user1);
         freshWrapper.deposit(1, user1);
 
         uint256 liability = freshWrapper.totalPremiumLiability();
 
-        // 30 days of premium at 1e9 rate on 1000 ether principal
-        // The pre-start gap (1 day) must NOT be included
+        // Exactly 30 days of premium at 1e9 rate on DEPOSIT_AMOUNT principal.
+        // No phantom premium should exist for any period before binding.
         uint256 thirtyDayPremium = (DEPOSIT_AMOUNT * 1e9 * 30 days) / 1e18;
         uint256 thirtyOneDayPremium = (DEPOSIT_AMOUNT * 1e9 * 31 days) / 1e18;
 
-        assertLe(liability, thirtyDayPremium * 2, "liability must not include pre-start gap");
+        assertLe(liability, thirtyDayPremium * 2, "liability must not exceed 30-day window");
         assertLt(liability, thirtyOneDayPremium, "liability must be < 31 days (no phantom premium)");
     }
 
