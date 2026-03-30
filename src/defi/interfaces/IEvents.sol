@@ -90,4 +90,7 @@ interface IEvents {
 
     /// @notice Emitted when a pending depositCap change is executed
     event DepositCapExecuted(uint256 oldCap, uint256 newCap);
+
+    /// @notice Emitted when the policy binding is reset to allow a new policy to be bound
+    event PolicyBindingReset(uint96 indexed previousPolicyId);
 }

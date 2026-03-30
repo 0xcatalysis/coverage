@@ -161,6 +161,10 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
     }
 
     /// @notice Insurance is paid directly to receiver if a loss is detected and policy is active.
+    /// @dev Within a single withdrawal, `_policyManager.policyMetadata(policyId)` is called
+    ///      twice — once inside `_accruePremium` → `_activeElapsedFrom`, and once inside `_isPolicyActive`.
+    ///      Both calls are wrapped in try/catch so they degrade gracefully on PolicyManager outage. A future
+    ///      optimisation could cache the result in transient storage to save one external call per withdrawal.
     // slither-disable-next-line reentrancy-no-eth,reentrancy-benign,events-maths
     function _withdraw(
         address caller,
@@ -184,11 +188,14 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         uint256 userPrincipalForWithdrawal =
             ownerBalance > 0 ? userPrincipal[owner].mulDiv(shares, ownerBalance, Math.Rounding.Floor) : 0;
 
+        // CEI: decrement totalPrincipal before the external calls in _executeWithdrawal.
+        // nonReentrant already guards against reentrancy, but this ordering also satisfies
+        // strict CEI for composability and auditability.
+        totalPrincipal -= userPrincipalForWithdrawal;
+
         // Redeem Morpho, settle insurance, update debts — extracted to avoid stack-too-deep
         // Returns the actual amount transferred to receiver (net Morpho proceeds + insurance).
         uint256 actualOut = _executeWithdrawal(owner, receiver, shares, userPrincipalForWithdrawal, ownerBalance);
-
-        totalPrincipal -= userPrincipalForWithdrawal;
 
         // Store actual transferred amount so overriding redeem()/withdraw() can return it.
         _tstore(ACTUAL_OUT_SLOT, actualOut);
@@ -239,8 +246,12 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
     ///      emergencyRedeem will also revert. Only ClaimManager dependency is bypassed.
     ///      nonReentrant is NOT added here because super.redeem() → _withdraw() already has it;
     ///      adding it would cause a double-lock revert (ReentrancyGuardTransient).
+    ///      IMPORTANT: Only callable by the share owner. Allowance-based third-party callers are
+    ///      intentionally excluded — an emergency exit waives insurance coverage, which is a
+    ///      unilateral decision that only the position owner should be able to make.
     // slither-disable-next-line reentrancy-events
     function emergencyRedeem(uint256 shares, address receiver, address owner) external returns (uint256) {
+        require(msg.sender == owner, NotAuthorized());
         _tstore(SKIP_INSURANCE_SLOT, 1);
         super.redeem(shares, receiver, owner);
         _tstore(SKIP_INSURANCE_SLOT, 0);
@@ -255,8 +266,10 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
     ///      The user explicitly acknowledges they will NOT receive any insurance payout.
     ///      NOTE: Does NOT bypass Morpho gate — see emergencyRedeem NatSpec.
     ///      nonReentrant transitively applied via inner _withdraw().
+    ///      IMPORTANT: Only callable by the share owner. See emergencyRedeem NatSpec for rationale.
     // slither-disable-next-line reentrancy-events
     function emergencyWithdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares) {
+        require(msg.sender == owner, NotAuthorized());
         _tstore(SKIP_INSURANCE_SLOT, 1);
         shares = super.withdraw(assets, receiver, owner);
         _tstore(SKIP_INSURANCE_SLOT, 0);
@@ -474,9 +487,12 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         return 6;
     }
 
-    /// @notice Deposits are blocked until the policy is bound (depositCap is set by onPolicyBound)
+    /// @notice Deposits are blocked until the policy is bound (depositCap is set by onPolicyBound),
+    ///         after the policy expires, and when the vault is in an active loss state.
     function maxDeposit(address) public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
         if (!policyBoundExecuted) return 0;
+        if (!_isPolicyActive()) return 0;
+        if (_morphoValue() < totalPrincipal) return 0;
         return depositCap > totalPrincipal ? depositCap - totalPrincipal : 0;
     }
 
@@ -587,11 +603,12 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         );
 
         pendingPremium += premiumForWithdrawal;
-        // Decrement totalPremiumLiability by premiumForWithdrawal (actually collected) rather than
-        // a.uncappedPremium (intended amount). In deep-loss scenarios where assetsReceived < uncappedPremium,
-        // the forgiven delta was never collected into pendingPremium and should not reduce the liability tracker,
-        // otherwise totalAssets() is inflated for remaining holders by the forgiven amount.
-        totalPremiumLiability = _safeSub(totalPremiumLiability, premiumForWithdrawal);
+        // Decrement totalPremiumLiability by uncappedPremium (the full liability for this exit), not by
+        // premiumForWithdrawal (the amount actually collected). In a deep-loss scenario where
+        // assetsReceived < uncappedPremium, the user's premium liability is forgiven and they leave the
+        // vault entirely. Keeping the forgiven delta in totalPremiumLiability would leave a phantom
+        // residual that unjustly depresses totalAssets() for remaining holders.
+        totalPremiumLiability = _safeSub(totalPremiumLiability, a.uncappedPremium);
     }
 
     /// @notice Updates absolute debts and principal after a withdrawal.

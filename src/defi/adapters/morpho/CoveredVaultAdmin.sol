@@ -5,6 +5,7 @@ import {CoveredVaultAccrual} from "./CoveredVaultAccrual.sol";
 import {IVaultV2} from "../../interfaces/Morpho/IVaultV2.sol";
 import {IAlerts as IA} from "../../interfaces/IAlerts.sol";
 import {IEvents as IE} from "../../interfaces/IEvents.sol";
+import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -126,13 +127,19 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Clear all pending timelocked proposals on ownership transfer.
+    ///         Both the pending values AND their timestamps are zeroed so the incoming owner
+    ///         cannot inadvertently execute proposals queued by the outgoing owner.
     function acceptOwnership() public override {
         super.acceptOwnership();
+        pendingPremiumRate = 0;
         pendingPremiumRateTimestamp = 0;
+        pendingDeductibleBps = 0;
         pendingDeductibleTimestamp = 0;
-        pendingUpgradeTimestamp = 0;
         pendingImplementation = address(0);
+        pendingUpgradeTimestamp = 0;
+        pendingPremiumRecipient = address(0);
         pendingPremiumRecipientTimestamp = 0;
+        pendingDepositCap = 0;
         pendingDepositCapTimestamp = 0;
     }
 
@@ -172,6 +179,31 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     }
 
     /*//////////////////////////////////////////////////////////////
+                    POLICY LIFECYCLE
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Resets the policy binding flag so a new policy can be bound after the current one expires.
+    /// @dev Only callable after the current policy's raw maturity has passed (no grace period extension).
+    ///      Clears policyId, policyBoundExecuted, depositCap, and policyStartTime so that onPolicyBound
+    ///      can be called again by PolicyManager for a successive coverage period.
+    ///      Existing depositors retain their shares and principal during the transition; the new policy
+    ///      binding will set a fresh accrual start anchor.
+    function resetPolicyBinding() external override onlyOwner {
+        if (policyId != 0) {
+            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
+            require(block.timestamp >= uint256(meta.maturityTime), IA.InvalidParameters());
+        }
+        uint96 prevPolicyId = policyId;
+        // Accrue any remaining premium before clearing state.
+        _accruePremium();
+        policyId = 0;
+        policyBoundExecuted = false;
+        depositCap = 0;
+        policyStartTime = 0;
+        emit IE.PolicyBindingReset(prevPolicyId);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                     MORPHO GATE
     //////////////////////////////////////////////////////////////*/
 
@@ -189,9 +221,10 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
                 lastKnownMorphoValue = val;
             } catch {}
         } else if (!active && morphoGateActive && gateActivatedAt > 0) {
-            // Gate lifted — extend grace period by the gate duration
+            // Gate lifted — extend grace period by the gate duration, capped at MAX_GATE_GRACE_PERIOD.
             uint256 gateDuration = block.timestamp - gateActivatedAt;
-            gateGracePeriod += gateDuration;
+            uint256 newGracePeriod = gateGracePeriod + gateDuration;
+            gateGracePeriod = newGracePeriod > MAX_GATE_GRACE_PERIOD ? MAX_GATE_GRACE_PERIOD : newGracePeriod;
             gateActivatedAt = 0;
         }
         morphoGateActive = active;
@@ -216,10 +249,14 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
             uint256 sweepable = balance >= reserved ? balance - reserved : 0;
             require(amount <= sweepable, IA.InvalidParameters());
         } else if (token == morphoVault) {
-            // For Morpho shares: only allow sweeping surplus above tracked user shares
+            // For Morpho shares: only allow sweeping surplus above the shares corresponding to user principal.
+            // convertToShares(totalPrincipal) is a conservative lower bound — actual user entitlements
+            // include accrued yield, but we protect principal. In a loss scenario (shares worth less per asset)
+            // convertToShares(totalPrincipal) > balance, so sweepable floors to 0. _safeSub guards underflow.
             uint256 balance = IVaultV2(morphoVault).balanceOf(address(this));
-            uint256 trackedShares = totalPrincipal > 0 ? balance : 0; // conservative: if users exist, don't sweep
-            require(amount <= balance - trackedShares, IA.InvalidParameters());
+            uint256 minTracked = IVaultV2(morphoVault).convertToShares(totalPrincipal);
+            uint256 sweepable = balance > minTracked ? balance - minTracked : 0;
+            require(amount <= sweepable, IA.InvalidParameters());
         }
         IERC20(token).safeTransfer(to, amount);
         emit IE.TokensRescued(token, to, amount);

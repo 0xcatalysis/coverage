@@ -63,6 +63,10 @@ abstract contract CoveredVaultStorage is
     ///         limits per-hour damage and operational response to Morpho stress needs speed.
     uint256 internal constant OPERATIONAL_DELAY = 2 hours;
 
+    /// @notice Maximum total accumulated gate grace period across all gate cycles.
+    ///         Prevents unbounded growth of gateGracePeriod from repeated or long-running gate activations.
+    uint256 internal constant MAX_GATE_GRACE_PERIOD = 365 days;
+
     /*//////////////////////////////////////////////////////////////
                          STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -88,7 +92,8 @@ abstract contract CoveredVaultStorage is
     /// @notice Total cost-basis principal across all users
     uint256 public override totalPrincipal;
 
-    /// @notice Premium rate per second (WAD-scaled)
+    /// @notice Premium rate per second, WAD-scaled (1e18 = 100% per second).
+    ///         Example: 1e16 / 31_536_000 ≈ 0.1% per year.
     uint256 public override premiumRatePerSecond;
 
     /// @notice Timestamp of the last premium accrual

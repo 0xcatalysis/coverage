@@ -1643,15 +1643,13 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertApproxEqAbs(premiumCollected, 50 ether, 5 ether, "Premium must be capped at Morpho proceeds");
         assertLt(premiumCollected, liabilityBeforeLoss, "Premium collected < full liability (deep-loss write-off)");
 
-        // ── 2. L-05 fix: totalPremiumLiability decremented by actually-collected amount only ──
-        // premiumForWithdrawal = min(uncappedPremium~100, assetsReceived~50) = ~50.
-        // Remaining liability = uncappedPremium - premiumForWithdrawal ≈ 50 (written-off, not entered into
-        // pendingPremium).
+        // ── 2. M-02 fix: totalPremiumLiability decremented by uncappedPremium (full owed amount) ──
+        // uncappedPremium ≈ 100, premiumForWithdrawal = min(100, 50) = 50.
+        // The forgiven 50 (uncappedPremium - premiumForWithdrawal) is correctly cleared from
+        // totalPremiumLiability so it does not leave a phantom residual that depresses totalAssets()
+        // for remaining holders. After a full exit, totalPremiumLiability should be ~0.
         assertApproxEqAbs(
-            wrapper.totalPremiumLiability(),
-            liabilityBeforeLoss - premiumCollected,
-            2 ether,
-            "L-05 fix: liability decremented by collected amount only; written-off portion remains"
+            wrapper.totalPremiumLiability(), 0, 2 ether, "M-02 fix: full liability cleared on exit; no phantom residual"
         );
 
         // ── 3. User receives only insurance (Morpho proceeds fully absorbed by premium) ──

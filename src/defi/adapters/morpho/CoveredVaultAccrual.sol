@@ -21,14 +21,19 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
                     PREMIUM / EXPECTED-LOSS ACCRUAL
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev Accrues premium and expected loss up to the current block, then advances the checkpoint.
+    /// @dev Accrues premium up to the current block, then advances the checkpoint.
     ///      Called on every deposit, withdraw, and collectPremium.
+    ///
+    ///      IMPORTANT: `lastPremiumAccrualTime` is advanced unconditionally — even when the rate is
+    ///      zero, no policy is bound, or the gate is active. This intentional design prevents
+    ///      "catch-up" accrual when conditions change (e.g. a new policy is bound, the rate is set
+    ///      from zero, or the gate is lifted). Without this, time that passed under non-accruing
+    ///      conditions would be retroactively charged as premium.
     // slither-disable-next-line incorrect-equality
     function _accruePremium() internal {
         uint256 checkpointTime = lastPremiumAccrualTime;
 
-        // Always advance the timestamp unconditionally so that when a new policy is later bound,
-        // there is no catch-up accrual for the inactive gap period.
+        // Always advance the timestamp unconditionally — see NatDoc above for rationale.
         lastPremiumAccrualTime = block.timestamp;
 
         if (block.timestamp == checkpointTime) return;
@@ -122,20 +127,26 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
         if (policyId == 0) return 0;
         // Fetch metadata for maturity time and existence check (buyer != address(0)).
         // startTime is no longer read from metadata — the wrapper uses policyStartTime instead.
-        IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
-        uint256 effectiveMaturity = uint256(meta.maturityTime) + gateGracePeriod;
+        // Wrapped in try/catch so that a PolicyManager outage does not revert deposits, withdrawals,
+        // or gate-management calls. Fallback: treat as no elapsed time (no accrual).
+        IPolicyManager.PolicyMetadata memory meta;
+        try _policyManager.policyMetadata(policyId) returns (IPolicyManager.PolicyMetadata memory m) {
+            meta = m;
+        } catch {
+            return 0;
+        }
+        uint256 rawMaturity = uint256(meta.maturityTime);
         uint256 _policyStartTime = policyStartTime;
-        if (meta.buyer != address(0) && block.timestamp >= _policyStartTime && block.timestamp < effectiveMaturity) {
+        if (meta.buyer != address(0) && block.timestamp >= _policyStartTime && block.timestamp < rawMaturity) {
             // Policy is active: clamp checkpoint to policyStartTime as a defensive guard.
             uint256 activeStart = checkpoint < _policyStartTime ? _policyStartTime : checkpoint;
             return block.timestamp - activeStart;
         }
-        // Policy expired: use effective maturity (raw + grace period) so that premium accrues through
-        // the gate grace window, consistent with _isPolicyActive().
-        if (meta.buyer != address(0) && effectiveMaturity > checkpoint && block.timestamp >= _policyStartTime) {
+        // Policy expired: cap at rawMaturity so premium does not accrue past the claim-eligible window.
+        if (meta.buyer != address(0) && rawMaturity > checkpoint && block.timestamp >= _policyStartTime) {
             uint256 activeStart = checkpoint > _policyStartTime ? checkpoint : _policyStartTime;
-            if (effectiveMaturity > activeStart) {
-                return effectiveMaturity - activeStart;
+            if (rawMaturity > activeStart) {
+                return rawMaturity - activeStart;
             }
         }
         return 0;
@@ -153,14 +164,22 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
     }
 
     /// @notice Checks if the policy is currently active (bound and within coverage window)
-    /// @dev Extends maturityTime by gateGracePeriod so users trapped behind a
-    ///      Morpho gate retain insurance eligibility for the duration of the gate overlap.
+    /// @dev Uses raw maturityTime from PolicyManager — not extended by gateGracePeriod — because
+    ///      ClaimManager enforces the raw policy maturity for claim eligibility. Accepting an insurance
+    ///      claim after raw maturity would be rejected by ClaimManager regardless.
     // slither-disable-next-line incorrect-equality
     function _isPolicyActive() internal view returns (bool) {
         if (policyId == 0) return false;
-        IPolicyManager.PolicyMetadata memory metadata = _policyManager.policyMetadata(policyId);
-        uint256 effectiveMaturity = uint256(metadata.maturityTime) + gateGracePeriod;
-        return metadata.buyer != address(0) && block.timestamp >= policyStartTime && block.timestamp < effectiveMaturity;
+        // Wrapped in try/catch so that a PolicyManager outage does not revert withdrawals.
+        // Fallback: return false (no insurance payout) — a temporary degradation, not permanent loss.
+        IPolicyManager.PolicyMetadata memory metadata;
+        try _policyManager.policyMetadata(policyId) returns (IPolicyManager.PolicyMetadata memory m) {
+            metadata = m;
+        } catch {
+            return false;
+        }
+        return metadata.buyer != address(0) && block.timestamp >= policyStartTime
+            && block.timestamp < uint256(metadata.maturityTime);
     }
 
     /// @dev Maximum additional liability the protocol can absorb given the current Morpho value.

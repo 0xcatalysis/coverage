@@ -137,6 +137,10 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// @notice Applies a pending depositCap change after the standard timelock elapses.
     function executeDepositCap() external;
 
+    /// @notice Resets the policy binding state so a new policy can be bound after the current one expires.
+    ///         Only callable by the owner when the current policy has expired. Allows successive coverage periods.
+    function resetPolicyBinding() external;
+
     /// @notice Rescues tokens accidentally sent to this contract
     function rescueTokens(address token, uint256 amount, address to) external;
 }
