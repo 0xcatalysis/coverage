@@ -164,9 +164,9 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
     }
 
     /// @notice Checks if the policy is currently active (bound and within coverage window)
-    /// @dev Uses raw maturityTime from PolicyManager — not extended by gateGracePeriod — because
-    ///      ClaimManager enforces the raw policy maturity for claim eligibility. Accepting an insurance
-    ///      claim after raw maturity would be rejected by ClaimManager regardless.
+    /// @dev Uses raw maturityTime from PolicyManager because ClaimManager enforces the raw policy
+    ///      maturity for claim eligibility. Accepting a claim after raw maturity would be rejected
+    ///      by ClaimManager regardless.
     // slither-disable-next-line incorrect-equality
     function _isPolicyActive() internal view returns (bool) {
         if (policyId == 0) return false;

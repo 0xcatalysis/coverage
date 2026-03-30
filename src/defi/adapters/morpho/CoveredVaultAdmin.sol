@@ -200,6 +200,8 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         policyBoundExecuted = false;
         depositCap = 0;
         policyStartTime = 0;
+        pendingDepositCap = 0;
+        pendingDepositCapTimestamp = 0;
         emit IE.PolicyBindingReset(prevPolicyId);
     }
 
@@ -208,23 +210,20 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Toggles Morpho gate status to pause/resume premium accrual.
-    /// @dev On activation: records timestamp and caches Morpho value as fallback.
-    ///      On deactivation: extends policy grace period by the gate duration.
+    /// @dev On activation: records gateActivatedAt for off-chain observability and caches
+    ///      Morpho value as a convertToAssets() fallback.
+    ///      On deactivation: clears gateActivatedAt.
     function setMorphoGateActive(bool active) external override onlyOwner {
         _accruePremium();
         if (active && !morphoGateActive) {
-            // Gate activated — record timestamp and try to cache current Morpho value
+            // Gate activated — record timestamp (off-chain observability) and cache Morpho value.
             gateActivatedAt = block.timestamp;
             try IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this))) returns (
                 uint256 val
             ) {
                 lastKnownMorphoValue = val;
             } catch {}
-        } else if (!active && morphoGateActive && gateActivatedAt > 0) {
-            // Gate lifted — extend grace period by the gate duration, capped at MAX_GATE_GRACE_PERIOD.
-            uint256 gateDuration = block.timestamp - gateActivatedAt;
-            uint256 newGracePeriod = gateGracePeriod + gateDuration;
-            gateGracePeriod = newGracePeriod > MAX_GATE_GRACE_PERIOD ? MAX_GATE_GRACE_PERIOD : newGracePeriod;
+        } else if (!active && morphoGateActive) {
             gateActivatedAt = 0;
         }
         morphoGateActive = active;

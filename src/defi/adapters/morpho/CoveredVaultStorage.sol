@@ -63,10 +63,6 @@ abstract contract CoveredVaultStorage is
     ///         limits per-hour damage and operational response to Morpho stress needs speed.
     uint256 internal constant OPERATIONAL_DELAY = 2 hours;
 
-    /// @notice Maximum total accumulated gate grace period across all gate cycles.
-    ///         Prevents unbounded growth of gateGracePeriod from repeated or long-running gate activations.
-    uint256 internal constant MAX_GATE_GRACE_PERIOD = 365 days;
-
     /*//////////////////////////////////////////////////////////////
                          STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -161,8 +157,6 @@ abstract contract CoveredVaultStorage is
 
     /// @notice Timestamp when the Morpho gate was activated (0 = not gated)
     uint256 public gateActivatedAt;
-    /// @notice Grace period extension on policy maturity to compensate for gate overlap
-    uint256 public gateGracePeriod;
 
     /// @notice Timestamp at which the policy was bound (i.e. onPolicyBound block.timestamp).
     ///         Used as the premium accrual start anchor instead of PolicyMetadata.startTime,
