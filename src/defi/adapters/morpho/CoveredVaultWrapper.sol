@@ -95,7 +95,8 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         maxCoverableLossBps = _maxCoverableLossBps;
         deductibleBps = _deductibleBps;
         premiumRecipient = _premiumRecipient;
-        lastPremiumAccrualTime = block.timestamp;
+        // lastPremiumAccrualTime is intentionally NOT set here. It is set in onPolicyBound when the
+        // policy is bound and deposits open, so the accrual clock starts exactly at coverage start.
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -300,6 +301,12 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         policyId = _policyId;
         policyBoundExecuted = true;
         coverageLimit = _coverageLimit;
+
+        // Policy start and accrual clock both begin at the binding timestamp.
+        // Deposits are gated by policyBoundExecuted, so no deposit can arrive before this point
+        // and lastPremiumAccrualTime is guaranteed to start at or before the first deposit.
+        policyStartTime = block.timestamp;
+        lastPremiumAccrualTime = block.timestamp;
 
         // depositCap = total TVL cap implied by the coverage limit
         // If maxCoverableLossBps=10% (1000) and coverageLimit=100, cap = 100 * 10000/1000 = 1000

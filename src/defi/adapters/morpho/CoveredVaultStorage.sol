@@ -159,6 +159,11 @@ abstract contract CoveredVaultStorage is
     /// @notice Grace period extension on policy maturity to compensate for gate overlap
     uint256 public gateGracePeriod;
 
+    /// @notice Timestamp at which the policy was bound (i.e. onPolicyBound block.timestamp).
+    ///         Used as the premium accrual start anchor instead of PolicyMetadata.startTime,
+    ///         since onPolicyBound is also when deposits open and the coverage window begins.
+    uint256 public policyStartTime;
+
     /*//////////////////////////////////////////////////////////////
                             ERRORS
     //////////////////////////////////////////////////////////////*/

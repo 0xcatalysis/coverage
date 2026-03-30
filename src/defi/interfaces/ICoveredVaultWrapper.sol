@@ -57,6 +57,10 @@ interface ICoveredVaultWrapper is IERC4626 {
     ///         Used to recalculate depositCap when maxCoverableLossBps changes post-binding.
     function coverageLimit() external view returns (uint256);
 
+    /// @notice Timestamp at which the policy was bound (set to block.timestamp in onPolicyBound).
+    ///         Used as the premium accrual start anchor. 0 before onPolicyBound is called.
+    function policyStartTime() external view returns (uint256);
+
     /// @notice Maximum total assets (TVL) that can be deposited into this vault.
     ///         Set to 0 on deployment; updated by onPolicyBound to coverageLimit * BPS_DENOMINATOR /
     /// maxCoverableLossBps.

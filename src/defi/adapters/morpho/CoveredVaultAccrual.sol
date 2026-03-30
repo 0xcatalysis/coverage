@@ -109,29 +109,31 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
 
     /// @dev Returns the number of seconds that should count toward accrual starting from `checkpoint`.
     ///      - Policy active: full [checkpoint, now] window.
-    ///      - Policy expired, checkpoint < maturityTime: only [max(checkpoint, startTime), maturityTime].
+    ///      - Policy expired, checkpoint < maturityTime: only [max(checkpoint, policyStartTime), maturityTime].
     ///      - No policy or window already settled: 0.
     ///      Single source of truth for the active-window calculation used by
     ///      _accruedPremium and _accruePremium.
+    ///
+    ///      policyStartTime is set to block.timestamp in onPolicyBound, which is also when deposits
+    ///      open and lastPremiumAccrualTime is initialised. Therefore checkpoint >= policyStartTime
+    ///      always holds in practice and the clamp below is a no-op under normal operation; it is
+    ///      retained as a defensive guard.
     function _activeElapsedFrom(uint256 checkpoint) internal view returns (uint256) {
         if (policyId == 0) return 0;
-        // Fetch metadata once for both the active check and the window calculation.
+        // Fetch metadata for maturity time and existence check (buyer != address(0)).
+        // startTime is no longer read from metadata — the wrapper uses policyStartTime instead.
         IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
         uint256 effectiveMaturity = uint256(meta.maturityTime) + gateGracePeriod;
-        if (
-            meta.buyer != address(0) && block.timestamp >= uint256(meta.startTime)
-                && block.timestamp < effectiveMaturity
-        ) {
-            // Policy is active: clamp checkpoint to startTime so users who deposited before the policy
-            // started are not charged premium for the pre-coverage gap.
-            uint256 activeStart = checkpoint < uint256(meta.startTime) ? uint256(meta.startTime) : checkpoint;
+        uint256 _policyStartTime = policyStartTime;
+        if (meta.buyer != address(0) && block.timestamp >= _policyStartTime && block.timestamp < effectiveMaturity) {
+            // Policy is active: clamp checkpoint to policyStartTime as a defensive guard.
+            uint256 activeStart = checkpoint < _policyStartTime ? _policyStartTime : checkpoint;
             return block.timestamp - activeStart;
         }
-        // Policy expired: use effective maturity (raw + grace period) so that premium/EL accrues through
+        // Policy expired: use effective maturity (raw + grace period) so that premium accrues through
         // the gate grace window, consistent with _isPolicyActive().
-        // Guard: only fire the catch-up branch after the policy has started.
-        if (meta.buyer != address(0) && effectiveMaturity > checkpoint && block.timestamp >= uint256(meta.startTime)) {
-            uint256 activeStart = checkpoint > uint256(meta.startTime) ? checkpoint : uint256(meta.startTime);
+        if (meta.buyer != address(0) && effectiveMaturity > checkpoint && block.timestamp >= _policyStartTime) {
+            uint256 activeStart = checkpoint > _policyStartTime ? checkpoint : _policyStartTime;
             if (effectiveMaturity > activeStart) {
                 return effectiveMaturity - activeStart;
             }
@@ -158,8 +160,7 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
         if (policyId == 0) return false;
         IPolicyManager.PolicyMetadata memory metadata = _policyManager.policyMetadata(policyId);
         uint256 effectiveMaturity = uint256(metadata.maturityTime) + gateGracePeriod;
-        return
-            metadata.buyer != address(0) && block.timestamp >= metadata.startTime && block.timestamp < effectiveMaturity;
+        return metadata.buyer != address(0) && block.timestamp >= policyStartTime && block.timestamp < effectiveMaturity;
     }
 
     /// @dev Maximum additional liability the protocol can absorb given the current Morpho value.
