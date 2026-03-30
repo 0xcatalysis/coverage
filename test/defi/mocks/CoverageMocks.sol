@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ISlashingManager} from "coverage/interfaces/ISlashingManager.sol";
 import {IChainlinkPriceFeed} from "coverage/interfaces/IChainlinkPriceFeed.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
 import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
