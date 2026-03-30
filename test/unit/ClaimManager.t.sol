@@ -2647,6 +2647,7 @@ contract MockSlashingManager {
         tokens = new address[](len);
         tokenStakes = new uint256[](len);
         for (uint256 i = 0; i < len; ++i) {
+            // forge-lint: disable-next-line(unsafe-typecast)
             vaults[i] = address(uint160(i + 1));
             tokens[i] = _assets[i];
             tokenStakes[i] = _amounts[i];
@@ -2917,6 +2918,7 @@ contract MockSlashingManagerRespectingSlash {
             collateralTokens[i] = vaultSlashes[i].token;
             collateralAmounts[i] = vaultSlashes[i].amount;
             if (vaultSlashes[i].amount > 0) {
+                // forge-lint: disable-next-line(erc20-unchecked-transfer)
                 ERC20(vaultSlashes[i].token).transfer(msg.sender, vaultSlashes[i].amount);
             }
         }

@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IPremiumCollector} from "../../src/interfaces/IPremiumCollector.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
@@ -51,6 +52,8 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  *   - Vault must support ERC-4626 deposits (required when BOOTSTRAP_PREMIUM_AMOUNT > 0)
  */
 contract DistributePremium is Script {
+    using SafeERC20 for IERC20;
+
     /// @notice Deployer/caller address
     address public deployer;
 
@@ -180,7 +183,7 @@ contract DistributePremium is Script {
         vm.startBroadcast(deployerPrivateKey);
         IERC20(underlying).approve(coveredVault, bootstrapPremiumAmount);
         uint256 shares = vault.deposit(bootstrapPremiumAmount, deployer);
-        IERC20(coveredVault).transfer(premiumCollector, shares);
+        IERC20(coveredVault).safeTransfer(premiumCollector, shares);
         vm.stopBroadcast();
 
         console.log("[OK] Deposited and transferred", shares, "shares to PremiumCollector");
