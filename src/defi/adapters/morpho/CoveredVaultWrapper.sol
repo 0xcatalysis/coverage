@@ -607,17 +607,12 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         userPrincipal[owner_] = newPrincipal;
     }
 
-    function _validatePolicyBinding(IPolicyManager.PolicyMetadata memory pol) private {
-        if (pol.buyer != owner()) _revertBinding(bytes32(uint256(1)));
-        if (pol.pool != address(coverPool)) _revertBinding(bytes32(uint256(2)));
-        if (pol.claimer != address(this)) _revertBinding(bytes32(uint256(3)));
-        if (pol.beneficiary != address(this)) _revertBinding(bytes32(uint256(4)));
-        if (pol.payoutToken != asset()) _revertBinding(bytes32(uint256(5)));
-    }
-
-    function _revertBinding(bytes32 code) private {
-        emit IE.PolicyBindingFailed(code);
-        revert InvalidData();
+    function _validatePolicyBinding(IPolicyManager.PolicyMetadata memory pol) private view {
+        if (pol.buyer != owner()) revert PolicyBindingFailed(bytes32(uint256(1)));
+        if (pol.pool != address(coverPool)) revert PolicyBindingFailed(bytes32(uint256(2)));
+        if (pol.claimer != address(this)) revert PolicyBindingFailed(bytes32(uint256(3)));
+        if (pol.beneficiary != address(this)) revert PolicyBindingFailed(bytes32(uint256(4)));
+        if (pol.payoutToken != asset()) revert PolicyBindingFailed(bytes32(uint256(5)));
     }
 
     /// @dev Safe subtraction returning 0 on underflow. Reduces repeated ternary bytecode.
