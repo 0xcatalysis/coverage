@@ -56,6 +56,18 @@ contract MockStakeManager {
     }
 }
 
+/// @title MockChainlinkPriceFeedDefi
+/// @notice Returns input amount as USD value (1:1 identity) so stake checks always pass when stakes >= coverageLimit
+contract MockChainlinkPriceFeedDefi is IChainlinkPriceFeed {
+    function getUSDValue(address, uint256 amount) external pure override returns (uint256) {
+        return amount;
+    }
+
+    function getTokenAmount(address, uint256 usdValue) external pure override returns (uint256) {
+        return usdValue;
+    }
+}
+
 contract MockCoverPoolFactory {
     mapping(address => bool) private _pools;
 
