@@ -260,12 +260,14 @@ contract PolicyManager is
         require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));
 
         // Bind-time sufficiency check: compare total USD-equivalent token stakes against coverage limit in USD.
+        // slither-disable-next-line unused-return
         (, address[] memory tokens, uint256[] memory tokenStakes) =
             IStakeManager(stakeManager).getCommitteeTokenStakes(policyId);
 
         uint256 totalStakeUSD = 0;
         for (uint256 i = 0; i < tokens.length; ++i) {
             if (tokenStakes[i] > 0) {
+                // slither-disable-next-line calls-loop
                 totalStakeUSD += IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(tokens[i], tokenStakes[i]);
             }
         }

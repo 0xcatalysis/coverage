@@ -122,6 +122,7 @@ contract UniswapV3Adapter is IQuotableAdapter {
             tokenIn: tokenIn, tokenOut: tokenOut, amountIn: amountIn, fee: fee, sqrtPriceLimitX96: 0
         });
 
+        // slither-disable-next-line unused-return
         try QUOTER.quoteExactInputSingle(params) returns (uint256 out, uint160, uint32, uint256) {
             return out;
         } catch {

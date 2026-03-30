@@ -447,6 +447,7 @@ contract ClaimManager is
      * @param requestedAmount The payout amount requested in payout token terms.
      * @return vaultSlashes Per-vault slash instructions ready for executeSlashing.
      */
+    // slither-disable-next-line cyclomatic-complexity
     function _computeVaultSlashes(
         address[] memory vaults,
         address[] memory tokens,
@@ -467,6 +468,7 @@ contract ClaimManager is
             if (tokens[i] == payoutToken) {
                 payoutEquivalents[i] = tokenStakes[i];
             } else {
+                // slither-disable-next-line calls-loop
                 try ISwapper(swapper).quoteSwap(tokens[i], payoutToken, tokenStakes[i]) returns (uint256 quoted) {
                     payoutEquivalents[i] = quoted;
                 } catch {
@@ -481,10 +483,12 @@ contract ClaimManager is
         // Pass 2: compute proportional slash with per-vault slippage inflation
         vaultSlashes = new ISlashingManager.VaultSlash[](len);
         for (uint256 i = 0; i < len; ++i) {
+            // slither-disable-next-line divide-before-multiply
             uint256 baseSlash = (tokenStakes[i] * requestedAmount) / totalPayoutEquivalent;
 
             if (baseSlash > 0 && tokens[i] != payoutToken) {
                 // Per-vault slippage inflation: how much extra token to slash to cover DEX slippage
+                // slither-disable-next-line calls-loop,divide-before-multiply
                 try ISwapper(swapper).quoteSwap(tokens[i], payoutToken, baseSlash) returns (uint256 quotedOut) {
                     uint256 expectedOut = (requestedAmount * payoutEquivalents[i]) / totalPayoutEquivalent;
                     if (quotedOut > 0 && quotedOut < expectedOut) {
