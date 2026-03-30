@@ -1454,7 +1454,7 @@ contract PolicyManagerTest is Test {
         );
     }
 
-    function test_bindPolicy_StartTimeIsBlockTimestamp() public {
+    function test_bindPolicy_StartTimeIsCurrentBlockTimestamp() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         _seedCommitteeForTesting(request.quote.policyId, curator, true);
 
@@ -1464,11 +1464,11 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
 
         IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
-        assertEq(metadata.startTime, uint32(block.timestamp), "Start time should be block.timestamp");
+        assertEq(metadata.startTime, uint32(block.timestamp), "Start time should be current block timestamp");
         assertEq(
             metadata.maturityTime,
             uint32(block.timestamp) + COVERAGE_DURATION,
-            "Maturity time should be block.timestamp + duration"
+            "Maturity time should be start + duration"
         );
     }
 
