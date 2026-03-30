@@ -2064,6 +2064,97 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
 
+    // ── Same-token vault cap fix tests
+    // ────────────────────────────────────────
+
+    /**
+     * @dev Regression: when requestedAmount > vaultStake for a same-token vault, baseSlash must
+     *      be capped at tokenStakes[i]. The mock mints exactly vaultStake so the transfer reverts
+     *      if the cap is bypassed.
+     */
+    function test_fileClaim_WhenSameTokenVaultUnderwater_CapsSlashAtVaultStake() public {
+        uint256 vaultStake = 300 ether;
+        uint256 requestedAmount = 500 ether;
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.payoutToken = payoutToken;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](1);
+        pvaults[0] = makeAddr("sameTokenVault");
+        address[] memory ptokens = new address[](1);
+        ptokens[0] = payoutToken;
+        uint256[] memory pstakes = new uint256[](1);
+        pstakes[0] = vaultStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        payoutTokenMock.mint(address(slashMock), vaultStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
+            vaultStake,
+            "Payout must be capped at vault stake, not requested amount"
+        );
+    }
+
+    /**
+     * @dev Regression: with mixed vaults and requestedAmount (600) > totalPayoutEquivalent (400),
+     *      the proportional formula yields baseSlash=300 for each 200-token vault. Both must be
+     *      capped at their stake; total payout equals the sum of available stakes (400).
+     */
+    function test_fileClaim_WhenMixedVaultsUnderwater_CapsEachVaultAtItsStake() public {
+        uint256 sameTokenStake = 200 ether;
+        uint256 crossTokenStake = 200 ether;
+        uint256 requestedAmount = 600 ether;
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("sameTokenVault");
+        pvaults[1] = makeAddr("crossTokenVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = payoutToken;
+        ptokens[1] = collateralToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = sameTokenStake;
+        pstakes[1] = crossTokenStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        payoutTokenMock.mint(address(slashMock), sameTokenStake);
+        collateralTokenMock.mint(address(slashMock), crossTokenStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(crossTokenStake);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
+            sameTokenStake + crossTokenStake,
+            "Payout must equal total available stake across both vaults, not requested amount"
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                           CURATOR SNAPSHOT
     //////////////////////////////////////////////////////////////*/

@@ -500,10 +500,10 @@ contract ClaimManager is
                         baseSlash = inflated > maxInflated ? maxInflated : inflated;
                     }
                 } catch {}
+            }
 
-                if (baseSlash > tokenStakes[i]) {
-                    baseSlash = tokenStakes[i];
-                }
+            if (baseSlash > tokenStakes[i]) {
+                baseSlash = tokenStakes[i];
             }
 
             vaultSlashes[i] = ISlashingManager.VaultSlash({vault: vaults[i], token: tokens[i], amount: baseSlash});
