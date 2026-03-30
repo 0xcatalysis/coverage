@@ -2,25 +2,8 @@
 pragma solidity 0.8.28;
 
 /// @title IEvents
-/// @notice Event definitions for CatalysisBundleAdapter
+/// @notice Event definitions for CoveredVaultWrapper
 interface IEvents {
-    /// @notice Emitted when NAV is recorded on deposit
-    /// @param user The user address
-    /// @param assets Amount of assets deposited
-    /// @param shares Amount of shares received
-    /// @param totalNav User's total NAV after deposit
-    event NavRecorded(address indexed user, uint256 assets, uint256 shares, uint256 totalNav);
-
-    /// @notice Emitted when NAV is reduced on withdrawal
-    /// @param user The user address
-    /// @param assets Amount of assets withdrawn
-    /// @param sharesBurned Amount of shares burned
-    /// @param insurancePayout Actual insurance paid to user (if any)
-    /// @param remainingNav User's remaining NAV after withdrawal
-    event NavWithdrawn(
-        address indexed user, uint256 assets, uint256 sharesBurned, uint256 insurancePayout, uint256 remainingNav
-    );
-
     /// @notice Emitted when insurance is claimed for a shortfall
     /// @param user The user address
     /// @param policyId The policy ID used
@@ -44,11 +27,8 @@ interface IEvents {
     /// @notice Emitted when a pending deductibleBps change is executed
     event DeductibleBpsExecuted(uint16 oldBps, uint16 indexed newBps);
 
-    /// @notice Emitted when a maxCoverableLossBps change is proposed (standard delay starts)
-    event MaxCoverableLossBpsProposed(uint16 indexed newBps, uint64 executeAfter);
-
-    /// @notice Emitted when a pending maxCoverableLossBps change is executed
-    event MaxCoverableLossBpsExecuted(uint16 oldBps, uint16 indexed newBps);
+    /// @notice Emitted when maxCoverableLossBps is updated (only allowed before policy binding)
+    event MaxCoverableLossBpsUpdated(uint16 oldBps, uint16 indexed newBps);
 
     // --- Liveness and safety events ---
 
@@ -87,4 +67,13 @@ interface IEvents {
 
     /// @notice Emitted when a pending premium recipient change is executed
     event PremiumRecipientExecuted(address indexed oldRecipient, address indexed newRecipient);
+
+    /// @notice Emitted when a depositCap change is proposed (standard delay starts)
+    event DepositCapProposed(uint256 newCap, uint64 executeAfter);
+
+    /// @notice Emitted when a pending depositCap change is executed
+    event DepositCapExecuted(uint256 oldCap, uint256 newCap);
+
+    /// @notice Emitted when the policy binding is reset to allow a new policy to be bound
+    event PolicyBindingReset(uint96 indexed previousPolicyId);
 }

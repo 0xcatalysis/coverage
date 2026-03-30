@@ -79,12 +79,10 @@ interface ICoveredVaultWrapper is IERC4626 {
     ///         Only callable by the owner. Rate is WAD-scaled (e.g. 1e16 / 31536000 ≈ 0.1%/year).
     function setPremiumRate(uint256 newRate) external;
 
-    /// @notice Updates the maximum coverable loss in basis points. Recalculates depositCap if policy is bound.
-    ///         Caller must be the owner. Reverts with InvalidMaxCoverableLoss if newBps == 0 or > 10_000.
+    /// @notice Updates the maximum coverable loss in basis points.
+    ///         Only callable before the policy is bound. Reverts with InvalidMaxCoverableLoss if
+    ///         newBps == 0, > 10_000, <= deductibleBps, or the policy is already bound.
     function setMaxCoverableLossBps(uint16 newBps) external;
-
-    /// @notice Applies a pending maxCoverableLossBps change after the standard timelock elapses.
-    function executeMaxCoverableLossBps() external;
 
     /// @notice Updates the deductible in basis points applied to every insurance claim.
     ///         Caller must be the owner. Reverts with InvalidParameters if newBps >= 10_000.
@@ -131,6 +129,17 @@ interface ICoveredVaultWrapper is IERC4626 {
 
     /// @notice Executes a pending premium rate change after timelock
     function executePremiumRate() external;
+
+    /// @notice Proposes a new depositCap (standard timelock). Must not exceed the formula ceiling
+    ///         (coverageLimit * BPS_DENOMINATOR / maxCoverableLossBps). Call executeDepositCap() to apply.
+    function setDepositCap(uint256 newCap) external;
+
+    /// @notice Applies a pending depositCap change after the standard timelock elapses.
+    function executeDepositCap() external;
+
+    /// @notice Resets the policy binding state so a new policy can be bound after the current one expires.
+    ///         Only callable by the owner when the current policy has expired. Allows successive coverage periods.
+    function resetPolicyBinding() external;
 
     /// @notice Rescues tokens accidentally sent to this contract
     function rescueTokens(address token, uint256 amount, address to) external;
