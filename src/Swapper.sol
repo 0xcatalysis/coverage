@@ -212,6 +212,29 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
     /**
      * @inheritdoc ISwapper
      */
+    function quoteSwap(address tokenIn, address tokenOut, uint256 amountIn) external override returns (uint256) {
+        if (amountIn == 0) return 0;
+
+        address actualTokenIn = tokenIn == NATIVE_ETH ? nativeWrapper : tokenIn;
+        address actualTokenOut = tokenOut == NATIVE_ETH ? nativeWrapper : tokenOut;
+
+        if (actualTokenIn == actualTokenOut) return amountIn;
+
+        bytes32 routeKey = _getRouteKey(actualTokenIn, actualTokenOut);
+        SwapRoute storage route = _swapRoutes[routeKey];
+
+        if (!route.enabled || route.swapTarget == address(0)) return 0;
+
+        try IQuotableAdapter(route.swapTarget).quote(amountIn, route.swapCalldata) returns (uint256 quoted) {
+            return quoted;
+        } catch {
+            return 0;
+        }
+    }
+
+    /**
+     * @inheritdoc ISwapper
+     */
     function getSwapRoute(address tokenIn, address tokenOut) external view override returns (SwapRoute memory) {
         bytes32 routeKey = _getRouteKey(tokenIn, tokenOut);
         return _swapRoutes[routeKey];

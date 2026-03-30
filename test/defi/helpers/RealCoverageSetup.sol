@@ -16,10 +16,10 @@ import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {MockClaimManager} from "../mocks/Mocks.sol";
 import {
     MockStakeManager,
+    MockChainlinkPriceFeedDefi,
     MockCoverPoolFactory,
     MockSpecRegistry,
-    MockBindPolicyHook,
-    MockChainlinkPriceFeed
+    MockBindPolicyHook
 } from "../mocks/CoverageMocks.sol";
 
 /// @title RealCoverageSetup
@@ -39,7 +39,7 @@ abstract contract RealCoverageSetup is Test {
     MockCoverPoolFactory internal mockCoverPoolFactory;
     MockSpecRegistry internal mockSpecRegistry;
     MockBindPolicyHook internal mockBindPolicyHook;
-    MockChainlinkPriceFeed internal mockChainlinkPriceFeed;
+    MockChainlinkPriceFeedDefi internal mockChainlinkPriceFeed;
 
     // ── EIP-712 quote signing ──
     uint256 internal quoteSignerKey;
@@ -73,8 +73,8 @@ abstract contract RealCoverageSetup is Test {
         address expectedPmProxy = vm.computeCreateAddress(address(this), nonce + 3);
         claimManager = new MockClaimManager(expectedPmProxy);
 
-        // ── Deploy MockChainlinkPriceFeed (returns 0 so totalStake >= 0 always passes) ──
-        mockChainlinkPriceFeed = new MockChainlinkPriceFeed();
+        // ── Deploy MockChainlinkPriceFeed (returns input amount as USD value) ──
+        mockChainlinkPriceFeed = new MockChainlinkPriceFeedDefi();
 
         // ── Deploy real PolicyManager behind UUPS proxy ──
         PolicyManager pmImpl = new PolicyManager();
