@@ -521,22 +521,6 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
     }
 
-    function test_bindPolicy_WhenDurationMismatch_Reverts() public {
-        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        _seedCommitteeForTesting(request.quote.policyId, curator, true);
-
-        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
-
-        boundPolicy.maturityTime = boundPolicy.startTime + COVERAGE_DURATION + 1 days;
-        uint32 actualDuration = boundPolicy.maturityTime - boundPolicy.startTime;
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IPolicyManager.DurationMismatch.selector, COVERAGE_DURATION, actualDuration)
-        );
-        vm.prank(address(coverPool));
-        policyManager.bindPolicy(request, boundPolicy);
-    }
-
     function test_bindPolicy_WhenCommitteeIdMismatchesPolicyId_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint96 wrongCommitteeId = request.policyId + 1;
@@ -1470,7 +1454,7 @@ contract PolicyManagerTest is Test {
         );
     }
 
-    function test_bindPolicy_StartTimeFromBoundPolicy() public {
+    function test_bindPolicy_StartTimeIsBlockTimestamp() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         _seedCommitteeForTesting(request.quote.policyId, curator, true);
 
@@ -1480,26 +1464,12 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
 
         IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
-        assertEq(metadata.startTime, boundPolicy.startTime, "Start time should match boundPolicy startTime");
-        assertEq(metadata.maturityTime, boundPolicy.maturityTime, "Maturity time should match boundPolicy maturityTime");
-    }
-
-    function test_bindPolicy_FutureStartTime_UsesProvidedStartTime() public {
-        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        uint32 futureStart = uint32(block.timestamp + 1 days);
-        request.quote.startTime = futureStart;
-        request.quote.maturityTime = futureStart + COVERAGE_DURATION;
-
-        _seedCommitteeForTesting(request.quote.policyId, curator, true);
-
-        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
-
-        vm.prank(address(coverPool));
-        policyManager.bindPolicy(request, boundPolicy);
-
-        IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
-        assertEq(metadata.startTime, boundPolicy.startTime, "Start time should match boundPolicy");
-        assertEq(metadata.maturityTime, boundPolicy.maturityTime, "Maturity time should match boundPolicy");
+        assertEq(metadata.startTime, uint32(block.timestamp), "Start time should be block.timestamp");
+        assertEq(
+            metadata.maturityTime,
+            uint32(block.timestamp) + COVERAGE_DURATION,
+            "Maturity time should be block.timestamp + duration"
+        );
     }
 
     function test_policyDraft_StatusTransitionFromCreatedToBound() public {
@@ -1963,9 +1933,7 @@ contract MockCoverPool {
             specId: keccak256("spec-id"),
             termsHash: keccak256("terms-hash"),
             coverageLimit: 1_000_000e18,
-            beneficiary: address(0x1),
-            startTime: uint32(block.timestamp),
-            maturityTime: uint32(block.timestamp + 30 days)
+            beneficiary: address(0x1)
         });
     }
 
@@ -1997,8 +1965,6 @@ contract MockCoverPool {
             _boundPolicy.policyCommit = policyCommit;
             _boundPolicy.coverageLimit = quote.coverageLimit;
             _boundPolicy.beneficiary = quote.beneficiary;
-            _boundPolicy.startTime = quote.startTime;
-            _boundPolicy.maturityTime = quote.maturityTime;
             _boundPolicy.termsHash = quote.termsHash;
         } else {
             _useOverriddenPolicy = false;

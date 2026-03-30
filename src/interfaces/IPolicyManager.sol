@@ -299,13 +299,6 @@ interface IPolicyManager is IAccessControl {
     error UnauthorizedPool();
 
     /**
-     * @notice Reverts when the bound policy duration doesn't match the requested duration.
-     * @param requested Requested duration from the policy draft.
-     * @param actual Actual duration from the bound policy (maturityTime - startTime).
-     */
-    error DurationMismatch(uint32 requested, uint32 actual);
-
-    /**
      * @notice Pauses policy binding operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */

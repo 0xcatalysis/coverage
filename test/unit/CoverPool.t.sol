@@ -619,8 +619,6 @@ contract CoverPoolTest is Test {
         assertEq(boundPolicy.termsHash, quote.termsHash, "Terms hash mismatch");
         assertEq(boundPolicy.coverageLimit, quote.coverageLimit, "Coverage limit mismatch");
         assertEq(boundPolicy.beneficiary, quote.beneficiary, "Beneficiary mismatch");
-        assertEq(boundPolicy.startTime, quote.startTime, "Start time mismatch");
-        assertEq(boundPolicy.maturityTime, quote.maturityTime, "Maturity time mismatch");
 
         assertEq(mockPolicyManager.bindPolicyCallCount(), 1, "bindPolicy not called");
         IPolicyManager.BindPolicyRequest memory request = mockPolicyManager.lastBindRequest();

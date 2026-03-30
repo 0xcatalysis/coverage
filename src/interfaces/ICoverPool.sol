@@ -59,10 +59,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         uint256 coverageLimit;
         /// @notice Destination address for potential claim payouts (the policy holder).
         address beneficiary;
-        /// @notice Policy coverage start timestamp confirmed at bind.
-        uint32 startTime;
-        /// @notice Policy coverage maturity timestamp confirmed at bind.
-        uint32 maturityTime;
     }
 
     /**

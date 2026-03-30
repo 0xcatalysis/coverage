@@ -290,9 +290,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             specId: quote.specId,
             termsHash: quote.termsHash,
             coverageLimit: quote.coverageLimit,
-            beneficiary: quote.beneficiary,
-            startTime: quote.startTime,
-            maturityTime: quote.maturityTime
+            beneficiary: quote.beneficiary
         });
 
         boundPolicies[policyId] = boundPolicy;

@@ -249,17 +249,10 @@ contract PolicyManager is
         ICoverPool.Quote calldata quote = request.quote;
         require(policyId == quote.policyId, InvalidPolicyId());
 
-        require(
-            boundPolicy.maturityTime - boundPolicy.startTime == draft.duration,
-            DurationMismatch(draft.duration, uint32(boundPolicy.maturityTime - boundPolicy.startTime))
-        );
-
         draft.status = PolicyStatus.Bound;
 
-        // Query core contracts using policyId as committeeId (1:1 mapping).
         require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));
 
-        // Bind-time sufficiency check: compare total USD-equivalent token stakes against coverage limit in USD.
         // slither-disable-next-line unused-return
         (, address[] memory tokens, uint256[] memory tokenStakes) =
             IStakeManager(stakeManager).getCommitteeTokenStakes(policyId);
@@ -284,8 +277,8 @@ contract PolicyManager is
             policyId: policyId,
             beneficiary: request.beneficiary,
             claimer: request.claimer,
-            startTime: boundPolicy.startTime,
-            maturityTime: boundPolicy.maturityTime,
+            startTime: uint32(block.timestamp),
+            maturityTime: uint32(block.timestamp) + draft.duration,
             payoutToken: request.payoutToken,
             pool: quote.pool,
             curator: draft.curator,
