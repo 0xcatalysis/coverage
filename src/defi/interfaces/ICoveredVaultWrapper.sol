@@ -132,6 +132,13 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// @notice Executes a pending premium rate change after timelock
     function executePremiumRate() external;
 
+    /// @notice Proposes a new depositCap (standard timelock). Must not exceed the formula ceiling
+    ///         (coverageLimit * BPS_DENOMINATOR / maxCoverableLossBps). Call executeDepositCap() to apply.
+    function setDepositCap(uint256 newCap) external;
+
+    /// @notice Applies a pending depositCap change after the standard timelock elapses.
+    function executeDepositCap() external;
+
     /// @notice Rescues tokens accidentally sent to this contract
     function rescueTokens(address token, uint256 amount, address to) external;
 }

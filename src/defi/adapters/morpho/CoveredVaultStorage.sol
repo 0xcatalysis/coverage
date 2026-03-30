@@ -154,6 +154,11 @@ abstract contract CoveredVaultStorage is
     /// @notice Timestamp after which pendingPremiumRecipient may be executed (0 = no pending change)
     uint64 public pendingPremiumRecipientTimestamp;
 
+    /// @notice Pending depositCap value awaiting timelock execution
+    uint256 public pendingDepositCap;
+    /// @notice Timestamp after which pendingDepositCap may be executed (0 = no pending change)
+    uint64 public pendingDepositCapTimestamp;
+
     /// @notice Timestamp when the Morpho gate was activated (0 = not gated)
     uint256 public gateActivatedAt;
     /// @notice Grace period extension on policy maturity to compensate for gate overlap

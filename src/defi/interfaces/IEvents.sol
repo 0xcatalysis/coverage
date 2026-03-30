@@ -87,4 +87,10 @@ interface IEvents {
 
     /// @notice Emitted when a pending premium recipient change is executed
     event PremiumRecipientExecuted(address indexed oldRecipient, address indexed newRecipient);
+
+    /// @notice Emitted when a depositCap change is proposed (standard delay starts)
+    event DepositCapProposed(uint256 newCap, uint64 executeAfter);
+
+    /// @notice Emitted when a pending depositCap change is executed
+    event DepositCapExecuted(uint256 oldCap, uint256 newCap);
 }

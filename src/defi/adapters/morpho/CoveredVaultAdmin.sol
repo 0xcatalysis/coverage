@@ -59,12 +59,42 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         require(newBps > deductibleBps, IA.InvalidMaxCoverableLoss());
         uint16 oldBps = maxCoverableLossBps;
         if (policyBoundExecuted) {
-            depositCap = (coverageLimit * BPS_DENOMINATOR) / uint256(newBps);
+            uint256 formulaCap = (coverageLimit * BPS_DENOMINATOR) / uint256(newBps);
+            // Preserve any manual tightening: never let a BPS change silently raise the cap above
+            // a value the owner deliberately set via setDepositCap/executeDepositCap.
+            depositCap = formulaCap < depositCap ? formulaCap : depositCap;
         }
         maxCoverableLossBps = newBps;
         pendingMaxCoverableLossBps = 0;
         pendingMaxCoverableLossTimestamp = 0;
         emit IE.MaxCoverableLossBpsExecuted(oldBps, newBps);
+    }
+
+    /// @notice Proposes a new depositCap (standard timelock). Must not exceed the formula ceiling
+    ///         derived from coverageLimit and maxCoverableLossBps. Allows the owner to tighten the
+    ///         cap independently of payout terms — e.g. to stop new deposits when the underlying
+    ///         vault is at elevated risk without changing maxCoverableLossBps for existing users.
+    function setDepositCap(uint256 newCap) external override onlyOwner {
+        require(policyBoundExecuted, IA.InvalidParameters());
+        uint256 ceiling = (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
+        require(newCap <= ceiling, IA.InvalidParameters());
+        pendingDepositCapTimestamp = _propose(pendingDepositCapTimestamp, "depositCap", STANDARD_DELAY);
+        pendingDepositCap = newCap;
+        emit IE.DepositCapProposed(newCap, pendingDepositCapTimestamp);
+    }
+
+    /// @notice Applies a pending depositCap change after the standard timelock elapses.
+    function executeDepositCap() external override onlyOwner {
+        _requireTimelockReady(pendingDepositCapTimestamp);
+        uint256 oldCap = depositCap;
+        uint256 newCap = pendingDepositCap;
+        // Re-validate ceiling at execution time in case maxCoverableLossBps changed since proposal.
+        uint256 ceiling = (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
+        require(newCap <= ceiling, IA.InvalidParameters());
+        depositCap = newCap;
+        pendingDepositCap = 0;
+        pendingDepositCapTimestamp = 0;
+        emit IE.DepositCapExecuted(oldCap, newCap);
     }
 
     /// @dev Call executeDeductibleBps() after the delay to apply the pending value.
@@ -120,6 +150,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         pendingUpgradeTimestamp = 0;
         pendingImplementation = address(0);
         pendingPremiumRecipientTimestamp = 0;
+        pendingDepositCapTimestamp = 0;
     }
 
     /// @notice Prevents ownership renunciation which would permanently brick all onlyOwner functions
