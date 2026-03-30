@@ -31,7 +31,7 @@ Thin integration contracts connecting Coverage contracts to external protocols:
 
 | Adapter | Purpose |
 |---------|---------|
-| `UniswapV3Adapter.sol` | Bridges the Swapper's static-calldata pattern to Uniswap V3 SwapRouter02 and implements `IQuotableAdapter` for DEX-based quoting via QuoterV2. Deployed as `swapTarget` for Swapper routes; handles both swap execution (`swap`) and pre-swap quotes (`quote`) used by `ClaimManager._computeVaultSlashes`. |
+| `UniswapV3Adapter.sol` | Bridges the Swapper's static-calldata pattern to Uniswap V3 SwapRouter02; deployed as `swapTarget` for Swapper routes when collateral must be swapped to payout token. |
 
 ### Mock Contracts (`src/mocks/`)
 

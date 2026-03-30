@@ -52,6 +52,7 @@ interface IPolicyManagerView {
 
 interface IClaimManagerView {
     function slashingManager() external view returns (address);
+    function chainlinkPriceFeed() external view returns (address);
 }
 
 interface IPremiumManagerView {
@@ -172,11 +173,6 @@ contract VerifySepoliaConfig is Script {
         console2.log("--- Flows 2-3: RequestCoverage ---");
 
         _check("PolicyManager.stakeManager", IPolicyManagerView(POLICY_MANAGER).stakeManager(), STAKE_MANAGER);
-        _check(
-            "PolicyManager.chainlinkPriceFeed",
-            IPolicyManagerView(POLICY_MANAGER).chainlinkPriceFeed(),
-            CHAINLINK_PRICE_FEED
-        );
         _checkRole(
             "StakeManager: POLICY_MANAGER_ROLE -> PolicyManager", STAKE_MANAGER, POLICY_MANAGER_ROLE, POLICY_MANAGER
         );
@@ -220,13 +216,19 @@ contract VerifySepoliaConfig is Script {
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Flow 5 – BindPolicy
-    //  Requires: vault module registered in SSPRouter (for setCommitteeVaults)
+    //  Requires: vault module registered in SSPRouter (for addCommitteeVaults)
     // ─────────────────────────────────────────────────────────────────────────
 
     function _checkFlow5_bindPolicy() internal {
         console2.log("--- Flow 5: BindPolicy ---");
 
-        // setCommitteeVaults checks getVaultModule != NONE for each vault
+        _check(
+            "PolicyManager.chainlinkPriceFeed",
+            IPolicyManagerView(POLICY_MANAGER).chainlinkPriceFeed(),
+            CHAINLINK_PRICE_FEED
+        );
+
+        // addCommitteeVaults checks getVaultModule != NONE for each vault
         uint8 module = ISSPRouterView(SSP_ROUTER).getVaultModule(WETH_EL_STRATEGY);
         if (module == MODULE_EIGENLAYER) {
             console2.log("[OK] SSPRouter.getVaultModule(WETH_EL_STRATEGY): EIGENLAYER (2)");
@@ -286,6 +288,11 @@ contract VerifySepoliaConfig is Script {
         console2.log("--- Flow 8: FileClaim ---");
 
         _check("ClaimManager.slashingManager", IClaimManagerView(CLAIM_MANAGER).slashingManager(), SLASHING_MANAGER);
+        _check(
+            "ClaimManager.chainlinkPriceFeed",
+            IClaimManagerView(CLAIM_MANAGER).chainlinkPriceFeed(),
+            CHAINLINK_PRICE_FEED
+        );
         _checkRole(
             "SlashingManager: CLAIM_MANAGER_ROLE -> ClaimManager", SLASHING_MANAGER, CLAIM_MANAGER_ROLE, CLAIM_MANAGER
         );

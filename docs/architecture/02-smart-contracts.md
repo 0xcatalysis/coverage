@@ -168,9 +168,8 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 **Slashing and payout mechanics:**
 
-- Calls Core `SlashingManager.previewSlashing(committeeId, operator)` to retrieve per-vault token-native stake data.
-- Computes `VaultSlash[]` with proportional, token-native slash amounts; non-payout-token vaults receive an upward slippage inflation derived from `Swapper.quoteSwap(...)`, capped at `maxSwapSlippageBps`.
-- Calls Core `SlashingManager.executeSlashing(committeeId, operator, vaultSlashes[], taskId)`.
+- Converts requested payout token amount to USD via Core `ChainlinkPriceFeed`.
+- Calls Core `SlashingManager.executeSlashing(committeeId, operator, slashAmountUSD)`.
 - Processes returned collateral token arrays:
   - direct transfer if already payout token,
   - otherwise swap through `Swapper`.
@@ -296,8 +295,8 @@ Coverage contracts rely on Core interfaces:
 
 - `IStakeManager` for committee create/operator/vault and stake reads,
 - `IRewardsManager` for reward fan-out trigger,
-- `ISlashingManager` for committee slashing preview and execution,
-- `IChainlinkPriceFeed` (via `PolicyManager`) for USD-based stake sufficiency check at bind time.
+- `ISlashingManager` for committee slashing execution,
+- `IChainlinkPriceFeed` for payout-to-USD conversion.
 
 ## Next Steps
 

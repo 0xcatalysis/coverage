@@ -24,8 +24,8 @@ import {ISwapper} from "./interfaces/ISwapper.sol";
  * @dev Integrates with:
  *      - PolicyManager: Fetches policy metadata and coverage parameters
  *      - SpecRegistry: Resolves product-specific evaluation logic
- *      - SlashingManager (Core): Previews and executes token-native stake slashing for approved claims
- *      - Swapper: Converts slashed collateral to payout tokens; also provides DEX quotes for slippage
+ *      - SlashingManager (Core): Executes stake slashing for approved claims
+ *      - Swapper: Converts slashed collateral to payout tokens
  *
  *      Claim Flow:
  *      fileClaim: Authorized claimer atomically files and resolves claim → evaluates Spec → if approved:

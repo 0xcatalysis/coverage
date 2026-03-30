@@ -7,8 +7,8 @@ slashable by the policy's committee. This process involves depositing directly i
 duration vault (and optionally a Symbiotic vault).
 
 The restaker deposit is performed directly against EigenLayer contracts (no Coverage script needed).
-Stake sufficiency is enforced at bind time in `PolicyManager.bindPolicy(...)` by reading committee
-token-native stakes from Core and converting them to USD via `ChainlinkPriceFeed`.
+Stake sufficiency is enforced at bind time by `SSPRouter._checkDelegation` inside `addCommitteeVaults`
+and does not require a separate verification step.
 
 ## Duration Vault Model (EigenLayer)
 
@@ -56,23 +56,30 @@ It acts as both an EigenLayer strategy (accepts deposits) and an EigenLayer oper
 slashable). Its address is stored in `StakeManager.getCommitteeVaults(policyId)` after committee
 creation.
 
-The deposited amount must be sufficient to pass bind-time stake sufficiency in
-`PolicyManager.bindPolicy(...)`, which compares:
+The deposited amount must satisfy the coverage USD requirement. The USD value is computed by
+`EigenAdapter.getStrategiesStakeUSD(vaults)` at bind time:
 
 ```
-sum(getUSDValue(token_i, stake_i)) >= getUSDValue(payoutToken, coverageLimit)
+stake_USD = totalShares * sharesToUnderlyingView() * ChainlinkPriceFeed.getUSDValue(token, 1e18) / 1e18
 ```
 
-where `(token_i, stake_i)` comes from `StakeManager.getCommitteeTokenStakes(policyId)`.
+Example: to cover `coverageAmount = 100_000_000_000` (1000 USD at 8 decimals), at least
+`$1000 / ETH_USD_PRICE` ETH worth of WETH must be deposited.
 
 ### Steps 2 & 3: Add Vaults and Bind Policy
 
 These steps are performed by the curator via `CoverPool.bindPolicyForRequest(...)`, which:
 
-1. calls `StakeManager.setCommitteeVaults(policyId, [durationVaultStrategy], quote.coverageLimit)`
-   — registers vaults for the committee and configures adapter-specific limits in Core,
-2. calls `PolicyManager.bindPolicy(...)` — verifies committee vaults exist and checks
-   USD-equivalent stake sufficiency before activating the policy.
+1. calls `StakeManager.addCommitteeVaults(policyId, [durationVaultStrategy])` — registers the
+   vault as a committee vault, calls `EigenAdapter.addStrategiesToOperatorSet` to configure it,
+   and runs `SSPRouter._checkDelegation` which reverts with `InsufficientDelegationAmount` if
+   `EigenAdapter.getStrategiesStakeUSD(vaults)` < `committeeMaxStake`,
+2. calls `PolicyManager.bindPolicy(...)` — verifies committee has at least one vault and activates
+   the policy.
+
+The `_checkDelegation` call inside `SSPRouter.addCommitteeVaults` computes
+`EigenAdapter.getStrategiesStakeUSD(vaults)` and reverts with
+`InsufficientDelegationAmount` if the stake is insufficient.
 
 ## Why a Separate Setup Phase Exists
 
@@ -80,8 +87,8 @@ Policy binding (`BindPolicy.s.sol`) and restaker deposit are deliberately separa
 
 - **Different actors and keys**: deposit uses the restaker key; binding uses the curator key and
   quote signer key.
-- **Asynchronous stake propagation**: after deposit, stake and oracle reads used by bind-time
-  validation may require one or more blocks to reflect updated on-chain state.
+- **Asynchronous stake propagation**: after deposit, the USD value reported by `EigenAdapter` may
+  take one or more blocks to reflect on-chain price feed data.
 - **One-time vs per-policy**: stake deposit is per-restaker/committee setup; binding is per-policy.
 - **Protocol boundary**: the deposit phase crosses EigenLayer/Symbiotic APIs directly; the bind
   phase only touches Coverage and Core contracts.
@@ -122,18 +129,19 @@ cast call $SSPROUTER "getVaultModule(address)(uint8)" $VAULT_ADDRESS --rpc-url $
 
 ## Stake Sufficiency Check at Bind Time
 
-The bind-time check in `PolicyManager.bindPolicy(...)` verifies:
+The delegation check inside `SSPRouter.addCommitteeVaults` verifies:
 
 ```
-// from StakeManager.getCommitteeTokenStakes(policyId)
-totalStakeUSD = sum(ChainlinkPriceFeed.getUSDValue(tokens[i], tokenStakes[i]))
-
-coverageLimitUSD = ChainlinkPriceFeed.getUSDValue(payoutToken, coverageLimit)
-
-totalStakeUSD >= coverageLimitUSD
+EigenAdapter.getStrategiesStakeUSD(eigenVaults)
+  + SymbioticAdapter.getOperatorStakeUSD(operator, symbioticVaults, committeeId)
+  >= SSPRouter.committeeMaxStake[committeeId]
 ```
 
-If the condition fails, bind reverts with `InsufficientStake(...)`.
+Where `committeeMaxStake[committeeId]` was set during `SSPRouter.createCommittee` (called from
+`StakeManager.createCommittee`, which was called from `PolicyManager.requestCoverage`).
+
+`committeeMaxStake` equals the `coverageAmount` from the policy request, denominated in USD
+(8 decimal places). For example, a `coverageAmount` of `100_000_000_000` means $1,000 USD.
 
 ## Restaker Deposit Reference
 
@@ -175,11 +183,11 @@ Duration vault addresses are looked up at runtime via `StakeManager.getCommittee
 
 | Symptom | Root Cause | Fix |
 |---------|-----------|-----|
-| `InsufficientStake` at bind | Committee stake in USD is below quote coverage limit in USD | Deposit more collateral or use a lower `coverageLimit` quote |
-| `VaultModuleNotSet` at `setCommitteeVaults` | Duration vault not registered in `SSPRouter` | Core admin: `SSPRouter.registerVaultModule(vault, 2)` |
-| `PriceFeedNotFound` at `bindPolicy` | Missing token feed in `ChainlinkPriceFeed` for stake or payout token | Core admin: register feeds for payout/collateral tokens |
+| `InsufficientDelegationAmount` at bind | `getStrategiesStakeUSD` < `committeeMaxStake` | Deposit more collateral or reduce `COVERAGE_AMOUNT` |
+| `VaultModuleNotSet` at `addCommitteeVaults` | Duration vault not registered in `SSPRouter` | Core admin: `SSPRouter.registerVaultModule(vault, 2)` |
+| `PriceFeedNotFound` at `fileClaim` | WETH not registered in `ChainlinkPriceFeed` | Core admin: `registerPriceFeed(WETH, ETH/USD_aggregator)` |
 | `InvalidCommitteeId` | `policyId = 0` (not set from output of RequestCoverage) | Set `POLICY_ID` env var from `RequestCoverage.s.sol` output |
-| Stake reads 0 before bind | Vaults not yet added to committee (expected) | Stake = 0 until `bindPolicyForRequest` runs `setCommitteeVaults` |
+| Stake reads 0 before bind | Vaults not yet added to committee (expected) | Stake = 0 until `bindPolicyForRequest` runs `addCommitteeVaults` |
 | `SSPRouter safeTransferFrom` reverts on distribution | PremiumManager has not approved SSPRouter | Admin: `PremiumManager.approveSpender(token, sspRouter, type(uint256).max)` |
 
 ## Related Pages

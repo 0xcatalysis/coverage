@@ -11,6 +11,7 @@ import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 import {IStakeManager} from "./interfaces/IStakeManager.sol";
 import {IBindPolicyHook} from "./interfaces/IBindPolicyHook.sol";
+import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
 
 /**
  * @title PolicyManager
@@ -37,6 +38,7 @@ contract PolicyManager is
     mapping(uint96 policyId => IPolicyManager.PolicyMetadata) private _policies;
     mapping(bytes32 policyCommit => bool registered) private _registeredPolicyCommits;
     mapping(address token => bool supported) public override supportedPayoutTokens;
+    address public override chainlinkPriceFeed;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {

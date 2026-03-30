@@ -27,7 +27,6 @@ interface IStakeManager {
     error OperatorNotInCommittee();
 
     /// @notice Creates a committee by setting up operator sets and network limits across protocols.
-    /// @dev No maximum stake cap — capacity is determined by the curator-assigned vaults at bind time.
     /// @param committeeId The committee ID (1:1 with policyId).
     /// @param coverPool The address of the cover pool authorized for this committee.
     /// @param duration The duration in seconds for the vault lock period.
