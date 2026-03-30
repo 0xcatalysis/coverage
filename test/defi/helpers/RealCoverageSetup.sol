@@ -67,7 +67,7 @@ abstract contract RealCoverageSetup is Test {
         quoteSigner = vm.addr(quoteSignerKey);
 
         // ── Deploy MockClaimManager with pre-computed PolicyManager proxy address ──
-        // Nonce layout: +0 = MockClaimManager, +1 = MockChainlinkPriceFeed, +2 = PolicyManager impl,
+        // Nonce layout: +0 = MockClaimManager, +1 = MockChainlinkPriceFeedDefi, +2 = PolicyManager impl,
         //               +3 = ERC1967Proxy (= PM proxy)
         uint256 nonce = vm.getNonce(address(this));
         address expectedPmProxy = vm.computeCreateAddress(address(this), nonce + 3);

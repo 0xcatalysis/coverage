@@ -6,7 +6,6 @@ import {IChainlinkPriceFeed} from "coverage/interfaces/IChainlinkPriceFeed.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
 import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import {IChainlinkPriceFeed} from "coverage/interfaces/IChainlinkPriceFeed.sol";
 
 contract MockStakeManager {
     mapping(uint96 => address[]) private _committeeVaults;
@@ -78,17 +77,6 @@ contract MockSpecRegistry {
 
     function resolveSpec(address coverPool, bytes32 specId) external view returns (ISpec) {
         return ISpec(_specs[specId][coverPool]);
-    }
-}
-
-/// @notice Returns 0 for getUSDValue so coverageLimitUSD=0 <= totalStakeUSD=0 always passes.
-contract MockChainlinkPriceFeed is IChainlinkPriceFeed {
-    function getUSDValue(address, uint256) external pure override returns (uint256) {
-        return 0;
-    }
-
-    function getTokenAmount(address, uint256) external pure override returns (uint256) {
-        return 0;
     }
 }
 
