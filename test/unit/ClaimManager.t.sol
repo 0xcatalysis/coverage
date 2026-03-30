@@ -1916,6 +1916,153 @@ contract ClaimManagerTest is Test {
         assertGt(actualPayout, 0);
     }
 
+    // ── Unquotable-vault fix tests
+    // ──────────────────────────────────────────
+
+    /**
+     * @dev Regression test for the unquotable-vault bug fixed in _computeVaultSlashes.
+     *
+     * Without the fix: a vault whose quoteSwap reverts has payoutEquivalents[i]=0 but still
+     * receives a non-zero baseSlash = tokenStakes[i]*requestedAmount/totalPayoutEquivalent.
+     * _processCollateral then calls executeSwap with that amount, which reverts because there
+     * is no valid route → the entire fileClaim transaction reverts, permanently blocking claims.
+     *
+     * With the fix: payoutEquivalents[i]==0 triggers amount=0 in VaultSlash, so the vault is
+     * skipped and the quotable vault alone funds the full requested payout.
+     */
+    function test_fileClaim_WhenOneVaultUnquotable_SkipsUnquotableAndPaysFromQuotableVault() public {
+        uint256 requestedAmount = 400 ether;
+        uint256 quotableStake = 500 ether;
+        uint256 unquotableStake = 500 ether;
+
+        MockToken unquotableTokenMock = new MockToken("Unquotable", "UNQ");
+        address unquotableToken = address(unquotableTokenMock);
+
+        // Swapper: quoteSwap and executeSwap both revert for unquotableToken.
+        MockSwapperWithUnquotable unquotableSwapper = new MockSwapperWithUnquotable();
+        unquotableSwapper.setQuoteReverts(unquotableToken);
+        unquotableSwapper.setPayoutToken(payoutToken);
+        unquotableSwapper.setSwapOutput(requestedAmount);
+        vm.prank(admin);
+        claimManager.setSwapper(address(unquotableSwapper));
+
+        // SlashingManager: preview exposes two vaults; executeSlashing respects VaultSlash.amount.
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("vault1");
+        pvaults[1] = makeAddr("vault2");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = unquotableToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = quotableStake;
+        pstakes[1] = unquotableStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        // Pre-mint enough collateral so the mock can transfer the computed slash amount.
+        collateralTokenMock.mint(address(slashMock), quotableStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
+            requestedAmount,
+            "Beneficiary should receive full requested payout from quotable vault"
+        );
+        // The unquotable vault was never slashed: its tokens remain in the mock.
+        assertEq(
+            unquotableTokenMock.balanceOf(address(slashMock)),
+            0,
+            "Unquotable token should not have been minted to slash mock"
+        );
+    }
+
+    /**
+     * @dev A vault whose quoteSwap returns 0 (rather than reverting) must also be skipped.
+     *      Both zero-return and revert leave payoutEquivalents[i]==0, so the guard is identical.
+     */
+    function test_fileClaim_WhenVaultQuoteReturnsZero_SkipsVaultAndSucceeds() public {
+        uint256 requestedAmount = 300 ether;
+        uint256 quotableStake = 400 ether;
+        uint256 zeroQuoteStake = 400 ether;
+
+        MockToken zeroQuoteTokenMock = new MockToken("ZeroQuote", "ZQT");
+        address zeroQuoteToken = address(zeroQuoteTokenMock);
+
+        MockSwapperWithUnquotable partialSwapper = new MockSwapperWithUnquotable();
+        partialSwapper.setQuoteReturnsZero(zeroQuoteToken);
+        partialSwapper.setPayoutToken(payoutToken);
+        partialSwapper.setSwapOutput(requestedAmount);
+        vm.prank(admin);
+        claimManager.setSwapper(address(partialSwapper));
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("vaultA");
+        pvaults[1] = makeAddr("vaultB");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = zeroQuoteToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = quotableStake;
+        pstakes[1] = zeroQuoteStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(slashMock), quotableStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertGt(payoutTokenMock.balanceOf(beneficiary) - balanceBefore, 0, "Beneficiary should receive payout");
+    }
+
+    /**
+     * @dev When ALL committee vaults are unquotable, totalPayoutEquivalent==0 causes
+     *      _computeVaultSlashes to return an empty array.  _slash then short-circuits and
+     *      returns empty arrays, triggering NoCollateralSlashed as if nothing was slashed.
+     */
+    function test_fileClaim_WhenAllVaultsUnquotable_Reverts() public {
+        MockToken unquotableTokenMock = new MockToken("Unquotable2", "UNQ2");
+        address unquotableToken = address(unquotableTokenMock);
+
+        MockSwapperWithUnquotable revertSwapper = new MockSwapperWithUnquotable();
+        revertSwapper.setQuoteReverts(unquotableToken);
+        vm.prank(admin);
+        claimManager.setSwapper(address(revertSwapper));
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](1);
+        pvaults[0] = makeAddr("vaultOnly");
+        address[] memory ptokens = new address[](1);
+        ptokens[0] = unquotableToken;
+        uint256[] memory pstakes = new uint256[](1);
+        pstakes[0] = 500 ether;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.NoCollateralSlashed.selector, POLICY_ID));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
     /*//////////////////////////////////////////////////////////////
                              CLAIM RECORD
     //////////////////////////////////////////////////////////////*/
@@ -2495,6 +2642,103 @@ contract MockCoverPool {
 
     function owner() external view returns (address) {
         return _OWNER;
+    }
+}
+
+/**
+ * @dev Swapper mock that makes quoteSwap revert or return 0 for configured tokens, simulating
+ *      collateral tokens with no quote route.  executeSwap also reverts for those tokens so that
+ *      any attempt to actually swap them (which should never happen after the fix) is caught.
+ */
+contract MockSwapperWithUnquotable {
+    mapping(address => bool) private _revertOnQuote;
+    mapping(address => bool) private _zeroOnQuote;
+    address private _payoutToken;
+    uint256 private _swapOutput;
+
+    function setQuoteReverts(address token) external {
+        _revertOnQuote[token] = true;
+    }
+
+    function setQuoteReturnsZero(address token) external {
+        _zeroOnQuote[token] = true;
+    }
+
+    function setPayoutToken(address token) external {
+        _payoutToken = token;
+    }
+
+    function setSwapOutput(uint256 output) external {
+        _swapOutput = output;
+    }
+
+    function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
+        require(!_revertOnQuote[tokenIn], "MockSwapperWithUnquotable: quoteSwap reverts for this token");
+        if (_zeroOnQuote[tokenIn]) return 0;
+        return amountIn;
+    }
+
+    function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
+        require(
+            !_revertOnQuote[params.tokenIn] && !_zeroOnQuote[params.tokenIn],
+            "MockSwapperWithUnquotable: executeSwap reverts for unquotable token"
+        );
+        require(
+            MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn), "TransferFrom failed"
+        );
+        if (_payoutToken != address(0)) {
+            MockToken(_payoutToken).mint(params.recipient, _swapOutput);
+        }
+        return _swapOutput;
+    }
+}
+
+/**
+ * @dev SlashingManager mock where executeSlashing honours the VaultSlash.amount values passed
+ *      to it (rather than returning a pre-set constant).  This lets tests verify that unquotable
+ *      vaults receive amount=0 and are therefore not transferred.
+ */
+contract MockSlashingManagerRespectingSlash {
+    address[] private _previewVaults;
+    address[] private _previewTokens;
+    uint256[] private _previewStakes;
+
+    function setupPreview(address[] memory vaults, address[] memory tokens, uint256[] memory stakes) external {
+        _previewVaults = vaults;
+        _previewTokens = tokens;
+        _previewStakes = stakes;
+    }
+
+    function previewSlashing(
+        uint96,
+        address
+    )
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        return (_previewVaults, _previewTokens, _previewStakes);
+    }
+
+    function executeSlashing(
+        uint96,
+        address,
+        ISlashingManager.VaultSlash[] memory vaultSlashes,
+        bytes32
+    )
+        external
+        returns (address[] memory collateralTokens, uint256[] memory collateralAmounts)
+    {
+        uint256 len = vaultSlashes.length;
+        collateralTokens = new address[](len);
+        collateralAmounts = new uint256[](len);
+        for (uint256 i = 0; i < len; ++i) {
+            collateralTokens[i] = vaultSlashes[i].token;
+            collateralAmounts[i] = vaultSlashes[i].amount;
+            if (vaultSlashes[i].amount > 0) {
+                ERC20(vaultSlashes[i].token).transfer(msg.sender, vaultSlashes[i].amount);
+            }
+        }
     }
 }
 

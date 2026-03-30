@@ -426,7 +426,6 @@ contract ClaimManager is
             return (new address[](0), new uint256[](0));
         }
 
-        // taskId is deterministic per (policyId, claimId) to prevent replay attacks.
         // slither-disable-next-line calls-loop
         (collateralTokens, collateralAmounts) = ISlashingManager(slashingManager)
             .executeSlashing(
@@ -462,7 +461,6 @@ contract ClaimManager is
         uint256 totalPayoutEquivalent = 0;
         uint256[] memory payoutEquivalents = new uint256[](len);
 
-        // Pass 1: compute each vault's payout-equivalent value
         for (uint256 i = 0; i < len; ++i) {
             if (tokenStakes[i] == 0) continue;
             if (tokens[i] == payoutToken) {
@@ -478,16 +476,21 @@ contract ClaimManager is
             totalPayoutEquivalent += payoutEquivalents[i];
         }
 
-        if (len == 0 || totalPayoutEquivalent == 0) return new ISlashingManager.VaultSlash[](0);
+        if (len == 0 || totalPayoutEquivalent == 0) {
+            return new ISlashingManager.VaultSlash[](0);
+        }
 
         // Pass 2: compute proportional slash with per-vault slippage inflation
         vaultSlashes = new ISlashingManager.VaultSlash[](len);
         for (uint256 i = 0; i < len; ++i) {
+            if (payoutEquivalents[i] == 0) {
+                vaultSlashes[i] = ISlashingManager.VaultSlash({vault: vaults[i], token: tokens[i], amount: 0});
+                continue;
+            }
             // slither-disable-next-line divide-before-multiply
             uint256 baseSlash = (tokenStakes[i] * requestedAmount) / totalPayoutEquivalent;
 
             if (baseSlash > 0 && tokens[i] != payoutToken) {
-                // Per-vault slippage inflation: how much extra token to slash to cover DEX slippage
                 // slither-disable-next-line calls-loop,divide-before-multiply
                 try ISwapper(swapper).quoteSwap(tokens[i], payoutToken, baseSlash) returns (uint256 quotedOut) {
                     uint256 expectedOut = (requestedAmount * payoutEquivalents[i]) / totalPayoutEquivalent;
@@ -498,7 +501,6 @@ contract ClaimManager is
                     }
                 } catch {}
 
-                // Never slash more than the vault holds
                 if (baseSlash > tokenStakes[i]) {
                     baseSlash = tokenStakes[i];
                 }
@@ -540,7 +542,6 @@ contract ClaimManager is
         } else {
             _approveIfERC20(collateralToken, swapper, collateralAmount);
 
-            // Use quoteSwap for amountOutMin (per-vault slippage, no oracle needed)
             uint256 amountOutMin = 1;
             try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 quoted) {
                 if (quoted > 0) {
