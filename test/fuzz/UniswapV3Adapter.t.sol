@@ -60,8 +60,8 @@ contract FuzzSwapRouter {
 
         require(_outputAmount >= params.amountOutMinimum, "FuzzSwapRouter: insufficient output");
 
-        IERC20(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn);
-        FuzzERC20(params.tokenOut).transfer(params.recipient, _outputAmount);
+        require(IERC20(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn));
+        require(FuzzERC20(params.tokenOut).transfer(params.recipient, _outputAmount));
 
         return _outputAmount;
     }
