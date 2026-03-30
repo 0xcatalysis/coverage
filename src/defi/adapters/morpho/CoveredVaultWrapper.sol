@@ -487,12 +487,11 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         return 6;
     }
 
-    /// @notice Deposits are blocked until the policy is bound (depositCap is set by onPolicyBound),
-    ///         after the policy expires, and when the vault is in an active loss state.
+    /// @notice Deposits are blocked until the policy is bound (depositCap is set by onPolicyBound)
+    ///         and after the policy expires (new depositors after maturity have no coverage).
     function maxDeposit(address) public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
         if (!policyBoundExecuted) return 0;
         if (!_isPolicyActive()) return 0;
-        if (_morphoValue() < totalPrincipal) return 0;
         return depositCap > totalPrincipal ? depositCap - totalPrincipal : 0;
     }
 
