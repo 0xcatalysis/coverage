@@ -5,6 +5,7 @@ import {CoveredVaultAccrual} from "./CoveredVaultAccrual.sol";
 import {IVaultV2} from "../../interfaces/Morpho/IVaultV2.sol";
 import {IAlerts as IA} from "../../interfaces/IAlerts.sol";
 import {IEvents as IE} from "../../interfaces/IEvents.sol";
+import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -43,28 +44,42 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         emit IE.PremiumRateExecuted(oldRate, newRate);
     }
 
-    /// @dev Call executeMaxCoverableLossBps() after the delay to apply the pending value.
+    /// @notice Updates the maximum coverable loss in basis points.
+    ///         Only callable before the policy is bound — coverage terms are locked at binding.
     function setMaxCoverableLossBps(uint16 newBps) external override onlyOwner {
+        require(!policyBoundExecuted, IA.InvalidMaxCoverableLoss());
         require(newBps > 0 && newBps <= BPS_DENOMINATOR, IA.InvalidMaxCoverableLoss());
-        pendingMaxCoverableLossTimestamp =
-            _propose(pendingMaxCoverableLossTimestamp, "maxCoverableLossBps", STANDARD_DELAY);
-        pendingMaxCoverableLossBps = newBps;
-        emit IE.MaxCoverableLossBpsProposed(newBps, pendingMaxCoverableLossTimestamp);
-    }
-
-    /// @notice Applies a pending maxCoverableLossBps change after the standard timelock elapses.
-    function executeMaxCoverableLossBps() external override onlyOwner {
-        _requireTimelockReady(pendingMaxCoverableLossTimestamp);
-        uint16 newBps = pendingMaxCoverableLossBps;
         require(newBps > deductibleBps, IA.InvalidMaxCoverableLoss());
         uint16 oldBps = maxCoverableLossBps;
-        if (policyBoundExecuted) {
-            depositCap = (coverageLimit * BPS_DENOMINATOR) / uint256(newBps);
-        }
         maxCoverableLossBps = newBps;
-        pendingMaxCoverableLossBps = 0;
-        pendingMaxCoverableLossTimestamp = 0;
-        emit IE.MaxCoverableLossBpsExecuted(oldBps, newBps);
+        emit IE.MaxCoverableLossBpsUpdated(oldBps, newBps);
+    }
+
+    /// @notice Proposes a new depositCap (standard timelock). Must not exceed the formula ceiling
+    ///         derived from coverageLimit and maxCoverableLossBps. Allows the owner to tighten the
+    ///         cap independently of payout terms — e.g. to stop new deposits when the underlying
+    ///         vault is at elevated risk without changing maxCoverableLossBps for existing users.
+    function setDepositCap(uint256 newCap) external override onlyOwner {
+        require(policyBoundExecuted, IA.InvalidParameters());
+        uint256 ceiling = (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
+        require(newCap <= ceiling, IA.InvalidParameters());
+        pendingDepositCapTimestamp = _propose(pendingDepositCapTimestamp, "depositCap", STANDARD_DELAY);
+        pendingDepositCap = newCap;
+        emit IE.DepositCapProposed(newCap, pendingDepositCapTimestamp);
+    }
+
+    /// @notice Applies a pending depositCap change after the standard timelock elapses.
+    function executeDepositCap() external override onlyOwner {
+        _requireTimelockReady(pendingDepositCapTimestamp);
+        uint256 oldCap = depositCap;
+        uint256 newCap = pendingDepositCap;
+        // Re-validate ceiling at execution time in case maxCoverableLossBps changed since proposal.
+        uint256 ceiling = (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
+        require(newCap <= ceiling, IA.InvalidParameters());
+        depositCap = newCap;
+        pendingDepositCap = 0;
+        pendingDepositCapTimestamp = 0;
+        emit IE.DepositCapExecuted(oldCap, newCap);
     }
 
     /// @dev Call executeDeductibleBps() after the delay to apply the pending value.
@@ -112,14 +127,20 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Clear all pending timelocked proposals on ownership transfer.
+    ///         Both the pending values AND their timestamps are zeroed so the incoming owner
+    ///         cannot inadvertently execute proposals queued by the outgoing owner.
     function acceptOwnership() public override {
         super.acceptOwnership();
+        pendingPremiumRate = 0;
         pendingPremiumRateTimestamp = 0;
+        pendingDeductibleBps = 0;
         pendingDeductibleTimestamp = 0;
-        pendingMaxCoverableLossTimestamp = 0;
-        pendingUpgradeTimestamp = 0;
         pendingImplementation = address(0);
+        pendingUpgradeTimestamp = 0;
+        pendingPremiumRecipient = address(0);
         pendingPremiumRecipientTimestamp = 0;
+        pendingDepositCap = 0;
+        pendingDepositCapTimestamp = 0;
     }
 
     /// @notice Prevents ownership renunciation which would permanently brick all onlyOwner functions
@@ -158,27 +179,46 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     }
 
     /*//////////////////////////////////////////////////////////////
+                    POLICY LIFECYCLE
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Resets the policy binding flag so a new policy can be bound after the current one expires.
+    /// @dev Only callable after the current policy's raw maturity has passed (no grace period extension).
+    ///      Clears policyId, policyBoundExecuted, depositCap, and policyStartTime so that onPolicyBound
+    ///      can be called again by PolicyManager for a successive coverage period.
+    ///      Existing depositors retain their shares and principal during the transition; the new policy
+    ///      binding will set a fresh accrual start anchor.
+    function resetPolicyBinding() external override onlyOwner {
+        if (policyId != 0) {
+            IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
+            require(block.timestamp >= uint256(meta.maturityTime), IA.InvalidParameters());
+        }
+        uint96 prevPolicyId = policyId;
+        // Accrue any remaining premium before clearing state.
+        _accruePremium();
+        policyId = 0;
+        policyBoundExecuted = false;
+        depositCap = 0;
+        policyStartTime = 0;
+        pendingDepositCap = 0;
+        pendingDepositCapTimestamp = 0;
+        emit IE.PolicyBindingReset(prevPolicyId);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                     MORPHO GATE
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Toggles Morpho gate status to pause/resume premium accrual.
-    /// @dev On activation: records timestamp and caches Morpho value as fallback.
-    ///      On deactivation: extends policy grace period by the gate duration.
+    /// @dev On activation: caches Morpho value as a convertToAssets() fallback.
     function setMorphoGateActive(bool active) external override onlyOwner {
         _accruePremium();
         if (active && !morphoGateActive) {
-            // Gate activated — record timestamp and try to cache current Morpho value
-            gateActivatedAt = block.timestamp;
             try IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this))) returns (
                 uint256 val
             ) {
                 lastKnownMorphoValue = val;
             } catch {}
-        } else if (!active && morphoGateActive && gateActivatedAt > 0) {
-            // Gate lifted — extend grace period by the gate duration
-            uint256 gateDuration = block.timestamp - gateActivatedAt;
-            gateGracePeriod += gateDuration;
-            gateActivatedAt = 0;
         }
         morphoGateActive = active;
         emit IE.MorphoGateStatusUpdated(active);
@@ -202,10 +242,14 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
             uint256 sweepable = balance >= reserved ? balance - reserved : 0;
             require(amount <= sweepable, IA.InvalidParameters());
         } else if (token == morphoVault) {
-            // For Morpho shares: only allow sweeping surplus above tracked user shares
+            // For Morpho shares: only allow sweeping surplus above the shares corresponding to user principal.
+            // convertToShares(totalPrincipal) is a conservative lower bound — actual user entitlements
+            // include accrued yield, but we protect principal. In a loss scenario (shares worth less per asset)
+            // convertToShares(totalPrincipal) > balance, so sweepable floors to 0. _safeSub guards underflow.
             uint256 balance = IVaultV2(morphoVault).balanceOf(address(this));
-            uint256 trackedShares = totalPrincipal > 0 ? balance : 0; // conservative: if users exist, don't sweep
-            require(amount <= balance - trackedShares, IA.InvalidParameters());
+            uint256 minTracked = IVaultV2(morphoVault).convertToShares(totalPrincipal);
+            uint256 sweepable = balance > minTracked ? balance - minTracked : 0;
+            require(amount <= sweepable, IA.InvalidParameters());
         }
         IERC20(token).safeTransfer(to, amount);
         emit IE.TokensRescued(token, to, amount);
