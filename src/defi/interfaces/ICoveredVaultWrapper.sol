@@ -79,12 +79,10 @@ interface ICoveredVaultWrapper is IERC4626 {
     ///         Only callable by the owner. Rate is WAD-scaled (e.g. 1e16 / 31536000 ≈ 0.1%/year).
     function setPremiumRate(uint256 newRate) external;
 
-    /// @notice Updates the maximum coverable loss in basis points. Recalculates depositCap if policy is bound.
-    ///         Caller must be the owner. Reverts with InvalidMaxCoverableLoss if newBps == 0 or > 10_000.
+    /// @notice Updates the maximum coverable loss in basis points.
+    ///         Only callable before the policy is bound. Reverts with InvalidMaxCoverableLoss if
+    ///         newBps == 0, > 10_000, <= deductibleBps, or the policy is already bound.
     function setMaxCoverableLossBps(uint16 newBps) external;
-
-    /// @notice Applies a pending maxCoverableLossBps change after the standard timelock elapses.
-    function executeMaxCoverableLossBps() external;
 
     /// @notice Updates the deductible in basis points applied to every insurance claim.
     ///         Caller must be the owner. Reverts with InvalidParameters if newBps >= 10_000.

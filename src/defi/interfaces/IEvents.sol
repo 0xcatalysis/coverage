@@ -44,11 +44,8 @@ interface IEvents {
     /// @notice Emitted when a pending deductibleBps change is executed
     event DeductibleBpsExecuted(uint16 oldBps, uint16 indexed newBps);
 
-    /// @notice Emitted when a maxCoverableLossBps change is proposed (standard delay starts)
-    event MaxCoverableLossBpsProposed(uint16 indexed newBps, uint64 executeAfter);
-
-    /// @notice Emitted when a pending maxCoverableLossBps change is executed
-    event MaxCoverableLossBpsExecuted(uint16 oldBps, uint16 indexed newBps);
+    /// @notice Emitted when maxCoverableLossBps is updated (only allowed before policy binding)
+    event MaxCoverableLossBpsUpdated(uint16 oldBps, uint16 indexed newBps);
 
     // --- Liveness and safety events ---
 

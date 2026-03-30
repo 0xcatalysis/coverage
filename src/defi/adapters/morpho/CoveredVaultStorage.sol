@@ -106,7 +106,7 @@ abstract contract CoveredVaultStorage is
     uint256 public override pendingPremium;
 
     /// @notice Coverage limit stored from the bound policy
-    /// @dev Persisted from onPolicyBound so that setMaxCoverableLossBps can recompute depositCap.
+    /// @dev Persisted from onPolicyBound so that setDepositCap can validate against the formula ceiling.
     uint256 public override coverageLimit;
 
     /// @notice WAD-scaled cumulative premium per unit of principal (reward-per-token accumulator)
@@ -127,11 +127,6 @@ abstract contract CoveredVaultStorage is
     uint16 public pendingDeductibleBps;
     /// @notice Timestamp after which pendingDeductibleBps may be executed (0 = no pending change)
     uint64 public pendingDeductibleTimestamp;
-
-    /// @notice Pending maxCoverableLossBps value awaiting timelock execution
-    uint16 public pendingMaxCoverableLossBps;
-    /// @notice Timestamp after which pendingMaxCoverableLossBps may be executed (0 = no pending change)
-    uint64 public pendingMaxCoverableLossTimestamp;
 
     /// @notice Cached Morpho vault value used as fallback when convertToAssets() reverts
     uint256 public override lastKnownMorphoValue;

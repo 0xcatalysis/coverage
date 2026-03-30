@@ -43,31 +43,15 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         emit IE.PremiumRateExecuted(oldRate, newRate);
     }
 
-    /// @dev Call executeMaxCoverableLossBps() after the delay to apply the pending value.
+    /// @notice Updates the maximum coverable loss in basis points.
+    ///         Only callable before the policy is bound — coverage terms are locked at binding.
     function setMaxCoverableLossBps(uint16 newBps) external override onlyOwner {
+        require(!policyBoundExecuted, IA.InvalidMaxCoverableLoss());
         require(newBps > 0 && newBps <= BPS_DENOMINATOR, IA.InvalidMaxCoverableLoss());
-        pendingMaxCoverableLossTimestamp =
-            _propose(pendingMaxCoverableLossTimestamp, "maxCoverableLossBps", STANDARD_DELAY);
-        pendingMaxCoverableLossBps = newBps;
-        emit IE.MaxCoverableLossBpsProposed(newBps, pendingMaxCoverableLossTimestamp);
-    }
-
-    /// @notice Applies a pending maxCoverableLossBps change after the standard timelock elapses.
-    function executeMaxCoverableLossBps() external override onlyOwner {
-        _requireTimelockReady(pendingMaxCoverableLossTimestamp);
-        uint16 newBps = pendingMaxCoverableLossBps;
         require(newBps > deductibleBps, IA.InvalidMaxCoverableLoss());
         uint16 oldBps = maxCoverableLossBps;
-        if (policyBoundExecuted) {
-            uint256 formulaCap = (coverageLimit * BPS_DENOMINATOR) / uint256(newBps);
-            // Preserve any manual tightening: never let a BPS change silently raise the cap above
-            // a value the owner deliberately set via setDepositCap/executeDepositCap.
-            depositCap = formulaCap < depositCap ? formulaCap : depositCap;
-        }
         maxCoverableLossBps = newBps;
-        pendingMaxCoverableLossBps = 0;
-        pendingMaxCoverableLossTimestamp = 0;
-        emit IE.MaxCoverableLossBpsExecuted(oldBps, newBps);
+        emit IE.MaxCoverableLossBpsUpdated(oldBps, newBps);
     }
 
     /// @notice Proposes a new depositCap (standard timelock). Must not exceed the formula ceiling
@@ -146,7 +130,6 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         super.acceptOwnership();
         pendingPremiumRateTimestamp = 0;
         pendingDeductibleTimestamp = 0;
-        pendingMaxCoverableLossTimestamp = 0;
         pendingUpgradeTimestamp = 0;
         pendingImplementation = address(0);
         pendingPremiumRecipientTimestamp = 0;
