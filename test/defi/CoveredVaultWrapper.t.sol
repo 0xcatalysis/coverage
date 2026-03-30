@@ -552,6 +552,65 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     }
 
     /*//////////////////////////////////////////////////////////////
+                  PRE-POLICY PHANTOM PREMIUM REGRESSION (L-03)
+    //////////////////////////////////////////////////////////////*/
+
+    function test_noPremium_chargedBeforePolicyStart() public {
+        // onPolicyBound sets policyStartTime = block.timestamp, so the binding IS the policy start.
+        // Deposits are gated by policyBoundExecuted, meaning no deposit can arrive before binding.
+        // This test verifies that accrual begins exactly at binding time and not before.
+        uint32 bindTime = uint32(block.timestamp);
+        uint32 maturity = uint32(block.timestamp + 366 days);
+        CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            MAX_COVERABLE_LOSS_BPS,
+            DEDUCTIBLE_BPS,
+            premiumRecipientAddr,
+            curator,
+            "Fresh3",
+            "FR3"
+        );
+        _createAndBindPolicy(
+            address(freshWrapper),
+            address(freshWrapper),
+            address(asset),
+            10_000 ether,
+            bindTime,
+            maturity,
+            curator,
+            address(freshWrapper)
+        );
+
+        // User deposits immediately after binding (policyStartTime = bindTime = block.timestamp)
+        vm.prank(user1);
+        asset.approve(address(freshWrapper), type(uint256).max);
+        vm.prank(user1);
+        freshWrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        // Set a non-zero premium rate
+        _setPremiumRate(freshWrapper, 1e9, curator);
+
+        // Warp to exactly 30 days after binding/policy start
+        vm.warp(bindTime + 30 days);
+
+        // Trigger accrual via a second deposit
+        vm.prank(user1);
+        freshWrapper.deposit(1, user1);
+
+        uint256 liability = freshWrapper.totalPremiumLiability();
+
+        // Exactly 30 days of premium at 1e9 rate on DEPOSIT_AMOUNT principal.
+        // No phantom premium should exist for any period before binding.
+        uint256 thirtyDayPremium = (DEPOSIT_AMOUNT * 1e9 * 30 days) / 1e18;
+        uint256 thirtyOneDayPremium = (DEPOSIT_AMOUNT * 1e9 * 31 days) / 1e18;
+
+        assertLe(liability, thirtyDayPremium * 2, "liability must not exceed 30-day window");
+        assertLt(liability, thirtyOneDayPremium, "liability must be < 31 days (no phantom premium)");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                      MAX WITHDRAW ERC-4626 COMPLIANCE
     //////////////////////////////////////////////////////////////*/
 
@@ -928,58 +987,131 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     function test_setMaxCoverableLossBps_updatesValue() public {
+        CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            MAX_COVERABLE_LOSS_BPS,
+            DEDUCTIBLE_BPS,
+            premiumRecipientAddr,
+            curator,
+            "Fresh4a",
+            "FR4a"
+        );
         vm.prank(curator);
-        wrapper.setMaxCoverableLossBps(2000);
-        vm.warp(block.timestamp + 2 days + 1);
-        vm.prank(curator);
-        wrapper.executeMaxCoverableLossBps();
-        assertEq(wrapper.maxCoverableLossBps(), 2000);
+        freshWrapper.setMaxCoverableLossBps(2000);
+        assertEq(freshWrapper.maxCoverableLossBps(), 2000);
     }
 
     function test_setMaxCoverableLossBps_revertsOnZero() public {
+        CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            MAX_COVERABLE_LOSS_BPS,
+            DEDUCTIBLE_BPS,
+            premiumRecipientAddr,
+            curator,
+            "Fresh4b",
+            "FR4b"
+        );
         vm.prank(curator);
         vm.expectRevert(IA.InvalidMaxCoverableLoss.selector);
-        wrapper.setMaxCoverableLossBps(0);
+        freshWrapper.setMaxCoverableLossBps(0);
     }
 
     function test_setMaxCoverableLossBps_revertsAboveBpsDenominator() public {
+        CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            MAX_COVERABLE_LOSS_BPS,
+            DEDUCTIBLE_BPS,
+            premiumRecipientAddr,
+            curator,
+            "Fresh4c",
+            "FR4c"
+        );
         vm.prank(curator);
         vm.expectRevert(IA.InvalidMaxCoverableLoss.selector);
-        wrapper.setMaxCoverableLossBps(10_001);
+        freshWrapper.setMaxCoverableLossBps(10_001);
     }
 
     function test_setMaxCoverableLossBps_revertsIfNotOwner() public {
+        CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            MAX_COVERABLE_LOSS_BPS,
+            DEDUCTIBLE_BPS,
+            premiumRecipientAddr,
+            curator,
+            "Fresh4d",
+            "FR4d"
+        );
         vm.prank(user1);
         vm.expectRevert();
+        freshWrapper.setMaxCoverableLossBps(2000);
+    }
+
+    function test_setMaxCoverableLossBps_revertsWhenBound() public {
+        vm.prank(curator);
+        vm.expectRevert(IA.InvalidMaxCoverableLoss.selector);
         wrapper.setMaxCoverableLossBps(2000);
     }
 
     function test_setMaxCoverableLossBps_emitsEvent() public {
+        CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            MAX_COVERABLE_LOSS_BPS,
+            DEDUCTIBLE_BPS,
+            premiumRecipientAddr,
+            curator,
+            "Fresh4e",
+            "FR4e"
+        );
         vm.prank(curator);
-        uint64 expectedExecuteAfter = uint64(block.timestamp + 2 days);
-        vm.expectEmit(true, false, false, true);
-        emit IE.MaxCoverableLossBpsProposed(2000, expectedExecuteAfter);
-        wrapper.setMaxCoverableLossBps(2000);
+        vm.expectEmit(true, true, false, true);
+        emit IE.MaxCoverableLossBpsUpdated(MAX_COVERABLE_LOSS_BPS, 2000);
+        freshWrapper.setMaxCoverableLossBps(2000);
     }
 
-    /// @dev Changing maxCoverableLossBps after policy binding must recalculate depositCap.
-    ///      setUp binds with coverageLimit=10_000 ether and maxCoverableLossBps=1000 (10%)
-    ///      → depositCap = 10_000 * 10_000 / 1000 = 100_000 ether.
-    ///      After setMaxCoverableLossBps(2000) (20%):
+    /// @dev BPS set before binding is used by onPolicyBound to compute depositCap.
+    ///      freshWrapper deployed with 10% (1000), changed to 20% (2000) before binding.
+    ///      After binding with coverageLimit=10_000 ether:
     ///      → depositCap = 10_000 * 10_000 / 2000 = 50_000 ether.
-    function test_setMaxCoverableLossBps_recalculatesDepositCapWhenBound() public {
-        assertEq(wrapper.depositCap(), 100_000 ether, "Initial depositCap at 10%");
-
+    function test_setMaxCoverableLossBps_usedByOnPolicyBound() public {
+        CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
+            address(morphoVault),
+            address(claimManager),
+            address(coverPool),
+            MAX_COVERABLE_LOSS_BPS,
+            DEDUCTIBLE_BPS,
+            premiumRecipientAddr,
+            curator,
+            "Fresh4f",
+            "FR4f"
+        );
         vm.prank(curator);
-        wrapper.setMaxCoverableLossBps(2000); // 20%
-        vm.warp(block.timestamp + 2 days + 1);
-        vm.prank(curator);
-        wrapper.executeMaxCoverableLossBps();
+        freshWrapper.setMaxCoverableLossBps(2000); // 20%
 
-        assertEq(wrapper.depositCap(), 50_000 ether, "depositCap halves when maxCoverableLossBps doubles");
+        _createAndBindPolicy(
+            address(freshWrapper),
+            address(freshWrapper),
+            address(asset),
+            10_000 ether,
+            uint32(block.timestamp),
+            uint32(block.timestamp + 365 days),
+            curator,
+            address(freshWrapper)
+        );
+
+        assertEq(freshWrapper.depositCap(), 50_000 ether, "depositCap uses pre-binding BPS");
     }
 
-    /// @dev Before policy binding, depositCap stays 0; onPolicyBound will use the new bps.
+    /// @dev Before policy binding, depositCap stays 0; onPolicyBound will use the current bps.
     function test_setMaxCoverableLossBps_beforeBind_depositCapStaysZero() public {
         CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
             address(morphoVault),
@@ -1511,15 +1643,13 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertApproxEqAbs(premiumCollected, 50 ether, 5 ether, "Premium must be capped at Morpho proceeds");
         assertLt(premiumCollected, liabilityBeforeLoss, "Premium collected < full liability (deep-loss write-off)");
 
-        // ── 2. L-05 fix: totalPremiumLiability decremented by actually-collected amount only ──
-        // premiumForWithdrawal = min(uncappedPremium~100, assetsReceived~50) = ~50.
-        // Remaining liability = uncappedPremium - premiumForWithdrawal ≈ 50 (written-off, not entered into
-        // pendingPremium).
+        // ── 2. M-02 fix: totalPremiumLiability decremented by uncappedPremium (full owed amount) ──
+        // uncappedPremium ≈ 100, premiumForWithdrawal = min(100, 50) = 50.
+        // The forgiven 50 (uncappedPremium - premiumForWithdrawal) is correctly cleared from
+        // totalPremiumLiability so it does not leave a phantom residual that depresses totalAssets()
+        // for remaining holders. After a full exit, totalPremiumLiability should be ~0.
         assertApproxEqAbs(
-            wrapper.totalPremiumLiability(),
-            liabilityBeforeLoss - premiumCollected,
-            2 ether,
-            "L-05 fix: liability decremented by collected amount only; written-off portion remains"
+            wrapper.totalPremiumLiability(), 0, 2 ether, "M-02 fix: full liability cleared on exit; no phantom residual"
         );
 
         // ── 3. User receives only insurance (Morpho proceeds fully absorbed by premium) ──
