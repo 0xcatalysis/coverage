@@ -10,6 +10,7 @@ contract MockStakeManager {
     mapping(uint96 => address[]) private _committeeVaults;
     mapping(uint96 => address[]) private _committeeTokens;
     mapping(uint96 => uint256[]) private _committeeTokenStakes;
+    mapping(uint96 => uint256) private _committeeCoverageLimit;
 
     function createCommittee(uint96, address, uint32) external {}
 
@@ -17,10 +18,11 @@ contract MockStakeManager {
 
     function removeOperatorFromCommittee(address, uint96) external {}
 
-    function setCommitteeVaults(uint96 committeeId, address[] calldata vaults, uint256) external {
+    function setCommitteeVaults(uint96 committeeId, address[] calldata vaults, uint256 coverageLimit) external {
         for (uint256 i = 0; i < vaults.length; i++) {
             _committeeVaults[committeeId].push(vaults[i]);
         }
+        _committeeCoverageLimit[committeeId] = coverageLimit;
     }
 
     function getCommitteeVaults(uint96 committeeId) external view returns (address[] memory) {
@@ -37,8 +39,12 @@ contract MockStakeManager {
         tokenStakes = _committeeTokenStakes[committeeId];
 
         if (tokens.length == 0 && vaults.length > 0) {
+            uint256 coverageLimit = _committeeCoverageLimit[committeeId];
             tokens = new address[](vaults.length);
             tokenStakes = new uint256[](vaults.length);
+            for (uint256 i = 0; i < vaults.length; i++) {
+                tokenStakes[i] = coverageLimit;
+            }
         }
     }
 
