@@ -210,21 +210,15 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Toggles Morpho gate status to pause/resume premium accrual.
-    /// @dev On activation: records gateActivatedAt for off-chain observability and caches
-    ///      Morpho value as a convertToAssets() fallback.
-    ///      On deactivation: clears gateActivatedAt.
+    /// @dev On activation: caches Morpho value as a convertToAssets() fallback.
     function setMorphoGateActive(bool active) external override onlyOwner {
         _accruePremium();
         if (active && !morphoGateActive) {
-            // Gate activated — record timestamp (off-chain observability) and cache Morpho value.
-            gateActivatedAt = block.timestamp;
             try IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this))) returns (
                 uint256 val
             ) {
                 lastKnownMorphoValue = val;
             } catch {}
-        } else if (!active && morphoGateActive) {
-            gateActivatedAt = 0;
         }
         morphoGateActive = active;
         emit IE.MorphoGateStatusUpdated(active);

@@ -155,9 +155,6 @@ abstract contract CoveredVaultStorage is
     /// @notice Timestamp after which pendingDepositCap may be executed (0 = no pending change)
     uint64 public pendingDepositCapTimestamp;
 
-    /// @notice Timestamp when the Morpho gate was activated (0 = not gated)
-    uint256 public gateActivatedAt;
-
     /// @notice Timestamp at which the policy was bound (i.e. onPolicyBound block.timestamp).
     ///         Used as the premium accrual start anchor instead of PolicyMetadata.startTime,
     ///         since onPolicyBound is also when deposits open and the coverage window begins.

@@ -129,27 +129,25 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
         // startTime is no longer read from metadata — the wrapper uses policyStartTime instead.
         // Wrapped in try/catch so that a PolicyManager outage does not revert deposits, withdrawals,
         // or gate-management calls. Fallback: treat as no elapsed time (no accrual).
-        IPolicyManager.PolicyMetadata memory meta;
-        try _policyManager.policyMetadata(policyId) returns (IPolicyManager.PolicyMetadata memory m) {
-            meta = m;
+        try _policyManager.policyMetadata(policyId) returns (IPolicyManager.PolicyMetadata memory meta) {
+            uint256 rawMaturity = uint256(meta.maturityTime);
+            uint256 _policyStartTime = policyStartTime;
+            if (meta.buyer != address(0) && block.timestamp >= _policyStartTime && block.timestamp < rawMaturity) {
+                // Policy is active: clamp checkpoint to policyStartTime as a defensive guard.
+                uint256 activeStart = checkpoint < _policyStartTime ? _policyStartTime : checkpoint;
+                return block.timestamp - activeStart;
+            }
+            // Policy expired: cap at rawMaturity so premium does not accrue past the claim-eligible window.
+            if (meta.buyer != address(0) && rawMaturity > checkpoint && block.timestamp >= _policyStartTime) {
+                uint256 activeStart = checkpoint > _policyStartTime ? checkpoint : _policyStartTime;
+                if (rawMaturity > activeStart) {
+                    return rawMaturity - activeStart;
+                }
+            }
+            return 0;
         } catch {
             return 0;
         }
-        uint256 rawMaturity = uint256(meta.maturityTime);
-        uint256 _policyStartTime = policyStartTime;
-        if (meta.buyer != address(0) && block.timestamp >= _policyStartTime && block.timestamp < rawMaturity) {
-            // Policy is active: clamp checkpoint to policyStartTime as a defensive guard.
-            uint256 activeStart = checkpoint < _policyStartTime ? _policyStartTime : checkpoint;
-            return block.timestamp - activeStart;
-        }
-        // Policy expired: cap at rawMaturity so premium does not accrue past the claim-eligible window.
-        if (meta.buyer != address(0) && rawMaturity > checkpoint && block.timestamp >= _policyStartTime) {
-            uint256 activeStart = checkpoint > _policyStartTime ? checkpoint : _policyStartTime;
-            if (rawMaturity > activeStart) {
-                return rawMaturity - activeStart;
-            }
-        }
-        return 0;
     }
 
     /// @notice Returns the total Morpho vault value, falling back to cached value on revert
@@ -172,14 +170,12 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
         if (policyId == 0) return false;
         // Wrapped in try/catch so that a PolicyManager outage does not revert withdrawals.
         // Fallback: return false (no insurance payout) — a temporary degradation, not permanent loss.
-        IPolicyManager.PolicyMetadata memory metadata;
-        try _policyManager.policyMetadata(policyId) returns (IPolicyManager.PolicyMetadata memory m) {
-            metadata = m;
+        try _policyManager.policyMetadata(policyId) returns (IPolicyManager.PolicyMetadata memory metadata) {
+            return metadata.buyer != address(0) && block.timestamp >= policyStartTime
+                && block.timestamp < uint256(metadata.maturityTime);
         } catch {
             return false;
         }
-        return metadata.buyer != address(0) && block.timestamp >= policyStartTime
-            && block.timestamp < uint256(metadata.maturityTime);
     }
 
     /// @dev Maximum additional liability the protocol can absorb given the current Morpho value.

@@ -2,25 +2,8 @@
 pragma solidity 0.8.28;
 
 /// @title IEvents
-/// @notice Event definitions for CatalysisBundleAdapter
+/// @notice Event definitions for CoveredVaultWrapper
 interface IEvents {
-    /// @notice Emitted when NAV is recorded on deposit
-    /// @param user The user address
-    /// @param assets Amount of assets deposited
-    /// @param shares Amount of shares received
-    /// @param totalNav User's total NAV after deposit
-    event NavRecorded(address indexed user, uint256 assets, uint256 shares, uint256 totalNav);
-
-    /// @notice Emitted when NAV is reduced on withdrawal
-    /// @param user The user address
-    /// @param assets Amount of assets withdrawn
-    /// @param sharesBurned Amount of shares burned
-    /// @param insurancePayout Actual insurance paid to user (if any)
-    /// @param remainingNav User's remaining NAV after withdrawal
-    event NavWithdrawn(
-        address indexed user, uint256 assets, uint256 sharesBurned, uint256 insurancePayout, uint256 remainingNav
-    );
-
     /// @notice Emitted when insurance is claimed for a shortfall
     /// @param user The user address
     /// @param policyId The policy ID used
