@@ -210,6 +210,7 @@ contract ClaimManagerFuzzTest is Test {
                 maturityTime: MATURITY,
                 payoutToken: address(payoutToken),
                 pool: address(pool),
+                curator: operator,
                 coverageLimit: coverageLimit,
                 specId: keccak256("spec"),
                 termsHash: keccak256("terms"),

@@ -288,6 +288,7 @@ contract PolicyManager is
             maturityTime: boundPolicy.maturityTime,
             payoutToken: request.payoutToken,
             pool: quote.pool,
+            curator: draft.curator,
             coverageLimit: boundPolicy.coverageLimit,
             specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,

@@ -267,7 +267,8 @@ contract ClaimManagerInvariantTest is StdInvariant, Test {
     }
 
     function _setupPolicy(InvPolicy policyContract, address claimer, address beneficiary) private {
-        InvCoverPool pool = new InvCoverPool(makeAddr("operator"));
+        address poolOperator = makeAddr("operator");
+        InvCoverPool pool = new InvCoverPool(poolOperator);
         policyContract.set(
             POLICY_ID,
             IPolicyManager.PolicyMetadata({
@@ -279,6 +280,7 @@ contract ClaimManagerInvariantTest is StdInvariant, Test {
                 maturityTime: MATURITY,
                 payoutToken: address(payoutToken),
                 pool: address(pool),
+                curator: poolOperator,
                 coverageLimit: COVERAGE_LIMIT,
                 specId: keccak256("spec"),
                 termsHash: keccak256("terms"),
@@ -288,18 +290,15 @@ contract ClaimManagerInvariantTest is StdInvariant, Test {
         );
     }
 
-    /// @dev Core invariant: the sum of all payouts never exceeds the policy's coverage limit.
     function invariant_totalPaidOutNeverExceedsCoverageLimit() public view {
         uint256 remaining = claimManager.remainingCoverage(POLICY_ID);
         assertLe(COVERAGE_LIMIT - remaining, COVERAGE_LIMIT, "Remaining coverage must never go negative (underflow)");
         assertGe(remaining, 0, "Remaining coverage must be non-negative");
     }
 
-    /// @dev Coverage limit minus remaining equals total paid out; must not exceed the limit.
     function invariant_remainingCoverageIsMonotonicallyNonIncreasing() public view {
         uint256 remaining = claimManager.remainingCoverage(POLICY_ID);
         assertLe(handler.ghost_totalPaidOut(), COVERAGE_LIMIT, "Ghost total paid out must not exceed coverage limit");
-        // Remaining + ghost_totalPaidOut may differ due to capping, but remaining must never exceed original limit.
         assertLe(remaining, COVERAGE_LIMIT, "Remaining must not exceed coverage limit");
     }
 }

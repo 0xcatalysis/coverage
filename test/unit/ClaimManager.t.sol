@@ -717,6 +717,7 @@ contract ClaimManagerTest is Test {
                 maturityTime: 0,
                 payoutToken: address(0),
                 pool: address(0),
+                curator: address(0),
                 coverageLimit: 0,
                 specId: bytes32(0),
                 termsHash: bytes32(0),
@@ -2064,6 +2065,77 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                          CURATOR SNAPSHOT
+    //////////////////////////////////////////////////////////////*/
+
+    function test_fileClaim_UsesMetadataCuratorNotLivePoolOwner() public {
+        address snapshotCurator = makeAddr("snapshotCurator");
+        address livePoolOwner = operator;
+        assertNotEq(snapshotCurator, livePoolOwner, "precondition: curator must differ from live owner");
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.curator = snapshotCurator;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = COVERAGE_LIMIT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), COVERAGE_LIMIT);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+
+        assertEq(
+            slashingManagerMock.lastOperator(),
+            snapshotCurator,
+            "executeSlashing must receive the snapshotted curator, not the live pool owner"
+        );
+        assertNotEq(
+            slashingManagerMock.lastOperator(), livePoolOwner, "executeSlashing must not receive the live pool owner"
+        );
+    }
+
+    function test_fileClaim_WhenPoolOwnershipTransfers_StillUsesOriginalCurator() public {
+        address originalCurator = makeAddr("originalCurator");
+        address newPoolOwner = makeAddr("newPoolOwner");
+        MutableOwnerCoverPool mutablePool = new MutableOwnerCoverPool(originalCurator);
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.pool = address(mutablePool);
+        meta.curator = originalCurator;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        mutablePool.transferOwnership(newPoolOwner);
+        assertEq(mutablePool.owner(), newPoolOwner, "precondition: live owner must now be newPoolOwner");
+        assertNotEq(newPoolOwner, originalCurator, "precondition: new owner must differ from original curator");
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = COVERAGE_LIMIT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), COVERAGE_LIMIT);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+
+        assertEq(
+            slashingManagerMock.lastOperator(),
+            originalCurator,
+            "executeSlashing must use the original curator despite pool ownership transfer"
+        );
+        assertNotEq(slashingManagerMock.lastOperator(), newPoolOwner, "executeSlashing must not use the new pool owner");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                              CLAIM RECORD
     //////////////////////////////////////////////////////////////*/
 
@@ -2376,6 +2448,7 @@ contract ClaimManagerTest is Test {
             maturityTime: uint32(block.timestamp + COVERAGE_DURATION),
             payoutToken: payoutToken,
             pool: pool,
+            curator: operator,
             coverageLimit: COVERAGE_LIMIT,
             specId: keccak256("MorphoSpec"),
             termsHash: keccak256("terms-hash"),
@@ -2642,6 +2715,23 @@ contract MockCoverPool {
 
     function owner() external view returns (address) {
         return _OWNER;
+    }
+}
+
+/// @dev CoverPool mock whose owner can be changed after deployment, simulating a pool ownership transfer.
+contract MutableOwnerCoverPool {
+    address private _owner;
+
+    constructor(address owner_) {
+        _owner = owner_;
+    }
+
+    function owner() external view returns (address) {
+        return _owner;
+    }
+
+    function transferOwnership(address newOwner) external {
+        _owner = newOwner;
     }
 }
 

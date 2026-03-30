@@ -67,6 +67,8 @@ interface IPolicyManager is IAccessControl {
         address payoutToken;
         /// @notice Address of the pool providing coverage.
         address pool;
+        /// @notice Pool curator snapshotted at request time and registered as committee operator.
+        address curator;
         /// @notice Coverage notional allocated from the pool.
         uint256 coverageLimit;
         /// @notice Spec identifier for parametric claim evaluation (e.g., MorphoSpec, MapleSpec).

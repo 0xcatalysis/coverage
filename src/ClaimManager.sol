@@ -414,7 +414,7 @@ contract ClaimManager is
         private
         returns (address[] memory collateralTokens, uint256[] memory collateralAmounts)
     {
-        address operator = ICoverPool(metadata.pool).owner();
+        address operator = metadata.curator;
 
         (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes) =
             ISlashingManager(slashingManager).previewSlashing(metadata.policyId, operator);
