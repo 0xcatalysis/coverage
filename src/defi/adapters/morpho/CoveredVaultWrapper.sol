@@ -127,8 +127,9 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         lastKnownMorphoValue = _morphoValue();
         userMorphoShares[receiver] += morphoSharesReceived;
         _mint(receiver, shares); // triggers _update(address(0), receiver, shares) — no principal migration for mints
-        // Increase absolute debt so new assets don't inherit past premium
-        userPremiumDebt[receiver] += assets.mulDiv(cumulativePremiumPerUnit, WAD, Math.Rounding.Floor);
+        // Increase absolute debt so new assets don't inherit past premium.
+        // Must use Ceil to match _calcOwedDebt, otherwise ceil(p*c/WAD) - floor(p*c/WAD) = 1 wei phantom debt.
+        userPremiumDebt[receiver] += assets.mulDiv(cumulativePremiumPerUnit, WAD, Math.Rounding.Ceil);
         userPrincipal[receiver] += assets;
         totalPrincipal += assets;
         emit Deposit(caller, receiver, assets, shares);
@@ -604,7 +605,8 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         private
     {
         uint256 newPrincipal = principal_ - principalForWithdrawal_;
-        uint256 newRawDebt = newPrincipal.mulDiv(cumulativePremiumPerUnit, WAD, Math.Rounding.Floor);
+        // Must use Ceil to match _calcOwedDebt and avoid 1 wei phantom debt after each withdrawal.
+        uint256 newRawDebt = newPrincipal.mulDiv(cumulativePremiumPerUnit, WAD, Math.Rounding.Ceil);
         userPremiumDebt[owner_] = _safeSub(newRawDebt, totalOwedPremium_ - uncappedPremium_);
 
         userPrincipal[owner_] = newPrincipal;
