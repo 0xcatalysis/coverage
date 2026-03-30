@@ -524,7 +524,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
 
         amounts.totalOwedPremium = _calcOwedDebt(principal, cumulativePremiumPerUnit, userPremiumDebt[owner_]);
         amounts.uncappedPremium = ownerBalance_ > 0
-            ? amounts.totalOwedPremium.mulDiv(shares_, ownerBalance_, Math.Rounding.Floor)
+            ? amounts.totalOwedPremium.mulDiv(shares_, ownerBalance_, Math.Rounding.Ceil)
             : amounts.totalOwedPremium;
     }
 
@@ -625,7 +625,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
 
     /// @dev Computes owed debt from the reward-per-token formula: principal × cumPerUnit / WAD − userDebt.
     function _calcOwedDebt(uint256 principal, uint256 cumulative, uint256 userDebt) private pure returns (uint256) {
-        uint256 raw = principal.mulDiv(cumulative, WAD, Math.Rounding.Floor);
+        uint256 raw = principal.mulDiv(cumulative, WAD, Math.Rounding.Ceil);
         return raw > userDebt ? raw - userDebt : 0;
     }
 
@@ -635,7 +635,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
     function _capAndApplyDeductible(uint256 shortfall, uint256 basis) private view returns (uint256) {
         uint256 maxInsurance = basis.mulDiv(maxCoverableLossBps, BPS_DENOMINATOR, Math.Rounding.Floor);
         uint256 capped = shortfall > maxInsurance ? maxInsurance : shortfall;
-        uint256 deductibleAmt = basis.mulDiv(deductibleBps, BPS_DENOMINATOR, Math.Rounding.Floor);
+        uint256 deductibleAmt = basis.mulDiv(deductibleBps, BPS_DENOMINATOR, Math.Rounding.Ceil);
         return capped > deductibleAmt ? capped - deductibleAmt : 0;
     }
 
