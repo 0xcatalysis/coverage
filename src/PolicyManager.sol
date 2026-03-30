@@ -38,6 +38,7 @@ contract PolicyManager is
     mapping(uint96 policyId => IPolicyManager.PolicyMetadata) private _policies;
     mapping(bytes32 policyCommit => bool registered) private _registeredPolicyCommits;
     mapping(address token => bool supported) public override supportedPayoutTokens;
+    address public override chainlinkPriceFeed;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {

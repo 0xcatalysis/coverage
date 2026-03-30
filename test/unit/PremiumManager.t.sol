@@ -901,9 +901,7 @@ contract MockCoverPool {
     }
 
     function getBoundPolicy(uint96 policyId) external view returns (ICoverPool.BoundPolicy memory policy) {
-        if (!_permissive) {
-            revert ICoverPool.PolicyNotFound(policyId);
-        }
+        if (!_permissive) revert ICoverPool.PolicyNotFound(policyId);
         policy.policyId = policyId;
     }
 }

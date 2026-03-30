@@ -120,9 +120,7 @@ contract DistributePremium is Script {
         }
 
         _registerVaultIfNeeded();
-        if (bootstrapPremiumAmount > 0) {
-            _bootstrapPremiumShares();
-        }
+        if (bootstrapPremiumAmount > 0) _bootstrapPremiumShares();
         _checkAccruedShares();
         _checkFeeConfiguration();
         _distributePremiums();
