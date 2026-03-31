@@ -154,7 +154,6 @@ interface IPremiumManager is IAccessControl {
     function paused() external view returns (bool);
 
     /**
-     **
      * @notice Calculates the platform, pool, and restaker premium splits for a given gross premium.
      * @param grossPremium Premium value to evaluate.
      * @param platformFeeBps_ Platform fee rate in basis points.
