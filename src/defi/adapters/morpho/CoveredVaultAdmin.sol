@@ -164,20 +164,22 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         _requireTimelockReady(pendingUpgradeTimestamp);
         address impl = pendingImplementation;
         emit IE.UpgradeExecuted(impl);
-        // upgradeToAndCall → _authorizeUpgrade reads pendingImplementation, so clear AFTER the call.
+        // _authorizeUpgrade clears the pending state before the implementation is swapped.
         upgradeToAndCall(impl, "");
-        pendingUpgradeTimestamp = 0;
-        pendingImplementation = address(0);
     }
 
     /// @dev UUPS authorization gate. Since upgradeToAndCall is public on UUPSUpgradeable, this function
     ///      is the ONLY enforcement point — it must independently verify owner, timelock, and implementation match.
+    ///      Pending state is cleared here so it is consumed atomically regardless of whether the caller
+    ///      used executeUpgrade() or called upgradeToAndCall() directly.
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
         require(
             newImplementation == pendingImplementation && pendingUpgradeTimestamp != 0
                 && block.timestamp >= pendingUpgradeTimestamp,
             IA.NotAuthorizedUpgrader(msg.sender)
         );
+        pendingUpgradeTimestamp = 0;
+        pendingImplementation = address(0);
     }
 
     /*//////////////////////////////////////////////////////////////
