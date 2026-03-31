@@ -64,6 +64,7 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
             uint256 rateXtime = premiumRatePerSecond * activeElapsed;
             uint256 accruedWad = (_totalPrincipal * premiumScaleFactor).mulDiv(rateXtime, WAD, Math.Rounding.Floor)
                 + premiumAccrualRemainder;
+            // slither-disable-next-line divide-before-multiply
             accrued = accruedWad / premiumScaleFactor;
             premiumAccrualRemainder = accruedWad - accrued * premiumScaleFactor;
         } else {

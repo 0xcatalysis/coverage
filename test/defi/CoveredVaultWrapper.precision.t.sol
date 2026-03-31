@@ -289,4 +289,31 @@ contract CoveredVaultWrapperPrecisionTest is RealCoverageSetup {
             accrualFromShortCalls, expected, 1, "fuzz: N short calls must equal one long call within 1 unit"
         );
     }
+
+    // ── Policy reset clears stale remainder
+    // ───────────────────────────────────
+
+    /// @notice resetPolicyBinding() must zero premiumAccrualRemainder so that a sub-unit
+    ///         carry from the expired policy is not attributed to the next policy's epoch.
+    function test_sixDecimal_policyReset_clearsRemainder() public {
+        CoveredVaultWrapper w = _deployWrapper(usdcVault, address(usdc));
+        _setPremiumRate(w, CERTORA_RATE, curator);
+        _mintAndApprove(MockERC20(address(usdc)), w, user, USDC_DEPOSIT);
+        vm.prank(user);
+        w.deposit(USDC_DEPOSIT, user);
+
+        // Populate a non-zero remainder with a single 2-second call
+        vm.warp(block.timestamp + 2);
+        w.collectPremium();
+        assertGt(w.premiumAccrualRemainder(), 0, "pre-reset: remainder must be non-zero");
+
+        // Advance past policy maturity (policy window is 365 days from setUp)
+        vm.warp(block.timestamp + 365 days);
+
+        // Owner resets the binding — this must clear premiumAccrualRemainder
+        vm.prank(curator);
+        w.resetPolicyBinding();
+
+        assertEq(w.premiumAccrualRemainder(), 0, "post-reset: remainder must be cleared for next policy epoch");
+    }
 }
