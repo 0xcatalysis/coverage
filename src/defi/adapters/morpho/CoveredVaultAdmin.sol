@@ -96,6 +96,8 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         _requireTimelockReady(pendingDeductibleTimestamp);
         uint16 oldBps = deductibleBps;
         uint16 newBps = pendingDeductibleBps;
+        // Re-validate at execution time in case maxCoverableLossBps changed since proposal.
+        require(newBps < maxCoverableLossBps, IA.InvalidParameters());
         deductibleBps = newBps;
         pendingDeductibleBps = 0;
         pendingDeductibleTimestamp = 0;
@@ -202,6 +204,14 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         policyStartTime = 0;
         pendingDepositCap = 0;
         pendingDepositCapTimestamp = 0;
+        pendingDeductibleBps = 0;
+        pendingDeductibleTimestamp = 0;
+        pendingPremiumRate = 0;
+        pendingPremiumRateTimestamp = 0;
+        pendingPremiumRecipient = address(0);
+        pendingPremiumRecipientTimestamp = 0;
+        pendingImplementation = address(0);
+        pendingUpgradeTimestamp = 0;
         emit IE.PolicyBindingReset(prevPolicyId);
     }
 
