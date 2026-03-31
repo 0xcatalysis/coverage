@@ -5,6 +5,7 @@ import {CoveredVaultStorage} from "./CoveredVaultStorage.sol";
 import {IVaultV2} from "../../interfaces/Morpho/IVaultV2.sol";
 import {IEvents as IE} from "../../interfaces/IEvents.sol";
 import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
+import {IPremiumManager} from "coverage/interfaces/IPremiumManager.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -71,14 +72,28 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
         totalPremiumLiability += accrued;
     }
 
-    /// @notice Accrues and transfers any pending premium to premiumRecipient
+    /// @notice Accrues and transfers any pending premium to premiumRecipient, then routes it
+    ///         through PremiumManager so pool fees and restaker rewards are distributed correctly.
+    /// @dev premiumRecipient must be set to the PremiumManager address.
+    ///      The vault holds the routing context (coverPool, policyId) and calls distributePremium()
+    ///      directly. distributePremium() is permissionless — the vault transfers tokens to
+    ///      PremiumManager first, then calls distributePremium() in the same transaction.
     function collectPremium() external override nonReentrant {
         _accruePremium();
         uint256 pending = pendingPremium;
         if (pending > 0) {
             pendingPremium = 0;
-            IERC20(asset()).safeTransfer(premiumRecipient, pending);
-            emit IE.PremiumCollected(premiumRecipient, pending);
+            address pm = premiumRecipient;
+            address assetAddr = asset();
+            IERC20(assetAddr).safeTransfer(pm, pending);
+            // Route through PremiumManager only when a policy is bound so that pool and
+            // policyId context is valid. Before binding, premiums cannot accrue anyway
+            // (premiumRatePerSecond defaults to 0 and lastPremiumAccrualTime is unset),
+            // so this guard is a belt-and-suspenders safety check.
+            if (policyId != 0) {
+                IPremiumManager(pm).distributePremium(coverPool, policyId, assetAddr, pending);
+            }
+            emit IE.PremiumCollected(pm, pending);
         }
     }
 

@@ -13,7 +13,8 @@ import {ICoverPool} from "./interfaces/ICoverPool.sol";
 
 /**
  * @title PremiumManager
- * @notice Receives premiums from PremiumCollector, carves protocol/curator fees, and distributes restaker shares.
+ * @notice Receives premiums from vault collectors (e.g. CoveredVaultWrapper), carves protocol/curator fees, and
+ * distributes restaker shares.
  * @dev Normalizes premium flows across pools and provides pause hooks for emergency halts.
  *      Integrates with RewardsManager to distribute premiums to restakers.
  */
@@ -26,8 +27,6 @@ contract PremiumManager is
     IPremiumManager
 {
     using SafeERC20 for IERC20;
-
-    bytes32 public constant override PREMIUM_COLLECTOR_ROLE = keccak256("PREMIUM_COLLECTOR_ROLE");
 
     uint16 private constant _BPS_DENOMINATOR = 10_000;
     uint16 private constant _MAX_FEE_BPS = 10_000;
@@ -144,7 +143,6 @@ contract PremiumManager is
         override
         nonReentrant
         whenNotPaused
-        onlyRole(PREMIUM_COLLECTOR_ROLE)
     {
         require(pool != address(0) && premiumToken != address(0), ZeroAddress());
         require(amount != 0, ZeroAmount());

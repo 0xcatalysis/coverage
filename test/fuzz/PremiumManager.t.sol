@@ -69,10 +69,6 @@ contract PremiumManagerFuzzTest is Test {
             )
         );
         premiumManager = PremiumManager(proxy);
-
-        bytes32 collectorRole = premiumManager.PREMIUM_COLLECTOR_ROLE();
-        vm.prank(admin);
-        premiumManager.grantRole(collectorRole, premiumCollector);
     }
 
     // ------------------------------------------------------------------

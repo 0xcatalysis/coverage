@@ -5,8 +5,8 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 
 /**
  * @title IPremiumManager
- * @notice Interface for distributing premiums from PremiumCollector, routing fees, and distributing
- * restaker shares to RewardsManager.
+ * @notice Interface for distributing premiums from vault collectors (e.g. CoveredVaultWrapper),
+ * routing fees, and distributing restaker shares to RewardsManager.
  */
 interface IPremiumManager is IAccessControl {
     /**
@@ -122,9 +122,10 @@ interface IPremiumManager is IAccessControl {
     function setPlatformFeeBps(uint16 platformFeeBps_) external;
 
     /**
-     * @notice Distributes premiums from redeemed vault shares, routing fees and restaker shares.
-     * @dev Requires PREMIUM_COLLECTOR_ROLE.
-     *      Tokens must already be in PremiumManager's balance before calling.
+     * @notice Distributes premiums, routing fees and restaker shares.
+     * @dev Permissionless — any caller may invoke this, but PremiumManager only distributes tokens
+     *      it already holds. Callers (e.g. CoveredVaultWrapper) must transfer tokens to
+     *      PremiumManager before calling this function.
      * @param pool CoverPool address for fee routing.
      * @param policyId Policy identifier for rewards routing.
      * @param premiumToken ERC20 token to distribute.
@@ -153,11 +154,7 @@ interface IPremiumManager is IAccessControl {
     function paused() external view returns (bool);
 
     /**
-     * @notice AccessControl identifier for the PremiumCollector role.
-     */
-    function PREMIUM_COLLECTOR_ROLE() external view returns (bytes32);
-
-    /**
+     **
      * @notice Calculates the platform, pool, and restaker premium splits for a given gross premium.
      * @param grossPremium Premium value to evaluate.
      * @param platformFeeBps_ Platform fee rate in basis points.

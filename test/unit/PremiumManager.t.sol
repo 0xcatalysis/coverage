@@ -71,11 +71,6 @@ contract PremiumManagerTest is Test {
         vm.label(address(rewardsManager), "RewardsManager");
         vm.label(address(premiumToken), "PremiumToken");
         vm.label(address(mockPool), "MockPool");
-
-        bytes32 collectorRole = premiumManager.PREMIUM_COLLECTOR_ROLE();
-        vm.startPrank(admin);
-        premiumManager.grantRole(collectorRole, premiumCollector);
-        vm.stopPrank();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -290,19 +285,6 @@ contract PremiumManagerTest is Test {
     /*//////////////////////////////////////////////////////////////
                          DISTRIBUTE PREMIUM
     //////////////////////////////////////////////////////////////*/
-
-    function test_distributePremium_WhenCallerNotPremiumCollector_Reverts() public {
-        address unauthorized = makeAddr("unauthorized");
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                unauthorized,
-                premiumManager.PREMIUM_COLLECTOR_ROLE()
-            )
-        );
-        vm.prank(unauthorized);
-        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
-    }
 
     function test_distributePremium_WhenPaused_Reverts() public {
         vm.prank(admin);
