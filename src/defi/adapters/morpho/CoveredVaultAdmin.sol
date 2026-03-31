@@ -222,6 +222,8 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         pendingPremiumRateTimestamp = 0;
         pendingPremiumRecipient = address(0);
         pendingPremiumRecipientTimestamp = 0;
+        // Clear any sub-unit WAD remainder so it does not leak into the next policy's accrual epoch.
+        premiumAccrualRemainder = 0;
         emit IE.PolicyBindingReset(prevPolicyId);
     }
 
