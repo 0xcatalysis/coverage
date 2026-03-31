@@ -23,7 +23,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     address curator = address(0xCCCC);
     address user1 = address(0x1111);
     address user2 = address(0x2222);
-    address premiumRecipientAddr = address(0xFEED);
+    address premiumRecipientAddr;
 
     uint256 constant DEPOSIT_AMOUNT = 1000 ether;
     uint96 POLICY_ID;
@@ -37,6 +37,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         morphoVault.setCurator(curator);
 
         _deployRealCoverage(curator, curator);
+        premiumRecipientAddr = address(mockPremiumManager);
 
         vm.prank(curator);
         policyManager.setSupportedPayoutToken(address(asset), true);

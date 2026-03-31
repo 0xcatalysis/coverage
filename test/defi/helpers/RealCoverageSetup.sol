@@ -19,7 +19,8 @@ import {
     MockChainlinkPriceFeedDefi,
     MockCoverPoolFactory,
     MockSpecRegistry,
-    MockBindPolicyHook
+    MockBindPolicyHook,
+    MockPremiumManager
 } from "../mocks/CoverageMocks.sol";
 
 /// @title RealCoverageSetup
@@ -40,6 +41,7 @@ abstract contract RealCoverageSetup is Test {
     MockSpecRegistry internal mockSpecRegistry;
     MockBindPolicyHook internal mockBindPolicyHook;
     MockChainlinkPriceFeedDefi internal mockChainlinkPriceFeed;
+    MockPremiumManager internal mockPremiumManager;
 
     // ── EIP-712 quote signing ──
     uint256 internal quoteSignerKey;
@@ -61,6 +63,7 @@ abstract contract RealCoverageSetup is Test {
         mockCoverPoolFactory = new MockCoverPoolFactory();
         mockSpecRegistry = new MockSpecRegistry();
         mockBindPolicyHook = new MockBindPolicyHook();
+        mockPremiumManager = new MockPremiumManager();
 
         // ── EIP-712 signer ──
         quoteSignerKey = uint256(keccak256("quote-signer-key"));

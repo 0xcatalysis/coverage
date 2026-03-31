@@ -104,3 +104,10 @@ contract MockBindPolicyHook is IBindPolicyHook {
         return interfaceId == type(IBindPolicyHook).interfaceId || interfaceId == type(IERC165).interfaceId;
     }
 }
+
+/// @notice Minimal PremiumManager stub for adapter tests.
+/// @dev Accepts distributePremium() calls without redistributing tokens, so the caller
+///      (CoveredVaultWrapper.collectPremium) can verify the token transfer to this address.
+contract MockPremiumManager {
+    function distributePremium(address, uint96, address, uint256) external {}
+}
