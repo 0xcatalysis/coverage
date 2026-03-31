@@ -560,7 +560,7 @@ contract ClaimManager is
         } else {
             _approveIfERC20(collateralToken, swapper, collateralAmount);
 
-            uint256 amountOutMin;
+            uint256 amountOutMin = 0;
             try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 quoted) {
                 if (quoted == 0) {
                     revert QuoteUnavailable(collateralToken, payoutToken);
