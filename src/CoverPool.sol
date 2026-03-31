@@ -139,16 +139,36 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     function setPoolFeeBps(uint16 poolFeeBps_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
 
-        if (_pendingPoolFeeBpsTimestamp != 0 && block.timestamp >= _pendingPoolFeeBpsTimestamp) {
-            uint16 previous = _poolFeeBps;
-            _poolFeeBps = _pendingPoolFeeBps;
-            emit PoolFeeBpsSet(previous, _poolFeeBps);
+        if (_pendingPoolFeeBpsTimestamp != 0) {
+            if (block.timestamp >= _pendingPoolFeeBpsTimestamp) {
+                uint16 previous = _poolFeeBps;
+                _poolFeeBps = _pendingPoolFeeBps;
+                _pendingPoolFeeBpsTimestamp = 0;
+                emit PoolFeeBpsSet(previous, _poolFeeBps);
+            } else {
+                emit PoolFeeBpsProposalCancelled(_pendingPoolFeeBps);
+            }
         }
 
         _pendingPoolFeeBps = poolFeeBps_;
         _pendingPoolFeeBpsTimestamp = block.timestamp + POOL_FEE_TIMELOCK;
 
         emit PoolFeeBpsProposed(poolFeeBps_, _pendingPoolFeeBpsTimestamp);
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
+    function finalizePoolFeeBps() external override {
+        require(
+            _pendingPoolFeeBpsTimestamp != 0 && block.timestamp >= _pendingPoolFeeBpsTimestamp, NoPendingFeeProposal()
+        );
+
+        uint16 previous = _poolFeeBps;
+        _poolFeeBps = _pendingPoolFeeBps;
+        _pendingPoolFeeBpsTimestamp = 0;
+
+        emit PoolFeeBpsSet(previous, _poolFeeBps);
     }
 
     /**

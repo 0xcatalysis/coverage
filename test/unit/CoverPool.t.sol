@@ -255,6 +255,132 @@ contract CoverPoolTest is Test {
         assertEq(coverPool.poolFeeBps(), firstFee, "First fee committed; second still in cooldown");
     }
 
+    function test_setPoolFeeBps_WhenPendingNotExpired_EmitsCancellationAndReplacesProposal() public {
+        uint16 firstFee = 300;
+        uint16 secondFee = 600;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(firstFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK() - 1);
+
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.PoolFeeBpsProposalCancelled(firstFee);
+
+        uint256 expectedEffectiveAt = block.timestamp + coverPool.POOL_FEE_TIMELOCK();
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.PoolFeeBpsProposed(secondFee, expectedEffectiveAt);
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(secondFee);
+    }
+
+    function test_setPoolFeeBps_WhenPendingNotExpired_NewTimelockStartsFromReplacement() public {
+        uint16 firstFee = 300;
+        uint16 secondFee = 600;
+        uint16 originalFee = coverPool.poolFeeBps();
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(firstFee);
+
+        uint256 firstProposalTimestamp = block.timestamp;
+        vm.warp(firstProposalTimestamp + coverPool.POOL_FEE_TIMELOCK() - 1);
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(secondFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK() - 1);
+        assertEq(coverPool.poolFeeBps(), originalFee, "Original fee active while second proposal still pending");
+
+        vm.warp(block.timestamp + 1);
+        assertEq(coverPool.poolFeeBps(), secondFee, "Second fee active after its timelock");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        FINALIZE POOL FEE BPS
+    //////////////////////////////////////////////////////////////*/
+    function test_finalizePoolFeeBps_WhenNoPending_Reverts() public {
+        vm.expectRevert(ICoverPool.NoPendingFeeProposal.selector);
+        coverPool.finalizePoolFeeBps();
+    }
+
+    function test_finalizePoolFeeBps_WhenCooldownNotElapsed_Reverts() public {
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(500);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK() - 1);
+
+        vm.expectRevert(ICoverPool.NoPendingFeeProposal.selector);
+        coverPool.finalizePoolFeeBps();
+    }
+
+    function test_finalizePoolFeeBps_WhenCooldownElapsed_CommitsFeeAndEmitsSet() public {
+        uint16 initialFee = coverPool.poolFeeBps();
+        uint16 newFee = 500;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(newFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.PoolFeeBpsSet(initialFee, newFee);
+
+        coverPool.finalizePoolFeeBps();
+
+        assertEq(coverPool.poolFeeBps(), newFee, "Fee reflects finalized value");
+    }
+
+    function test_finalizePoolFeeBps_WhenCooldownElapsed_StorageConsistentWithGetter() public {
+        uint16 newFee = 500;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(newFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+
+        coverPool.finalizePoolFeeBps();
+
+        vm.expectRevert(ICoverPool.NoPendingFeeProposal.selector);
+        coverPool.finalizePoolFeeBps();
+    }
+
+    function test_finalizePoolFeeBps_IsPermissionless() public {
+        address stranger = makeAddr("stranger");
+        uint16 newFee = 700;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(newFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+
+        vm.prank(stranger);
+        coverPool.finalizePoolFeeBps();
+
+        assertEq(coverPool.poolFeeBps(), newFee, "Stranger can finalize matured proposal");
+    }
+
+    function test_finalizePoolFeeBps_AfterFinalize_NewProposalStartsFreshTimelock() public {
+        uint16 firstFee = 300;
+        uint16 secondFee = 600;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(firstFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+        coverPool.finalizePoolFeeBps();
+
+        assertEq(coverPool.poolFeeBps(), firstFee, "First fee active after finalize");
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(secondFee);
+
+        assertEq(coverPool.poolFeeBps(), firstFee, "First fee still active during second timelock");
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+        assertEq(coverPool.poolFeeBps(), secondFee, "Second fee active after its timelock");
+    }
+
     /*//////////////////////////////////////////////////////////////
                          SET FEE RECIPIENT
     //////////////////////////////////////////////////////////////*/

@@ -76,6 +76,12 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     event PoolFeeBpsProposed(uint16 proposedPoolFeeBps, uint256 effectiveAt);
 
     /**
+     * @notice Emitted when a pending pool fee proposal is cancelled by a new proposal before its timelock expires.
+     * @param cancelledPoolFeeBps The proposed fee value that was discarded.
+     */
+    event PoolFeeBpsProposalCancelled(uint16 cancelledPoolFeeBps);
+
+    /**
      * @notice Emitted when a policy is bound through bindPolicyForRequest.
      * @param policyId The policy identifier.
      * @param vaultCount The number of vaults bound to the policy.
@@ -189,6 +195,11 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidFeeBps();
 
     /**
+     * @notice Reverts when finalizePoolFeeBps is called but no matured pending proposal exists.
+     */
+    error NoPendingFeeProposal();
+
+    /**
      * @notice Reverts when attempting to bind an empty array of vaults.
      */
     error EmptyVaults();
@@ -225,9 +236,18 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Sets the pool fee in basis points. The new rate takes effect automatically after
      *         a cooldown of `POOL_FEE_TIMELOCK` seconds; until then the previous rate remains active.
+     *         If a matured pending proposal exists it is committed first; if an unexpired pending
+     *         proposal exists it is cancelled (emitting `PoolFeeBpsProposalCancelled`) and replaced.
      * @param poolFeeBps_ New pool fee in basis points, capped by protocol limits.
      */
     function setPoolFeeBps(uint16 poolFeeBps_) external;
+
+    /**
+     * @notice Materialises a matured pending pool fee proposal into storage.
+     * @dev Callable by anyone once the `POOL_FEE_TIMELOCK` has elapsed on the pending proposal.
+     *      Clears the pending state so `_poolFeeBps` remains the single source of truth.
+     */
+    function finalizePoolFeeBps() external;
 
     /**
      * @notice Updates the fee recipient address.
