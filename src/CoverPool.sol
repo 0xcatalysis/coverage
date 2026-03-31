@@ -26,23 +26,26 @@ import {IStakeManager} from "./interfaces/IStakeManager.sol";
 // slither-disable-next-line unimplemented-functions
 contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeable, PausableUpgradeable, ICoverPool {
     bytes32 public constant override QUOTE_SIGNER_ROLE = keccak256("QUOTE_SIGNER_ROLE");
+    uint32 public constant POOL_FEE_TIMELOCK = 48 hours;
 
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
         "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
     );
-
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
+    uint32 private constant _BIND_START_TIME_TOLERANCE = 5 minutes;
 
     address public override policyManager;
     address public override stakeManager;
     address public override specRegistry;
     address public override feeRecipient;
-    uint16 public override poolFeeBps;
     mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
 
     mapping(uint96 policyId => BoundPolicy policy) private boundPolicies;
+    uint16 private _poolFeeBps;
+    uint16 private _pendingPoolFeeBps;
+    uint256 private _pendingPoolFeeBpsTimestamp;
 
     /**
      * @dev Ensures incoming quote matches pool metadata and timing constraints before processing.
@@ -58,7 +61,10 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
 
         uint256 currentTimestamp = block.timestamp;
         // forge-lint: disable-next-line(unsafe-typecast)
-        require(quote.startTime >= currentTimestamp, InvalidStartTime(quote.startTime, uint32(currentTimestamp)));
+        require(
+            uint256(quote.startTime) + _BIND_START_TIME_TOLERANCE >= currentTimestamp,
+            InvalidStartTime(quote.startTime, uint32(currentTimestamp))
+        );
         // forge-lint: disable-next-line(unsafe-typecast)
         require(quote.expirationTime >= currentTimestamp, QuoteExpired(quote.expirationTime, uint32(currentTimestamp)));
         _;
@@ -99,7 +105,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         policyManager = policyManager_;
         stakeManager = stakeManager_;
         specRegistry = specRegistry_;
-        poolFeeBps = poolFeeBps_;
+        _poolFeeBps = poolFeeBps_;
         feeRecipient = curator_;
     }
 
@@ -120,13 +126,29 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     /**
      * @inheritdoc ICoverPool
      */
+    function poolFeeBps() public view override returns (uint16) {
+        if (_pendingPoolFeeBpsTimestamp != 0 && block.timestamp >= _pendingPoolFeeBpsTimestamp) {
+            return _pendingPoolFeeBps;
+        }
+        return _poolFeeBps;
+    }
+
+    /**
+     * @inheritdoc ICoverPool
+     */
     function setPoolFeeBps(uint16 poolFeeBps_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(poolFeeBps_ <= _MAX_POOL_FEE_BPS, InvalidFeeBps());
 
-        uint16 previousPoolFeeBps = poolFeeBps;
-        poolFeeBps = poolFeeBps_;
+        if (_pendingPoolFeeBpsTimestamp != 0 && block.timestamp >= _pendingPoolFeeBpsTimestamp) {
+            uint16 previous = _poolFeeBps;
+            _poolFeeBps = _pendingPoolFeeBps;
+            emit PoolFeeBpsSet(previous, _poolFeeBps);
+        }
 
-        emit PoolFeeBpsSet(previousPoolFeeBps, poolFeeBps_);
+        _pendingPoolFeeBps = poolFeeBps_;
+        _pendingPoolFeeBpsTimestamp = block.timestamp + POOL_FEE_TIMELOCK;
+
+        emit PoolFeeBpsProposed(poolFeeBps_, _pendingPoolFeeBpsTimestamp);
     }
 
     /**

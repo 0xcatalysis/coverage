@@ -94,7 +94,7 @@ interface IPremiumManager is IAccessControl {
     /**
      * @notice Sets the RewardsManager contract used for immediate reward distribution.
      * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param rewardsManager_ Address of the RewardsManager implementation.
+     * @param rewardsManager_ Address of the new RewardsManager implementation.
      */
     function setRewardsManager(address rewardsManager_) external;
 

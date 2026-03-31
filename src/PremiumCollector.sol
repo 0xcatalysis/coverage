@@ -144,7 +144,16 @@ contract PremiumCollector is
     /**
      * @inheritdoc IPremiumCollector
      */
-    function updateVault(address vault, address pool, uint96 policyId) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function updateVault(
+        address vault,
+        address pool,
+        uint96 policyId
+    )
+        external
+        override
+        nonReentrant
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         require(_vaultConfigs[vault].registered, VaultNotRegistered(vault));
         require(pool != address(0), ZeroAddress());
         require(policyId != 0, InvalidPolicyId());
@@ -251,6 +260,20 @@ contract PremiumCollector is
      */
     function paused() public view override (IPremiumCollector, PausableUpgradeable) returns (bool) {
         return super.paused();
+    }
+
+    /**
+     * @notice Recovers accidentally sent ERC-20 tokens from this contract.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param token ERC-20 token to recover.
+     * @param to Recipient address.
+     * @param amount Amount to transfer.
+     */
+    function recoverTokens(address token, address to, uint256 amount) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(token != address(0) && to != address(0), ZeroAddress());
+        require(amount != 0, ZeroAmount());
+        IERC20(token).safeTransfer(to, amount);
+        emit TokensRecovered(token, to, amount);
     }
 
     /**

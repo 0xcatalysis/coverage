@@ -127,6 +127,7 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
     function resolveSpec(address coverPool, bytes32 specId) external view override returns (ISpec spec) {
         spec = _specs[coverPool][specId];
         require(address(spec) != address(0), SpecNotRegistered(coverPool, specId));
+        require(_approvedSpecs[address(spec)], SpecNotApproved(address(spec)));
         return spec;
     }
 

@@ -30,8 +30,8 @@ contract PremiumManager is
     bytes32 public constant override PREMIUM_COLLECTOR_ROLE = keccak256("PREMIUM_COLLECTOR_ROLE");
 
     uint16 private constant _BPS_DENOMINATOR = 10_000;
-    uint16 private constant _MAX_FEE_BPS = 10_000;
     uint16 private constant _MAX_PLATFORM_FEE_BPS = 2500; // 25%
+    uint16 private constant _MAX_FEE_BPS = 5000; // 50%
 
     address public override rewardsManager;
     address public override platformTreasury;

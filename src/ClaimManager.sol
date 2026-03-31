@@ -45,6 +45,7 @@ contract ClaimManager is
 
     uint16 private constant _MAX_SLIPPAGE_BPS = 10_000;
     address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+    uint32 private constant _SWAP_DEADLINE_BUFFER = 15 minutes;
 
     address public override specRegistry;
     address public override slashingManager;
@@ -179,6 +180,7 @@ contract ClaimManager is
         IPolicyManager.PolicyMetadata memory metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
         require(msg.sender == ICoverPool(metadata.pool).owner(), UnauthorizedApprover());
+        require(_claimApprovalRequired[policyId], NoApprovalPending(policyId));
         _claimApprovalRequired[policyId] = false;
         emit NextClaimApproved(policyId, msg.sender);
     }
@@ -223,6 +225,9 @@ contract ClaimManager is
             emit ClaimRejected(policyId, claimId, "Spec evaluation failed", block.timestamp);
             return claimId;
         }
+
+        // slither-disable-next-line reentrancy-no-eth
+        _usedEvidenceHashes[policyId][evidenceHash] = true;
 
         claim.status = ClaimStatus.Approved;
 
@@ -306,8 +311,6 @@ contract ClaimManager is
             block.timestamp >= metadata.startTime && block.timestamp <= metadata.maturityTime,
             ClaimOutsideCoverageWindow(policyId, metadata.startTime, metadata.maturityTime, uint32(block.timestamp))
         );
-
-        _usedEvidenceHashes[policyId][evidenceHash] = true;
 
         claimId = _policyClaims[policyId].claimCount;
         ClaimRecord storage claim = _claims[policyId][claimId];
@@ -557,13 +560,18 @@ contract ClaimManager is
         } else {
             _approveIfERC20(collateralToken, swapper, collateralAmount);
 
-            uint256 amountOutMin = 1;
+            uint256 amountOutMin;
             try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 quoted) {
-                if (quoted > 0) {
-                    amountOutMin = (quoted * (uint256(_MAX_SLIPPAGE_BPS) - maxSwapSlippageBps)) / _MAX_SLIPPAGE_BPS;
-                    if (amountOutMin == 0) amountOutMin = 1;
+                if (quoted == 0) {
+                    revert QuoteUnavailable(collateralToken, payoutToken);
                 }
-            } catch {}
+                amountOutMin = (quoted * (uint256(_MAX_SLIPPAGE_BPS) - maxSwapSlippageBps)) / _MAX_SLIPPAGE_BPS;
+                if (amountOutMin == 0) {
+                    amountOutMin = 1;
+                }
+            } catch {
+                revert QuoteUnavailable(collateralToken, payoutToken);
+            }
 
             ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
                 tokenIn: collateralToken,
@@ -572,7 +580,7 @@ contract ClaimManager is
                 amountOutMin: amountOutMin,
                 recipient: address(this),
                 swapCalldata: "",
-                deadline: block.timestamp
+                deadline: block.timestamp + _SWAP_DEADLINE_BUFFER
             });
 
             // slither-disable-next-line arbitrary-send-eth
@@ -580,7 +588,7 @@ contract ClaimManager is
                 ISwapper(swapper).executeSwap{value: collateralToken == _NATIVE_ETH ? collateralAmount : 0}(swapParams);
 
             amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
-            _transferToken(payoutToken, beneficiary, amountOut);
+            _transferToken(payoutToken, beneficiary, swapOutput);
 
             _approveIfERC20(collateralToken, swapper, 0);
         }

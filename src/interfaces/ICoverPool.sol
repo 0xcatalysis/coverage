@@ -69,6 +69,13 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     event PoolFeeBpsSet(uint16 previousPoolFeeBps, uint16 newPoolFeeBps);
 
     /**
+     * @notice Emitted when a pool fee change is proposed (starts the timelock).
+     * @param proposedPoolFeeBps Proposed new fee in basis points.
+     * @param effectiveAt Timestamp at which the change may be executed.
+     */
+    event PoolFeeBpsProposed(uint16 proposedPoolFeeBps, uint256 effectiveAt);
+
+    /**
      * @notice Emitted when a policy is bound through bindPolicyForRequest.
      * @param policyId The policy identifier.
      * @param vaultCount The number of vaults bound to the policy.
@@ -187,11 +194,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error EmptyVaults();
 
     /**
-     * @notice Reverts when policy identifier is invalid or mismatched.
-     */
-    error InvalidPolicyId();
-
-    /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param curator_ Address assigned as the owner (curator). Serves as the operator for the pool.
      * @param policyManager_ Address of the PolicyManager contract for policy binding operations.
@@ -221,8 +223,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function unpause() external;
 
     /**
-     * @notice Updates the pool fee expressed in basis points.
-     * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
+     * @notice Sets the pool fee in basis points. The new rate takes effect automatically after
+     *         a cooldown of `POOL_FEE_TIMELOCK` seconds; until then the previous rate remains active.
+     * @param poolFeeBps_ New pool fee in basis points, capped by protocol limits.
      */
     function setPoolFeeBps(uint16 poolFeeBps_) external;
 
@@ -286,8 +289,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function setPremiumDefaulted(uint96 policyId, bool defaulted) external;
 
     /**
-     * @notice Pool fee expressed in basis points that is applied to premiums.
-     * @return The pool fee in basis points.
+     * @notice Returns the currently active pool fee in basis points.
+     *         Returns the pending fee once the cooldown period has elapsed.
+     * @return The active pool fee in basis points.
      */
     function poolFeeBps() external view returns (uint16);
 

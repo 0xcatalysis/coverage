@@ -105,6 +105,11 @@ interface IPremiumCollector is IAccessControl {
     error ZeroAddress();
 
     /**
+     * @notice Reverts when a zero amount is provided where not allowed.
+     */
+    error ZeroAmount();
+
+    /**
      * @notice Reverts when a zero policy ID is provided where not allowed.
      */
     error InvalidPolicyId();
@@ -114,6 +119,14 @@ interface IPremiumCollector is IAccessControl {
      * @param interval Invalid interval value.
      */
     error InvalidDistributeInterval(uint64 interval);
+
+    /**
+     * @notice Emitted when stranded tokens are recovered by an admin.
+     * @param token Token address recovered.
+     * @param to Recipient of the recovered funds.
+     * @param amount Amount recovered.
+     */
+    event TokensRecovered(address indexed token, address indexed to, uint256 amount);
 
     /**
      * @notice Pauses distribution operations.
@@ -234,4 +247,13 @@ interface IPremiumCollector is IAccessControl {
      * @notice Returns true when the contract is paused.
      */
     function paused() external view returns (bool);
+
+    /**
+     * @notice Recovers accidentally sent ERC-20 tokens from this contract.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param token ERC-20 token to recover.
+     * @param to Recipient address.
+     * @param amount Amount to transfer.
+     */
+    function recoverTokens(address token, address to, uint256 amount) external;
 }

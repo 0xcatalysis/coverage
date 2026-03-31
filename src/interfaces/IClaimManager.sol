@@ -175,13 +175,6 @@ interface IClaimManager is IAccessControl {
     error PolicyNotFound(uint96 policyId);
 
     /**
-     * @notice Reverts when attempting to resolve a claim that has already been resolved.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim.
-     */
-    error ClaimAlreadyResolved(uint96 policyId, uint256 claimId);
-
-    /**
      * @notice Reverts when attempting to file a claim outside the coverage window.
      * @param policyId Identifier of the policy.
      * @param startTime Coverage start timestamp.
@@ -196,13 +189,6 @@ interface IClaimManager is IAccessControl {
      * @param expectedClaimer Address authorized to file claims for this policy.
      */
     error UnauthorizedClaimer(address caller, address expectedClaimer);
-
-    /**
-     * @notice Reverts when spec evaluation returns non-payable result.
-     * @param policyId Identifier of the policy.
-     * @param notesHash Hash of evaluation notes.
-     */
-    error ClaimNotPayable(uint96 policyId, bytes32 notesHash);
 
     /**
      * @notice Reverts when slashing returns no collateral.
@@ -258,6 +244,19 @@ interface IClaimManager is IAccessControl {
      * @param policyId Identifier of the policy in premium default.
      */
     error PremiumDefaulted(uint96 policyId);
+
+    /**
+     * @notice Reverts when no valid swap quote is available for the collateral-to-payout route.
+     * @param collateralToken Address of the collateral token.
+     * @param payoutToken Address of the payout token.
+     */
+    error QuoteUnavailable(address collateralToken, address payoutToken);
+
+    /**
+     * @notice Reverts when approveNextClaim is called but no approval gate is active.
+     * @param policyId Identifier of the policy.
+     */
+    error NoApprovalPending(uint96 policyId);
 
     /**
      * @notice Pauses claim operations.
@@ -384,9 +383,7 @@ interface IClaimManager is IAccessControl {
 
     /**
      * @notice Clears the claim approval gate for a policy, allowing the next claim to be filed freely.
-     * @dev Callable only by the pool curator (ICoverPool.owner()). Idempotent: calling when the gate
-     *      is already open is a no-op (does not revert). Reverts if the policy does not exist or the
-     *      caller is not the curator.
+     * @dev Callable only by the pool curator.
      * @param policyId Identifier of the policy to clear the approval gate for.
      */
     function approveNextClaim(uint96 policyId) external;
