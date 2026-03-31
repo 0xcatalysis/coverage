@@ -116,4 +116,8 @@ contract MockPremiumManager {
     function distributePremium(address, uint96, address token, uint256 amount) external {
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
     }
+
+    function platformTreasury() external pure returns (address) {
+        return address(0x1); // non-zero sentinel satisfying IPremiumManager interface check
+    }
 }

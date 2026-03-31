@@ -10,6 +10,7 @@ import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {MockERC20, MockVaultV2} from "./mocks/Mocks.sol";
+import {MockPremiumManager} from "./mocks/CoverageMocks.sol";
 import {RealCoverageSetup} from "./helpers/RealCoverageSetup.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -1274,13 +1275,13 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     function test_setPremiumRecipient_updatesRecipient() public {
-        address newRecipient = address(0xBEEF);
+        MockPremiumManager newPM = new MockPremiumManager();
         vm.prank(curator);
-        wrapper.setPremiumRecipient(newRecipient);
+        wrapper.setPremiumRecipient(address(newPM));
         vm.warp(block.timestamp + 2 days + 1);
         vm.prank(curator);
         wrapper.executePremiumRecipient();
-        assertEq(wrapper.premiumRecipient(), newRecipient);
+        assertEq(wrapper.premiumRecipient(), address(newPM));
     }
 
     function test_setPremiumRecipient_revertsOnZeroAddress() public {
@@ -1289,18 +1290,24 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         wrapper.setPremiumRecipient(address(0));
     }
 
+    function test_setPremiumRecipient_revertsOnNonPMAddress() public {
+        vm.prank(curator);
+        vm.expectRevert(IA.InvalidPremiumRecipient.selector);
+        wrapper.setPremiumRecipient(address(0xBEEF)); // EOA — has no platformTreasury()
+    }
+
     function test_setPremiumRecipient_revertsIfNotOwner() public {
         vm.prank(user1);
         vm.expectRevert();
-        wrapper.setPremiumRecipient(address(0xBEEF));
+        wrapper.setPremiumRecipient(address(mockPremiumManager));
     }
 
     function test_setPremiumRecipient_emitsEvent() public {
-        address newRecipient = address(0xBEEF);
+        MockPremiumManager newPM = new MockPremiumManager();
         vm.prank(curator);
         vm.expectEmit(true, false, false, false);
-        emit IE.PremiumRecipientProposed(newRecipient, 0);
-        wrapper.setPremiumRecipient(newRecipient);
+        emit IE.PremiumRecipientProposed(address(newPM), 0);
+        wrapper.setPremiumRecipient(address(newPM));
     }
 
     /// @dev EF-2: setPremiumRecipient() must NOT transfer funds -- it only updates the storage slot.
@@ -1324,7 +1331,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.warp(block.timestamp + 30 days);
 
         uint256 oldRecipientBefore = asset.balanceOf(premiumRecipient);
-        address newRecipient = address(0xBEEF);
+        address newRecipient = address(new MockPremiumManager());
         uint256 newRecipientBefore = asset.balanceOf(newRecipient);
         uint256 pendingBefore = wrapper.pendingPremium(); // 0 -- not yet settled
 

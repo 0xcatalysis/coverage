@@ -6,6 +6,7 @@ import {IVaultV2} from "../../interfaces/Morpho/IVaultV2.sol";
 import {IAlerts as IA} from "../../interfaces/IAlerts.sol";
 import {IEvents as IE} from "../../interfaces/IEvents.sol";
 import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
+import {IPremiumManager} from "coverage/interfaces/IPremiumManager.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -105,8 +106,17 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     }
 
     /// @dev Now uses propose/execute pattern consistent with all other parameter changes.
+    ///      newRecipient must implement IPremiumManager (verified by calling platformTreasury()).
+    ///      This guards against accidentally setting an EOA or unrelated contract as recipient,
+    ///      which would cause collectPremium() to permanently revert when a policy is bound.
     function setPremiumRecipient(address newRecipient) external override onlyOwner {
         require(newRecipient != address(0), IA.ZeroAddress());
+        if (newRecipient.code.length == 0) revert IA.InvalidPremiumRecipient();
+        try IPremiumManager(newRecipient).platformTreasury() returns (address treasury) {
+            require(treasury != address(0), IA.InvalidPremiumRecipient());
+        } catch {
+            revert IA.InvalidPremiumRecipient();
+        }
         pendingPremiumRecipientTimestamp =
             _propose(pendingPremiumRecipientTimestamp, "premiumRecipient", STANDARD_DELAY);
         pendingPremiumRecipient = newRecipient;

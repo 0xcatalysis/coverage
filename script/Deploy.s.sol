@@ -188,6 +188,15 @@ abstract contract Deploy is Script {
     }
 
     /**
+     * @notice Returns the initial tokens to add to the PremiumManager approved token set.
+     * @dev Override in network-specific scripts (e.g. DeploySepolia) to return USDC or other tokens.
+     *      Only tokens in this set are accepted by distributePremium(). Default returns empty array.
+     */
+    function getInitialPremiumTokens() internal view virtual returns (address[] memory) {
+        return new address[](0);
+    }
+
+    /**
      * @notice Orchestrates deployment of all contract proxies and implementations.
      * @dev Deploys contracts in dependency order. Uses deployer as temporary admin to enable
      *      role configuration phase. Final admin receives DEFAULT_ADMIN_ROLE in _grantRoles.
@@ -223,10 +232,10 @@ abstract contract Deploy is Script {
     }
 
     /**
-     * @notice Deploys PremiumManager contract.
+     * @notice Deploys PremiumManager contract and approves initial premium tokens.
      * @dev PremiumManager handles premium distribution, fee splitting, and reward routing to RewardsManager.
      *      Uses deployer as temporary admin for role configuration.
-     *      distributePremium() is permissionless — no per-vault role grants required after deployment.
+     *      distributePremium() requires the token to be in the approved set — see getInitialPremiumTokens().
      * @param contracts DeployedContracts struct to populate with premium contract addresses.
      * @param roles Role configuration containing admin, deployer, and platformTreasury addresses.
      * @param external_ External configuration containing RewardsManager address.
@@ -249,6 +258,11 @@ abstract contract Deploy is Script {
             opts
         );
         contracts.premiumManagerImpl = Upgrades.getImplementationAddress(contracts.premiumManagerProxy);
+
+        address[] memory premiumTokens = getInitialPremiumTokens();
+        for (uint256 i = 0; i < premiumTokens.length; i++) {
+            PremiumManager(contracts.premiumManagerProxy).addApprovedPremiumToken(premiumTokens[i]);
+        }
     }
 
     /**
@@ -352,8 +366,8 @@ abstract contract Deploy is Script {
      *      - All contracts: DEFAULT_ADMIN_ROLE → roles.admin (when deployer != admin)
      *      - Swapper: SWAP_EXECUTOR_ROLE → ClaimManager (for collateral conversion)
      *
-     *      NOTE: distributePremium() on PremiumManager is permissionless. No per-vault role
-     *      grants are needed — any CoveredVaultWrapper instance can call it directly.
+     *      NOTE: distributePremium() on PremiumManager is permissionless but requires the token
+     *      to be in the approved set. Initial tokens are added in _deployPremiumContracts().
      * @param contracts DeployedContracts containing all proxy addresses.
      * @param roles RoleConfig containing admin address for DEFAULT_ADMIN_ROLE grant.
      */
