@@ -114,7 +114,9 @@ contract UniswapV3Adapter is IQuotableAdapter {
      */
     function quote(uint256 amountIn, bytes calldata swapCalldata) external override returns (uint256 amountOut) {
         // swapCalldata = selector(4) + tokenIn(32) + tokenOut(32) + fee(32) + amountOutMinimum(32)
-        if (swapCalldata.length < 100) return 0;
+        if (swapCalldata.length < 132) {
+            return 0;
+        }
         (address tokenIn, address tokenOut, uint24 fee,) =
             abi.decode(swapCalldata[4:], (address, address, uint24, uint256));
 

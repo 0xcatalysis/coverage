@@ -146,4 +146,23 @@ contract UniswapV3AdapterFuzzTest is Test {
         vm.prank(randomCaller);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, 0);
     }
+
+    /*//////////////////////////////////////////////////////////////
+                                QUOTE
+    //////////////////////////////////////////////////////////////*/
+
+    function testFuzz_quote_WhenCalldataTooShort_ReturnsZero(uint256 len) public {
+        len = bound(len, 0, 131);
+        uint256 out = adapter.quote(1 ether, new bytes(len));
+        assertEq(out, 0, "calldata shorter than 132 bytes must return 0");
+    }
+
+    function testFuzz_quote_WhenCalldataValidLength_ReturnsQuoterOutput(uint256 amountIn) public {
+        amountIn = bound(amountIn, 1, type(uint128).max);
+        bytes memory cd =
+            abi.encodeWithSelector(adapter.swap.selector, address(tokenIn), address(tokenOut), FEE, uint256(0));
+        assertEq(cd.length, 132);
+        uint256 out = adapter.quote(amountIn, cd);
+        assertEq(out, amountIn, "quote must return the quoter output for valid calldata");
+    }
 }
