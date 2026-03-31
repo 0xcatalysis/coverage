@@ -607,6 +607,19 @@ contract SwapperTest is Test {
         vm.stopPrank();
     }
 
+    function test_setSwapRoute_WithNonEmptyCalldata_StoresAndReturnsIt() public {
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        bytes memory storedCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, storedCalldata);
+
+        ISwapper.SwapRoute memory route = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertEq(route.swapCalldata, storedCalldata, "Stored calldata mismatch");
+    }
+
     /*//////////////////////////////////////////////////////////////
                             EXECUTE SWAP
     //////////////////////////////////////////////////////////////*/
@@ -917,10 +930,6 @@ contract SwapperTest is Test {
         vm.stopPrank();
     }
 
-    /*//////////////////////////////////////////////////////////////
-                     EXECUTE SWAP - NATIVE ETH
-    //////////////////////////////////////////////////////////////*/
-
     function test_executeSwap_WhenNativeETHInput_WrapsAndSwaps() public {
         MockWETH mockWeth = new MockWETH();
 
@@ -1181,61 +1190,6 @@ contract SwapperTest is Test {
         assertEq(tokenOut.balanceOf(recipient2), amountOut, "Recipient2 balance mismatch");
     }
 
-    /*//////////////////////////////////////////////////////////////
-                                UPGRADE
-    //////////////////////////////////////////////////////////////*/
-
-    function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
-        Swapper newImpl = new Swapper();
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, swapExecutor, swapper.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        vm.prank(swapExecutor);
-        swapper.upgradeToAndCall(address(newImpl), "");
-    }
-
-    function test_authorizeUpgrade_WhenCalledByAdmin_Succeeds() public {
-        Swapper newImpl = new Swapper();
-        vm.prank(admin);
-        swapper.upgradeToAndCall(address(newImpl), "");
-
-        assertEq(swapper.nativeWrapper(), nativeWrapper, "NativeWrapper should be preserved");
-        assertTrue(swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), admin), "Admin role should be preserved");
-        assertTrue(swapper.hasRole(swapper.SWAP_MANAGER_ROLE(), swapManager), "SwapManager role should be preserved");
-        assertTrue(swapper.hasRole(swapper.SWAP_EXECUTOR_ROLE(), swapExecutor), "SwapExecutor role should be preserved");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                     SET SWAP ROUTE (STORED CALLDATA)
-    //////////////////////////////////////////////////////////////*/
-
-    function test_setSwapRoute_WithNonEmptyCalldata_StoresAndReturnsIt() public {
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-
-        bytes memory storedCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
-
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, storedCalldata);
-
-        ISwapper.SwapRoute memory route = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertEq(route.swapCalldata, storedCalldata, "Stored calldata mismatch");
-    }
-
-    function test_getSwapRoute_WhenRouteNotConfigured_ReturnsZeroStruct() public {
-        address unknown1 = makeAddr("unknown1");
-        address unknown2 = makeAddr("unknown2");
-
-        ISwapper.SwapRoute memory route = swapper.getSwapRoute(unknown1, unknown2);
-        assertEq(route.tokenIn, address(0), "tokenIn should be zero");
-        assertEq(route.tokenOut, address(0), "tokenOut should be zero");
-        assertEq(route.swapTarget, address(0), "swapTarget should be zero");
-        assertFalse(route.enabled, "enabled should be false");
-        assertEq(route.swapCalldata.length, 0, "swapCalldata should be empty");
-    }
-
     function test_executeSwap_WhenParamsCalldataEmpty_UsesStoredRouteCalldata() public {
         uint256 amountIn = 100 ether;
         uint256 amountOut = 95 ether;
@@ -1267,6 +1221,48 @@ contract SwapperTest is Test {
 
         assertEq(actualOut, amountOut, "amountOut mismatch");
         assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient did not receive output");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                UPGRADE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
+        Swapper newImpl = new Swapper();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, swapExecutor, swapper.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(swapExecutor);
+        swapper.upgradeToAndCall(address(newImpl), "");
+    }
+
+    function test_authorizeUpgrade_WhenCalledByAdmin_Succeeds() public {
+        Swapper newImpl = new Swapper();
+        vm.prank(admin);
+        swapper.upgradeToAndCall(address(newImpl), "");
+
+        assertEq(swapper.nativeWrapper(), nativeWrapper, "NativeWrapper should be preserved");
+        assertTrue(swapper.hasRole(swapper.DEFAULT_ADMIN_ROLE(), admin), "Admin role should be preserved");
+        assertTrue(swapper.hasRole(swapper.SWAP_MANAGER_ROLE(), swapManager), "SwapManager role should be preserved");
+        assertTrue(swapper.hasRole(swapper.SWAP_EXECUTOR_ROLE(), swapExecutor), "SwapExecutor role should be preserved");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            GET SWAP ROUTE
+    //////////////////////////////////////////////////////////////*/
+
+    function test_getSwapRoute_WhenRouteNotConfigured_ReturnsZeroStruct() public {
+        address unknown1 = makeAddr("unknown1");
+        address unknown2 = makeAddr("unknown2");
+
+        ISwapper.SwapRoute memory route = swapper.getSwapRoute(unknown1, unknown2);
+        assertEq(route.tokenIn, address(0), "tokenIn should be zero");
+        assertEq(route.tokenOut, address(0), "tokenOut should be zero");
+        assertEq(route.swapTarget, address(0), "swapTarget should be zero");
+        assertFalse(route.enabled, "enabled should be false");
+        assertEq(route.swapCalldata.length, 0, "swapCalldata should be empty");
     }
 
     /*//////////////////////////////////////////////////////////////

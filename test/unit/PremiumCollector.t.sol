@@ -164,6 +164,40 @@ contract PremiumCollectorTest is Test {
         premiumCollector.registerVault(vault1, fakePool, POLICY_ID);
     }
 
+    function test_registerVault_WhenAlreadyRegistered_Reverts() public {
+        vm.startPrank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.VaultAlreadyRegistered.selector, vault1));
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+        vm.stopPrank();
+    }
+
+    function test_registerVault_WhenUnderlyingZero_Reverts() public {
+        MockZeroAssetVault zeroVault = new MockZeroAssetVault();
+        vm.prank(admin);
+        vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
+        premiumCollector.registerVault(address(zeroVault), pool, POLICY_ID);
+    }
+
+    function test_registerVault_Success() public {
+        vm.prank(admin);
+        vm.expectEmit(true, true, false, true);
+        emit VaultRegistered(vault1, address(underlying1), pool, POLICY_ID);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        IPremiumCollector.VaultConfig memory config = premiumCollector.getVaultConfig(vault1);
+        assertEq(config.underlying, address(underlying1));
+        assertEq(config.pool, pool);
+        assertEq(config.policyId, POLICY_ID);
+        assertEq(config.lastDistributeTime, 0);
+        assertTrue(config.registered);
+
+        address[] memory vaults = premiumCollector.getRegisteredVaults();
+        assertEq(vaults.length, 1);
+        assertEq(vaults[0], vault1);
+    }
+
     /*//////////////////////////////////////////////////////////////
                       SET COVER POOL FACTORY
     //////////////////////////////////////////////////////////////*/
@@ -189,59 +223,6 @@ contract PremiumCollectorTest is Test {
         vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
         vm.prank(admin);
         premiumCollector.setCoverPoolFactory(address(0));
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                           UPDATE VAULT
-    //////////////////////////////////////////////////////////////*/
-
-    function test_updateVault_WhenPoolNotRegistered_Reverts() public {
-        vm.prank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID);
-
-        StrictMockCoverPoolFactory strictFactory = new StrictMockCoverPoolFactory();
-        strictFactory.registerPool(pool);
-        vm.prank(admin);
-        premiumCollector.setCoverPoolFactory(address(strictFactory));
-
-        address fakePool = makeAddr("fakePool");
-        vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.InvalidCoverPool.selector, fakePool));
-        premiumCollector.updateVault(vault1, fakePool, POLICY_ID);
-    }
-
-    function test_registerVault_WhenAlreadyRegistered_Reverts() public {
-        vm.startPrank(admin);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID);
-
-        vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.VaultAlreadyRegistered.selector, vault1));
-        premiumCollector.registerVault(vault1, pool, POLICY_ID);
-        vm.stopPrank();
-    }
-
-    function test_registerVault_Success() public {
-        vm.prank(admin);
-        vm.expectEmit(true, true, false, true);
-        emit VaultRegistered(vault1, address(underlying1), pool, POLICY_ID);
-        premiumCollector.registerVault(vault1, pool, POLICY_ID);
-
-        IPremiumCollector.VaultConfig memory config = premiumCollector.getVaultConfig(vault1);
-        assertEq(config.underlying, address(underlying1));
-        assertEq(config.pool, pool);
-        assertEq(config.policyId, POLICY_ID);
-        assertEq(config.lastDistributeTime, 0);
-        assertTrue(config.registered);
-
-        address[] memory vaults = premiumCollector.getRegisteredVaults();
-        assertEq(vaults.length, 1);
-        assertEq(vaults[0], vault1);
-    }
-
-    function test_registerVault_WhenUnderlyingZero_Reverts() public {
-        MockZeroAssetVault zeroVault = new MockZeroAssetVault();
-        vm.prank(admin);
-        vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
-        premiumCollector.registerVault(address(zeroVault), pool, POLICY_ID);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -365,6 +346,21 @@ contract PremiumCollectorTest is Test {
         vm.prank(admin);
         vm.expectRevert(IPremiumCollector.InvalidPolicyId.selector);
         premiumCollector.updateVault(vault1, pool, 0);
+    }
+
+    function test_updateVault_WhenPoolNotRegistered_Reverts() public {
+        vm.prank(admin);
+        premiumCollector.registerVault(vault1, pool, POLICY_ID);
+
+        StrictMockCoverPoolFactory strictFactory = new StrictMockCoverPoolFactory();
+        strictFactory.registerPool(pool);
+        vm.prank(admin);
+        premiumCollector.setCoverPoolFactory(address(strictFactory));
+
+        address fakePool = makeAddr("fakePool");
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(IPremiumCollector.InvalidCoverPool.selector, fakePool));
+        premiumCollector.updateVault(vault1, fakePool, POLICY_ID);
     }
 
     /*//////////////////////////////////////////////////////////////

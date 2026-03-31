@@ -2155,10 +2155,6 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    /*//////////////////////////////////////////////////////////////
-                          CURATOR SNAPSHOT
-    //////////////////////////////////////////////////////////////*/
-
     function test_fileClaim_UsesMetadataCuratorNotLivePoolOwner() public {
         address snapshotCurator = makeAddr("snapshotCurator");
         address livePoolOwner = operator;
