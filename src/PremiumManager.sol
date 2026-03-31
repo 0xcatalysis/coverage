@@ -161,6 +161,7 @@ contract PremiumManager is
             getFeeSplits(amount, platformFeeBps, poolFeeBps);
 
         IERC20 token = IERC20(premiumToken);
+        token.safeTransferFrom(msg.sender, address(this), amount);
 
         if (platformSplit > 0) {
             token.safeTransfer(platformTreasury, platformSplit);

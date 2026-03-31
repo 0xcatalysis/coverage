@@ -123,9 +123,9 @@ interface IPremiumManager is IAccessControl {
 
     /**
      * @notice Distributes premiums, routing fees and restaker shares.
-     * @dev Permissionless — any caller may invoke this, but PremiumManager only distributes tokens
-     *      it already holds. Callers (e.g. CoveredVaultWrapper) must transfer tokens to
-     *      PremiumManager before calling this function.
+     * @dev Permissionless — any caller may invoke this. PremiumManager pulls `amount` of
+     *      `premiumToken` from `msg.sender` via `safeTransferFrom`. Callers (e.g.
+     *      CoveredVaultWrapper) must approve PremiumManager for at least `amount` before calling.
      * @param pool CoverPool address for fee routing.
      * @param policyId Policy identifier for rewards routing.
      * @param premiumToken ERC20 token to distribute.

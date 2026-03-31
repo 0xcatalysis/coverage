@@ -85,13 +85,19 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
             pendingPremium = 0;
             address pm = premiumRecipient;
             address assetAddr = asset();
-            IERC20(assetAddr).safeTransfer(pm, pending);
             // Route through PremiumManager only when a policy is bound so that pool and
             // policyId context is valid. Before binding, premiums cannot accrue anyway
             // (premiumRatePerSecond defaults to 0 and lastPremiumAccrualTime is unset),
             // so this guard is a belt-and-suspenders safety check.
+            //
+            // Pull model: approve PremiumManager to pull `pending` tokens, then call
+            // distributePremium. forceApprove avoids residual allowance from any prior
+            // failed call.
             if (policyId != 0) {
+                IERC20(assetAddr).forceApprove(pm, pending);
                 IPremiumManager(pm).distributePremium(coverPool, policyId, assetAddr, pending);
+            } else {
+                IERC20(assetAddr).safeTransfer(pm, pending);
             }
             emit IE.PremiumCollected(pm, pending);
         }
