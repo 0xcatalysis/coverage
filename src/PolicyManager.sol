@@ -249,6 +249,11 @@ contract PolicyManager is
         ICoverPool.Quote calldata quote = request.quote;
         require(policyId == quote.policyId, InvalidPolicyId());
 
+        require(
+            quote.maturityTime - quote.startTime == draft.duration,
+            DurationMismatch(draft.duration, quote.maturityTime - quote.startTime)
+        );
+
         draft.status = PolicyStatus.Bound;
 
         require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));

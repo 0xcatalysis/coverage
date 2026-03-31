@@ -271,6 +271,13 @@ interface IPolicyManager is IAccessControl {
     error RequestDraftMismatch();
 
     /**
+     * @notice Reverts when the quote's coverage window does not match the draft's requested duration.
+     * @param expectedDuration Duration in seconds recorded in the policy draft.
+     * @param actualDuration Duration derived from the signed quote (maturityTime - startTime).
+     */
+    error DurationMismatch(uint32 expectedDuration, uint32 actualDuration);
+
+    /**
      * @notice Reverts when attempting to register a policy with a commit that's already been used.
      * @param policyCommit The duplicate policy commit hash.
      */

@@ -473,6 +473,20 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
     }
 
+    function test_bindPolicy_WhenQuoteDurationMismatchesDraft_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        request.quote.maturityTime = request.quote.startTime + COVERAGE_DURATION + 1 days;
+
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPolicyManager.DurationMismatch.selector, COVERAGE_DURATION, COVERAGE_DURATION + 1 days
+            )
+        );
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+    }
+
     function test_bindPolicy_WhenInsufficientStake_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint96 committeeId = request.quote.policyId;
