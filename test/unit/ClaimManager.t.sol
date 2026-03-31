@@ -512,11 +512,17 @@ contract ClaimManagerTest is Test {
         claimManager.approveNextClaim(nonExistentPolicyId);
     }
 
-    function test_approveNextClaim_WhenNoApprovalRequired_Succeeds() public {
+    function test_approveNextClaim_WhenNoApprovalRequired_Reverts() public {
         assertFalse(claimManager.claimApprovalRequired(POLICY_ID));
 
-        vm.expectEmit(true, true, true, true, address(claimManager));
-        emit NextClaimApproved(POLICY_ID, operator);
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.NoApprovalPending.selector, POLICY_ID));
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
+    }
+
+    function test_approveNextClaim_WhenApprovalPending_ClearsFlag() public {
+        _fileAndApproveClaim();
+        assertTrue(claimManager.claimApprovalRequired(POLICY_ID));
 
         vm.prank(operator);
         claimManager.approveNextClaim(POLICY_ID);
@@ -684,7 +690,7 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Second policy claim must succeed");
     }
 
-    function test_fileClaim_WhenRejectedClaimEvidenceReused_Reverts() public {
+    function test_fileClaim_WhenRejectedClaimEvidenceReused_Succeeds() public {
         specMock.setEvaluationResult(false, keccak256("rejected"));
 
         vm.prank(claimer);
@@ -693,9 +699,22 @@ contract ClaimManagerTest is Test {
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, 0);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Rejected), "Claim should be rejected");
 
-        vm.expectRevert(abi.encodeWithSelector(IClaimManager.DuplicateEvidenceHash.selector, POLICY_ID, evidenceHash));
+        specMock.setEvaluationResult(true, keccak256("approved"));
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+        payoutTokenMock.mint(address(swapperMock), SLASH_AMOUNT);
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(SLASH_AMOUNT);
+
         vm.prank(claimer);
-        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+        uint256 claimId2 = claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+        IClaimManager.ClaimRecord memory record2 = claimManager.claimRecord(POLICY_ID, claimId2);
+        assertEq(uint8(record2.status), uint8(IClaimManager.ClaimStatus.Approved));
     }
 
     function test_fileClaim_WhenRequestedAmountZero_Reverts() public {
@@ -929,7 +948,7 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved));
     }
 
-    function test_fileClaim_WhenSwapOutputExceedsRemainingPayout_CapsTransfer() public {
+    function test_fileClaim_WhenSwapOutputExceedsRemainingPayout_BeneficiaryReceivesFullOutput() public {
         uint256 requestedAmount = 500 ether;
         uint256 excessiveSwapOutput = 600 ether;
 
@@ -945,6 +964,7 @@ contract ClaimManagerTest is Test {
         slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
         swapperMock.setSwapOutput(excessiveSwapOutput);
         swapperMock.setPayoutToken(payoutToken);
+        payoutTokenMock.mint(address(swapperMock), excessiveSwapOutput);
 
         uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
 
@@ -952,10 +972,11 @@ contract ClaimManagerTest is Test {
         uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
         uint256 balanceAfter = payoutTokenMock.balanceOf(beneficiary);
-        assertEq(balanceAfter - balanceBefore, requestedAmount);
+        assertEq(balanceAfter - balanceBefore, excessiveSwapOutput, "Beneficiary receives full swapOutput");
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens stranded in ClaimManager");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
-        assertEq(record.payoutAmount, requestedAmount);
+        assertEq(record.payoutAmount, requestedAmount, "payoutAmount caps at requestedAmount for accounting");
     }
 
     function test_fileClaim_WhenDirectTransferExceedsRemainingPayout_CapsTransfer() public {
@@ -2302,6 +2323,75 @@ contract ClaimManagerTest is Test {
             "executeSlashing must use the original curator despite pool ownership transfer"
         );
         assertNotEq(slashingManagerMock.lastOperator(), newPoolOwner, "executeSlashing must not use the new pool owner");
+    }
+
+    function test_fileClaim_WhenQuoteSwapReverts_Reverts() public {
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        MockSwapperWithUnquotable unquotableSwapper = new MockSwapperWithUnquotable();
+        unquotableSwapper.setQuoteReverts(collateralToken);
+        unquotableSwapper.setPayoutToken(payoutToken);
+        vm.prank(admin);
+        claimManager.setSwapper(address(unquotableSwapper));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.QuoteUnavailable.selector, collateralToken, payoutToken));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenQuoteSwapReturnsZero_Reverts() public {
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        MockSwapperWithUnquotable unquotableSwapper = new MockSwapperWithUnquotable();
+        unquotableSwapper.setQuoteReturnsZero(collateralToken);
+        unquotableSwapper.setPayoutToken(payoutToken);
+        vm.prank(admin);
+        claimManager.setSwapper(address(unquotableSwapper));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.QuoteUnavailable.selector, collateralToken, payoutToken));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenApprovedClaimEvidenceReused_Reverts() public {
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+        payoutTokenMock.mint(address(swapperMock), SLASH_AMOUNT);
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(SLASH_AMOUNT);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
+
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.DuplicateEvidenceHash.selector, POLICY_ID, evidenceHash));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -116,10 +116,6 @@ contract SpecRegistryInvariantTest is StdInvariant, Test {
         targetContract(address(handler));
     }
 
-    /**
-     * @notice Every spec that was successfully registered must have been approved at the time of
-     *         registration. This is the core safety invariant of COV-5.
-     */
     function invariant_registeredSpecWasApprovedAtRegistration() public view {
         uint256 len = handler.registrationKeysLength();
         for (uint256 i = 0; i < len; ++i) {
@@ -130,11 +126,7 @@ contract SpecRegistryInvariantTest is StdInvariant, Test {
         }
     }
 
-    /**
-     * @notice resolveSpec must always succeed for any successfully registered (pool, specId) pair,
-     *         regardless of subsequent approve/revoke calls.
-     */
-    function invariant_registeredSpecAlwaysResolvable() public view {
+    function invariant_registeredSpecResolvableIffCurrentlyApproved() public {
         uint256 len = handler.registrationKeysLength();
         for (uint256 i = 0; i < len; ++i) {
             bytes32 key = handler.registrationKeys(i);
@@ -142,8 +134,15 @@ contract SpecRegistryInvariantTest is StdInvariant, Test {
             if (expectedSpec == address(0)) continue;
 
             bytes32 specId = handler.registeredSpecId(key);
-            address resolvedSpec = address(registry.resolveSpec(handler.pool(), specId));
-            assertEq(resolvedSpec, expectedSpec, "resolveSpec returned wrong spec after approve/revoke sequence");
+            bool currentlyApproved = registry.isSpecApproved(expectedSpec);
+
+            if (currentlyApproved) {
+                address resolvedSpec = address(registry.resolveSpec(handler.pool(), specId));
+                assertEq(resolvedSpec, expectedSpec, "resolveSpec returned wrong spec for approved spec");
+            } else {
+                vm.expectRevert();
+                registry.resolveSpec(handler.pool(), specId);
+            }
         }
     }
 }

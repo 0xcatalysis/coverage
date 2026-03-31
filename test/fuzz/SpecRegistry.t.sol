@@ -111,7 +111,7 @@ contract SpecRegistryFuzzTest is Test {
         registry.registerSpec(specId2, ISpec(spec1));
     }
 
-    function testFuzz_resolveSpec_UnaffectedByRevoke(bytes32 specId) public {
+    function testFuzz_resolveSpec_RevertsAfterRevoke(bytes32 specId) public {
         vm.assume(specId != bytes32(0));
 
         vm.prank(admin);
@@ -123,6 +123,7 @@ contract SpecRegistryFuzzTest is Test {
         vm.prank(admin);
         registry.revokeSpec(spec1);
 
-        assertEq(address(registry.resolveSpec(pool, specId)), spec1, "resolveSpec must work after revoke");
+        vm.expectRevert(abi.encodeWithSelector(ISpecRegistry.SpecNotApproved.selector, spec1));
+        registry.resolveSpec(pool, specId);
     }
 }

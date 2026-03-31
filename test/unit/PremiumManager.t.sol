@@ -14,7 +14,6 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 contract PremiumManagerTest is Test {
     uint16 internal constant PLATFORM_FEE_BPS = 50;
     uint16 internal constant POOL_FEE_BPS = 150;
-    uint16 internal constant MAX_FEE_BPS = 10_000;
     uint256 internal constant PREMIUM_AMOUNT = 1000 ether;
     uint96 internal constant POLICY_ID = 123;
 
@@ -202,6 +201,24 @@ contract PremiumManagerTest is Test {
         premiumManager.setRewardsManager(address(newRewardsManager));
 
         assertEq(premiumManager.rewardsManager(), address(newRewardsManager), "Rewards manager not updated");
+    }
+
+    function test_setRewardsManager_OldApprovalRevokedManuallyViaApproveSpender() public {
+        address oldRM = premiumManager.rewardsManager();
+        address tokenA = address(premiumToken);
+
+        vm.startPrank(admin);
+        premiumManager.approveSpender(tokenA, oldRM, type(uint256).max);
+        assertEq(IERC20(tokenA).allowance(address(premiumManager), oldRM), type(uint256).max);
+
+        premiumManager.approveSpender(tokenA, oldRM, 0);
+        assertEq(IERC20(tokenA).allowance(address(premiumManager), oldRM), 0, "Old RM approval manually revoked");
+
+        MockRewardsManager newRM = new MockRewardsManager();
+        premiumManager.setRewardsManager(address(newRM));
+        vm.stopPrank();
+
+        assertEq(premiumManager.rewardsManager(), address(newRM));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -541,18 +558,16 @@ contract PremiumManagerTest is Test {
         );
     }
 
-    function test_distributePremium_WhenMaxCombinedFees_RestakerSplitIsZero_SkipsRewardsCall() public {
+    function test_distributePremium_WhenMaxAllowedCombinedFees_DistributesCorrectly() public {
         uint16 maxPlatformFeeBps = 2500;
-        uint16 remainingPoolFeeBps = 7500;
-        MockCoverPool maxFeePool = new MockCoverPool(curator, poolFeeRecipient, remainingPoolFeeBps);
+        uint16 maxPoolFeeBps = 2000;
+        MockCoverPool maxFeePool = new MockCoverPool(curator, poolFeeRecipient, maxPoolFeeBps);
 
         vm.prank(admin);
         premiumManager.setPlatformFeeBps(maxPlatformFeeBps);
 
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
-            premiumManager.getFeeSplits(PREMIUM_AMOUNT, maxPlatformFeeBps, remainingPoolFeeBps);
-
-        assertEq(restakerSplit, 0, "Restaker split should be zero at 100% combined fees");
+            premiumManager.getFeeSplits(PREMIUM_AMOUNT, maxPlatformFeeBps, maxPoolFeeBps);
 
         premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
 
@@ -561,8 +576,8 @@ contract PremiumManagerTest is Test {
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
-        assertEq(premiumToken.balanceOf(address(premiumManager)), 0, "Restaker split mismatch");
-        assertEq(rewardsManager.distributeRewardsCallCount(), 0, "RewardsManager should not be called");
+        assertGt(restakerSplit, 0, "Restaker still gets remaining 55.5%");
+        assertEq(rewardsManager.distributeRewardsCallCount(), 1, "RewardsManager called for restaker split");
     }
 
     function test_distributePremium_WhenBothFeesZero_EntirePremiumRetainedInPM() public {

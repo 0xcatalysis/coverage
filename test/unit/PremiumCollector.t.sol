@@ -363,6 +363,26 @@ contract PremiumCollectorTest is Test {
         premiumCollector.updateVault(vault1, fakePool, POLICY_ID);
     }
 
+    function test_updateVault_WhenReenteredDuringDistribute_Reverts() public {
+        address newPool = makeAddr("newPool");
+        uint96 newPolicyId = 999;
+
+        MockReentrantVault reentrantVault =
+            new MockReentrantVault(address(underlying1), address(premiumCollector), newPool, newPolicyId);
+
+        vm.prank(admin);
+        premiumCollector.registerVault(address(reentrantVault), pool, POLICY_ID);
+        reentrantVault.mintShares(address(premiumCollector), 1000e18);
+
+        vm.warp(block.timestamp + DEFAULT_DISTRIBUTE_INTERVAL + 1);
+
+        address[] memory vaults = new address[](1);
+        vaults[0] = address(reentrantVault);
+
+        vm.expectRevert();
+        premiumCollector.distributeBatch(vaults);
+    }
+
     /*//////////////////////////////////////////////////////////////
                           DISTRIBUTE BATCH
     //////////////////////////////////////////////////////////////*/
@@ -802,6 +822,47 @@ contract PremiumCollectorTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                            RECOVER TOKENS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_recoverTokens_WhenCallerNotAdmin_Reverts() public {
+        address unauthorized = makeAddr("unauthorized");
+        MockToken token = new MockToken("T", "T");
+        token.mint(address(premiumCollector), 100e18);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, unauthorized, bytes32(0))
+        );
+        vm.prank(unauthorized);
+        premiumCollector.recoverTokens(address(token), admin, 100e18);
+    }
+
+    function test_recoverTokens_WhenValid_TransfersTokens() public {
+        MockToken token = new MockToken("T", "T");
+        token.mint(address(premiumCollector), 100e18);
+        address recipient = makeAddr("recipient");
+
+        vm.prank(admin);
+        premiumCollector.recoverTokens(address(token), recipient, 100e18);
+
+        assertEq(token.balanceOf(recipient), 100e18);
+        assertEq(token.balanceOf(address(premiumCollector)), 0);
+    }
+
+    function test_recoverTokens_WhenZeroAddress_Reverts() public {
+        vm.expectRevert(IPremiumCollector.ZeroAddress.selector);
+        vm.prank(admin);
+        premiumCollector.recoverTokens(address(0), admin, 1);
+    }
+
+    function test_recoverTokens_WhenZeroAmount_Reverts() public {
+        MockToken token = new MockToken("T", "T");
+        vm.expectRevert(IPremiumCollector.ZeroAmount.selector);
+        vm.prank(admin);
+        premiumCollector.recoverTokens(address(token), admin, 0);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                                 UPGRADE
     //////////////////////////////////////////////////////////////*/
 
@@ -989,5 +1050,121 @@ contract MockZeroAssetVault {
 
     function balanceOf(address) external pure returns (uint256) {
         return 0;
+    }
+}
+
+/// @dev ERC-4626 vault stub whose redeem() calls back into premiumCollector.updateVault().
+contract MockReentrantVault is ERC20 {
+    address private _asset;
+    address private _premiumCollector;
+    address private _newPool;
+    uint96 private _newPolicyId;
+
+    constructor(
+        address asset_,
+        address premiumCollector_,
+        address newPool_,
+        uint96 newPolicyId_
+    )
+        ERC20("Reentrant Vault", "RV")
+    {
+        _asset = asset_;
+        _premiumCollector = premiumCollector_;
+        _newPool = newPool_;
+        _newPolicyId = newPolicyId_;
+    }
+
+    function mintShares(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+
+    function asset() external view returns (address) {
+        return _asset;
+    }
+
+    function balanceOf(address account) public view override returns (uint256) {
+        return super.balanceOf(account);
+    }
+
+    function redeem(uint256, address, address) external returns (uint256) {
+        PremiumCollector(_premiumCollector).updateVault(address(this), _newPool, _newPolicyId);
+        return 0;
+    }
+
+    // Stub required IERC4626 functions
+    function deposit(uint256, address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function mint(uint256, address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function withdraw(uint256, address, address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function totalAssets() external pure returns (uint256) {
+        return 0;
+    }
+
+    function convertToShares(uint256 assets) external pure returns (uint256) {
+        return assets;
+    }
+
+    function convertToAssets(uint256 shares) external pure returns (uint256) {
+        return shares;
+    }
+
+    function maxDeposit(address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function previewDeposit(uint256 assets) external pure returns (uint256) {
+        return assets;
+    }
+
+    function maxMint(address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function previewMint(uint256 shares) external pure returns (uint256) {
+        return shares;
+    }
+
+    function maxWithdraw(address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function previewWithdraw(uint256 assets) external pure returns (uint256) {
+        return assets;
+    }
+
+    function maxRedeem(address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function previewRedeem(uint256 shares) external pure returns (uint256) {
+        return shares;
+    }
+
+    function totalSupply() public view override returns (uint256) {
+        return super.totalSupply();
+    }
+
+    function allowance(address owner_, address spender) public view override returns (uint256) {
+        return super.allowance(owner_, spender);
+    }
+
+    function approve(address spender, uint256 amount) public override returns (bool) {
+        return super.approve(spender, amount);
+    }
+
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        return super.transfer(to, amount);
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        return super.transferFrom(from, to, amount);
     }
 }

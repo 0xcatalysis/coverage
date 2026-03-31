@@ -454,17 +454,6 @@ contract SpecRegistryTest is Test {
         registry.registerSpec(specId1, ISpec(newSpec));
     }
 
-    function test_registerSpec_WhenSpecRevoked_ExistingResolveStillWorks() public {
-        vm.prank(pool1);
-        registry.registerSpec(specId1, ISpec(spec1));
-
-        vm.prank(admin);
-        registry.revokeSpec(spec1);
-
-        ISpec resolved = registry.resolveSpec(pool1, specId1);
-        assertEq(address(resolved), spec1, "Already-registered spec must remain resolvable after revoke");
-    }
-
     function test_registerSpec_WhenSpecRevoked_ReRegistrationIdempotent() public {
         vm.prank(pool1);
         registry.registerSpec(specId1, ISpec(spec1));
@@ -475,13 +464,37 @@ contract SpecRegistryTest is Test {
         vm.prank(pool1);
         registry.registerSpec(specId1, ISpec(spec1));
 
-        ISpec resolved = registry.resolveSpec(pool1, specId1);
-        assertEq(address(resolved), spec1, "Spec must remain registered after revoked re-registration");
+        vm.expectRevert(abi.encodeWithSelector(ISpecRegistry.SpecNotApproved.selector, spec1));
+        registry.resolveSpec(pool1, specId1);
     }
 
     /*//////////////////////////////////////////////////////////////
                            RESOLVE SPEC
     //////////////////////////////////////////////////////////////*/
+
+    function test_resolveSpec_WhenSpecRevoked_Reverts() public {
+        vm.prank(pool1);
+        registry.registerSpec(specId1, ISpec(spec1));
+
+        vm.prank(admin);
+        registry.revokeSpec(spec1);
+
+        vm.expectRevert(abi.encodeWithSelector(ISpecRegistry.SpecNotApproved.selector, spec1));
+        registry.resolveSpec(pool1, specId1);
+    }
+
+    function test_resolveSpec_WhenSpecApprovedAfterRevoke_Succeeds() public {
+        vm.prank(pool1);
+        registry.registerSpec(specId1, ISpec(spec1));
+
+        vm.startPrank(admin);
+        registry.revokeSpec(spec1);
+        registry.approveSpec(spec1);
+        vm.stopPrank();
+
+        ISpec resolved = registry.resolveSpec(pool1, specId1);
+        assertEq(address(resolved), spec1, "Re-approved spec should resolve successfully");
+    }
 
     function test_resolveSpec_WhenNotRegistered_Reverts() public {
         vm.expectRevert(abi.encodeWithSelector(ISpecRegistry.SpecNotRegistered.selector, pool1, specId1));
