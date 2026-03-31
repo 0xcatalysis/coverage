@@ -157,14 +157,18 @@ contract FileClaim is Script {
         require(requestedAmount <= remaining, "Requested exceeds remaining coverage");
         console.log("[OK] Requested amount within remaining coverage");
 
-        // Log token-native stake preview (no oracle — informational only)
+        bool approvalRequired = claimManagerContract.claimApprovalRequired(policyId);
+        console.log("Curator approval required before next claim:", approvalRequired);
+        require(!approvalRequired, "Curator must call approveNextClaim() before this policy can file another claim");
+        console.log("[OK] No curator approval gate active");
+
         _logStakePreview(metadata);
 
         console.log("[OK] Prerequisites verified");
     }
 
     function _logStakePreview(IPolicyManager.PolicyMetadata memory metadata) internal view {
-        try slashingManagerContract.previewSlashing(policyId, _getPoolOwner(metadata.pool)) returns (
+        try slashingManagerContract.previewSlashing(policyId, metadata.curator) returns (
             address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes
         ) {
             console.log("Token-native stake preview (%d vaults):", vaults.length);
@@ -411,15 +415,6 @@ contract FileClaim is Script {
     // ─────────────────────────────────────────────────────────────────────────
     //  Internal helpers
     // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * @notice Returns the owner of a CoverPool (operator address for slashing preview).
-     */
-    function _getPoolOwner(address pool) internal view returns (address) {
-        (bool ok, bytes memory data) = pool.staticcall(abi.encodeWithSignature("owner()"));
-        if (ok && data.length >= 32) return abi.decode(data, (address));
-        return address(0);
-    }
 
     /**
      * @notice Probes a vault's collateral token via low-level staticcall.

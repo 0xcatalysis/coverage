@@ -177,10 +177,10 @@ contract BindPolicy is Script {
 
         vm.stopBroadcast();
 
-        _verifyBinding();
+        IPolicyManager.PolicyMetadata memory metadata = _verifyBinding();
 
         console.log("\n=== POLICY BINDING COMPLETED ===");
-        console.log("Policy is now active. Coverage window:", startTime, "-", maturityTime);
+        console.log("Policy is now active. On-chain coverage window:", metadata.startTime, "-", metadata.maturityTime);
         emit PolicyBound(policyId, coverPool, coverageLimit, vaults.length);
     }
 
@@ -234,14 +234,14 @@ contract BindPolicy is Script {
         return abi.encodePacked(r, s, v);
     }
 
-    function _verifyBinding() internal view {
+    function _verifyBinding() internal view returns (IPolicyManager.PolicyMetadata memory metadata) {
         console.log("\n--- Binding Verification ---");
 
         IPolicyManager.PolicyDraft memory draft = policyManagerContract.getPolicyDraft(policyId);
         console.log("Draft status after binding:", uint8(draft.status));
         require(draft.status == IPolicyManager.PolicyStatus.Bound, "Draft not in Bound status");
 
-        IPolicyManager.PolicyMetadata memory metadata = policyManagerContract.policyMetadata(policyId);
+        metadata = policyManagerContract.policyMetadata(policyId);
         console.log("Policy buyer:", metadata.buyer);
         console.log("Policy beneficiary:", metadata.beneficiary);
         console.log("Policy coverageLimit:", metadata.coverageLimit);

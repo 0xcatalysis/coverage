@@ -352,7 +352,7 @@ contract CompleteCoverageFlow is Script {
 
         console.log("Policy bound with coverage limit:", coverageLimit);
         console.log("Committee vaults:", committeeVaults.length);
-        console.log("Coverage window:", startTime, "-", maturityTime);
+        console.log("On-chain coverage window:", metadata.startTime, "-", metadata.maturityTime);
         console.log("[OK] Policy binding complete, policy active");
         emit FlowCompleted("Policy Binding", 4);
     }
@@ -455,6 +455,12 @@ contract CompleteCoverageFlow is Script {
         console.log("Pre-claim beneficiary balance:", beneficiaryBalanceBefore);
 
         require(requestedClaimAmount <= remainingBefore, "Phase 7: Exceeds remaining coverage");
+
+        bool approvalRequired = cm.claimApprovalRequired(policyId);
+        console.log("Curator approval required before next claim:", approvalRequired);
+        require(
+            !approvalRequired, "Phase 7: Curator must call approveNextClaim() before this policy can file another claim"
+        );
 
         if (block.timestamp < metadata.startTime) {
             console.log("Warping to coverage start time...");
