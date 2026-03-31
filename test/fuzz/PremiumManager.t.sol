@@ -69,6 +69,9 @@ contract PremiumManagerFuzzTest is Test {
             )
         );
         premiumManager = PremiumManager(proxy);
+
+        vm.prank(admin);
+        premiumManager.addApprovedPremiumToken(address(premiumToken));
     }
 
     // ------------------------------------------------------------------

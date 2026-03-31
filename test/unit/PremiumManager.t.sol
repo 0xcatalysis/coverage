@@ -71,6 +71,9 @@ contract PremiumManagerTest is Test {
         vm.label(address(rewardsManager), "RewardsManager");
         vm.label(address(premiumToken), "PremiumToken");
         vm.label(address(mockPool), "MockPool");
+
+        vm.prank(admin);
+        premiumManager.addApprovedPremiumToken(address(premiumToken));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -350,6 +353,17 @@ contract PremiumManagerTest is Test {
         );
         vm.prank(premiumCollector);
         premiumManager.distributePremium(address(highFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+    }
+
+    function test_distributePremium_WhenTokenNotApproved_Reverts() public {
+        MockToken unapprovedToken = new MockToken();
+        unapprovedToken.mint(premiumCollector, PREMIUM_AMOUNT);
+
+        vm.startPrank(premiumCollector);
+        unapprovedToken.approve(address(premiumManager), PREMIUM_AMOUNT);
+        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.TokenNotApproved.selector, address(unapprovedToken)));
+        premiumManager.distributePremium(pool, POLICY_ID, address(unapprovedToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
     }
 
     function test_distributePremium_WhenValid_DistributesFundsCorrectly() public {
@@ -713,6 +727,97 @@ contract PremiumManagerTest is Test {
         assertEq(
             premiumToken.balanceOf(address(premiumManager)), restakerSplit1 + restakerSplit2, "Restaker split mismatch"
         );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                   ADD / REMOVE APPROVED PREMIUM TOKEN
+    //////////////////////////////////////////////////////////////*/
+
+    function test_addApprovedPremiumToken_WhenCallerNotAdmin_Reverts() public {
+        MockToken newToken = new MockToken();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(premiumCollector);
+        premiumManager.addApprovedPremiumToken(address(newToken));
+    }
+
+    function test_addApprovedPremiumToken_WhenTokenZero_Reverts() public {
+        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
+        vm.prank(admin);
+        premiumManager.addApprovedPremiumToken(address(0));
+    }
+
+    function test_addApprovedPremiumToken_WhenValid_AddsAndEmits() public {
+        MockToken newToken = new MockToken();
+
+        vm.expectEmit(true, false, false, false, address(premiumManager));
+        emit IPremiumManager.PremiumTokenAdded(address(newToken));
+
+        vm.prank(admin);
+        premiumManager.addApprovedPremiumToken(address(newToken));
+
+        assertTrue(premiumManager.isApprovedPremiumToken(address(newToken)), "Token should be approved");
+    }
+
+    function test_addApprovedPremiumToken_WhenAlreadyPresent_NoopNoEvent() public {
+        // premiumToken already added in setUp — adding again should not emit
+        vm.recordLogs();
+        vm.prank(admin);
+        premiumManager.addApprovedPremiumToken(address(premiumToken));
+        assertEq(vm.getRecordedLogs().length, 0, "No event should be emitted for duplicate add");
+    }
+
+    function test_removeApprovedPremiumToken_WhenCallerNotAdmin_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(premiumCollector);
+        premiumManager.removeApprovedPremiumToken(address(premiumToken));
+    }
+
+    function test_removeApprovedPremiumToken_WhenValid_RemovesAndEmits() public {
+        vm.expectEmit(true, false, false, false, address(premiumManager));
+        emit IPremiumManager.PremiumTokenRemoved(address(premiumToken));
+
+        vm.prank(admin);
+        premiumManager.removeApprovedPremiumToken(address(premiumToken));
+
+        assertFalse(premiumManager.isApprovedPremiumToken(address(premiumToken)), "Token should be removed");
+    }
+
+    function test_removeApprovedPremiumToken_WhenNotPresent_Noop() public {
+        MockToken absentToken = new MockToken();
+        vm.recordLogs();
+        vm.prank(admin);
+        premiumManager.removeApprovedPremiumToken(address(absentToken));
+        assertEq(vm.getRecordedLogs().length, 0, "No event should be emitted for absent token");
+    }
+
+    function test_isApprovedPremiumToken_ReturnsFalseByDefault() public {
+        MockToken freshToken = new MockToken();
+        assertFalse(premiumManager.isApprovedPremiumToken(address(freshToken)), "New token should not be approved");
+    }
+
+    function test_approvedPremiumTokens_ReturnsAllEntries() public {
+        MockToken tokenB = new MockToken();
+        MockToken tokenC = new MockToken();
+
+        vm.startPrank(admin);
+        premiumManager.addApprovedPremiumToken(address(tokenB));
+        premiumManager.addApprovedPremiumToken(address(tokenC));
+        vm.stopPrank();
+
+        address[] memory tokens = premiumManager.approvedPremiumTokens();
+        assertEq(tokens.length, 3, "Should have 3 approved tokens");
     }
 
     /*//////////////////////////////////////////////////////////////
