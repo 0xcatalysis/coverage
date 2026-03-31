@@ -143,7 +143,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             if (block.timestamp >= _pendingPoolFeeBpsTimestamp) {
                 uint16 previous = _poolFeeBps;
                 _poolFeeBps = _pendingPoolFeeBps;
-                _pendingPoolFeeBpsTimestamp = 0;
                 emit PoolFeeBpsSet(previous, _poolFeeBps);
             } else {
                 emit PoolFeeBpsProposalCancelled(_pendingPoolFeeBps);
