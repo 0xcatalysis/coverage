@@ -457,12 +457,15 @@ contract ClaimManager is
         private
         returns (ISlashingManager.VaultSlash[] memory vaultSlashes)
     {
-        uint256 len = vaults.length;
+        uint256 vaultsLength = vaults.length;
         uint256 totalPayoutEquivalent = 0;
-        uint256[] memory payoutEquivalents = new uint256[](len);
+        uint256[] memory payoutEquivalents = new uint256[](vaultsLength);
 
-        for (uint256 i = 0; i < len; ++i) {
-            if (tokenStakes[i] == 0) continue;
+        for (uint256 i = 0; i < vaultsLength; ++i) {
+            if (tokenStakes[i] == 0) {
+                continue;
+            }
+
             if (tokens[i] == payoutToken) {
                 payoutEquivalents[i] = tokenStakes[i];
             } else {
@@ -476,21 +479,24 @@ contract ClaimManager is
             totalPayoutEquivalent += payoutEquivalents[i];
         }
 
-        if (len == 0 || totalPayoutEquivalent == 0) {
+        if (vaultsLength == 0 || totalPayoutEquivalent == 0) {
             return new ISlashingManager.VaultSlash[](0);
         }
 
-        // Pass 2: compute proportional slash with per-vault slippage inflation
-        vaultSlashes = new ISlashingManager.VaultSlash[](len);
-        for (uint256 i = 0; i < len; ++i) {
+        ISlashingManager.VaultSlash[] memory scratch = new ISlashingManager.VaultSlash[](vaultsLength);
+        uint256 nonZeroCount = 0;
+        for (uint256 i = 0; i < vaultsLength; ++i) {
             if (payoutEquivalents[i] == 0) {
-                vaultSlashes[i] = ISlashingManager.VaultSlash({vault: vaults[i], token: tokens[i], amount: 0});
                 continue;
             }
+
             // slither-disable-next-line divide-before-multiply
             uint256 baseSlash = (tokenStakes[i] * requestedAmount) / totalPayoutEquivalent;
+            if (baseSlash == 0) {
+                continue;
+            }
 
-            if (baseSlash > 0 && tokens[i] != payoutToken) {
+            if (tokens[i] != payoutToken) {
                 // slither-disable-next-line calls-loop,divide-before-multiply
                 try ISwapper(swapper).quoteSwap(tokens[i], payoutToken, baseSlash) returns (uint256 quotedOut) {
                     uint256 expectedOut = (requestedAmount * payoutEquivalents[i]) / totalPayoutEquivalent;
@@ -505,8 +511,17 @@ contract ClaimManager is
             if (baseSlash > tokenStakes[i]) {
                 baseSlash = tokenStakes[i];
             }
+            if (baseSlash == 0) {
+                continue;
+            }
 
-            vaultSlashes[i] = ISlashingManager.VaultSlash({vault: vaults[i], token: tokens[i], amount: baseSlash});
+            scratch[nonZeroCount] = ISlashingManager.VaultSlash({vault: vaults[i], token: tokens[i], amount: baseSlash});
+            ++nonZeroCount;
+        }
+
+        vaultSlashes = new ISlashingManager.VaultSlash[](nonZeroCount);
+        for (uint256 i = 0; i < nonZeroCount; ++i) {
+            vaultSlashes[i] = scratch[i];
         }
     }
 

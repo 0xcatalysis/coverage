@@ -2064,6 +2064,88 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
 
+    function test_fileClaim_WhenOneVaultUnquotable_ExecuteSlashingReceivesNoZeroAmountEntries() public {
+        uint256 requestedAmount = 300 ether;
+        uint256 quotableStake = 400 ether;
+
+        MockToken unquotableTokenMock = new MockToken("Unquotable3", "UNQ3");
+        address unquotableToken = address(unquotableTokenMock);
+
+        MockSwapperWithUnquotable sw = new MockSwapperWithUnquotable();
+        sw.setQuoteReverts(unquotableToken);
+        sw.setPayoutToken(payoutToken);
+        sw.setSwapOutput(requestedAmount);
+        vm.prank(admin);
+        claimManager.setSwapper(address(sw));
+
+        MockSlashingManagerAssertingNoZeroAmounts assertingMock = new MockSlashingManagerAssertingNoZeroAmounts();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("quotableVault");
+        pvaults[1] = makeAddr("unquotableVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = unquotableToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = quotableStake;
+        pstakes[1] = 500 ether;
+        assertingMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(assertingMock), quotableStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(assertingMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(assertingMock.lastReceivedSlashCount(), 1, "Only one vault should reach executeSlashing");
+        assertEq(assertingMock.lastReceivedSlash(0).token, collateralToken, "Only quotable vault should be slashed");
+    }
+
+    function test_fileClaim_WhenTinyVaultBaseSlashRoundsToZero_ExcludesVaultFromSlash() public {
+        uint256 tinyStake = 1;
+        uint256 largeStake = 1000 ether;
+        uint256 requestedAmount = 1 ether;
+
+        MockToken tinyTokenMock = new MockToken("TinyToken", "TINY");
+        address tinyToken = address(tinyTokenMock);
+
+        // Standard swapper: quoteSwap returns amountIn (1:1) for all tokens.
+        vm.prank(admin);
+        claimManager.setSwapper(address(swapperMock));
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount);
+
+        MockSlashingManagerAssertingNoZeroAmounts assertingMock = new MockSlashingManagerAssertingNoZeroAmounts();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("tinyVault");
+        pvaults[1] = makeAddr("largeVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = tinyToken;
+        ptokens[1] = collateralToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = tinyStake;
+        pstakes[1] = largeStake;
+        assertingMock.setupPreview(pvaults, ptokens, pstakes);
+
+        uint256 expectedLargeSlash = (largeStake * requestedAmount) / (tinyStake + largeStake);
+        collateralTokenMock.mint(address(assertingMock), expectedLargeSlash + 1);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(assertingMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(assertingMock.lastReceivedSlashCount(), 1, "Only large vault should reach executeSlashing");
+        assertEq(assertingMock.lastReceivedSlash(0).token, collateralToken, "Only large vault should be slashed");
+    }
+
     // ── Same-token vault cap fix tests
     // ────────────────────────────────────────
 
@@ -2981,5 +3063,67 @@ contract MockNativeMultiSwapper {
             MockToken(_payoutToken).mint(params.recipient, output);
         }
         return output;
+    }
+}
+
+/**
+ * @dev SlashingManager mock that records the VaultSlash array and reverts if any entry has amount == 0.
+ *      Used to assert that _computeVaultSlashes compacts zero-amount entries before calling executeSlashing.
+ */
+contract MockSlashingManagerAssertingNoZeroAmounts {
+    address[] private _previewVaults;
+    address[] private _previewTokens;
+    uint256[] private _previewStakes;
+
+    ISlashingManager.VaultSlash[] private _lastReceivedSlashes;
+
+    function lastReceivedSlash(uint256 i) external view returns (ISlashingManager.VaultSlash memory) {
+        return _lastReceivedSlashes[i];
+    }
+
+    function lastReceivedSlashCount() external view returns (uint256) {
+        return _lastReceivedSlashes.length;
+    }
+
+    function setupPreview(address[] memory vaults, address[] memory tokens, uint256[] memory stakes) external {
+        _previewVaults = vaults;
+        _previewTokens = tokens;
+        _previewStakes = stakes;
+    }
+
+    function previewSlashing(
+        uint96,
+        address
+    )
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        return (_previewVaults, _previewTokens, _previewStakes);
+    }
+
+    function executeSlashing(
+        uint96,
+        address,
+        ISlashingManager.VaultSlash[] memory vaultSlashes,
+        bytes32
+    )
+        external
+        returns (address[] memory collateralTokens, uint256[] memory collateralAmounts)
+    {
+        delete _lastReceivedSlashes;
+        for (uint256 i = 0; i < vaultSlashes.length; ++i) {
+            require(vaultSlashes[i].amount > 0, "MockSlashingManagerAssertingNoZeroAmounts: zero-amount entry received");
+            _lastReceivedSlashes.push(vaultSlashes[i]);
+        }
+
+        uint256 len = vaultSlashes.length;
+        collateralTokens = new address[](len);
+        collateralAmounts = new uint256[](len);
+        for (uint256 i = 0; i < len; ++i) {
+            collateralTokens[i] = vaultSlashes[i].token;
+            collateralAmounts[i] = vaultSlashes[i].amount;
+            ERC20(vaultSlashes[i].token).transfer(msg.sender, vaultSlashes[i].amount);
+        }
     }
 }
