@@ -437,11 +437,12 @@ contract ClaimManager is
     }
 
     /**
-     * @notice Computes per-vault token-native slash amounts proportional to each vault's payout-equivalent value,
-     *         with per-vault slippage inflation.
+     * @notice Computes per-vault token-native slash amounts proportional to each vault's payout-equivalent value.
      * @dev Two-pass algorithm:
      *      Pass 1: quote each vault's token stake to payout-token equivalent (same-token vaults use stake directly).
-     *      Pass 2: compute proportional base slash, inflate per per-vault slippage up to maxSwapSlippageBps cap.
+     *      Pass 2: compute proportional base slash per vault.
+     *      Slippage tolerance is applied once in _processCollateral via amountOutMin; it is not applied here to
+     *      avoid double-counting that would over-slash restakers beyond what the beneficiary receives.
      * @param vaults Array of vault addresses from previewSlashing.
      * @param tokens Array of collateral token addresses per vault.
      * @param tokenStakes Array of token-native stake amounts per vault.
@@ -497,18 +498,6 @@ contract ClaimManager is
             uint256 baseSlash = (tokenStakes[i] * requestedAmount) / totalPayoutEquivalent;
             if (baseSlash == 0) {
                 continue;
-            }
-
-            if (tokens[i] != payoutToken) {
-                // slither-disable-next-line calls-loop,divide-before-multiply
-                try ISwapper(swapper).quoteSwap(tokens[i], payoutToken, baseSlash) returns (uint256 quotedOut) {
-                    uint256 expectedOut = (requestedAmount * payoutEquivalents[i]) / totalPayoutEquivalent;
-                    if (quotedOut > 0 && quotedOut < expectedOut) {
-                        uint256 inflated = (baseSlash * expectedOut) / quotedOut;
-                        uint256 maxInflated = (baseSlash * _MAX_SLIPPAGE_BPS) / (_MAX_SLIPPAGE_BPS - maxSwapSlippageBps);
-                        baseSlash = inflated > maxInflated ? maxInflated : inflated;
-                    }
-                } catch {}
             }
 
             if (baseSlash > tokenStakes[i]) {
