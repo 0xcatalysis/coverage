@@ -88,4 +88,7 @@ interface IAlerts {
 
     /// @notice Thrown when a Morpho deposit returns zero shares (dust deposit protection).
     error ZeroSharesReceived();
+
+    /// @notice Thrown when the proposed premium recipient does not implement IPremiumManager.
+    error InvalidPremiumRecipient();
 }

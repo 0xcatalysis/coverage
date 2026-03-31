@@ -70,9 +70,8 @@ contract PremiumManagerFuzzTest is Test {
         );
         premiumManager = PremiumManager(proxy);
 
-        bytes32 collectorRole = premiumManager.PREMIUM_COLLECTOR_ROLE();
         vm.prank(admin);
-        premiumManager.grantRole(collectorRole, premiumCollector);
+        premiumManager.addApprovedPremiumToken(address(premiumToken));
     }
 
     // ------------------------------------------------------------------
@@ -139,7 +138,7 @@ contract PremiumManagerFuzzTest is Test {
         poolFeeBps = uint16(bound(poolFeeBps, 0, 9950));
 
         pool = new FuzzCoverPool(curator, poolFeeRecipient, poolFeeBps);
-        premiumToken.mint(address(premiumManager), grossPremium);
+        premiumToken.mint(premiumCollector, grossPremium);
 
         uint16 platformFeeBps = premiumManager.platformFeeBps();
         (uint256 expectedPlatform, uint256 expectedPool,) =
@@ -148,8 +147,10 @@ contract PremiumManagerFuzzTest is Test {
         uint256 treasuryBefore = premiumToken.balanceOf(platformTreasury);
         uint256 poolBefore = premiumToken.balanceOf(poolFeeRecipient);
 
-        vm.prank(premiumCollector);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), grossPremium);
         premiumManager.distributePremium(address(pool), POLICY_ID, address(premiumToken), grossPremium);
+        vm.stopPrank();
 
         assertEq(
             premiumToken.balanceOf(platformTreasury) - treasuryBefore,

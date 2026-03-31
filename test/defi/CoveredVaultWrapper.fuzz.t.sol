@@ -16,7 +16,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
     MockERC20 asset;
 
     address curator = address(0xCCCC);
-    address premiumRecipientAddr = address(0xFEED);
+    address premiumRecipient;
 
     uint16 constant MAX_COVERABLE_LOSS_BPS = 1000; // 10%
     uint16 constant DEDUCTIBLE_BPS = 100; // 1%
@@ -26,6 +26,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         morphoVault = new ControllableVault(address(asset));
 
         _deployRealCoverage(curator, curator);
+        premiumRecipient = address(mockPremiumManager);
 
         vm.prank(curator);
         policyManager.setSupportedPayoutToken(address(asset), true);
@@ -38,7 +39,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fuzz Vault",
             "fzVault"
