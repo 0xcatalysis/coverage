@@ -56,9 +56,19 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
         uint256 _totalPrincipal = totalPrincipal;
 
         // Compute accrued premium using the active elapsed window.
-        uint256 accrued = _totalPrincipal > 0
-            ? _totalPrincipal.mulDiv(premiumRatePerSecond * activeElapsed, WAD, Math.Rounding.Floor)
-            : 0;
+        // Principal is scaled to 18-decimal precision before arithmetic so that sub-unit amounts
+        // are not silently discarded for 6-decimal tokens (e.g. USDC). premiumScaleFactor == 1
+        // for 18-decimal tokens, making this a no-op for those vaults.
+        uint256 accrued = 0;
+        if (_totalPrincipal > 0) {
+            uint256 rateXtime = premiumRatePerSecond * activeElapsed;
+            uint256 accruedWad = (_totalPrincipal * premiumScaleFactor).mulDiv(rateXtime, WAD, Math.Rounding.Floor)
+                + premiumAccrualRemainder;
+            accrued = accruedWad / premiumScaleFactor;
+            premiumAccrualRemainder = accruedWad - accrued * premiumScaleFactor;
+        } else {
+            premiumAccrualRemainder = 0;
+        }
 
         if (accrued == 0) return;
 
@@ -122,7 +132,10 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
         if (totalPrincipal == 0 || premiumRatePerSecond == 0) return 0;
         uint256 elapsed = _activeElapsedFrom(lastPremiumAccrualTime);
         if (elapsed == 0) return 0;
-        uint256 accrued = totalPrincipal.mulDiv(premiumRatePerSecond * elapsed, WAD, Math.Rounding.Floor);
+        uint256 rateXtime = premiumRatePerSecond * elapsed;
+        uint256 accruedWad =
+            (totalPrincipal * premiumScaleFactor).mulDiv(rateXtime, WAD, Math.Rounding.Floor) + premiumAccrualRemainder;
+        uint256 accrued = accruedWad / premiumScaleFactor;
         if (accrued == 0) return 0;
         uint256 maxNewLiability = _liabilityHeadroom(morphoVal);
         return accrued < maxNewLiability ? accrued : maxNewLiability;

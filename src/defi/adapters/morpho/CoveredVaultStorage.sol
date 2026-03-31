@@ -160,6 +160,16 @@ abstract contract CoveredVaultStorage is
     ///         since onPolicyBound is also when deposits open and the coverage window begins.
     uint256 public policyStartTime;
 
+    /// @notice Scale factor to normalize principal to 18-decimal precision before premium arithmetic.
+    ///         = 10^(18 - asset.decimals()). Equals 1 for 18-decimal tokens (no-op).
+    ///         Set once during initialize(). Prevents rounding-to-zero for 6-decimal tokens (e.g. USDC).
+    uint256 public premiumScaleFactor;
+
+    /// @notice WAD-scaled fractional premium accumulator carried across accrual calls.
+    ///         Stores the sub-native-unit WAD remainder so no premium is silently discarded
+    ///         for 6-decimal tokens (e.g. USDC).
+    uint256 public premiumAccrualRemainder;
+
     /*//////////////////////////////////////////////////////////////
                             ERRORS
     //////////////////////////////////////////////////////////////*/

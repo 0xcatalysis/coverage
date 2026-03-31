@@ -53,6 +53,14 @@ contract MockERC20 is IERC20 {
     }
 }
 
+/// @title MockERC6
+/// @notice 6-decimal ERC20 mock (e.g. USDC / USDT)
+contract MockERC6 is MockERC20 {
+    constructor() {
+        decimals = 6;
+    }
+}
+
 /// @title MockVault
 /// @notice Minimal ERC4626 vault mock for testing
 contract MockVault is IERC4626 {

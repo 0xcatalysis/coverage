@@ -13,6 +13,7 @@ import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
@@ -97,6 +98,11 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         premiumRecipient = _premiumRecipient;
         // lastPremiumAccrualTime is intentionally NOT set here. It is set in onPolicyBound when the
         // policy is bound and deposits open, so the accrual clock starts exactly at coverage start.
+
+        // Set scale factor for premium precision: normalises principal to 18-decimal space so that
+        // sub-unit accrual is not silently discarded for 6-decimal tokens (e.g. USDC).
+        uint8 assetDecimals = IERC20Metadata(IVaultV2(_morphoVault).asset()).decimals();
+        premiumScaleFactor = assetDecimals < 18 ? 10 ** (18 - assetDecimals) : 1;
     }
 
     /*//////////////////////////////////////////////////////////////
