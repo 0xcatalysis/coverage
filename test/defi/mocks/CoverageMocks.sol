@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IChainlinkPriceFeed} from "coverage/interfaces/IChainlinkPriceFeed.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
 import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
@@ -102,5 +104,20 @@ contract MockBindPolicyHook is IBindPolicyHook {
 
     function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
         return interfaceId == type(IBindPolicyHook).interfaceId || interfaceId == type(IERC165).interfaceId;
+    }
+}
+
+/// @notice Minimal PremiumManager stub for adapter tests.
+/// @dev Pulls tokens from msg.sender (the vault) via safeTransferFrom, mirroring the pull
+///      model of the real PremiumManager so balance-checking tests see tokens arrive here.
+contract MockPremiumManager {
+    using SafeERC20 for IERC20;
+
+    function distributePremium(address, uint96, address token, uint256 amount) external {
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    function platformTreasury() external pure returns (address) {
+        return address(0x1); // non-zero sentinel satisfying IPremiumManager interface check
     }
 }
