@@ -71,10 +71,8 @@ contract PremiumManagerTest is Test {
         vm.label(address(premiumToken), "PremiumToken");
         vm.label(address(mockPool), "MockPool");
 
-        bytes32 collectorRole = premiumManager.PREMIUM_COLLECTOR_ROLE();
-        vm.startPrank(admin);
-        premiumManager.grantRole(collectorRole, premiumCollector);
-        vm.stopPrank();
+        vm.prank(admin);
+        premiumManager.addApprovedPremiumToken(address(premiumToken));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -308,19 +306,6 @@ contract PremiumManagerTest is Test {
                          DISTRIBUTE PREMIUM
     //////////////////////////////////////////////////////////////*/
 
-    function test_distributePremium_WhenCallerNotPremiumCollector_Reverts() public {
-        address unauthorized = makeAddr("unauthorized");
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                unauthorized,
-                premiumManager.PREMIUM_COLLECTOR_ROLE()
-            )
-        );
-        vm.prank(unauthorized);
-        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
-    }
-
     function test_distributePremium_WhenPaused_Reverts() public {
         vm.prank(admin);
         premiumManager.pause();
@@ -387,17 +372,31 @@ contract PremiumManagerTest is Test {
         premiumManager.distributePremium(address(highFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
     }
 
+    function test_distributePremium_WhenTokenNotApproved_Reverts() public {
+        MockToken unapprovedToken = new MockToken();
+        unapprovedToken.mint(premiumCollector, PREMIUM_AMOUNT);
+
+        vm.startPrank(premiumCollector);
+        unapprovedToken.approve(address(premiumManager), PREMIUM_AMOUNT);
+        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.TokenNotApproved.selector, address(unapprovedToken)));
+        premiumManager.distributePremium(pool, POLICY_ID, address(unapprovedToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
+    }
+
     function test_distributePremium_WhenValid_DistributesFundsCorrectly() public {
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
+
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
 
         vm.expectEmit(true, true, true, true, address(premiumManager));
         emit PremiumDistributed(pool, POLICY_ID, PREMIUM_AMOUNT);
 
-        vm.prank(premiumCollector);
         premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
@@ -411,10 +410,12 @@ contract PremiumManagerTest is Test {
 
         (, uint256 poolSplit, uint256 restakerSplit) = premiumManager.getFeeSplits(PREMIUM_AMOUNT, 0, POOL_FEE_BPS);
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
 
-        vm.prank(premiumCollector);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
         premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         assertEq(premiumToken.balanceOf(platformTreasury), 0, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
@@ -427,10 +428,12 @@ contract PremiumManagerTest is Test {
         (uint256 platformSplit,, uint256 restakerSplit) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, 0);
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
 
-        vm.prank(premiumCollector);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
         premiumManager.distributePremium(address(zeroFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), 0, "Pool fee mismatch");
@@ -440,10 +443,12 @@ contract PremiumManagerTest is Test {
     function test_distributePremium_DistributesRewardsWithCorrectParameters() public {
         (,, uint256 restakerSplit) = premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
 
-        vm.prank(premiumCollector);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
         premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
         assertEq(call.policyId, POLICY_ID, "Policy ID mismatch");
@@ -460,10 +465,12 @@ contract PremiumManagerTest is Test {
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
 
-        vm.prank(premiumCollector);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
         premiumManager.distributePremium(address(separateAddressPool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(differentFeeRecipient), poolSplit, "Pool fee mismatch");
@@ -478,10 +485,12 @@ contract PremiumManagerTest is Test {
         uint96 policyId = 123;
         uint256 premiumAmount = 1000 ether;
 
-        premiumToken.mint(address(premiumManager), premiumAmount);
+        premiumToken.mint(premiumCollector, premiumAmount);
 
-        vm.prank(premiumCollector);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), premiumAmount);
         premiumManager.distributePremium(pool, policyId, address(premiumToken), premiumAmount);
+        vm.stopPrank();
 
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(premiumAmount, PLATFORM_FEE_BPS, POOL_FEE_BPS);
@@ -496,17 +505,21 @@ contract PremiumManagerTest is Test {
         uint256 firstPremium = 500 ether;
         uint256 secondPremium = 750 ether;
 
-        premiumToken.mint(address(premiumManager), firstPremium);
-        vm.prank(premiumCollector);
+        premiumToken.mint(premiumCollector, firstPremium);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), firstPremium);
         premiumManager.distributePremium(pool, policyId, address(premiumToken), firstPremium);
+        vm.stopPrank();
 
         uint256 platformAfterFirst = premiumToken.balanceOf(platformTreasury);
         uint256 poolAfterFirst = premiumToken.balanceOf(poolFeeRecipient);
         uint256 pmBalanceAfterFirst = premiumToken.balanceOf(address(premiumManager));
 
-        premiumToken.mint(address(premiumManager), secondPremium);
-        vm.prank(premiumCollector);
+        premiumToken.mint(premiumCollector, secondPremium);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), secondPremium);
         premiumManager.distributePremium(pool, policyId, address(premiumToken), secondPremium);
+        vm.stopPrank();
 
         (uint256 platformSplit2, uint256 poolSplit2, uint256 restakerSplit2) =
             premiumManager.getFeeSplits(secondPremium, PLATFORM_FEE_BPS, POOL_FEE_BPS);
@@ -524,9 +537,11 @@ contract PremiumManagerTest is Test {
         uint96 policyId = 789;
         uint256 premiumAmount = 1000 ether;
 
-        premiumToken.mint(address(premiumManager), premiumAmount);
-        vm.prank(premiumCollector);
+        premiumToken.mint(premiumCollector, premiumAmount);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), premiumAmount);
         premiumManager.distributePremium(pool, policyId, address(premiumToken), premiumAmount);
+        vm.stopPrank();
 
         MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
         assertEq(call.policyId, policyId, "CommitteeId should equal policyId for rewards distribution");
@@ -539,15 +554,19 @@ contract PremiumManagerTest is Test {
         uint256 premium1 = 500 ether;
         uint256 premium2 = 1000 ether;
 
-        premiumToken.mint(address(premiumManager), premium1);
-        vm.prank(premiumCollector);
+        premiumToken.mint(premiumCollector, premium1);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), premium1);
         premiumManager.distributePremium(pool, policyId1, address(premiumToken), premium1);
+        vm.stopPrank();
 
         uint256 pmBalanceAfterFirst = premiumToken.balanceOf(address(premiumManager));
 
-        premiumToken.mint(address(premiumManager), premium2);
-        vm.prank(premiumCollector);
+        premiumToken.mint(premiumCollector, premium2);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), premium2);
         premiumManager.distributePremium(pool, policyId2, address(premiumToken), premium2);
+        vm.stopPrank();
 
         (,, uint256 restakerSplit2) = premiumManager.getFeeSplits(premium2, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
@@ -569,10 +588,12 @@ contract PremiumManagerTest is Test {
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, maxPlatformFeeBps, maxPoolFeeBps);
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
 
-        vm.prank(premiumCollector);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
         premiumManager.distributePremium(address(maxFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
@@ -586,10 +607,12 @@ contract PremiumManagerTest is Test {
         vm.prank(admin);
         premiumManager.setPlatformFeeBps(0);
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
 
-        vm.prank(premiumCollector);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
         premiumManager.distributePremium(address(zeroFeePool), POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         assertEq(premiumToken.balanceOf(platformTreasury), 0, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), 0, "Pool fee mismatch");
@@ -601,10 +624,12 @@ contract PremiumManagerTest is Test {
         address sspRouter = makeAddr("sspRouter");
         (,, uint256 restakerSplit) = premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
 
-        vm.prank(premiumCollector);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
         premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         vm.prank(admin);
         premiumManager.approveSpender(address(premiumToken), sspRouter, type(uint256).max);
@@ -626,17 +651,19 @@ contract PremiumManagerTest is Test {
         (uint256 platformSplit,, uint256 restakerSplit) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
-
-        vm.prank(premiumCollector);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
         premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         assertEq(rewardsManager.lastCall().curator, curator, "First curator mismatch");
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
-
-        vm.prank(premiumCollector);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
         premiumManager.distributePremium(address(pool2), policyId2, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         assertEq(rewardsManager.lastCall().curator, curator2, "Second curator mismatch");
         assertEq(rewardsManager.distributeRewardsCallCount(), 2, "DistributeRewards call count mismatch");
@@ -650,10 +677,12 @@ contract PremiumManagerTest is Test {
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(smallPremium, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        premiumToken.mint(address(premiumManager), smallPremium);
+        premiumToken.mint(premiumCollector, smallPremium);
 
-        vm.prank(premiumCollector);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), smallPremium);
         premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), smallPremium);
+        vm.stopPrank();
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit, "Platform fee mismatch");
         assertEq(premiumToken.balanceOf(poolFeeRecipient), poolSplit, "Pool fee mismatch");
@@ -665,7 +694,9 @@ contract PremiumManagerTest is Test {
         uint96 policyId2 = POLICY_ID + 1;
         uint256 premium2 = 500 ether;
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT + premium2);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT + premium2);
+        vm.prank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT + premium2);
 
         vm.expectEmit(true, true, true, true, address(premiumManager));
         emit PremiumDistributed(pool, POLICY_ID, PREMIUM_AMOUNT);
@@ -686,10 +717,11 @@ contract PremiumManagerTest is Test {
         (uint256 platformSplit1,, uint256 restakerSplit1) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
-
-        vm.prank(premiumCollector);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
         premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         vm.prank(admin);
         premiumManager.setPlatformFeeBps(newPlatformFeeBps);
@@ -697,17 +729,110 @@ contract PremiumManagerTest is Test {
         (uint256 platformSplit2,, uint256 restakerSplit2) =
             premiumManager.getFeeSplits(PREMIUM_AMOUNT, newPlatformFeeBps, POOL_FEE_BPS);
 
-        premiumToken.mint(address(premiumManager), PREMIUM_AMOUNT);
+        premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
 
         uint96 policyId2 = POLICY_ID + 1;
 
-        vm.prank(premiumCollector);
+        vm.startPrank(premiumCollector);
+        premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
         premiumManager.distributePremium(pool, policyId2, address(premiumToken), PREMIUM_AMOUNT);
+        vm.stopPrank();
 
         assertEq(premiumToken.balanceOf(platformTreasury), platformSplit1 + platformSplit2, "Platform fee mismatch");
         assertEq(
             premiumToken.balanceOf(address(premiumManager)), restakerSplit1 + restakerSplit2, "Restaker split mismatch"
         );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                   ADD / REMOVE APPROVED PREMIUM TOKEN
+    //////////////////////////////////////////////////////////////*/
+
+    function test_addApprovedPremiumToken_WhenCallerNotAdmin_Reverts() public {
+        MockToken newToken = new MockToken();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(premiumCollector);
+        premiumManager.addApprovedPremiumToken(address(newToken));
+    }
+
+    function test_addApprovedPremiumToken_WhenTokenZero_Reverts() public {
+        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
+        vm.prank(admin);
+        premiumManager.addApprovedPremiumToken(address(0));
+    }
+
+    function test_addApprovedPremiumToken_WhenValid_AddsAndEmits() public {
+        MockToken newToken = new MockToken();
+
+        vm.expectEmit(true, false, false, false, address(premiumManager));
+        emit IPremiumManager.PremiumTokenAdded(address(newToken));
+
+        vm.prank(admin);
+        premiumManager.addApprovedPremiumToken(address(newToken));
+
+        assertTrue(premiumManager.isApprovedPremiumToken(address(newToken)), "Token should be approved");
+    }
+
+    function test_addApprovedPremiumToken_WhenAlreadyPresent_NoopNoEvent() public {
+        // premiumToken already added in setUp — adding again should not emit
+        vm.recordLogs();
+        vm.prank(admin);
+        premiumManager.addApprovedPremiumToken(address(premiumToken));
+        assertEq(vm.getRecordedLogs().length, 0, "No event should be emitted for duplicate add");
+    }
+
+    function test_removeApprovedPremiumToken_WhenCallerNotAdmin_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(premiumCollector);
+        premiumManager.removeApprovedPremiumToken(address(premiumToken));
+    }
+
+    function test_removeApprovedPremiumToken_WhenValid_RemovesAndEmits() public {
+        vm.expectEmit(true, false, false, false, address(premiumManager));
+        emit IPremiumManager.PremiumTokenRemoved(address(premiumToken));
+
+        vm.prank(admin);
+        premiumManager.removeApprovedPremiumToken(address(premiumToken));
+
+        assertFalse(premiumManager.isApprovedPremiumToken(address(premiumToken)), "Token should be removed");
+    }
+
+    function test_removeApprovedPremiumToken_WhenNotPresent_Noop() public {
+        MockToken absentToken = new MockToken();
+        vm.recordLogs();
+        vm.prank(admin);
+        premiumManager.removeApprovedPremiumToken(address(absentToken));
+        assertEq(vm.getRecordedLogs().length, 0, "No event should be emitted for absent token");
+    }
+
+    function test_isApprovedPremiumToken_ReturnsFalseByDefault() public {
+        MockToken freshToken = new MockToken();
+        assertFalse(premiumManager.isApprovedPremiumToken(address(freshToken)), "New token should not be approved");
+    }
+
+    function test_approvedPremiumTokens_ReturnsAllEntries() public {
+        MockToken tokenB = new MockToken();
+        MockToken tokenC = new MockToken();
+
+        vm.startPrank(admin);
+        premiumManager.addApprovedPremiumToken(address(tokenB));
+        premiumManager.addApprovedPremiumToken(address(tokenC));
+        vm.stopPrank();
+
+        address[] memory tokens = premiumManager.approvedPremiumTokens();
+        assertEq(tokens.length, 3, "Should have 3 approved tokens");
     }
 
     /*//////////////////////////////////////////////////////////////

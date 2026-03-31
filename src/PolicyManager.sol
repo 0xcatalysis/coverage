@@ -17,8 +17,9 @@ import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
  * @title PolicyManager
  * @notice Single entrypoint for binding coverage policies, orchestrating quote validation,
  *         and policy record storage.
- * @dev Integrates with CoverPool for quote validation. Premium collection is handled separately
- *      by PremiumCollector and PremiumManager. Stores policy metadata directly for efficient
+ * @dev Integrates with CoverPool for quote validation. Premium collection is handled by vault
+ *      adapters (e.g. CoveredVaultWrapper) routing directly through PremiumManager. Stores policy metadata directly for
+ * efficient
  *      access by ClaimManager and other contracts.
  */
 // slither-disable-next-line unimplemented-functions

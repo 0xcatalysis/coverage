@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 import {PolicyManager} from "coverage/PolicyManager.sol";
 import {CoverPool} from "coverage/CoverPool.sol";
 import {ICoverPool} from "coverage/interfaces/ICoverPool.sol";
-import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
-import {IClaimManager} from "coverage/interfaces/IClaimManager.sol";
-import {CatalysisCoverAdapter} from "../../../src/defi/adapters/morpho/CatalysisCoverAdapter.sol";
+import {CoveredVaultWrapper} from "../../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
@@ -18,10 +16,11 @@ import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {MockClaimManager} from "../mocks/Mocks.sol";
 import {
     MockStakeManager,
+    MockChainlinkPriceFeedDefi,
     MockCoverPoolFactory,
     MockSpecRegistry,
     MockBindPolicyHook,
-    MockChainlinkPriceFeed
+    MockPremiumManager
 } from "../mocks/CoverageMocks.sol";
 
 /// @title RealCoverageSetup
@@ -41,7 +40,8 @@ abstract contract RealCoverageSetup is Test {
     MockCoverPoolFactory internal mockCoverPoolFactory;
     MockSpecRegistry internal mockSpecRegistry;
     MockBindPolicyHook internal mockBindPolicyHook;
-    MockChainlinkPriceFeed internal mockChainlinkPriceFeed;
+    MockChainlinkPriceFeedDefi internal mockChainlinkPriceFeed;
+    MockPremiumManager internal mockPremiumManager;
 
     // ── EIP-712 quote signing ──
     uint256 internal quoteSignerKey;
@@ -63,20 +63,21 @@ abstract contract RealCoverageSetup is Test {
         mockCoverPoolFactory = new MockCoverPoolFactory();
         mockSpecRegistry = new MockSpecRegistry();
         mockBindPolicyHook = new MockBindPolicyHook();
+        mockPremiumManager = new MockPremiumManager();
 
         // ── EIP-712 signer ──
         quoteSignerKey = uint256(keccak256("quote-signer-key"));
         quoteSigner = vm.addr(quoteSignerKey);
 
         // ── Deploy MockClaimManager with pre-computed PolicyManager proxy address ──
-        // Nonce layout: +0 = MockClaimManager, +1 = MockChainlinkPriceFeed, +2 = PolicyManager impl,
+        // Nonce layout: +0 = MockClaimManager, +1 = MockChainlinkPriceFeedDefi, +2 = PolicyManager impl,
         //               +3 = ERC1967Proxy (= PM proxy)
         uint256 nonce = vm.getNonce(address(this));
         address expectedPmProxy = vm.computeCreateAddress(address(this), nonce + 3);
         claimManager = new MockClaimManager(expectedPmProxy);
 
-        // ── Deploy MockChainlinkPriceFeed (returns 0 so totalStake >= 0 always passes) ──
-        mockChainlinkPriceFeed = new MockChainlinkPriceFeed();
+        // ── Deploy MockChainlinkPriceFeedDefi (returns input amount as USD value) ──
+        mockChainlinkPriceFeed = new MockChainlinkPriceFeedDefi();
 
         // ── Deploy real PolicyManager behind UUPS proxy ──
         PolicyManager pmImpl = new PolicyManager();
@@ -205,27 +206,56 @@ abstract contract RealCoverageSetup is Test {
         );
     }
 
-    /// @notice Deploys CatalysisCoverAdapter behind a UUPS proxy using the Upgrades library
-    function _deployAdapterProxy(
-        address parentVault_,
-        address underlyingVault_,
+    /// @notice Deploys CoveredVaultWrapper behind a UUPS proxy using the Upgrades library
+    function _deployWrapperProxy(
+        address morphoVault_,
         address claimManager_,
         address coverPool_,
-        uint16 maxCoverableLossBps_
+        uint16 maxCoverableLossBps_,
+        uint16 deductibleBps_,
+        address premiumRecipient_,
+        address owner_,
+        string memory name_,
+        string memory symbol_
     )
         internal
-        returns (CatalysisCoverAdapter)
+        returns (CoveredVaultWrapper)
     {
         Options memory deployOpts;
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
-            "CatalysisCoverAdapter.sol",
+            "CoveredVaultWrapper.sol",
             abi.encodeCall(
-                CatalysisCoverAdapter.initialize,
-                (parentVault_, underlyingVault_, claimManager_, coverPool_, maxCoverableLossBps_)
+                CoveredVaultWrapper.initialize,
+                (
+                    morphoVault_,
+                    claimManager_,
+                    coverPool_,
+                    maxCoverableLossBps_,
+                    deductibleBps_,
+                    premiumRecipient_,
+                    owner_,
+                    name_,
+                    symbol_
+                )
             ),
             deployOpts
         );
-        return CatalysisCoverAdapter(proxy);
+        return CoveredVaultWrapper(proxy);
+    }
+
+    /// @notice Helper: set premium rate in tests, bypassing the 2-day timelock (L-04).
+    /// @dev Triggers collectPremium() to settle any pending premium at the old rate
+    ///      (mirrors the old setPremiumRate behavior), then directly writes the new rate
+    ///      and advances lastPremiumAccrualTime to avoid stale timestamps.
+    ///      Caller prank must NOT be active when calling this.
+    ///      Storage slots verified via `forge inspect CoveredVaultWrapper storageLayout`:
+    ///        premiumRatePerSecond = slot 57, lastPremiumAccrualTime = slot 58.
+    function _setPremiumRate(CoveredVaultWrapper w, uint256 newRate, address caller_) internal {
+        // Settle any pending premium at the old rate (mirrors old setPremiumRate behavior)
+        w.collectPremium();
+        // Directly write the new rate and advance lastPremiumAccrualTime
+        vm.store(address(w), bytes32(uint256(57)), bytes32(newRate));
+        vm.store(address(w), bytes32(uint256(58)), bytes32(block.timestamp));
     }
 }

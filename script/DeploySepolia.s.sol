@@ -37,6 +37,16 @@ contract DeploySepolia is Deploy {
 
     /**
      * @inheritdoc Deploy
+     * @return initialPremiumTokens Array containing Circle USDC for Sepolia.
+     */
+    function getInitialPremiumTokens() internal pure override returns (address[] memory) {
+        address[] memory tokens = new address[](1);
+        tokens[0] = USDC_SEPOLIA;
+        return tokens;
+    }
+
+    /**
+     * @inheritdoc Deploy
      * @return DeploymentConfig for Sepolia testnet (chain id 11155111).
      */
     function getDeploymentConfig() internal pure override returns (DeploymentConfig memory) {

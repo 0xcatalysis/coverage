@@ -22,7 +22,7 @@ contract ControllableVault is IERC4626 {
 
     // Test helper: drain USDC to simulate a hack/loss
     function simulateLoss(uint256 amount) external {
-        _assetToken.transfer(msg.sender, amount);
+        require(_assetToken.transfer(msg.sender, amount));
     }
 
     // ── ERC4626
@@ -103,14 +103,14 @@ contract ControllableVault is IERC4626 {
     function deposit(uint256 assets, address receiver) external override returns (uint256 shares_) {
         shares_ = convertToShares(assets);
         if (shares_ == 0 && assets > 0) shares_ = assets;
-        _assetToken.transferFrom(msg.sender, address(this), assets);
+        require(_assetToken.transferFrom(msg.sender, address(this), assets));
         _shares[receiver] += shares_;
         _totalShares += shares_;
     }
 
     function mint(uint256 shares_, address receiver) external override returns (uint256 assets) {
         assets = _totalShares == 0 ? shares_ : shares_ * totalAssets() / _totalShares;
-        _assetToken.transferFrom(msg.sender, address(this), assets);
+        require(_assetToken.transferFrom(msg.sender, address(this), assets));
         _shares[receiver] += shares_;
         _totalShares += shares_;
     }
@@ -120,7 +120,7 @@ contract ControllableVault is IERC4626 {
         if (msg.sender != owner_) _allowances[owner_][msg.sender] -= shares_;
         _shares[owner_] -= shares_;
         _totalShares -= shares_;
-        _assetToken.transfer(receiver, assets);
+        require(_assetToken.transfer(receiver, assets));
     }
 
     function redeem(uint256 shares_, address receiver, address owner_) external override returns (uint256 assets) {
@@ -128,7 +128,7 @@ contract ControllableVault is IERC4626 {
         if (msg.sender != owner_) _allowances[owner_][msg.sender] -= shares_;
         _shares[owner_] -= shares_;
         _totalShares -= shares_;
-        _assetToken.transfer(receiver, assets);
+        require(_assetToken.transfer(receiver, assets));
     }
 
     // ── ERC20 (share token)

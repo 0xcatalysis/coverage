@@ -56,8 +56,8 @@ contract MockSwapRouter {
 
         require(_outputAmount >= params.amountOutMinimum, "MockSwapRouter: insufficient output");
 
-        IERC20(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn);
-        MockERC20(params.tokenOut).transfer(params.recipient, _outputAmount);
+        require(IERC20(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn));
+        require(MockERC20(params.tokenOut).transfer(params.recipient, _outputAmount));
 
         return _outputAmount;
     }

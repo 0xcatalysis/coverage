@@ -4,12 +4,10 @@ pragma solidity 0.8.28;
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 import {IClaimManager} from "../../src/interfaces/IClaimManager.sol";
-import {IPremiumCollector} from "../../src/interfaces/IPremiumCollector.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
 import {ISpecRegistry} from "../../src/interfaces/ISpecRegistry.sol";
 import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
@@ -49,7 +47,6 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   - COVER_POOL_FACTORY: CoverPoolFactory proxy address
  *   - POLICY_MANAGER: PolicyManager proxy address
  *   - CLAIM_MANAGER: ClaimManager proxy address
- *   - PREMIUM_COLLECTOR: PremiumCollector proxy address
  *   - PREMIUM_MANAGER: PremiumManager proxy address
  *   - SPEC_REGISTRY: SpecRegistry proxy address (optional but recommended; enables pre-flight
  *       approval check in Phase 4 — if omitted, an unapproved spec only fails at the contract level)
@@ -117,7 +114,6 @@ contract CompleteCoverageFlow is Script {
     address public coverPoolFactory;
     address public policyManager;
     address public claimManager;
-    address public premiumCollector;
     address public premiumManager;
     address public specRegistry;
 
@@ -369,26 +365,10 @@ contract CompleteCoverageFlow is Script {
             return;
         }
 
-        IPremiumCollector collector = IPremiumCollector(premiumCollector);
-        IPremiumCollector.VaultConfig memory config = collector.getVaultConfig(coveredVault);
-
-        if (!config.registered) {
-            console.log("Vault not registered in PremiumCollector yet");
-            console.log("NOTE: Admin must call registerVault() to enable premium collection");
-        } else {
-            console.log("Vault registered:");
-            console.log("  Underlying:", config.underlying);
-            console.log("  Pool:", config.pool);
-            console.log("  Policy ID:", config.policyId);
-
-            uint256 shares = collector.getAccruedShares(coveredVault);
-            console.log("  Accrued shares:", shares);
-
-            if (shares > 0) {
-                uint256 previewAssets = IERC4626(coveredVault).previewRedeem(shares);
-                console.log("  Preview assets:", previewAssets);
-            }
-        }
+        // CoveredVaultWrapper accrues premiums internally via its own accumulator.
+        // collectPremium() can be called by anyone to flush pending premium to PremiumManager.
+        console.log("[INFO] CoveredVaultWrapper accrues premiums internally.");
+        console.log("[INFO] Call collectPremium() on the vault to distribute accrued premium.");
 
         console.log("[OK] Premium accrual check done");
         emit FlowCompleted("Premium Accrual Check", 5);
@@ -406,28 +386,23 @@ contract CompleteCoverageFlow is Script {
             return;
         }
 
-        IPremiumCollector collector = IPremiumCollector(premiumCollector);
-        uint256 shares = collector.getAccruedShares(coveredVault);
-
-        if (shares == 0) {
-            console.log("[SKIP] No shares to distribute");
-            return;
-        }
-
         IPremiumManager manager = IPremiumManager(premiumManager);
         uint16 platformFee = manager.platformFeeBps();
         uint16 poolFee = ICoverPool(coverPool).poolFeeBps();
         console.log("Platform fee BPS:", platformFee);
         console.log("Pool fee BPS:", poolFee);
 
-        address[] memory vaultsToDistribute = new address[](1);
-        vaultsToDistribute[0] = coveredVault;
-
+        // CoveredVaultWrapper.collectPremium() is permissionless — anyone can call it.
+        // It flushes accrued premium to PremiumManager and calls distributePremium() directly.
         vm.startBroadcast(curatorPrivateKey);
-        collector.distributeBatch(vaultsToDistribute);
+        (bool success,) = coveredVault.call(abi.encodeWithSignature("collectPremium()"));
         vm.stopBroadcast();
+        if (success) {
+            console.log("[OK] collectPremium() called on CoveredVaultWrapper");
+        } else {
+            console.log("[SKIP] collectPremium() reverted or no pending premium");
+        }
 
-        console.log("[OK] Premiums distributed");
         emit FlowCompleted("Premium Distribution", 6);
     }
 
@@ -672,7 +647,6 @@ contract CompleteCoverageFlow is Script {
         coverPoolFactory = vm.envAddress("COVER_POOL_FACTORY");
         policyManager = vm.envAddress("POLICY_MANAGER");
         claimManager = vm.envAddress("CLAIM_MANAGER");
-        premiumCollector = vm.envAddress("PREMIUM_COLLECTOR");
         premiumManager = vm.envAddress("PREMIUM_MANAGER");
         specRegistry = vm.envOr("SPEC_REGISTRY", address(0));
 
