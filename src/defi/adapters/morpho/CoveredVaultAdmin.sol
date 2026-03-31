@@ -85,6 +85,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     /// @dev Call executeDeductibleBps() after the delay to apply the pending value.
     function setDeductibleBps(uint16 newBps) external override onlyOwner {
         require(newBps < BPS_DENOMINATOR, IA.InvalidParameters());
+        require(newBps < maxCoverableLossBps, IA.InvalidParameters());
         pendingDeductibleTimestamp = _propose(pendingDeductibleTimestamp, "deductibleBps", STANDARD_DELAY);
         pendingDeductibleBps = newBps;
         emit IE.DeductibleBpsProposed(newBps, pendingDeductibleTimestamp);
@@ -95,7 +96,6 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         _requireTimelockReady(pendingDeductibleTimestamp);
         uint16 oldBps = deductibleBps;
         uint16 newBps = pendingDeductibleBps;
-        require(newBps < maxCoverableLossBps, IA.InvalidParameters());
         deductibleBps = newBps;
         pendingDeductibleBps = 0;
         pendingDeductibleTimestamp = 0;
