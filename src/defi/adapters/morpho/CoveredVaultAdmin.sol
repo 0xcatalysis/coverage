@@ -202,14 +202,21 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     ///      can be called again by PolicyManager for a successive coverage period.
     ///      Existing depositors retain their shares and principal during the transition; the new policy
     ///      binding will set a fresh accrual start anchor.
-    function resetPolicyBinding() external override onlyOwner {
+    //slither-disable-start reentrancy-no-eth,reentrancy-benign
+    // ReentrancyGuardTransient (nonReentrant modifier) prevents reentry; slither does not recognise
+    // EIP-1153 transient storage guards and therefore cannot verify the protection statically.
+    function resetPolicyBinding() external override onlyOwner nonReentrant {
         if (policyId != 0) {
             IPolicyManager.PolicyMetadata memory meta = _policyManager.policyMetadata(policyId);
             require(block.timestamp >= uint256(meta.maturityTime), IA.InvalidParameters());
         }
         uint96 prevPolicyId = policyId;
-        // Accrue any remaining premium before clearing state.
+        // Accrue any remaining premium and flush pendingPremium through distributePremium()
+        // before clearing policyId. Without the flush, withdrawal-accumulated pendingPremium
+        // would later be sent via the fallback safeTransfer path (policyId == 0), bypassing
+        // pool curator fees and restaker reward splitting.
         _accruePremium();
+        _flushPendingPremium();
         policyId = 0;
         policyBoundExecuted = false;
         depositCap = 0;
@@ -226,6 +233,8 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         premiumAccrualRemainder = 0;
         emit IE.PolicyBindingReset(prevPolicyId);
     }
+
+    //slither-disable-end reentrancy-no-eth,reentrancy-benign
 
     /*//////////////////////////////////////////////////////////////
                     MORPHO GATE

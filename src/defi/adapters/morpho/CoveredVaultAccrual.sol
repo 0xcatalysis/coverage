@@ -91,15 +91,25 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
     ///      PremiumManager first, then calls distributePremium() in the same transaction.
     function collectPremium() external override nonReentrant {
         _accruePremium();
+        _flushPendingPremium();
+    }
+
+    /// @dev Transfers any accumulated pendingPremium to premiumRecipient.
+    ///      When a policy is bound, routes through PremiumManager.distributePremium() so that
+    ///      pool curator fees and restaker rewards are split correctly.
+    ///      When no policy is bound (policyId == 0), falls back to a direct safeTransfer —
+    ///      this path is belt-and-suspenders; premium cannot accrue without a bound policy.
+    ///
+    ///      IMPORTANT: callers must ensure policyId reflects the correct policy context before
+    ///      invoking this function. In particular, resetPolicyBinding() calls this before
+    ///      clearing policyId so that withdrawal-accumulated pendingPremium is always routed
+    ///      through distributePremium() rather than the fallback safeTransfer.
+    // slither-disable-next-line incorrect-equality
+    function _flushPendingPremium() internal {
         uint256 pending = pendingPremium;
         if (pending > 0) {
             pendingPremium = 0;
             address assetAddr = asset();
-            // Route through PremiumManager only when a policy is bound so that pool and
-            // policyId context is valid. Before binding, premiums cannot accrue anyway
-            // (premiumRatePerSecond defaults to 0 and lastPremiumAccrualTime is unset),
-            // so this guard is a belt-and-suspenders safety check.
-            //
             // Pull model: approve PremiumManager to pull `pending` tokens, then call
             // distributePremium. forceApprove avoids residual allowance from any prior
             // failed call.
