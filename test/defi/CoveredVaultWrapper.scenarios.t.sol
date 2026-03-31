@@ -16,7 +16,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
     MockERC20 asset;
 
     address curator = address(0xCCCC);
-    address premiumRecipientAddr;
+    address premiumRecipient;
 
     uint96 POLICY_ID;
     uint16 constant MAX_COVERABLE_LOSS_BPS = 1000; // 10%
@@ -28,7 +28,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         morphoVault = new ControllableVault(address(asset));
 
         _deployRealCoverage(curator, curator);
-        premiumRecipientAddr = address(mockPremiumManager);
+        premiumRecipient = address(mockPremiumManager);
 
         vm.prank(curator);
         policyManager.setSupportedPayoutToken(address(asset), true);
@@ -54,7 +54,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Scenario Vault",
             "scVault"
@@ -282,7 +282,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
             address(coverPool),
             2000, // 20% max coverable loss
             100, // 1% deductible
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "EntryPrice Vault",
             "EPV"
@@ -440,7 +440,7 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "ZeroPrincipal",
             "ZP"
@@ -459,14 +459,14 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
 
         assertEq(wrapper.totalPrincipal(), 0);
 
-        uint256 recipientBefore = asset.balanceOf(premiumRecipientAddr);
+        uint256 recipientBefore = asset.balanceOf(premiumRecipient);
         uint256 accrualBefore = wrapper.lastPremiumAccrualTime();
 
         vm.warp(block.timestamp + 365 days);
         vm.prank(curator);
         wrapper.collectPremium();
 
-        assertEq(asset.balanceOf(premiumRecipientAddr), recipientBefore, "No premium transferred when no principal");
+        assertEq(asset.balanceOf(premiumRecipient), recipientBefore, "No premium transferred when no principal");
         assertEq(wrapper.lastPremiumAccrualTime(), 31_536_001, "Accrual timestamp should advance to block.timestamp");
         assertEq(accrualBefore, 1, "Accrual timestamp started at 1");
     }
@@ -901,10 +901,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         assertGt(pendingAfterAlice, 0, "Pending > 0 after Alice partial withdraw");
 
         // ── collectPremium: recipient receives Alice's deducted premium ──
-        uint256 recipientBefore1 = asset.balanceOf(premiumRecipientAddr);
+        uint256 recipientBefore1 = asset.balanceOf(premiumRecipient);
         vm.prank(curator);
         wrapper.collectPremium();
-        uint256 collected1 = asset.balanceOf(premiumRecipientAddr) - recipientBefore1;
+        uint256 collected1 = asset.balanceOf(premiumRecipient) - recipientBefore1;
 
         assertEq(collected1, pendingAfterAlice, "Recipient received exact pending amount");
         assertEq(wrapper.pendingPremium(), 0, "Pending zeroed after collect");
@@ -918,10 +918,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         assertGt(pendingAfterBob, 0, "Pending > 0 after Bob full withdraw");
 
         // ── collectPremium: recipient receives Bob's deducted premium ──
-        uint256 recipientBefore2 = asset.balanceOf(premiumRecipientAddr);
+        uint256 recipientBefore2 = asset.balanceOf(premiumRecipient);
         vm.prank(curator);
         wrapper.collectPremium();
-        uint256 collected2 = asset.balanceOf(premiumRecipientAddr) - recipientBefore2;
+        uint256 collected2 = asset.balanceOf(premiumRecipient) - recipientBefore2;
 
         assertEq(collected2, pendingAfterBob, "Recipient received Bob's premium");
         assertEq(wrapper.pendingPremium(), 0, "Pending zeroed after second collect");
@@ -932,10 +932,10 @@ contract CoveredVaultWrapperScenarios is RealCoverageSetup {
         wrapper.redeem(aliceRemaining, alice, alice);
 
         // ── Final collect ──
-        uint256 recipientBefore3 = asset.balanceOf(premiumRecipientAddr);
+        uint256 recipientBefore3 = asset.balanceOf(premiumRecipient);
         vm.prank(curator);
         wrapper.collectPremium();
-        uint256 collected3 = asset.balanceOf(premiumRecipientAddr) - recipientBefore3;
+        uint256 collected3 = asset.balanceOf(premiumRecipient) - recipientBefore3;
 
         // ── Verify total premium received by recipient ──
         uint256 totalCollected = collected1 + collected2 + collected3;

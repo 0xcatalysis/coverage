@@ -23,7 +23,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     address curator = address(0xCCCC);
     address user1 = address(0x1111);
     address user2 = address(0x2222);
-    address premiumRecipientAddr;
+    address premiumRecipient;
 
     uint256 constant DEPOSIT_AMOUNT = 1000 ether;
     uint96 POLICY_ID;
@@ -37,7 +37,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         morphoVault.setCurator(curator);
 
         _deployRealCoverage(curator, curator);
-        premiumRecipientAddr = address(mockPremiumManager);
+        premiumRecipient = address(mockPremiumManager);
 
         vm.prank(curator);
         policyManager.setSupportedPayoutToken(address(asset), true);
@@ -48,7 +48,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Covered Vault",
             "cvVault"
@@ -87,7 +87,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertEq(address(wrapper.morphoVault()), address(morphoVault));
         assertEq(wrapper.maxCoverableLossBps(), MAX_COVERABLE_LOSS_BPS);
         assertEq(wrapper.deductibleBps(), DEDUCTIBLE_BPS);
-        assertEq(wrapper.premiumRecipient(), premiumRecipientAddr);
+        assertEq(wrapper.premiumRecipient(), premiumRecipient);
         assertEq(wrapper.premiumRatePerSecond(), 0, "premiumRate starts at zero");
         assertEq(wrapper.owner(), curator);
         assertEq(wrapper.asset(), address(asset));
@@ -105,7 +105,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "X",
             "X"
@@ -122,7 +122,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             10_000,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "X",
             "X"
@@ -139,7 +139,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             0,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "X",
             "X"
@@ -393,12 +393,12 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         vm.prank(user1);
         wrapper.deposit(DEPOSIT_AMOUNT, user1);
 
-        uint256 recipientBefore = asset.balanceOf(premiumRecipientAddr);
+        uint256 recipientBefore = asset.balanceOf(premiumRecipient);
         vm.warp(block.timestamp + 365 days);
         vm.prank(curator);
         wrapper.collectPremium();
 
-        assertEq(asset.balanceOf(premiumRecipientAddr), recipientBefore, "Zero rate: no premium transferred");
+        assertEq(asset.balanceOf(premiumRecipient), recipientBefore, "Zero rate: no premium transferred");
     }
 
     function test_collectPremium_accrues() public {
@@ -411,7 +411,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Premium Vault",
             "pVault"
@@ -461,7 +461,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Premium Vault 2",
             "pVault2"
@@ -506,7 +506,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fresh",
             "FR"
@@ -536,7 +536,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fresh2",
             "FR2"
@@ -568,7 +568,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fresh3",
             "FR3"
@@ -877,7 +877,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             2000, // 20% max coverage
             0, // 0% deductible
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "RatioTest",
             "RT"
@@ -994,7 +994,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fresh4a",
             "FR4a"
@@ -1011,7 +1011,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fresh4b",
             "FR4b"
@@ -1028,7 +1028,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fresh4c",
             "FR4c"
@@ -1045,7 +1045,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fresh4d",
             "FR4d"
@@ -1068,7 +1068,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fresh4e",
             "FR4e"
@@ -1090,7 +1090,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fresh4f",
             "FR4f"
@@ -1120,7 +1120,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fresh4",
             "FR4"
@@ -1190,7 +1190,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             2000, // 20% max coverable loss
             100, // 1% deductible
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "DeductibleTest",
             "DT"
@@ -1235,7 +1235,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             5000, // 50% max coverable loss
             2000, // 20% deductible
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "DeductibleTest2",
             "DT2"
@@ -1323,7 +1323,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         // Accrue more premium that has NOT been collected yet
         vm.warp(block.timestamp + 30 days);
 
-        uint256 oldRecipientBefore = asset.balanceOf(premiumRecipientAddr);
+        uint256 oldRecipientBefore = asset.balanceOf(premiumRecipient);
         address newRecipient = address(0xBEEF);
         uint256 newRecipientBefore = asset.balanceOf(newRecipient);
         uint256 pendingBefore = wrapper.pendingPremium(); // 0 -- not yet settled
@@ -1338,7 +1338,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertEq(wrapper.premiumRecipient(), newRecipient, "Recipient must be updated");
         assertEq(wrapper.pendingPremium(), pendingBefore, "pendingPremium must be unchanged by setPremiumRecipient");
         assertEq(
-            asset.balanceOf(premiumRecipientAddr), oldRecipientBefore, "Old recipient must not receive funds on switch"
+            asset.balanceOf(premiumRecipient), oldRecipientBefore, "Old recipient must not receive funds on switch"
         );
         assertEq(asset.balanceOf(newRecipient), newRecipientBefore, "New recipient must not receive funds on switch");
     }
@@ -1437,7 +1437,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             MAX_COVERABLE_LOSS_BPS,
             DEDUCTIBLE_BPS,
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "Fresh3",
             "FR3"
@@ -1529,7 +1529,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(coverPool),
             1000, // 10% max coverage
             0, // 0% deductible
-            premiumRecipientAddr,
+            premiumRecipient,
             curator,
             "EF4Test",
             "EF4"

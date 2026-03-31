@@ -83,7 +83,6 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
         uint256 pending = pendingPremium;
         if (pending > 0) {
             pendingPremium = 0;
-            address pm = premiumRecipient;
             address assetAddr = asset();
             // Route through PremiumManager only when a policy is bound so that pool and
             // policyId context is valid. Before binding, premiums cannot accrue anyway
@@ -94,12 +93,12 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
             // distributePremium. forceApprove avoids residual allowance from any prior
             // failed call.
             if (policyId != 0) {
-                IERC20(assetAddr).forceApprove(pm, pending);
-                IPremiumManager(pm).distributePremium(coverPool, policyId, assetAddr, pending);
+                IERC20(assetAddr).forceApprove(premiumRecipient, pending);
+                IPremiumManager(premiumRecipient).distributePremium(coverPool, policyId, assetAddr, pending);
             } else {
-                IERC20(assetAddr).safeTransfer(pm, pending);
+                IERC20(assetAddr).safeTransfer(premiumRecipient, pending);
             }
-            emit IE.PremiumCollected(pm, pending);
+            emit IE.PremiumCollected(premiumRecipient, pending);
         }
     }
 
