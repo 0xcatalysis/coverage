@@ -394,7 +394,9 @@ contract CompleteCoverageFlow is Script {
 
         // CoveredVaultWrapper.collectPremium() is permissionless — anyone can call it.
         // It flushes accrued premium to PremiumManager and calls distributePremium() directly.
+        vm.startBroadcast(curatorPrivateKey);
         (bool success,) = coveredVault.call(abi.encodeWithSignature("collectPremium()"));
+        vm.stopBroadcast();
         if (success) {
             console.log("[OK] collectPremium() called on CoveredVaultWrapper");
         } else {
