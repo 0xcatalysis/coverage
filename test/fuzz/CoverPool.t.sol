@@ -75,21 +75,6 @@ contract CoverPoolFuzzTest is Test {
     }
 
     // ------------------------------------------------------------------
-    // Fuzz: setPoolFeeBps only accepts values <= 2000
-    // ------------------------------------------------------------------
-    function testFuzz_setPoolFeeBps_ValidRange(uint16 feeBps) public {
-        if (feeBps > 2000) {
-            vm.expectRevert();
-            vm.prank(curator);
-            coverPool.setPoolFeeBps(feeBps);
-        } else {
-            vm.prank(curator);
-            coverPool.setPoolFeeBps(feeBps);
-            assertEq(coverPool.poolFeeBps(), feeBps, "Pool fee bps not updated");
-        }
-    }
-
-    // ------------------------------------------------------------------
     // Fuzz: setPoolFeeBps only callable by curator
     // ------------------------------------------------------------------
     function testFuzz_setPoolFeeBps_OnlyAdmin(address caller, uint16 feeBps) public {

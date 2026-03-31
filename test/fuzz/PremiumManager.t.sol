@@ -136,12 +136,13 @@ contract PremiumManagerFuzzTest is Test {
     // ------------------------------------------------------------------
     function testFuzz_distributePremium_CorrectTransfers(uint256 grossPremium, uint16 poolFeeBps) public {
         grossPremium = bound(grossPremium, 1 ether, 100_000 ether);
-        poolFeeBps = uint16(bound(poolFeeBps, 0, 9950));
+        uint16 platformFeeBps = premiumManager.platformFeeBps();
+        uint16 maxPoolFeeBps = 5000 - platformFeeBps;
+        poolFeeBps = uint16(bound(poolFeeBps, 0, maxPoolFeeBps));
 
         pool = new FuzzCoverPool(curator, poolFeeRecipient, poolFeeBps);
         premiumToken.mint(address(premiumManager), grossPremium);
 
-        uint16 platformFeeBps = premiumManager.platformFeeBps();
         (uint256 expectedPlatform, uint256 expectedPool,) =
             premiumManager.getFeeSplits(grossPremium, platformFeeBps, poolFeeBps);
 

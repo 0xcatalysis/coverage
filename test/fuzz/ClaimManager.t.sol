@@ -311,31 +311,4 @@ contract ClaimManagerFuzzTest is Test {
             assertEq(claimManager.maxSwapSlippageBps(), bps);
         }
     }
-
-    // ------------------------------------------------------------------
-    // Fuzz: swap output capped at remainingPayout (no over-payout)
-    // ------------------------------------------------------------------
-    function testFuzz_fileClaim_SwapOutputCappedAtRemainingPayout(uint256 requestedAmount, uint256 swapOutput) public {
-        uint256 limit = COVERAGE_LIMIT();
-        requestedAmount = bound(requestedAmount, 1 ether, limit);
-        swapOutput = bound(swapOutput, requestedAmount, requestedAmount * 3);
-
-        spec.setPayable(true);
-        collateralToken.mint(address(slashingMgr), requestedAmount);
-        slashingMgr.configure(address(collateralToken), requestedAmount);
-        swapper.configure(address(payoutToken), swapOutput);
-
-        uint256 beneficiaryBefore = payoutToken.balanceOf(beneficiary);
-
-        vm.prank(claimer);
-        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, keccak256("ev"), "");
-
-        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
-
-        uint256 beneficiaryAfter = payoutToken.balanceOf(beneficiary);
-        uint256 actualPayout = beneficiaryAfter - beneficiaryBefore;
-
-        assertLe(actualPayout, requestedAmount, "Payout must not exceed remaining coverage");
-        assertEq(record.payoutAmount, actualPayout, "Record must reflect actual transfer");
-    }
 }

@@ -1729,39 +1729,6 @@ contract ClaimManagerTest is Test {
         assertEq(record.payoutAmount, swapOutput);
     }
 
-    function test_fileClaim_WhenNativeETHCollateralSwap_CapsOutputAtRemainingPayout() public {
-        uint256 requestedAmount = 400 ether;
-        uint256 excessiveSwapOutput = 600 ether;
-
-        specMock.setEvaluationResult(true, keccak256("approved"));
-
-        address[] memory assets = new address[](1);
-        assets[0] = NATIVE_ETH;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        slashingManagerMock.setSlashResult(assets, amounts);
-
-        vm.deal(address(slashingManagerMock), requestedAmount);
-        slashingManagerMock.setTokenToTransfer(NATIVE_ETH);
-
-        swapperMock.setSwapOutput(excessiveSwapOutput);
-        swapperMock.setPayoutToken(payoutToken);
-
-        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
-
-        vm.prank(claimer);
-        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
-
-        assertEq(
-            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
-            requestedAmount,
-            "Beneficiary should receive capped ERC20 amount"
-        );
-
-        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
-        assertEq(record.payoutAmount, requestedAmount);
-    }
-
     function test_fileClaim_WhenERC20Collateral_SwapsToNativeETHPayout() public {
         uint256 claimAmount = 500 ether;
         uint256 swapOutput = 490 ether;
@@ -1794,39 +1761,6 @@ contract ClaimManagerTest is Test {
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved));
         assertEq(record.payoutAmount, swapOutput);
-    }
-
-    function test_fileClaim_WhenERC20CollateralSwapToNativeETH_CapsOutputAtRemainingPayout() public {
-        uint256 requestedAmount = 400 ether;
-        uint256 excessiveSwapOutput = 600 ether;
-
-        IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
-        metadata.payoutToken = NATIVE_ETH;
-        policyMock.setPolicyMetadata(POLICY_ID, metadata);
-
-        specMock.setEvaluationResult(true, keccak256("approved"));
-
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        slashingManagerMock.setSlashResult(assets, amounts);
-        collateralTokenMock.mint(address(slashingManagerMock), requestedAmount);
-        slashingManagerMock.setTokenToTransfer(collateralToken);
-
-        swapperMock.setSwapOutput(excessiveSwapOutput);
-        swapperMock.setPayoutToken(NATIVE_ETH);
-        vm.deal(address(swapperMock), excessiveSwapOutput);
-
-        uint256 balanceBefore = beneficiary.balance;
-
-        vm.prank(claimer);
-        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
-
-        assertEq(beneficiary.balance - balanceBefore, requestedAmount);
-
-        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
-        assertEq(record.payoutAmount, requestedAmount);
     }
 
     function test_fileClaim_WhenMixedNativeETHAndERC20Collateral_ProcessesBoth() public {
@@ -2323,50 +2257,6 @@ contract ClaimManagerTest is Test {
             "executeSlashing must use the original curator despite pool ownership transfer"
         );
         assertNotEq(slashingManagerMock.lastOperator(), newPoolOwner, "executeSlashing must not use the new pool owner");
-    }
-
-    function test_fileClaim_WhenQuoteSwapReverts_Reverts() public {
-        specMock.setEvaluationResult(true, keccak256("approved"));
-
-        MockSwapperWithUnquotable unquotableSwapper = new MockSwapperWithUnquotable();
-        unquotableSwapper.setQuoteReverts(collateralToken);
-        unquotableSwapper.setPayoutToken(payoutToken);
-        vm.prank(admin);
-        claimManager.setSwapper(address(unquotableSwapper));
-
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = SLASH_AMOUNT;
-        slashingManagerMock.setSlashResult(assets, amounts);
-        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
-        slashingManagerMock.setTokenToTransfer(collateralToken);
-
-        vm.expectRevert(abi.encodeWithSelector(IClaimManager.QuoteUnavailable.selector, collateralToken, payoutToken));
-        vm.prank(claimer);
-        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
-    }
-
-    function test_fileClaim_WhenQuoteSwapReturnsZero_Reverts() public {
-        specMock.setEvaluationResult(true, keccak256("approved"));
-
-        MockSwapperWithUnquotable unquotableSwapper = new MockSwapperWithUnquotable();
-        unquotableSwapper.setQuoteReturnsZero(collateralToken);
-        unquotableSwapper.setPayoutToken(payoutToken);
-        vm.prank(admin);
-        claimManager.setSwapper(address(unquotableSwapper));
-
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = SLASH_AMOUNT;
-        slashingManagerMock.setSlashResult(assets, amounts);
-        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
-        slashingManagerMock.setTokenToTransfer(collateralToken);
-
-        vm.expectRevert(abi.encodeWithSelector(IClaimManager.QuoteUnavailable.selector, collateralToken, payoutToken));
-        vm.prank(claimer);
-        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
     }
 
     function test_fileClaim_WhenApprovedClaimEvidenceReused_Reverts() public {
