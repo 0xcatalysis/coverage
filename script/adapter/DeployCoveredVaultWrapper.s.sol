@@ -78,7 +78,7 @@ contract DeployCoveredVaultWrapper is Script {
         console.log("=== Deployment Summary ===");
         console.log("Morpho V2 Vault:", cfg.morphoVault);
         console.log("CoveredVaultWrapper:", address(wrapper_));
-        console.log("Owner:", cfg.catalysisOwner);
+        console.log("Pending owner (must call acceptOwnership):", cfg.catalysisOwner);
         console.log("=== Done ===");
     }
 
@@ -114,7 +114,7 @@ contract DeployCoveredVaultWrapper is Script {
     //////////////////////////////////////////////////////////////*/
 
     function _step2_transferOwnership(Config memory cfg, address wrapper_) internal {
-        console.log("Step 2: Transferring wrapper ownership to:", cfg.catalysisOwner);
+        console.log("Step 2: Proposing wrapper ownership transfer to:", cfg.catalysisOwner);
         (bool ok, bytes memory ret) =
             wrapper_.call(abi.encodeWithSignature("transferOwnership(address)", cfg.catalysisOwner));
         if (!ok) {
@@ -122,7 +122,9 @@ contract DeployCoveredVaultWrapper is Script {
                 revert(add(ret, 32), mload(ret))
             }
         }
-        console.log("  - Wrapper ownership transferred to:", cfg.catalysisOwner);
+        console.log("  - Wrapper ownership transfer proposed to:", cfg.catalysisOwner);
+        console.log("  - IMPORTANT: ownership is NOT yet transferred.");
+        console.log("  - The new owner must call acceptOwnership() to complete the transfer.");
     }
 
     /*//////////////////////////////////////////////////////////////

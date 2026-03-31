@@ -182,11 +182,12 @@ contract DistributePremium is Script {
 
         vm.startBroadcast(deployerPrivateKey);
         IERC20(underlying).approve(coveredVault, bootstrapPremiumAmount);
-        uint256 shares = vault.deposit(bootstrapPremiumAmount, deployer);
-        IERC20(coveredVault).safeTransfer(premiumCollector, shares);
+        // Deposit with premiumCollector as receiver so shares are minted directly to it.
+        // Wrapper shares are soulbound — transferring them after minting always reverts.
+        uint256 shares = vault.deposit(bootstrapPremiumAmount, premiumCollector);
         vm.stopBroadcast();
 
-        console.log("[OK] Deposited and transferred", shares, "shares to PremiumCollector");
+        console.log("[OK] Deposited", shares, "shares directly to PremiumCollector");
         emit PremiumBootstrapped(coveredVault, underlying, bootstrapPremiumAmount, shares);
     }
 
