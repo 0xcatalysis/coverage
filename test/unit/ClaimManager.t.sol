@@ -948,9 +948,10 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved));
     }
 
-    function test_fileClaim_WhenSwapOutputExceedsRemainingPayout_BeneficiaryReceivesFullOutput() public {
+    function test_fileClaim_WhenSwapOutputExceedsRemainingPayout_BeneficiaryReceivesCappedAmount() public {
         uint256 requestedAmount = 500 ether;
         uint256 excessiveSwapOutput = 600 ether;
+        uint256 excess = excessiveSwapOutput - requestedAmount;
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -972,11 +973,13 @@ contract ClaimManagerTest is Test {
         uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
         uint256 balanceAfter = payoutTokenMock.balanceOf(beneficiary);
-        assertEq(balanceAfter - balanceBefore, excessiveSwapOutput, "Beneficiary receives full swapOutput");
-        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens stranded in ClaimManager");
+        assertEq(balanceAfter - balanceBefore, requestedAmount, "Beneficiary receives capped requestedAmount");
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)), excess, "Excess swap proceeds retained in ClaimManager"
+        );
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
-        assertEq(record.payoutAmount, requestedAmount, "payoutAmount caps at requestedAmount for accounting");
+        assertEq(record.payoutAmount, requestedAmount, "payoutAmount records capped amount");
     }
 
     function test_fileClaim_WhenDirectTransferExceedsRemainingPayout_CapsTransfer() public {

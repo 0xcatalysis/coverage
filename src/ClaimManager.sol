@@ -588,7 +588,7 @@ contract ClaimManager is
                 ISwapper(swapper).executeSwap{value: collateralToken == _NATIVE_ETH ? collateralAmount : 0}(swapParams);
 
             amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
-            _transferToken(payoutToken, beneficiary, swapOutput);
+            _transferToken(payoutToken, beneficiary, amountOut);
 
             _approveIfERC20(collateralToken, swapper, 0);
         }
