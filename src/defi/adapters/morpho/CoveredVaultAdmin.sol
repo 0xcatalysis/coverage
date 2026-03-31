@@ -210,8 +210,6 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         pendingPremiumRateTimestamp = 0;
         pendingPremiumRecipient = address(0);
         pendingPremiumRecipientTimestamp = 0;
-        pendingImplementation = address(0);
-        pendingUpgradeTimestamp = 0;
         emit IE.PolicyBindingReset(prevPolicyId);
     }
 
