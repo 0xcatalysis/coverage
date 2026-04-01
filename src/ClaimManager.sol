@@ -428,9 +428,7 @@ contract ClaimManager is
         ISlashingManager.VaultSlash[] memory vaultSlashes =
             _computeVaultSlashes(vaults, tokens, tokenStakes, metadata.payoutToken, requestedAmount);
 
-        if (vaultSlashes.length == 0) {
-            return (new address[](0), new uint256[](0));
-        }
+        require(vaultSlashes.length > 0, NoCollateralSlashed(metadata.policyId));
 
         // slither-disable-next-line calls-loop
         (collateralTokens, collateralAmounts) = ISlashingManager(slashingManager)
