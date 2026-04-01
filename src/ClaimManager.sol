@@ -490,6 +490,7 @@ contract ClaimManager is
 
         ISlashingManager.VaultSlash[] memory scratch = new ISlashingManager.VaultSlash[](vaultsLength);
         uint256 nonZeroCount = 0;
+        uint256 cachedMaxSwapSlippageBps = maxSwapSlippageBps;
         for (uint256 i = 0; i < vaultsLength; ++i) {
             if (payoutEquivalents[i] == 0) {
                 continue;
@@ -497,9 +498,9 @@ contract ClaimManager is
 
             // slither-disable-next-line divide-before-multiply
             uint256 baseSlash = (tokenStakes[i] * requestedAmount) / totalPayoutEquivalent;
-            if (tokens[i] != payoutToken && maxSwapSlippageBps > 0) {
+            if (tokens[i] != payoutToken && cachedMaxSwapSlippageBps > 0) {
                 uint256 maxSlippage = uint256(_MAX_SLIPPAGE_BPS);
-                baseSlash = (baseSlash * maxSlippage) / (maxSlippage - maxSwapSlippageBps);
+                baseSlash = (baseSlash * maxSlippage) / (maxSlippage - cachedMaxSwapSlippageBps);
             }
 
             if (baseSlash == 0) {
