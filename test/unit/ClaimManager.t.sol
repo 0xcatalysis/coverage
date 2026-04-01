@@ -675,7 +675,7 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Second policy claim must succeed");
     }
 
-    function test_fileClaim_WhenRejectedClaimEvidenceReused_Succeeds() public {
+    function test_fileClaim_WhenRejectedClaimEvidenceReused_Reverts() public {
         specMock.setEvaluationResult(false, keccak256("rejected"));
 
         vm.prank(claimer);
@@ -685,21 +685,9 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Rejected), "Claim should be rejected");
 
         specMock.setEvaluationResult(true, keccak256("approved"));
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = SLASH_AMOUNT;
-        slashingManagerMock.setSlashResult(assets, amounts);
-        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
-        slashingManagerMock.setTokenToTransfer(collateralToken);
-        payoutTokenMock.mint(address(swapperMock), SLASH_AMOUNT);
-        swapperMock.setPayoutToken(payoutToken);
-        swapperMock.setSwapOutput(SLASH_AMOUNT);
-
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.DuplicateEvidenceHash.selector, POLICY_ID, evidenceHash));
         vm.prank(claimer);
-        uint256 claimId2 = claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
-        IClaimManager.ClaimRecord memory record2 = claimManager.claimRecord(POLICY_ID, claimId2);
-        assertEq(uint8(record2.status), uint8(IClaimManager.ClaimStatus.Approved));
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
 
     function test_fileClaim_WhenRequestedAmountZero_Reverts() public {

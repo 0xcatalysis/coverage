@@ -226,9 +226,6 @@ contract ClaimManager is
             return claimId;
         }
 
-        // slither-disable-next-line reentrancy-no-eth
-        _usedEvidenceHashes[policyId][evidenceHash] = true;
-
         claim.status = ClaimStatus.Approved;
 
         uint256 totalPayout = _capAndExecutePayout(policyId, claimId, metadata, requestedAmount);
@@ -295,6 +292,7 @@ contract ClaimManager is
         require(requestedAmount > 0, ZeroAmount());
         require(evidenceHash != bytes32(0), InvalidEvidenceHash());
         require(!_usedEvidenceHashes[policyId][evidenceHash], DuplicateEvidenceHash(policyId, evidenceHash));
+        _usedEvidenceHashes[policyId][evidenceHash] = true;
 
         metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
