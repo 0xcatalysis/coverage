@@ -783,17 +783,29 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
 
-    function test_fileClaim_WhenSlashingReturnsMismatchedArrayLengths_Reverts() public {
+    function test_fileClaim_WhenPreviewSlashingReturnsMismatchedArrayLengths_Reverts() public {
         specMock.setEvaluationResult(true, keccak256("approved"));
 
-        address[] memory tokens = new address[](2);
+        address[] memory vaults = new address[](2);
+        vaults[0] = makeAddr("vault0");
+        vaults[1] = makeAddr("vault1");
+        address[] memory tokens = new address[](1);
         tokens[0] = collateralToken;
-        tokens[1] = payoutToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = SLASH_AMOUNT;
-        slashingManagerMock.setSlashResult(tokens, amounts);
+        uint256[] memory stakes = new uint256[](2);
+        stakes[0] = SLASH_AMOUNT;
+        stakes[1] = SLASH_AMOUNT;
 
-        vm.expectRevert(abi.encodeWithSelector(IClaimManager.NoCollateralSlashed.selector, POLICY_ID));
+        vm.mockCall(
+            address(slashingManagerMock),
+            abi.encodeWithSelector(ISlashingManager.previewSlashing.selector),
+            abi.encode(vaults, tokens, stakes)
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimManager.SlashingArrayLengthMismatch.selector, vaults.length, tokens.length, stakes.length
+            )
+        );
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }

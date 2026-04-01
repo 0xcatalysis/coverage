@@ -253,6 +253,14 @@ interface IClaimManager is IAccessControl {
     error QuoteUnavailable(address collateralToken, address payoutToken);
 
     /**
+     * @notice Reverts when previewSlashing returns arrays of different lengths.
+     * @param vaultsLength Length of the vaults array.
+     * @param tokensLength Length of the tokens array.
+     * @param tokenStakesLength Length of the tokenStakes array.
+     */
+    error SlashingArrayLengthMismatch(uint256 vaultsLength, uint256 tokensLength, uint256 tokenStakesLength);
+
+    /**
      * @notice Reverts when approveNextClaim is called but no approval gate is active.
      * @param policyId Identifier of the policy.
      */

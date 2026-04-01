@@ -420,6 +420,11 @@ contract ClaimManager is
         (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes) =
             ISlashingManager(slashingManager).previewSlashing(metadata.policyId, operator);
 
+        uint256 vaultsLength = vaults.length;
+        if (vaultsLength != tokens.length || vaultsLength != tokenStakes.length) {
+            revert SlashingArrayLengthMismatch(vaultsLength, tokens.length, tokenStakes.length);
+        }
+
         ISlashingManager.VaultSlash[] memory vaultSlashes =
             _computeVaultSlashes(vaults, tokens, tokenStakes, metadata.payoutToken, requestedAmount);
 
