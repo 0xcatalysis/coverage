@@ -441,11 +441,11 @@ contract ClaimManager is
 
     /**
      * @notice Computes per-vault token-native slash amounts proportional to each vault's payout-equivalent value.
-     * @dev Two-pass algorithm:
-     *      Pass 1: quote each vault's token stake to payout-token equivalent (same-token vaults use stake directly).
-     *      Pass 2: compute proportional base slash per vault.
-     *      Slippage tolerance is applied once in _processCollateral via amountOutMin; it is not applied here to
-     *      avoid double-counting that would over-slash restakers beyond what the beneficiary receives.
+     * @dev Two-pass: quotes each stake to payout-token equivalent, then computes proportional slash amounts.
+     *      Cross-token slashes are inflated by MAX / (MAX - maxSwapSlippageBps) so the beneficiary receives the
+     *      full requestedAmount even at worst-case swap slippage; same-token vaults are direct transfers and need
+     *      no inflation. Any surplus from lower-than-max slippage is capped by remainingPayout in _processCollateral.
+     *      The amountOutMin set there is complementary sandwich protection, not double-counting.
      * @param vaults Array of vault addresses from previewSlashing.
      * @param tokens Array of collateral token addresses per vault.
      * @param tokenStakes Array of token-native stake amounts per vault.
@@ -499,11 +499,14 @@ contract ClaimManager is
 
             // slither-disable-next-line divide-before-multiply
             uint256 baseSlash = (tokenStakes[i] * requestedAmount) / totalPayoutEquivalent;
-            if (baseSlash == 0) {
-                baseSlash = 1;
+            if (tokens[i] != payoutToken && maxSwapSlippageBps > 0) {
+                uint256 maxSlippage = uint256(_MAX_SLIPPAGE_BPS);
+                baseSlash = (baseSlash * maxSlippage) / (maxSlippage - maxSwapSlippageBps);
             }
 
-            if (baseSlash > tokenStakes[i]) {
+            if (baseSlash == 0) {
+                baseSlash = 1;
+            } else if (baseSlash > tokenStakes[i]) {
                 baseSlash = tokenStakes[i];
             }
 

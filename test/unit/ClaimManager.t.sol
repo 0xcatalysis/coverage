@@ -1571,6 +1571,43 @@ contract ClaimManagerTest is Test {
         );
     }
 
+    function test_fileClaim_WhenCrossTokenLargeStake_SlashInflatedToCompensateSlippage() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 stake = 200 ether;
+
+        uint16 slippageBps = claimManager.maxSwapSlippageBps();
+        uint256 inflatedSlash = requestedAmount * 10_000 / (10_000 - slippageBps);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](1);
+        pvaults[0] = makeAddr("vault");
+        address[] memory ptokens = new address[](1);
+        ptokens[0] = collateralToken;
+        uint256[] memory pstakes = new uint256[](1);
+        pstakes[0] = stake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(slashMock), inflatedSlash);
+
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        uint256 worstCaseSwapOutput = inflatedSlash * (10_000 - slippageBps) / 10_000;
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(worstCaseSwapOutput);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        uint256 received = payoutTokenMock.balanceOf(beneficiary) - balanceBefore;
+        assertApproxEqAbs(received, requestedAmount, 1, "Beneficiary should receive full requestedAmount within 1 wei");
+        assertGt(
+            inflatedSlash, requestedAmount, "Slash must be inflated beyond requestedAmount when stake is sufficient"
+        );
+    }
+
     function test_fileClaim_SecondClaimRequiresApproval() public {
         _fileAndApproveClaim();
 
@@ -2046,7 +2083,10 @@ contract ClaimManagerTest is Test {
         slashMock.setupPreview(pvaults, ptokens, pstakes);
 
         tinyTokenMock.mint(address(slashMock), 1);
-        uint256 expectedLargeSlash = (largeStake * requestedAmount) / (tinyStake + largeStake);
+        // The large vault is cross-token, so its baseSlash is inflated by MAX_SLIPPAGE / (MAX_SLIPPAGE - slippage)
+        // to ensure the beneficiary receives the full requestedAmount after swap slippage.
+        uint256 baseSlash = (largeStake * requestedAmount) / (tinyStake + largeStake);
+        uint256 expectedLargeSlash = (baseSlash * 10_000) / (10_000 - claimManager.maxSwapSlippageBps());
         collateralTokenMock.mint(address(slashMock), expectedLargeSlash);
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
