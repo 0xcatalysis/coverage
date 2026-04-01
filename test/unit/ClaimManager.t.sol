@@ -3113,7 +3113,7 @@ contract MockSlashingManagerAssertingNoZeroAmounts {
         for (uint256 i = 0; i < len; ++i) {
             collateralTokens[i] = vaultSlashes[i].token;
             collateralAmounts[i] = vaultSlashes[i].amount;
-            ERC20(vaultSlashes[i].token).transfer(msg.sender, vaultSlashes[i].amount);
+            require(ERC20(vaultSlashes[i].token).transfer(msg.sender, vaultSlashes[i].amount));
         }
     }
 }

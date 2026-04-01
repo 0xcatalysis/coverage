@@ -3,7 +3,6 @@ pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 

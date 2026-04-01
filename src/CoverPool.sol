@@ -59,14 +59,13 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.beneficiary != address(0), InvalidBeneficiary());
         require(quote.startTime < quote.maturityTime, InvalidCoverageWindow());
 
-        uint256 currentTimestamp = block.timestamp;
         // forge-lint: disable-next-line(unsafe-typecast)
+        uint32 currentTimestamp = uint32(block.timestamp);
         require(
-            uint256(quote.startTime) + _BIND_START_TIME_TOLERANCE >= currentTimestamp,
-            InvalidStartTime(quote.startTime, uint32(currentTimestamp))
+            quote.startTime + _BIND_START_TIME_TOLERANCE >= currentTimestamp,
+            InvalidStartTime(quote.startTime, currentTimestamp)
         );
-        // forge-lint: disable-next-line(unsafe-typecast)
-        require(quote.expirationTime >= currentTimestamp, QuoteExpired(quote.expirationTime, uint32(currentTimestamp)));
+        require(quote.expirationTime >= currentTimestamp, QuoteExpired(quote.expirationTime, currentTimestamp));
         _;
     }
 
