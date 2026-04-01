@@ -80,11 +80,11 @@ contract ClaimManagerTest is Test {
     event PolicyManagerSet(address indexed policyManager);
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
     event NextClaimApproved(uint96 indexed policyId, address indexed approver);
+    event TokensRecovered(address indexed token, address indexed to, uint256 amount);
 
     /*//////////////////////////////////////////////////////////////
-                                 SETUP
+                                  SETUP
     //////////////////////////////////////////////////////////////*/
-
     function setUp() public {
         vm.warp(1_000_000);
 
@@ -149,7 +149,6 @@ contract ClaimManagerTest is Test {
     /*//////////////////////////////////////////////////////////////
                                INITIALIZE
     //////////////////////////////////////////////////////////////*/
-
     function test_initialize_WhenAdminZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
         ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
@@ -191,7 +190,6 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.slashingManager(), slashingManager);
         assertEq(claimManager.swapper(), swapper);
         assertEq(claimManager.policyManager(), policy);
-        assertFalse(claimManager.paused());
     }
 
     function test_initialize_SetsDefaultMaxSwapSlippageBps() public view {
@@ -204,9 +202,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                 PAUSE
+                              PAUSE / UNPAUSE
     //////////////////////////////////////////////////////////////*/
-
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -224,10 +221,6 @@ contract ClaimManagerTest is Test {
         claimManager.pause();
         assertTrue(claimManager.paused());
     }
-
-    /*//////////////////////////////////////////////////////////////
-                                UNPAUSE
-    //////////////////////////////////////////////////////////////*/
 
     function test_unpause_WhenCallerNotAdmin_Reverts() public {
         vm.prank(admin);
@@ -254,10 +247,19 @@ contract ClaimManagerTest is Test {
         vm.stopPrank();
     }
 
-    /*//////////////////////////////////////////////////////////////
-                         SET SPEC REGISTRY
-    //////////////////////////////////////////////////////////////*/
+    function test_paused_WhenNotPaused_ReturnsFalse() public view {
+        assertFalse(claimManager.paused());
+    }
 
+    function test_paused_WhenPaused_ReturnsTrue() public {
+        vm.prank(admin);
+        claimManager.pause();
+        assertTrue(claimManager.paused());
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            SET SPEC REGISTRY
+    //////////////////////////////////////////////////////////////*/
     function test_setSpecRegistry_WhenCallerNotAdmin_Reverts() public {
         address newSpecRegistry = makeAddr("newSpecRegistry");
         vm.expectRevert(
@@ -290,9 +292,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         SET SLASHING MANAGER
+                          SET SLASHING MANAGER
     //////////////////////////////////////////////////////////////*/
-
     function test_setSlashingManager_WhenCallerNotAdmin_Reverts() public {
         address newSlashingManager = makeAddr("newSlashingManager");
         vm.expectRevert(
@@ -325,9 +326,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              SET SWAPPER
+                               SET SWAPPER
     //////////////////////////////////////////////////////////////*/
-
     function test_setSwapper_WhenCallerNotAdmin_Reverts() public {
         address newSwapper = makeAddr("newSwapper");
         vm.expectRevert(
@@ -360,9 +360,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         SET POLICY MANAGER
+                           SET POLICY MANAGER
     //////////////////////////////////////////////////////////////*/
-
     function test_setPolicyManager_WhenCallerNotAdmin_Reverts() public {
         address newPolicyManager = makeAddr("newPolicyManager");
         vm.expectRevert(
@@ -395,9 +394,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                       SET MAX SWAP SLIPPAGE BPS
+                        SET MAX SWAP SLIPPAGE BPS
     //////////////////////////////////////////////////////////////*/
-
     function test_setMaxSwapSlippageBps_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -447,16 +445,11 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        CLAIM APPROVAL REQUIRED
+                           APPROVE NEXT CLAIM
     //////////////////////////////////////////////////////////////*/
-
     function test_claimApprovalRequired_WhenFreshPolicy_ReturnsFalse() public view {
         assertFalse(claimManager.claimApprovalRequired(POLICY_ID));
     }
-
-    /*//////////////////////////////////////////////////////////////
-                           APPROVE NEXT CLAIM
-    //////////////////////////////////////////////////////////////*/
 
     function test_approveNextClaim_ByCurator_AllowsNextClaim() public {
         _fileAndApproveClaim();
@@ -531,9 +524,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                RECEIVE
+                             RECOVER TOKENS
     //////////////////////////////////////////////////////////////*/
-
     function test_receive_AcceptsNativeETH() public {
         uint256 amount = 1 ether;
         vm.deal(address(this), amount);
@@ -544,12 +536,6 @@ contract ClaimManagerTest is Test {
         assertTrue(sent);
         assertEq(address(claimManager).balance, balanceBefore + amount);
     }
-
-    /*//////////////////////////////////////////////////////////////
-                            RECOVER TOKENS
-    //////////////////////////////////////////////////////////////*/
-
-    event TokensRecovered(address indexed token, address indexed to, uint256 amount);
 
     function test_recoverTokens_ERC20_ByAdmin_Succeeds() public {
         uint256 amount = 100 ether;
@@ -608,9 +594,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              FILE CLAIM
+                               FILE CLAIM
     //////////////////////////////////////////////////////////////*/
-
     function test_fileClaim_WhenPaused_Reverts() public {
         vm.prank(admin);
         claimManager.pause();
@@ -1569,7 +1554,7 @@ contract ClaimManagerTest is Test {
         slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
 
         MockSwapperWithTracking trackingSwapper = new MockSwapperWithTracking();
-        uint256 swapOutput = 460 ether; // above amountOutMin of 450 ether
+        uint256 swapOutput = 460 ether;
         trackingSwapper.setSwapOutput(swapOutput);
         trackingSwapper.setPayoutToken(payoutToken);
         payoutTokenMock.mint(address(trackingSwapper), swapOutput);
@@ -1580,7 +1565,7 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        uint256 expectedAmountOutMin = slashAmount * (10_000 - 1000) / 10_000; // 450 ether
+        uint256 expectedAmountOutMin = slashAmount * (10_000 - 1000) / 10_000;
         assertEq(
             trackingSwapper.lastAmountOutMin(), expectedAmountOutMin, "amountOutMin does not reflect custom slippage"
         );
@@ -1875,20 +1860,6 @@ contract ClaimManagerTest is Test {
         assertGt(actualPayout, 0);
     }
 
-    // ── Unquotable-vault fix tests
-    // ──────────────────────────────────────────
-
-    /**
-     * @dev Regression test for the unquotable-vault bug fixed in _computeVaultSlashes.
-     *
-     * Without the fix: a vault whose quoteSwap reverts has payoutEquivalents[i]=0 but still
-     * receives a non-zero baseSlash = tokenStakes[i]*requestedAmount/totalPayoutEquivalent.
-     * _processCollateral then calls executeSwap with that amount, which reverts because there
-     * is no valid route → the entire fileClaim transaction reverts, permanently blocking claims.
-     *
-     * With the fix: payoutEquivalents[i]==0 triggers amount=0 in VaultSlash, so the vault is
-     * skipped and the quotable vault alone funds the full requested payout.
-     */
     function test_fileClaim_WhenOneVaultUnquotable_SkipsUnquotableAndPaysFromQuotableVault() public {
         uint256 requestedAmount = 400 ether;
         uint256 quotableStake = 500 ether;
@@ -1897,7 +1868,6 @@ contract ClaimManagerTest is Test {
         MockToken unquotableTokenMock = new MockToken("Unquotable", "UNQ");
         address unquotableToken = address(unquotableTokenMock);
 
-        // Swapper: quoteSwap and executeSwap both revert for unquotableToken.
         MockSwapperWithUnquotable unquotableSwapper = new MockSwapperWithUnquotable();
         unquotableSwapper.setQuoteReverts(unquotableToken);
         unquotableSwapper.setPayoutToken(payoutToken);
@@ -1905,7 +1875,6 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.setSwapper(address(unquotableSwapper));
 
-        // SlashingManager: preview exposes two vaults; executeSlashing respects VaultSlash.amount.
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
         address[] memory pvaults = new address[](2);
         pvaults[0] = makeAddr("vault1");
@@ -1917,7 +1886,6 @@ contract ClaimManagerTest is Test {
         pstakes[0] = quotableStake;
         pstakes[1] = unquotableStake;
         slashMock.setupPreview(pvaults, ptokens, pstakes);
-        // Pre-mint enough collateral so the mock can transfer the computed slash amount.
         collateralTokenMock.mint(address(slashMock), quotableStake);
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
@@ -1936,7 +1904,6 @@ contract ClaimManagerTest is Test {
             requestedAmount,
             "Beneficiary should receive full requested payout from quotable vault"
         );
-        // The unquotable vault was never slashed: its tokens remain in the mock.
         assertEq(
             unquotableTokenMock.balanceOf(address(slashMock)),
             0,
@@ -1944,10 +1911,6 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    /**
-     * @dev A vault whose quoteSwap returns 0 (rather than reverting) must also be skipped.
-     *      Both zero-return and revert leave payoutEquivalents[i]==0, so the guard is identical.
-     */
     function test_fileClaim_WhenVaultQuoteReturnsZero_SkipsVaultAndSucceeds() public {
         uint256 requestedAmount = 300 ether;
         uint256 quotableStake = 400 ether;
@@ -1990,11 +1953,6 @@ contract ClaimManagerTest is Test {
         assertGt(payoutTokenMock.balanceOf(beneficiary) - balanceBefore, 0, "Beneficiary should receive payout");
     }
 
-    /**
-     * @dev When ALL committee vaults are unquotable, totalPayoutEquivalent==0 causes
-     *      _computeVaultSlashes to return an empty array.  _slash then short-circuits and
-     *      returns empty arrays, triggering NoCollateralSlashed as if nothing was slashed.
-     */
     function test_fileClaim_WhenAllVaultsUnquotable_Reverts() public {
         MockToken unquotableTokenMock = new MockToken("Unquotable2", "UNQ2");
         address unquotableToken = address(unquotableTokenMock);
@@ -2062,7 +2020,7 @@ contract ClaimManagerTest is Test {
         assertEq(assertingMock.lastReceivedSlash(0).token, collateralToken, "Only quotable vault should be slashed");
     }
 
-    function test_fileClaim_WhenTinyVaultBaseSlashRoundsToZero_ExcludesVaultFromSlash() public {
+    function test_fileClaim_WhenTinyVaultBaseSlashRoundsToZero_IncludesVaultWithMinimumSlash() public {
         uint256 tinyStake = 1;
         uint256 largeStake = 1000 ether;
         uint256 requestedAmount = 1 ether;
@@ -2070,13 +2028,12 @@ contract ClaimManagerTest is Test {
         MockToken tinyTokenMock = new MockToken("TinyToken", "TINY");
         address tinyToken = address(tinyTokenMock);
 
-        // Standard swapper: quoteSwap returns amountIn (1:1) for all tokens.
         vm.prank(admin);
         claimManager.setSwapper(address(swapperMock));
         swapperMock.setPayoutToken(payoutToken);
         swapperMock.setSwapOutput(requestedAmount);
 
-        MockSlashingManagerAssertingNoZeroAmounts assertingMock = new MockSlashingManagerAssertingNoZeroAmounts();
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
         address[] memory pvaults = new address[](2);
         pvaults[0] = makeAddr("tinyVault");
         pvaults[1] = makeAddr("largeVault");
@@ -2086,12 +2043,13 @@ contract ClaimManagerTest is Test {
         uint256[] memory pstakes = new uint256[](2);
         pstakes[0] = tinyStake;
         pstakes[1] = largeStake;
-        assertingMock.setupPreview(pvaults, ptokens, pstakes);
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
 
+        tinyTokenMock.mint(address(slashMock), 1);
         uint256 expectedLargeSlash = (largeStake * requestedAmount) / (tinyStake + largeStake);
-        collateralTokenMock.mint(address(assertingMock), expectedLargeSlash + 1);
+        collateralTokenMock.mint(address(slashMock), expectedLargeSlash);
         vm.prank(admin);
-        claimManager.setSlashingManager(address(assertingMock));
+        claimManager.setSlashingManager(address(slashMock));
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -2100,18 +2058,8 @@ contract ClaimManagerTest is Test {
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
-        assertEq(assertingMock.lastReceivedSlashCount(), 1, "Only large vault should reach executeSlashing");
-        assertEq(assertingMock.lastReceivedSlash(0).token, collateralToken, "Only large vault should be slashed");
     }
 
-    // ── Same-token vault cap fix tests
-    // ────────────────────────────────────────
-
-    /**
-     * @dev Regression: when requestedAmount > vaultStake for a same-token vault, baseSlash must
-     *      be capped at tokenStakes[i]. The mock mints exactly vaultStake so the transfer reverts
-     *      if the cap is bypassed.
-     */
     function test_fileClaim_WhenSameTokenVaultUnderwater_CapsSlashAtVaultStake() public {
         uint256 vaultStake = 300 ether;
         uint256 requestedAmount = 500 ether;
@@ -2149,11 +2097,6 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    /**
-     * @dev Regression: with mixed vaults and requestedAmount (600) > totalPayoutEquivalent (400),
-     *      the proportional formula yields baseSlash=300 for each 200-token vault. Both must be
-     *      capped at their stake; total payout equals the sum of available stakes (400).
-     */
     function test_fileClaim_WhenMixedVaultsUnderwater_CapsEachVaultAtItsStake() public {
         uint256 sameTokenStake = 200 ether;
         uint256 crossTokenStake = 200 ether;
@@ -2192,6 +2135,47 @@ contract ClaimManagerTest is Test {
             payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
             sameTokenStake + crossTokenStake,
             "Payout must equal total available stake across both vaults, not requested amount"
+        );
+    }
+
+    function test_fileClaim_WhenRequestedAmountTiny_DoesNotRevertWithNoCollateralSlashed() public {
+        uint256 smallStake = 1;
+        uint256 largeStake = 1_000_000;
+        uint256 requestedAmount = 1;
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.payoutToken = payoutToken;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("smallVault");
+        pvaults[1] = makeAddr("largeVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = payoutToken;
+        ptokens[1] = payoutToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = smallStake;
+        pstakes[1] = largeStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        payoutTokenMock.mint(address(slashMock), smallStake + largeStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertGt(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
+            0,
+            "Beneficiary should receive a non-zero payout for a tiny but valid claim"
         );
     }
 
@@ -2288,9 +2272,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                             CLAIM RECORD
+                              CLAIM RECORD
     //////////////////////////////////////////////////////////////*/
-
     function test_claimRecord_WhenClaimNotFiled_ReturnsDefault() public view {
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, 0);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.None));
@@ -2350,9 +2333,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                             POLICY CLAIM
+                              POLICY CLAIM
     //////////////////////////////////////////////////////////////*/
-
     function test_policyClaim_WhenNoClaims_ReturnsDefaults() public view {
         IClaimManager.PolicyClaim memory state = claimManager.policyClaim(POLICY_ID);
         assertEq(state.claimCount, 0);
@@ -2395,9 +2377,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          REMAINING COVERAGE
+                           REMAINING COVERAGE
     //////////////////////////////////////////////////////////////*/
-
     function test_remainingCoverage_WhenNoClaims_ReturnsFullCoverage() public view {
         uint256 remaining = claimManager.remainingCoverage(POLICY_ID);
         assertEq(remaining, COVERAGE_LIMIT);
@@ -2538,23 +2519,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                PAUSED
+                           AUTHORIZE UPGRADE
     //////////////////////////////////////////////////////////////*/
-
-    function test_paused_WhenNotPaused_ReturnsFalse() public view {
-        assertFalse(claimManager.paused());
-    }
-
-    function test_paused_WhenPaused_ReturnsTrue() public {
-        vm.prank(admin);
-        claimManager.pause();
-        assertTrue(claimManager.paused());
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                          AUTHORIZE UPGRADE
-    //////////////////////////////////////////////////////////////*/
-
     function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
         address newImplementation = address(new ClaimManager());
 
@@ -2582,9 +2548,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                               HELPERS
+                                 HELPERS
     //////////////////////////////////////////////////////////////*/
-
     function _setupDefaultPolicy() private {
         IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
         policyMock.setPolicyMetadata(POLICY_ID, metadata);

@@ -497,14 +497,11 @@ contract ClaimManager is
             // slither-disable-next-line divide-before-multiply
             uint256 baseSlash = (tokenStakes[i] * requestedAmount) / totalPayoutEquivalent;
             if (baseSlash == 0) {
-                continue;
+                baseSlash = 1;
             }
 
             if (baseSlash > tokenStakes[i]) {
                 baseSlash = tokenStakes[i];
-            }
-            if (baseSlash == 0) {
-                continue;
             }
 
             scratch[nonZeroCount] = ISlashingManager.VaultSlash({vault: vaults[i], token: tokens[i], amount: baseSlash});
