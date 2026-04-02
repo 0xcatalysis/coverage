@@ -490,8 +490,9 @@ contract ClaimManager is
                 // slither-disable-next-line calls-loop
                 try ISwapper(swapper).quoteSwap(tokens[i], payoutToken, tokenStakes[i]) returns (uint256 quoted) {
                     payoutEquivalents[i] = quoted;
-                } catch {
-                    payoutEquivalents[i] = 0;
+                } catch {}
+
+                if (payoutEquivalents[i] == 0) {
                     emit VaultExcludedFromSlashing(vaults[i], tokens[i]);
                 }
             }

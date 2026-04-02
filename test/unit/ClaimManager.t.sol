@@ -1181,6 +1181,48 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
     }
 
+    function test_fileClaim_WhenQuoteSwapReturnsZero_EmitsVaultExcludedFromSlashing() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 quotableStake = 300 ether;
+        uint256 zeroQuoteStake = 200 ether;
+
+        MockToken zeroQuoteTokenMock = new MockToken("ZeroQuote", "ZQ");
+        address zeroQuoteToken = address(zeroQuoteTokenMock);
+
+        MockSwapperWithUnquotable zeroSwapper = new MockSwapperWithUnquotable();
+        zeroSwapper.setQuoteReturnsZero(zeroQuoteToken);
+        zeroSwapper.setPayoutToken(payoutToken);
+        zeroSwapper.setSwapOutput(requestedAmount);
+        vm.prank(admin);
+        claimManager.setSwapper(address(zeroSwapper));
+
+        address vault1 = makeAddr("vault1");
+        address vault2 = makeAddr("vault2");
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = vault1;
+        pvaults[1] = vault2;
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = zeroQuoteToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = quotableStake;
+        pstakes[1] = zeroQuoteStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(slashMock), quotableStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, false, false, address(claimManager));
+        emit VaultExcludedFromSlashing(vault2, zeroQuoteToken);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+    }
+
     function test_fileClaim_WhenQuoteSwapFailsForOneVault_RemainingVaultSlashedCorrectly() public {
         _setupTwoVaultScenarioWithUnquotable();
 
