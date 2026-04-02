@@ -2609,7 +2609,7 @@ contract ClaimManagerTest is Test {
         assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
     }
 
-    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultSameTokenNotStranded() public {
+    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultSameTokenSkippedAndStranded() public {
         uint256 requestedAmount = 100 ether;
         uint256 stake = 100 ether;
         vm.prank(admin);
@@ -2651,11 +2651,17 @@ contract ClaimManagerTest is Test {
             requestedAmount,
             "Beneficiary must receive exactly requestedAmount"
         );
-        assertEq(rewardsMock.totalReceived(), 50 ether, "Second vault same-token surplus must go to RewardsManager");
-        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No payout tokens must remain stranded");
+        assertEq(
+            rewardsMock.totalReceived(), 0, "RewardsManager must not receive anything: loop exited before vault[1]"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)),
+            50 ether,
+            "Second vault same-token collateral stays in ClaimManager (recoverable via recoverTokens)"
+        );
     }
 
-    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultCrossTokenNotStranded() public {
+    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultCrossTokenSkippedAndStranded() public {
         uint256 requestedAmount = 100 ether;
         uint256 stake = 100 ether;
         vm.prank(admin);
@@ -2705,9 +2711,14 @@ contract ClaimManagerTest is Test {
             "Beneficiary must receive exactly requestedAmount"
         );
         assertEq(
-            rewardsMock.totalReceived(), requestedAmount, "Second vault cross-token surplus must go to RewardsManager"
+            rewardsMock.totalReceived(), 0, "RewardsManager must not receive anything: loop exited before vault[1]"
         );
         assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No payout tokens must remain stranded");
+        assertEq(
+            collateralToken2Mock.balanceOf(address(claimManager)),
+            50 ether,
+            "Second vault cross-token collateral stays in ClaimManager"
+        );
     }
 
     function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultSurplusStrandedWithoutRewardsManager()

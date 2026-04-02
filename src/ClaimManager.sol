@@ -368,8 +368,8 @@ contract ClaimManager is
     /**
      * @notice Executes slashing and collateral swapping for payout using token-native amounts.
      * @dev Flow: previewSlashing → _computeVaultSlashes → executeSlashing → loop swap/transfer.
-     *      Slashing is atomic, so the loop processes every collateral entry unconditionally;
-     *      surplus beyond remainingPayout is forwarded to RewardsManager via _processCollateral.
+     *      The loop exits as soon as remainingPayout reaches zero; entries beyond that point
+     *      are skipped entirely.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param metadata Policy metadata containing payout token and beneficiary details.
@@ -393,7 +393,7 @@ contract ClaimManager is
         require(tokensLength > 0 && tokensLength == collateralAmounts.length, NoCollateralSlashed(policyId));
 
         uint256 remainingPayout = requestedAmount;
-        for (uint256 i = 0; i < tokensLength; ++i) {
+        for (uint256 i = 0; i < tokensLength && remainingPayout > 0; ++i) {
             if (collateralAmounts[i] > 0) {
                 uint256 amountOut = _processCollateral(
                     policyId,
@@ -407,7 +407,7 @@ contract ClaimManager is
                     i
                 );
                 totalPayout += amountOut;
-                remainingPayout = remainingPayout > amountOut ? remainingPayout - amountOut : 0;
+                remainingPayout -= amountOut;
             }
         }
 
