@@ -704,8 +704,9 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
 
         morphoVault.setLoss(10);
 
+        uint256 shares = wrapper.balanceOf(user1);
         vm.prank(user1);
-        wrapper.redeem(wrapper.balanceOf(user1), user1, user1);
+        wrapper.redeem(shares, user1, user1);
 
         assertTrue(wrapper.isClaimApprovalRequired(), "Should return true after first successful claim");
     }
