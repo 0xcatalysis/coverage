@@ -251,7 +251,13 @@ abstract contract RealCoverageSetup is Test {
     ///      Caller prank must NOT be active when calling this.
     ///      Storage slots verified via `forge inspect CoveredVaultWrapper storageLayout`:
     ///        premiumRatePerSecond = slot 57, lastPremiumAccrualTime = slot 58.
-    function _setPremiumRate(CoveredVaultWrapper w, uint256 newRate, address caller_) internal {
+    function _setPremiumRate(
+        CoveredVaultWrapper w,
+        uint256 newRate,
+        address /* caller_ */
+    )
+        internal
+    {
         // Settle any pending premium at the old rate (mirrors old setPremiumRate behavior)
         w.collectPremium();
         // Directly write the new rate and advance lastPremiumAccrualTime

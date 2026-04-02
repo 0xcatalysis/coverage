@@ -176,7 +176,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         address caller,
         address receiver,
         address owner,
-        uint256 assets,
+        uint256, /* assets */
         uint256 shares
     )
         internal

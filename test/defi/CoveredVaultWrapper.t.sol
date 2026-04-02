@@ -515,7 +515,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertEq(freshWrapper.maxDeposit(user1), 0, "maxDeposit must be 0 before policy bound");
     }
 
-    function test_maxDeposit_cappedAfterBound() public {
+    function test_maxDeposit_cappedAfterBound() public view {
         // wrapper is already bound in setUp -- depositCap = coverageLimit * BPS / maxCoverableLossBps
         // = 10_000 ether * 10_000 / 1000 = 100_000 ether; wrapper has no deposits yet
         uint256 maxDep = wrapper.maxDeposit(user1);
@@ -1135,7 +1135,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     }
 
     /// @dev coverageLimit stored during onPolicyBound; correct depositCap uses the latest bps.
-    function test_setMaxCoverableLossBps_storesCoverageLimitOnBind() public {
+    function test_setMaxCoverableLossBps_storesCoverageLimitOnBind() public view {
         assertEq(wrapper.coverageLimit(), 10_000 ether);
     }
 

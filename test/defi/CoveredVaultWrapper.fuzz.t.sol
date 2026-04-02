@@ -547,7 +547,6 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         _executeMorphoTrackingDeposits(p);
 
         // Guard: premium must not exceed Morpho value
-        uint256 totalPrincipal = p.deposit1A + p.deposit1B + p.deposit2A + p.deposit2B;
         vm.assume(_approxPremium(p) < morphoVault.totalAssets() * 80 / 100);
 
         if (p.hackLossPct > 0) _simulateLoss(p.hackLossPct);

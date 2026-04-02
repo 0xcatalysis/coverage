@@ -37,7 +37,7 @@ contract ForkClaimManager {
 
     function fileClaim(
         uint96 policyId,
-        uint256 claimAmount,
+        uint256, /* claimAmount */
         bytes32 evidenceHash,
         bytes memory additionalData
     )

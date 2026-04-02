@@ -42,46 +42,72 @@ abstract contract Show is Script {
         // forge-lint: disable-next-line(unsafe-cheatcode)
         string memory artifact = vm.readFile(artifactPath);
 
-        address coverPoolImpl = abi.decode(vm.parseJson(artifact, ".returns.coverPoolImplementation.value"), (address));
-        address coverPoolFactoryProxy =
-            abi.decode(vm.parseJson(artifact, ".returns.coverPoolFactoryProxy.value"), (address));
-        address coverPoolFactoryImpl =
-            abi.decode(vm.parseJson(artifact, ".returns.coverPoolFactoryImpl.value"), (address));
-        address swapperProxy = abi.decode(vm.parseJson(artifact, ".returns.swapperProxy.value"), (address));
-        address swapperImpl = abi.decode(vm.parseJson(artifact, ".returns.swapperImpl.value"), (address));
-        address premiumManagerProxy =
-            abi.decode(vm.parseJson(artifact, ".returns.premiumManagerProxy.value"), (address));
-        address premiumManagerImpl = abi.decode(vm.parseJson(artifact, ".returns.premiumManagerImpl.value"), (address));
-        address claimManagerProxy = abi.decode(vm.parseJson(artifact, ".returns.claimManagerProxy.value"), (address));
-        address claimManagerImpl = abi.decode(vm.parseJson(artifact, ".returns.claimManagerImpl.value"), (address));
-        address policyManagerProxy = abi.decode(vm.parseJson(artifact, ".returns.policyManagerProxy.value"), (address));
-        address policyManagerImpl = abi.decode(vm.parseJson(artifact, ".returns.policyManagerImpl.value"), (address));
-        address specRegistryProxy = abi.decode(vm.parseJson(artifact, ".returns.specRegistryProxy.value"), (address));
-        address specRegistryImpl = abi.decode(vm.parseJson(artifact, ".returns.specRegistryImpl.value"), (address));
-
         console2.log(string.concat("=== ", config.networkName, " Deployment ==="));
         console2.log("Chain ID:", block.chainid);
         console2.log("Deployment Script:", config.deploymentScript);
         console2.log("");
-        console2.log("CoverPool Implementation:       ", coverPoolImpl);
+        _logAddresses(artifact);
+    }
+
+    function _logAddresses(string memory artifact) private pure {
+        console2.log(
+            "CoverPool Implementation:       ",
+            abi.decode(vm.parseJson(artifact, ".returns.coverPoolImplementation.value"), (address))
+        );
         console2.log("");
-        console2.log("Swapper Proxy:                  ", swapperProxy);
-        console2.log("Swapper Implementation:         ", swapperImpl);
+        console2.log(
+            "Swapper Proxy:                  ",
+            abi.decode(vm.parseJson(artifact, ".returns.swapperProxy.value"), (address))
+        );
+        console2.log(
+            "Swapper Implementation:         ",
+            abi.decode(vm.parseJson(artifact, ".returns.swapperImpl.value"), (address))
+        );
         console2.log("");
-        console2.log("PremiumManager Proxy:           ", premiumManagerProxy);
-        console2.log("PremiumManager Implementation:  ", premiumManagerImpl);
+        console2.log(
+            "PremiumManager Proxy:           ",
+            abi.decode(vm.parseJson(artifact, ".returns.premiumManagerProxy.value"), (address))
+        );
+        console2.log(
+            "PremiumManager Implementation:  ",
+            abi.decode(vm.parseJson(artifact, ".returns.premiumManagerImpl.value"), (address))
+        );
         console2.log("");
-        console2.log("ClaimManager Proxy:             ", claimManagerProxy);
-        console2.log("ClaimManager Implementation:    ", claimManagerImpl);
+        console2.log(
+            "ClaimManager Proxy:             ",
+            abi.decode(vm.parseJson(artifact, ".returns.claimManagerProxy.value"), (address))
+        );
+        console2.log(
+            "ClaimManager Implementation:    ",
+            abi.decode(vm.parseJson(artifact, ".returns.claimManagerImpl.value"), (address))
+        );
         console2.log("");
-        console2.log("PolicyManager Proxy:            ", policyManagerProxy);
-        console2.log("PolicyManager Implementation:   ", policyManagerImpl);
+        console2.log(
+            "PolicyManager Proxy:            ",
+            abi.decode(vm.parseJson(artifact, ".returns.policyManagerProxy.value"), (address))
+        );
+        console2.log(
+            "PolicyManager Implementation:   ",
+            abi.decode(vm.parseJson(artifact, ".returns.policyManagerImpl.value"), (address))
+        );
         console2.log("");
-        console2.log("CoverPoolFactory Proxy:         ", coverPoolFactoryProxy);
-        console2.log("CoverPoolFactory Implementation:", coverPoolFactoryImpl);
+        console2.log(
+            "CoverPoolFactory Proxy:         ",
+            abi.decode(vm.parseJson(artifact, ".returns.coverPoolFactoryProxy.value"), (address))
+        );
+        console2.log(
+            "CoverPoolFactory Implementation:",
+            abi.decode(vm.parseJson(artifact, ".returns.coverPoolFactoryImpl.value"), (address))
+        );
         console2.log("");
-        console2.log("SpecRegistry Proxy:             ", specRegistryProxy);
-        console2.log("SpecRegistry Implementation:    ", specRegistryImpl);
+        console2.log(
+            "SpecRegistry Proxy:             ",
+            abi.decode(vm.parseJson(artifact, ".returns.specRegistryProxy.value"), (address))
+        );
+        console2.log(
+            "SpecRegistry Implementation:    ",
+            abi.decode(vm.parseJson(artifact, ".returns.specRegistryImpl.value"), (address))
+        );
         console2.log("=====================================");
     }
 

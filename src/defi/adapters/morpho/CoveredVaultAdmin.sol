@@ -157,7 +157,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
 
     /// @notice Prevents ownership renunciation which would permanently brick all onlyOwner functions
     ///         and the UUPS upgrade path.
-    function renounceOwnership() public override onlyOwner {
+    function renounceOwnership() public pure override {
         revert RenounceDisabled();
     }
 

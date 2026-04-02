@@ -98,7 +98,6 @@ contract CoveredVaultWrapperHandler is Test {
         if (redeemAmount == 0) return;
 
         uint256 principalBefore = wrapper.userPrincipal(actor);
-        uint256 sharesBefore = wrapper.balanceOf(actor);
 
         vm.prank(actor);
         try wrapper.redeem(redeemAmount, actor, actor) {
@@ -190,8 +189,6 @@ contract CoveredVaultWrapperHandler is Test {
         vm.prank(actor);
         asset.approve(address(wrapper), cappedAmount);
 
-        uint256 principalBefore = wrapper.userPrincipal(actor);
-
         // Step 1: Deposit
         vm.prank(actor);
         try wrapper.deposit(cappedAmount, actor) {
@@ -246,8 +243,6 @@ contract CoveredVaultWrapperHandler is Test {
         asset.mint(actor, cappedAmount);
         vm.prank(actor);
         asset.approve(address(wrapper), cappedAmount);
-
-        uint256 principalBefore = wrapper.userPrincipal(actor);
 
         vm.prank(actor);
         try wrapper.deposit(cappedAmount, actor) {

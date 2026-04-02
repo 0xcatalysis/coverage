@@ -262,7 +262,7 @@ contract MockPolicyManager {
         return address(this);
     }
 
-    function bindPolicy(bytes calldata) external returns (uint256) {
+    function bindPolicy(bytes calldata) external pure returns (uint256) {
         return 1;
     }
 
@@ -300,7 +300,7 @@ contract MockClaimManager {
 
     function fileClaim(
         uint96 policyId,
-        uint256 claimAmount,
+        uint256, /* claimAmount */
         bytes32 evidenceHash,
         bytes memory additionalData
     )
