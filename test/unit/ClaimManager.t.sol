@@ -573,6 +573,46 @@ contract ClaimManagerTest is Test {
         assertFalse(claimManager.claimApprovalRequired(POLICY_ID));
     }
 
+    function test_approveNextClaim_WhenPoolOwnershipTransfers_NewOwnerReverts() public {
+        address newPoolOwner = makeAddr("newPoolOwner");
+        MutableOwnerCoverPool mutablePool = new MutableOwnerCoverPool(operator);
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.pool = address(mutablePool);
+        meta.curator = operator;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        _fileAndApproveClaim();
+        assertTrue(claimManager.claimApprovalRequired(POLICY_ID));
+
+        mutablePool.transferOwnership(newPoolOwner);
+        assertEq(mutablePool.owner(), newPoolOwner);
+
+        vm.expectRevert(IClaimManager.UnauthorizedApprover.selector);
+        vm.prank(newPoolOwner);
+        claimManager.approveNextClaim(POLICY_ID);
+    }
+
+    function test_approveNextClaim_WhenPoolOwnershipTransfers_OriginalCuratorSucceeds() public {
+        address newPoolOwner = makeAddr("newPoolOwner");
+        MutableOwnerCoverPool mutablePool = new MutableOwnerCoverPool(operator);
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.pool = address(mutablePool);
+        meta.curator = operator;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        _fileAndApproveClaim();
+        assertTrue(claimManager.claimApprovalRequired(POLICY_ID));
+
+        mutablePool.transferOwnership(newPoolOwner);
+
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
+
+        assertFalse(claimManager.claimApprovalRequired(POLICY_ID));
+    }
+
     /*//////////////////////////////////////////////////////////////
                              RECOVER TOKENS
     //////////////////////////////////////////////////////////////*/
@@ -1660,20 +1700,20 @@ contract ClaimManagerTest is Test {
 
     function test_fileClaim_WhenSwapProducesMoreThanRemainingPayout_SurplusDistributedAsRewards() public {
         uint256 requestedAmount = 100 ether;
-        uint256 stake = 200 ether;
 
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
-        address[] memory pvaults = new address[](1);
-        pvaults[0] = makeAddr("vault");
-        address[] memory ptokens = new address[](1);
-        ptokens[0] = collateralToken;
-        uint256[] memory pstakes = new uint256[](1);
-        pstakes[0] = stake;
-        slashMock.setupPreview(pvaults, ptokens, pstakes);
-
-        uint16 slippageBps = claimManager.maxSwapSlippageBps();
-        uint256 inflatedSlash = requestedAmount * 10_000 / (10_000 - slippageBps);
-        collateralTokenMock.mint(address(slashMock), inflatedSlash);
+        {
+            address[] memory pvaults = new address[](1);
+            pvaults[0] = makeAddr("vault");
+            address[] memory ptokens = new address[](1);
+            ptokens[0] = collateralToken;
+            uint256[] memory pstakes = new uint256[](1);
+            pstakes[0] = 200 ether;
+            slashMock.setupPreview(pvaults, ptokens, pstakes);
+            collateralTokenMock.mint(
+                address(slashMock), requestedAmount * 10_000 / (10_000 - claimManager.maxSwapSlippageBps())
+            );
+        }
 
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
@@ -1683,10 +1723,8 @@ contract ClaimManagerTest is Test {
         claimManager.setRewardsManager(address(rewardsMock));
 
         uint256 favorableSwapOutput = requestedAmount + 5 ether;
-        uint256 expectedSurplus = favorableSwapOutput - requestedAmount;
         swapperMock.setPayoutToken(payoutToken);
         swapperMock.setSwapOutput(favorableSwapOutput);
-
         specMock.setEvaluationResult(true, keccak256("approved"));
 
         uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
@@ -1694,17 +1732,24 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        uint256 beneficiaryReceived = payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore;
-        uint256 claimManagerGained = payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore;
-
-        assertEq(beneficiaryReceived, requestedAmount, "Beneficiary must receive exactly the claim amount");
-        assertEq(claimManagerGained, 0, "No payout tokens should remain stranded in ClaimManager");
-        assertEq(rewardsMock.totalReceived(), expectedSurplus, "Surplus must be forwarded to RewardsManager");
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must receive exactly the claim amount"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
+            0,
+            "No payout tokens should remain stranded in ClaimManager"
+        );
+        assertEq(rewardsMock.totalReceived(), 5 ether, "Surplus must be forwarded to RewardsManager");
         assertEq(rewardsMock.lastPolicyId(), POLICY_ID, "RewardsManager must be called with the correct policyId");
         assertEq(rewardsMock.lastOperator(), operator, "RewardsManager must be called with the pool curator");
-
-        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, 0);
-        assertEq(record.payoutAmount, requestedAmount, "Claim payout accounting must be capped at requestedAmount");
+        assertEq(
+            claimManager.claimRecord(POLICY_ID, 0).payoutAmount,
+            requestedAmount,
+            "Claim payout accounting must be capped at requestedAmount"
+        );
     }
 
     function test_fileClaim_WhenSwapProducesMoreThanRemainingPayout_NoRewardsManager_SurplusStranded() public {

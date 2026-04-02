@@ -10,7 +10,6 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
-import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {IRewardsManager} from "./interfaces/IRewardsManager.sol";
 import {ISpec} from "./interfaces/ISpec.sol";
@@ -189,7 +188,7 @@ contract ClaimManager is
     function approveNextClaim(uint96 policyId) external override {
         IPolicyManager.PolicyMetadata memory metadata = IPolicyManager(policyManager).policyMetadata(policyId);
         require(metadata.buyer != address(0), PolicyNotFound(policyId));
-        require(msg.sender == ICoverPool(metadata.pool).owner(), UnauthorizedApprover());
+        require(msg.sender == metadata.curator, UnauthorizedApprover());
         require(_claimApprovalRequired[policyId], NoApprovalPending(policyId));
         _claimApprovalRequired[policyId] = false;
         emit NextClaimApproved(policyId, msg.sender);
