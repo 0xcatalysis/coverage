@@ -323,6 +323,8 @@ abstract contract Deploy is Script {
         );
         contracts.claimManagerImpl = Upgrades.getImplementationAddress(contracts.claimManagerProxy);
 
+        ClaimManager(payable(contracts.claimManagerProxy)).setRewardsManager(external_.rewardsManager);
+
         PolicyManager(contracts.policyManagerProxy).setClaimManager(contracts.claimManagerProxy);
 
         contracts.coverPoolFactoryProxy = Upgrades.deployUUPSProxy(
