@@ -283,7 +283,7 @@ contract ClaimManager is
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     /**
-     * @notice Internal helper for filing a claim and returning metadata to avoid double fetch.
+     * @notice Files a claim record and returns policy metadata.
      * @param policyId Identifier of the policy to claim against.
      * @param requestedAmount Requested payout amount in payout token terms.
      * @param evidenceHash Hash of evidence supporting the claim.
@@ -339,7 +339,7 @@ contract ClaimManager is
      * @param claimId Identifier of the claim.
      * @param metadata Policy metadata containing coverage limit and payout details.
      * @param requestedAmount Originally requested payout amount.
-     * @return totalPayout Actual amount paid out (may be less if coverage exhausted).
+     * @return totalPayout Actual amount paid out (may be less if coverage is exhausted).
      */
     function _capAndExecutePayout(
         uint96 policyId,
@@ -367,11 +367,13 @@ contract ClaimManager is
 
     /**
      * @notice Executes slashing and collateral swapping for payout using token-native amounts.
-     * @dev Flow: previewSlashing → _computeVaultSlashes → executeSlashing → loop swap/transfer
+     * @dev Flow: previewSlashing → _computeVaultSlashes → executeSlashing → loop swap/transfer.
+     *      Slashing is atomic, so the loop processes every collateral entry unconditionally;
+     *      surplus beyond remainingPayout is forwarded to RewardsManager via _processCollateral.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
-     * @param metadata Policy metadata containing policyId and payout details.
-     * @param requestedAmount Maximum amount to disburse (in payout token terms).
+     * @param metadata Policy metadata containing payout token and beneficiary details.
+     * @param requestedAmount Maximum amount to disburse in payout token terms.
      * @return totalPayout Total amount paid out from slashing.
      */
     function _executeSlashingAndPayout(
@@ -391,7 +393,7 @@ contract ClaimManager is
         require(tokensLength > 0 && tokensLength == collateralAmounts.length, NoCollateralSlashed(policyId));
 
         uint256 remainingPayout = requestedAmount;
-        for (uint256 i = 0; i < tokensLength && remainingPayout > 0; ++i) {
+        for (uint256 i = 0; i < tokensLength; ++i) {
             if (collateralAmounts[i] > 0) {
                 uint256 amountOut = _processCollateral(
                     policyId,
@@ -449,16 +451,13 @@ contract ClaimManager is
     /**
      * @notice Computes per-vault token-native slash amounts proportional to each vault's payout-equivalent value.
      * @dev Two-pass: quotes each stake to payout-token equivalent, then computes proportional slash amounts.
-     *      Cross-token slashes are inflated by MAX / (MAX - maxSwapSlippageBps) so the beneficiary receives the
-     *      full requestedAmount even at worst-case swap slippage; same-token vaults are direct transfers and need
-     *      no inflation. Any surplus from a better-than-worst-case swap is distributed to restakers via
-     *      RewardsManager in _processCollateral; payout accounting (amountOut) is capped at remainingPayout.
-     *      The amountOutMin set there is complementary sandwich protection, not double-counting.
-     * @param vaults Array of vault addresses from previewSlashing.
-     * @param tokens Array of collateral token addresses per vault.
-     * @param tokenStakes Array of token-native stake amounts per vault.
-     * @param payoutToken The desired payout token.
-     * @param requestedAmount The payout amount requested in payout token terms.
+     *      Cross-token slashes are inflated by MAX / (MAX - maxSwapSlippageBps) so the beneficiary receives
+     *      the full requestedAmount even at worst-case swap slippage; same-token vaults need no inflation.
+     * @param vaults Vault addresses from previewSlashing.
+     * @param tokens Collateral token address per vault.
+     * @param tokenStakes Token-native stake amount per vault.
+     * @param payoutToken Desired payout token.
+     * @param requestedAmount Payout amount in payout token terms.
      * @return vaultSlashes Per-vault slash instructions ready for executeSlashing.
      */
     // slither-disable-next-line cyclomatic-complexity
@@ -530,19 +529,18 @@ contract ClaimManager is
     }
 
     /**
-     * @notice Processes collateral by swapping or transferring directly with cap.
+     * @notice Processes collateral by swapping or transferring directly, capped at remainingPayout.
      * @dev Uses quoteSwap for amountOutMin instead of oracle-based pricing.
-     *      Any surplus beyond remainingPayout (both same-token and cross-token paths) is distributed to
-     *      restakers via RewardsManager if configured, mirroring the PremiumManager reward distribution pattern.
-     *      vaultIndex is included in the taskId to prevent replay collisions when two vault legs share the same
-     *      collateral token (Core's executeSlashing returns one entry per vault, not deduplicated by token).
-     * @param policyId Identifier of the policy (for events).
-     * @param claimId Identifier of the claim (for events).
+     *      Surplus beyond remainingPayout is forwarded to RewardsManager if configured.
+     *      vaultIndex is included in the taskId to prevent replay collisions when two vault legs
+     *      share the same collateral token.
+     * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
      * @param collateralToken Address of the slashed collateral token.
      * @param collateralAmount Amount of collateral to process.
      * @param payoutToken Desired payout token address.
      * @param beneficiary Address to receive the payout.
-     * @param curator Operator address (used as reward recipient in RewardsManager).
+     * @param curator Operator address used as reward recipient context in RewardsManager.
      * @param remainingPayout Maximum payout amount still needed.
      * @param vaultIndex Position of this vault leg in the collateralTokens array (used in taskId).
      * @return amountOut Amount of payout token delivered to beneficiary (capped at remainingPayout).
@@ -566,7 +564,9 @@ contract ClaimManager is
 
         if (collateralToken == payoutToken) {
             uint256 transferAmount = collateralAmount > remainingPayout ? remainingPayout : collateralAmount;
-            _transferToken(collateralToken, beneficiary, transferAmount);
+            if (transferAmount > 0) {
+                _transferToken(collateralToken, beneficiary, transferAmount);
+            }
             amountOut = transferAmount;
 
             if (collateralAmount > transferAmount && rewardsManager != address(0) && collateralToken != _NATIVE_ETH) {
@@ -605,7 +605,9 @@ contract ClaimManager is
                 ISwapper(swapper).executeSwap{value: collateralToken == _NATIVE_ETH ? collateralAmount : 0}(swapParams);
 
             amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
-            _transferToken(payoutToken, beneficiary, amountOut);
+            if (amountOut > 0) {
+                _transferToken(payoutToken, beneficiary, amountOut);
+            }
 
             if (swapOutput > amountOut && rewardsManager != address(0) && payoutToken != _NATIVE_ETH) {
                 _distributeSurplus(policyId, claimId, payoutToken, curator, swapOutput - amountOut, surplusTaskId);
@@ -620,11 +622,10 @@ contract ClaimManager is
     // slither-disable-end calls-loop
 
     /**
-     * @notice Distributes surplus tokens (beyond remainingPayout) to restakers via RewardsManager.
-     * @dev Guards (rewardsManager set, not native ETH) are checked by the caller before this is invoked.
-     *      The distributeRewards call is wrapped in a try/catch so that a Core revert (e.g. duplicate
-     *      taskId, unsupported token, or an upgrade regression) cannot block beneficiary payout.
-     *      On failure the surplus remains in this contract and is recoverable via `recoverTokens`.
+     * @notice Distributes surplus tokens to restakers via RewardsManager.
+     * @dev Guards (rewardsManager set, not native ETH) are checked by the caller.
+     *      Wrapped in try/catch so a Core revert cannot block beneficiary payout; on failure
+     *      the surplus remains in this contract and is recoverable via `recoverTokens`.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param token ERC-20 token to distribute.
@@ -677,7 +678,7 @@ contract ClaimManager is
     /**
      * @notice Evaluates the Spec for a given policy.
      * @param policyId Identifier of the policy.
-     * @param metadata Policy metadata from Policy contract.
+     * @param metadata Policy metadata containing pool and spec details.
      * @param evidenceHash Hash of evidence submitted with the claim.
      * @param additionalData Additional context data for Spec evaluation.
      * @return result Evaluation outcome from the Spec.

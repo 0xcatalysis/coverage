@@ -2464,6 +2464,9 @@ contract ClaimManagerTest is Test {
         );
     }
 
+    /*//////////////////////////////////////////////////////////////
+                          SURPLUS DISTRIBUTION
+    //////////////////////////////////////////////////////////////*/
     function test_fileClaim_WhenSameTokenVaultProducesSurplus_EmitsSwapSurplusDistributedEvent() public {
         uint256 requestedAmount = 100 ether;
         uint256 slashedAmount = 105 ether;
@@ -2536,7 +2539,6 @@ contract ClaimManagerTest is Test {
         slashingManagerMock.setSlashResult(tokens, amounts);
         payoutTokenMock.mint(address(slashingManagerMock), slashedAmount);
         slashingManagerMock.setTokenToTransfer(payoutToken);
-        // rewardsManager remains address(0) — surplus distribution disabled
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -2605,6 +2607,155 @@ contract ClaimManagerTest is Test {
             payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
         );
         assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
+    }
+
+    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultSameTokenNotStranded() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 stake = 100 ether;
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(0);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("crossVault");
+        pvaults[1] = makeAddr("sameVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = payoutToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = stake;
+        pstakes[1] = stake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        collateralTokenMock.mint(address(slashMock), 50 ether);
+        payoutTokenMock.mint(address(slashMock), 50 ether);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount);
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must receive exactly requestedAmount"
+        );
+        assertEq(rewardsMock.totalReceived(), 50 ether, "Second vault same-token surplus must go to RewardsManager");
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No payout tokens must remain stranded");
+    }
+
+    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultCrossTokenNotStranded() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 stake = 100 ether;
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(0);
+
+        MockToken collateralToken2Mock = new MockToken("Collateral2", "COL2");
+        address collateralToken2 = address(collateralToken2Mock);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("vault1");
+        pvaults[1] = makeAddr("vault2");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = collateralToken2;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = stake;
+        pstakes[1] = stake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        collateralTokenMock.mint(address(slashMock), 50 ether);
+        collateralToken2Mock.mint(address(slashMock), 50 ether);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        MockMultiSwapper multiSwapper = new MockMultiSwapper();
+        multiSwapper.setSwapOutput(collateralToken, requestedAmount);
+        multiSwapper.setSwapOutput(collateralToken2, requestedAmount);
+        multiSwapper.setPayoutToken(payoutToken);
+        vm.prank(admin);
+        claimManager.setSwapper(address(multiSwapper));
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must receive exactly requestedAmount"
+        );
+        assertEq(
+            rewardsMock.totalReceived(), requestedAmount, "Second vault cross-token surplus must go to RewardsManager"
+        );
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No payout tokens must remain stranded");
+    }
+
+    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultSurplusStrandedWithoutRewardsManager()
+        public
+    {
+        uint256 requestedAmount = 100 ether;
+        uint256 stake = 100 ether;
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(0);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("crossVault");
+        pvaults[1] = makeAddr("sameVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = payoutToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = stake;
+        pstakes[1] = stake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        collateralTokenMock.mint(address(slashMock), 50 ether);
+        payoutTokenMock.mint(address(slashMock), 50 ether);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+        uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must receive exactly requestedAmount"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
+            50 ether,
+            "Second vault surplus stays in ClaimManager when no RewardsManager is configured"
+        );
     }
 
     function test_fileClaim_WhenDistributeRewardsRevertsOnCrossTokenPath_ClaimCompletesAndEmitsFailureEvent() public {
