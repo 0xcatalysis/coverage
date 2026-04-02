@@ -496,18 +496,10 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.rewardsManager(), newRewardsManager);
     }
 
-    function test_setRewardsManager_WhenAddressZero_DisablesSurplusDistribution() public {
-        vm.startPrank(admin);
-        claimManager.setRewardsManager(makeAddr("rewardsManager"));
-        assertNotEq(claimManager.rewardsManager(), address(0));
-
-        vm.expectEmit(true, true, true, true, address(claimManager));
-        emit RewardsManagerSet(address(0));
-
+    function test_setRewardsManager_WhenAddressZero_Reverts() public {
+        vm.expectRevert(IClaimManager.ZeroAddress.selector);
+        vm.prank(admin);
         claimManager.setRewardsManager(address(0));
-        vm.stopPrank();
-
-        assertEq(claimManager.rewardsManager(), address(0));
     }
 
     /*//////////////////////////////////////////////////////////////

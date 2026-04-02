@@ -357,8 +357,8 @@ interface IClaimManager is IAccessControl {
 
     /**
      * @notice Sets the RewardsManager address used to distribute swap surplus as restaker rewards.
-     * @dev Requires DEFAULT_ADMIN_ROLE. Pass address(0) to disable surplus distribution.
-     * @param rewardsManager_ Address of the RewardsManager contract.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param rewardsManager_ Address of the RewardsManager contract. Must be non-zero.
      */
     function setRewardsManager(address rewardsManager_) external;
 
@@ -439,7 +439,7 @@ interface IClaimManager is IAccessControl {
     function maxSwapSlippageBps() external view returns (uint16);
 
     /**
-     * @notice Returns the RewardsManager address. address(0) means surplus distribution is disabled.
+     * @notice Returns the RewardsManager address.
      */
     function rewardsManager() external view returns (address);
 

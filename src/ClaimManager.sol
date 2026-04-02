@@ -171,6 +171,7 @@ contract ClaimManager is
      * @inheritdoc IClaimManager
      */
     function setRewardsManager(address rewardsManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(rewardsManager_ != address(0), ZeroAddress());
         rewardsManager = rewardsManager_;
         emit RewardsManagerSet(rewardsManager_);
     }
