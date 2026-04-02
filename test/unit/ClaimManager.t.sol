@@ -86,6 +86,9 @@ contract ClaimManagerTest is Test {
     event SwapSurplusDistributed(
         uint96 indexed policyId, uint256 indexed claimId, address indexed payoutToken, uint256 surplusAmount
     );
+    event SwapSurplusDistributionFailed(
+        uint96 indexed policyId, uint256 indexed claimId, address indexed token, uint256 surplusAmount
+    );
 
     /*//////////////////////////////////////////////////////////////
                                   SETUP
@@ -2604,6 +2607,96 @@ contract ClaimManagerTest is Test {
         assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
     }
 
+    function test_fileClaim_WhenDistributeRewardsRevertsOnCrossTokenPath_ClaimCompletesAndEmitsFailureEvent() public {
+        uint256 requestedAmount = 100 ether;
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        {
+            address[] memory pvaults = new address[](1);
+            pvaults[0] = makeAddr("vault");
+            address[] memory ptokens = new address[](1);
+            ptokens[0] = collateralToken;
+            uint256[] memory pstakes = new uint256[](1);
+            pstakes[0] = 200 ether;
+            slashMock.setupPreview(pvaults, ptokens, pstakes);
+            collateralTokenMock.mint(
+                address(slashMock), requestedAmount * 10_000 / (10_000 - claimManager.maxSwapSlippageBps())
+            );
+        }
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        // RewardsManager that always reverts — simulates duplicate taskId, upgrade regression, etc.
+        MockRewardsManagerReverting revertingMock = new MockRewardsManagerReverting();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(revertingMock));
+
+        uint256 surplus = 5 ether;
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount + surplus);
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit SwapSurplusDistributionFailed(POLICY_ID, 0, payoutToken, surplus);
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+        uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must still receive the full payout despite distributeRewards reverting"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
+            surplus,
+            "Surplus must stay in ClaimManager when distributeRewards reverts (recoverable via recoverTokens)"
+        );
+    }
+
+    function test_fileClaim_WhenDistributeRewardsRevertsOnSameTokenPath_ClaimCompletesAndEmitsFailureEvent() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 slashedAmount = 105 ether;
+        uint256 surplus = slashedAmount - requestedAmount;
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = slashedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), slashedAmount);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        MockRewardsManagerReverting revertingMock = new MockRewardsManagerReverting();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(revertingMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit SwapSurplusDistributionFailed(POLICY_ID, 0, payoutToken, surplus);
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+        uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must still receive the full payout despite distributeRewards reverting"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
+            surplus,
+            "Surplus must stay in ClaimManager when distributeRewards reverts (recoverable via recoverTokens)"
+        );
+    }
+
     function test_fileClaim_WhenRequestedAmountTiny_DoesNotRevertWithNoCollateralSlashed() public {
         uint256 smallStake = 1;
         uint256 largeStake = 1_000_000;
@@ -3565,5 +3658,16 @@ contract MockRewardsManager {
         lastOperator = operator;
         require(rewardToken.transferFrom(msg.sender, address(this), rewardAmount));
         totalReceived += rewardAmount;
+    }
+}
+
+/**
+ * @dev RewardsManager mock that always reverts, simulating a Core-side failure
+ *      (e.g. duplicate taskId, unsupported token, or an upgrade regression).
+ *      Used to verify that _distributeSurplus's try/catch allows the claim to complete.
+ */
+contract MockRewardsManagerReverting {
+    function distributeRewards(uint96, address, uint256, IERC20, bytes32) external pure {
+        revert("MockRewardsManagerReverting: always reverts");
     }
 }

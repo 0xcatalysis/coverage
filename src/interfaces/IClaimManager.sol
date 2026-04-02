@@ -164,6 +164,18 @@ interface IClaimManager is IAccessControl {
     );
 
     /**
+     * @notice Emitted when surplus distribution to RewardsManager fails so the claim is not blocked.
+     * @dev The surplus amount remains in this contract and can be recovered via `recoverTokens`.
+     * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
+     * @param token Address of the ERC-20 token that could not be distributed.
+     * @param surplusAmount Amount that failed to distribute.
+     */
+    event SwapSurplusDistributionFailed(
+        uint96 indexed policyId, uint256 indexed claimId, address indexed token, uint256 surplusAmount
+    );
+
+    /**
      * @notice Emitted when the pool curator approves the next claim for a policy.
      * @param policyId Identifier of the policy.
      * @param approver Address that granted the approval.

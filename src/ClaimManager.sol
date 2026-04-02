@@ -622,6 +622,9 @@ contract ClaimManager is
     /**
      * @notice Distributes surplus tokens (beyond remainingPayout) to restakers via RewardsManager.
      * @dev Guards (rewardsManager set, not native ETH) are checked by the caller before this is invoked.
+     *      The distributeRewards call is wrapped in a try/catch so that a Core revert (e.g. duplicate
+     *      taskId, unsupported token, or an upgrade regression) cannot block beneficiary payout.
+     *      On failure the surplus remains in this contract and is recoverable via `recoverTokens`.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param token ERC-20 token to distribute.
@@ -641,9 +644,13 @@ contract ClaimManager is
     {
         IERC20(token).forceApprove(rewardsManager, surplus);
         // slither-disable-next-line calls-loop
-        IRewardsManager(rewardsManager).distributeRewards(policyId, curator, surplus, IERC20(token), taskId);
-        IERC20(token).forceApprove(rewardsManager, 0);
-        emit SwapSurplusDistributed(policyId, claimId, token, surplus);
+        try IRewardsManager(rewardsManager).distributeRewards(policyId, curator, surplus, IERC20(token), taskId) {
+            IERC20(token).forceApprove(rewardsManager, 0);
+            emit SwapSurplusDistributed(policyId, claimId, token, surplus);
+        } catch {
+            IERC20(token).forceApprove(rewardsManager, 0);
+            emit SwapSurplusDistributionFailed(policyId, claimId, token, surplus);
+        }
     }
 
     /**
