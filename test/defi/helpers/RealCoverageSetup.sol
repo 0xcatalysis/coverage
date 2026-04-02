@@ -51,7 +51,7 @@ abstract contract RealCoverageSetup is Test {
     bytes32 internal constant SPEC_ID = keccak256("morpho-spec");
     bytes32 internal constant TERMS_HASH = keccak256("terms");
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
     );
 
     /// @notice Deploys the real PolicyManager (behind ERC1967Proxy) and real CoverPool (via Clones)
@@ -163,7 +163,6 @@ abstract contract RealCoverageSetup is Test {
             pool: address(coverPool),
             policyId: policyId_,
             coverageLimit: coverageLimit,
-            basePremium: 0,
             specId: SPEC_ID,
             termsHash: TERMS_HASH,
             beneficiary: beneficiary,
@@ -196,7 +195,6 @@ abstract contract RealCoverageSetup is Test {
             uint256(uint160(quote.pool)),
             uint256(quote.policyId),
             quote.coverageLimit,
-            quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),

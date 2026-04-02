@@ -26,8 +26,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         uint96 policyId;
         /// @notice Maximum notional coverage in payout token units supplied by this pool.
         uint256 coverageLimit;
-        /// @notice Base premium amount owed to the pool for this coverage.
-        uint256 basePremium;
         /// @notice Spec identifier the pool intends to use for parametric claims.
         bytes32 specId;
         /// @notice Hash of the pool's policy terms document anchoring off-chain clauses.

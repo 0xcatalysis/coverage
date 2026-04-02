@@ -67,7 +67,6 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   - SPEC_ADDRESS: ISpec implementation contract address (must be approved in SpecRegistry first)
  *   - VAULTS: Comma-separated vault addresses
  *   - COVERAGE_LIMIT: Coverage limit in payout token units
- *   - BASE_PREMIUM: Base premium amount
  *   - SPEC_ID: Spec identifier (bytes32)
  *   - TERMS_HASH: Terms hash (bytes32)
  *   - START_TIME: Coverage start timestamp
@@ -96,7 +95,7 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  */
 contract CompleteCoverageFlow is Script {
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
     );
 
     // ── Accounts ──
@@ -133,7 +132,6 @@ contract CompleteCoverageFlow is Script {
     address public specAddress;
     address[] public vaults;
     uint256 public coverageLimit;
-    uint256 public basePremium;
     bytes32 public specId;
     bytes32 public termsHash;
     uint32 public startTime;
@@ -310,7 +308,6 @@ contract CompleteCoverageFlow is Script {
             pool: coverPool,
             policyId: policyId,
             coverageLimit: coverageLimit,
-            basePremium: basePremium,
             specId: specId,
             termsHash: termsHash,
             beneficiary: draft.beneficiary,
@@ -616,7 +613,6 @@ contract CompleteCoverageFlow is Script {
                 quote.pool,
                 quote.policyId,
                 quote.coverageLimit,
-                quote.basePremium,
                 quote.specId,
                 quote.termsHash,
                 quote.beneficiary,
@@ -674,7 +670,6 @@ contract CompleteCoverageFlow is Script {
         }
 
         coverageLimit = vm.envUint("COVERAGE_LIMIT");
-        basePremium = vm.envUint("BASE_PREMIUM");
         specId = vm.envBytes32("SPEC_ID");
         termsHash = vm.envBytes32("TERMS_HASH");
         startTime = uint32(vm.envUint("START_TIME"));

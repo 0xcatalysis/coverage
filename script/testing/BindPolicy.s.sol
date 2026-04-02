@@ -38,7 +38,6 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *   - SPEC_ADDRESS: ISpec implementation contract for this policy
  *   - VAULTS: Comma-separated vault addresses to bind (e.g. "0x123...,0x456...")
  *   - COVERAGE_LIMIT: Coverage limit in payout token units
- *   - BASE_PREMIUM: Base premium amount
  *   - SPEC_ID: Spec identifier (bytes32 hex)
  *   - TERMS_HASH: Policy terms hash (bytes32 hex)
  *   - START_TIME: Coverage start timestamp
@@ -56,7 +55,7 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  */
 contract BindPolicy is Script {
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
     );
 
     /// @notice Curator address (CoverPool admin)
@@ -91,7 +90,6 @@ contract BindPolicy is Script {
 
     /// @notice Quote parameters
     uint256 public coverageLimit;
-    uint256 public basePremium;
     bytes32 public specId;
     bytes32 public termsHash;
     uint32 public startTime;
@@ -126,7 +124,6 @@ contract BindPolicy is Script {
         }
 
         coverageLimit = vm.envUint("COVERAGE_LIMIT");
-        basePremium = vm.envUint("BASE_PREMIUM");
         specId = vm.envBytes32("SPEC_ID");
         termsHash = vm.envBytes32("TERMS_HASH");
         startTime = uint32(vm.envUint("START_TIME"));
@@ -156,7 +153,6 @@ contract BindPolicy is Script {
             pool: coverPool,
             policyId: policyId,
             coverageLimit: coverageLimit,
-            basePremium: basePremium,
             specId: specId,
             termsHash: termsHash,
             beneficiary: draft.beneficiary,
@@ -218,7 +214,6 @@ contract BindPolicy is Script {
                 quote.pool,
                 quote.policyId,
                 quote.coverageLimit,
-                quote.basePremium,
                 quote.specId,
                 quote.termsHash,
                 quote.beneficiary,

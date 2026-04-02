@@ -18,7 +18,6 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
 contract ClaimManagerTest is Test {
     uint96 internal constant POLICY_ID = 1;
     uint256 internal constant COVERAGE_LIMIT = 1000 ether;
-    uint256 internal constant BASE_PREMIUM = 100 ether;
     uint32 internal constant COVERAGE_DURATION = 30 days;
     uint256 internal constant SLASH_AMOUNT = 500 ether;
     address internal constant NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;

@@ -15,11 +15,10 @@ import {IBindPolicyHook} from "../../src/interfaces/IBindPolicyHook.sol";
 
 contract PolicyManagerTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
     );
     uint96 internal constant POLICY_ID = 1;
     uint256 internal constant COVERAGE_LIMIT = 1_000_000e18;
-    uint256 internal constant BASE_PREMIUM = 10_000e18;
     uint16 internal constant POOL_FEE_BPS = 150;
     uint32 internal constant COVERAGE_DURATION = 30 days;
 
@@ -1881,7 +1880,6 @@ contract PolicyManagerTest is Test {
             pool: address(coverPool),
             policyId: policyId,
             coverageLimit: COVERAGE_LIMIT,
-            basePremium: BASE_PREMIUM,
             specId: specId,
             termsHash: termsHash,
             beneficiary: beneficiary,
@@ -1927,7 +1925,6 @@ contract PolicyManagerTest is Test {
             uint256(uint160(quote.pool)),
             uint256(quote.policyId),
             quote.coverageLimit,
-            quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),

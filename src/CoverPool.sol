@@ -31,7 +31,7 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
     );
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
     uint32 private constant _BIND_START_TIME_TOLERANCE = 5 minutes;
@@ -370,7 +370,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             uint256(uint160(quote.pool)),
             uint256(quote.policyId),
             quote.coverageLimit,
-            quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),

@@ -16,7 +16,7 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 
 contract CoverPoolTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
     );
     string internal constant NAME = "Catalysis Cover Pool";
     string internal constant VERSION = "1";
@@ -1308,7 +1308,6 @@ contract CoverPoolTest is Test {
             pool: address(coverPool),
             policyId: uint96(123),
             coverageLimit: 1000 ether,
-            basePremium: 100 ether,
             specId: specId,
             termsHash: termsHash,
             beneficiary: beneficiary,
@@ -1335,7 +1334,6 @@ contract CoverPoolTest is Test {
             uint256(uint160(quote.pool)),
             uint256(quote.policyId),
             quote.coverageLimit,
-            quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),
