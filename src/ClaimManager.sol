@@ -519,6 +519,10 @@ contract ClaimManager is
             }
 
             if (baseSlash == 0) {
+                if (tokens[i] != payoutToken) {
+                    emit VaultExcludedFromSlashing(vaults[i], tokens[i]);
+                    continue;
+                }
                 baseSlash = 1;
             } else if (baseSlash > tokenStakes[i]) {
                 baseSlash = tokenStakes[i];

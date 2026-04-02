@@ -2467,13 +2467,14 @@ contract ClaimManagerTest is Test {
         assertEq(assertingMock.lastReceivedSlash(0).token, collateralToken, "Only quotable vault should be slashed");
     }
 
-    function test_fileClaim_WhenTinyVaultBaseSlashRoundsToZero_IncludesVaultWithMinimumSlash() public {
+    function test_fileClaim_WhenTinyVaultBaseSlashRoundsToZero_ExcludesCrossTokenVaultAndSucceeds() public {
         uint256 tinyStake = 1;
         uint256 largeStake = 1000 ether;
         uint256 requestedAmount = 1 ether;
 
         MockToken tinyTokenMock = new MockToken("TinyToken", "TINY");
         address tinyToken = address(tinyTokenMock);
+        address tinyVaultAddr = makeAddr("tinyVault");
 
         vm.prank(admin);
         claimManager.setSwapper(address(swapperMock));
@@ -2482,7 +2483,7 @@ contract ClaimManagerTest is Test {
 
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
         address[] memory pvaults = new address[](2);
-        pvaults[0] = makeAddr("tinyVault");
+        pvaults[0] = tinyVaultAddr;
         pvaults[1] = makeAddr("largeVault");
         address[] memory ptokens = new address[](2);
         ptokens[0] = tinyToken;
@@ -2492,9 +2493,6 @@ contract ClaimManagerTest is Test {
         pstakes[1] = largeStake;
         slashMock.setupPreview(pvaults, ptokens, pstakes);
 
-        tinyTokenMock.mint(address(slashMock), 1);
-        // The large vault is cross-token, so its baseSlash is inflated by MAX_SLIPPAGE / (MAX_SLIPPAGE - slippage)
-        // to ensure the beneficiary receives the full requestedAmount after swap slippage.
         uint256 baseSlash = (largeStake * requestedAmount) / (tinyStake + largeStake);
         uint256 expectedLargeSlash = (baseSlash * 10_000) / (10_000 - claimManager.maxSwapSlippageBps());
         collateralTokenMock.mint(address(slashMock), expectedLargeSlash);
@@ -2503,11 +2501,72 @@ contract ClaimManagerTest is Test {
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
+        vm.expectEmit(true, true, false, false, address(claimManager));
+        emit VaultExcludedFromSlashing(tinyVaultAddr, tinyToken);
+
         vm.prank(claimer);
         uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+    }
+
+    function test_fileClaim_WhenTinyBaseSlashRoundsToZeroAndQuoterReturnsZeroForOneWei_SkipsVaultInsteadOfReverting()
+        public
+    {
+        (address tinyVaultAddr, address tinyToken) = _setupTinyBaseSlashWithRealisticQuoter();
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, false, false, address(claimManager));
+        emit VaultExcludedFromSlashing(tinyVaultAddr, tinyToken);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, 1 ether, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(
+            uint8(record.status),
+            uint8(IClaimManager.ClaimStatus.Approved),
+            "Claim should be approved despite tiny vault exclusion"
+        );
+    }
+
+    function _setupTinyBaseSlashWithRealisticQuoter() private returns (address tinyVaultAddr, address tinyToken) {
+        uint256 DIVISOR = 1001;
+        uint256 tinyStake = 1001;
+        uint256 largeStake = 2002 ether;
+        uint256 requestedAmount = 1 ether;
+
+        MockToken tinyTokenMock = new MockToken("TinyToken2", "TINY2");
+        tinyToken = address(tinyTokenMock);
+        tinyVaultAddr = makeAddr("tinyVault2");
+
+        MockSwapperWithPerTokenDivisor divSwapper = new MockSwapperWithPerTokenDivisor();
+        divSwapper.setDivisor(tinyToken, DIVISOR);
+        divSwapper.setPayoutToken(payoutToken);
+        divSwapper.setSwapOutput(requestedAmount);
+        vm.prank(admin);
+        claimManager.setSwapper(address(divSwapper));
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = tinyVaultAddr;
+        pvaults[1] = makeAddr("largeVault2");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = tinyToken;
+        ptokens[1] = collateralToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = tinyStake;
+        pstakes[1] = largeStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        uint256 totalEquiv = tinyStake / DIVISOR + largeStake;
+        uint256 largeBaseSlash = (largeStake * requestedAmount) / totalEquiv;
+        uint256 expectedLargeSlash = (largeBaseSlash * 10_000) / (10_000 - claimManager.maxSwapSlippageBps());
+        collateralTokenMock.mint(address(slashMock), expectedLargeSlash);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
     }
 
     function test_fileClaim_WhenSameTokenVaultUnderwater_CapsSlashAtVaultStake() public {
@@ -3955,5 +4014,50 @@ contract MockRewardsManager {
 contract MockRewardsManagerReverting {
     function distributeRewards(uint96, address, uint256, IERC20, bytes32) external pure {
         revert("MockRewardsManagerReverting: always reverts");
+    }
+}
+
+/**
+ * @dev Swapper mock where quoteSwap applies a per-token integer divisor, simulating realistic
+ *      DEX price ratios.  Tokens without an explicit divisor default to 1:1.
+ *
+ *      Purpose: reproduce the QuoteUnavailable-blocking-claim bug where a cross-token vault
+ *      passes the first-pass inclusion check (quoteSwap(token, payout, fullStake) > 0) but
+ *      its computed proportional baseSlash rounds to 0, which under the old code was forced
+ *      to 1, causing quoteSwap(token, payout, 1) to return 0 and revert.
+ */
+contract MockSwapperWithPerTokenDivisor {
+    address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+
+    mapping(address => uint256) private _divisors;
+    address private _payoutToken;
+    uint256 private _swapOutput;
+
+    function setDivisor(address token, uint256 divisor) external {
+        _divisors[token] = divisor;
+    }
+
+    function setPayoutToken(address token) external {
+        _payoutToken = token;
+    }
+
+    function setSwapOutput(uint256 output) external {
+        _swapOutput = output;
+    }
+
+    /// @dev Returns amountIn / divisor (flooring), or amountIn when no divisor is set (1:1).
+    function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
+        uint256 d = _divisors[tokenIn];
+        return d > 0 ? amountIn / d : amountIn;
+    }
+
+    function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
+        require(
+            MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn), "TransferFrom failed"
+        );
+        if (_payoutToken != address(0)) {
+            MockToken(_payoutToken).mint(params.recipient, _swapOutput);
+        }
+        return _swapOutput;
     }
 }
