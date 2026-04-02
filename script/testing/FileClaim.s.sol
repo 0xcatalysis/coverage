@@ -147,7 +147,7 @@ contract FileClaim is Script {
         require(claimer == metadata.claimer, "Caller is not the authorized claimer");
 
         require(
-            block.timestamp >= metadata.startTime && block.timestamp <= metadata.maturityTime, "Outside coverage window"
+            block.timestamp >= metadata.startTime && block.timestamp < metadata.maturityTime, "Outside coverage window"
         );
         console.log("Current time:", block.timestamp);
         console.log("[OK] Within coverage window");
