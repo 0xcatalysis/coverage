@@ -3420,7 +3420,7 @@ contract MockRewardsManager {
     {
         lastPolicyId = policyId;
         lastOperator = operator;
-        rewardToken.transferFrom(msg.sender, address(this), rewardAmount);
+        require(rewardToken.transferFrom(msg.sender, address(this), rewardAmount));
         totalReceived += rewardAmount;
     }
 }
