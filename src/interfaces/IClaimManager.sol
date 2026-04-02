@@ -144,6 +144,23 @@ interface IClaimManager is IAccessControl {
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
 
     /**
+     * @notice Emitted when the RewardsManager address is updated.
+     * @param rewardsManager New RewardsManager address.
+     */
+    event RewardsManagerSet(address indexed rewardsManager);
+
+    /**
+     * @notice Emitted when swap surplus payout tokens are distributed as restaker rewards.
+     * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
+     * @param payoutToken Address of the payout token distributed as reward.
+     * @param surplusAmount Amount distributed (swapOutput minus claim amount owed).
+     */
+    event SwapSurplusDistributed(
+        uint96 indexed policyId, uint256 indexed claimId, address indexed payoutToken, uint256 surplusAmount
+    );
+
+    /**
      * @notice Emitted when the pool curator approves the next claim for a policy.
      * @param policyId Identifier of the policy.
      * @param approver Address that granted the approval.
@@ -314,6 +331,13 @@ interface IClaimManager is IAccessControl {
     function setMaxSwapSlippageBps(uint16 maxSwapSlippageBps_) external;
 
     /**
+     * @notice Sets the RewardsManager address used to distribute swap surplus as restaker rewards.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Pass address(0) to disable surplus distribution.
+     * @param rewardsManager_ Address of the RewardsManager contract.
+     */
+    function setRewardsManager(address rewardsManager_) external;
+
+    /**
      * @notice Files and resolves a claim atomically in a single transaction.
      * @dev Caller must be the policy's designated claimer address. Combines filing and resolution into one atomic
      * operation:
@@ -388,6 +412,11 @@ interface IClaimManager is IAccessControl {
      * @notice Returns the maximum swap slippage tolerance in basis points.
      */
     function maxSwapSlippageBps() external view returns (uint16);
+
+    /**
+     * @notice Returns the RewardsManager address. address(0) means surplus distribution is disabled.
+     */
+    function rewardsManager() external view returns (address);
 
     /**
      * @notice Clears the claim approval gate for a policy, allowing the next claim to be filed freely.

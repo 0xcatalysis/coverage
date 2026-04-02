@@ -12,6 +12,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
 import {ICoverPool} from "./interfaces/ICoverPool.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
+import {IRewardsManager} from "./interfaces/IRewardsManager.sol";
 import {ISpec} from "./interfaces/ISpec.sol";
 import {ISpecRegistry} from "./interfaces/ISpecRegistry.sol";
 import {ISlashingManager} from "./interfaces/ISlashingManager.sol";
@@ -51,6 +52,7 @@ contract ClaimManager is
     address public override slashingManager;
     address public override swapper;
     address public override policyManager;
+    address public override rewardsManager;
     uint16 public override maxSwapSlippageBps;
 
     mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
@@ -161,6 +163,14 @@ contract ClaimManager is
         require(maxSwapSlippageBps_ < _MAX_SLIPPAGE_BPS, InvalidSlippageBps(maxSwapSlippageBps_));
         maxSwapSlippageBps = maxSwapSlippageBps_;
         emit MaxSwapSlippageBpsSet(maxSwapSlippageBps_);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
+    function setRewardsManager(address rewardsManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        rewardsManager = rewardsManager_;
+        emit RewardsManagerSet(rewardsManager_);
     }
 
     /**
@@ -381,8 +391,6 @@ contract ClaimManager is
         // slither-disable-next-line incorrect-equality
         require(tokensLength > 0 && tokensLength == collateralAmounts.length, NoCollateralSlashed(policyId));
 
-        address payoutToken = metadata.payoutToken;
-        address beneficiary = metadata.beneficiary;
         uint256 remainingPayout = requestedAmount;
         for (uint256 i = 0; i < tokensLength && remainingPayout > 0; ++i) {
             if (collateralAmounts[i] > 0) {
@@ -391,8 +399,9 @@ contract ClaimManager is
                     claimId,
                     collateralTokens[i],
                     collateralAmounts[i],
-                    payoutToken,
-                    beneficiary,
+                    metadata.payoutToken,
+                    metadata.beneficiary,
+                    metadata.curator,
                     remainingPayout
                 );
                 totalPayout += amountOut;
@@ -442,7 +451,8 @@ contract ClaimManager is
      * @dev Two-pass: quotes each stake to payout-token equivalent, then computes proportional slash amounts.
      *      Cross-token slashes are inflated by MAX / (MAX - maxSwapSlippageBps) so the beneficiary receives the
      *      full requestedAmount even at worst-case swap slippage; same-token vaults are direct transfers and need
-     *      no inflation. Any surplus from lower-than-max slippage is capped by remainingPayout in _processCollateral.
+     *      no inflation. Any surplus from a better-than-worst-case swap is distributed to restakers via
+     *      RewardsManager in _processCollateral; payout accounting (amountOut) is capped at remainingPayout.
      *      The amountOutMin set there is complementary sandwich protection, not double-counting.
      * @param vaults Array of vault addresses from previewSlashing.
      * @param tokens Array of collateral token addresses per vault.
@@ -522,14 +532,17 @@ contract ClaimManager is
     /**
      * @notice Processes collateral by swapping or transferring directly with cap.
      * @dev Uses quoteSwap for amountOutMin instead of oracle-based pricing.
+     *      Any swap surplus (swapOutput > remainingPayout) is distributed to restakers via RewardsManager
+     *      if configured, mirroring the PremiumManager reward distribution pattern.
      * @param policyId Identifier of the policy (for events).
      * @param claimId Identifier of the claim (for events).
      * @param collateralToken Address of the slashed collateral token.
      * @param collateralAmount Amount of collateral to process.
      * @param payoutToken Desired payout token address.
      * @param beneficiary Address to receive the payout.
+     * @param curator Operator address (used as reward recipient in RewardsManager).
      * @param remainingPayout Maximum payout amount still needed.
-     * @return amountOut Amount of payout token delivered (capped at remainingPayout).
+     * @return amountOut Amount of payout token delivered to beneficiary (capped at remainingPayout).
      */
     // slither-disable-start calls-loop
     function _processCollateral(
@@ -539,6 +552,7 @@ contract ClaimManager is
         uint256 collateralAmount,
         address payoutToken,
         address beneficiary,
+        address curator,
         uint256 remainingPayout
     )
         private
@@ -580,6 +594,17 @@ contract ClaimManager is
 
             amountOut = swapOutput > remainingPayout ? remainingPayout : swapOutput;
             _transferToken(payoutToken, beneficiary, amountOut);
+
+            if (swapOutput > amountOut && rewardsManager != address(0) && payoutToken != _NATIVE_ETH) {
+                uint256 surplus = swapOutput - amountOut;
+                bytes32 taskId = keccak256(abi.encodePacked(policyId, claimId, collateralToken));
+                IERC20(payoutToken).forceApprove(rewardsManager, surplus);
+                // slither-disable-next-line calls-loop
+                IRewardsManager(rewardsManager)
+                    .distributeRewards(policyId, curator, surplus, IERC20(payoutToken), taskId);
+                IERC20(payoutToken).forceApprove(rewardsManager, 0);
+                emit SwapSurplusDistributed(policyId, claimId, payoutToken, surplus);
+            }
 
             _approveIfERC20(collateralToken, swapper, 0);
         }
