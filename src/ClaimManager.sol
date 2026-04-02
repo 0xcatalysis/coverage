@@ -582,18 +582,7 @@ contract ClaimManager is
         } else {
             _approveIfERC20(collateralToken, swapper, collateralAmount);
 
-            uint256 amountOutMin = 0;
-            try ISwapper(swapper).quoteSwap(collateralToken, payoutToken, collateralAmount) returns (uint256 quoted) {
-                if (quoted == 0) {
-                    revert QuoteUnavailable(collateralToken, payoutToken);
-                }
-                amountOutMin = (quoted * (uint256(_MAX_SLIPPAGE_BPS) - maxSwapSlippageBps)) / _MAX_SLIPPAGE_BPS;
-                if (amountOutMin == 0) {
-                    amountOutMin = 1;
-                }
-            } catch {
-                revert QuoteUnavailable(collateralToken, payoutToken);
-            }
+            uint256 amountOutMin = _computeAmountOutMin(collateralToken, payoutToken, collateralAmount);
 
             ISwapper.SwapParams memory swapParams = ISwapper.SwapParams({
                 tokenIn: collateralToken,
@@ -621,6 +610,25 @@ contract ClaimManager is
         }
 
         emit CollateralSwapped(policyId, claimId, collateralToken, collateralAmount, payoutToken, amountOut);
+    }
+
+    /**
+     * @notice Quotes a swap and applies the configured slippage buffer to derive the minimum acceptable output.
+     * @dev Reverts with QuoteUnavailable if the swapper returns zero or reverts.
+     *      Returns at least 1 to prevent a zero-minimum swap that would accept any output.
+     * @param tokenIn Collateral token to sell.
+     * @param tokenOut Payout token to receive.
+     * @param amountIn Amount of collateral being swapped.
+     * @return Slippage-adjusted minimum output amount (≥ 1).
+     */
+    function _computeAmountOutMin(address tokenIn, address tokenOut, uint256 amountIn) private returns (uint256) {
+        try ISwapper(swapper).quoteSwap(tokenIn, tokenOut, amountIn) returns (uint256 quoted) {
+            if (quoted == 0) revert QuoteUnavailable(tokenIn, tokenOut);
+            uint256 amountOutMin = (quoted * (uint256(_MAX_SLIPPAGE_BPS) - maxSwapSlippageBps)) / _MAX_SLIPPAGE_BPS;
+            return amountOutMin == 0 ? 1 : amountOutMin;
+        } catch {
+            revert QuoteUnavailable(tokenIn, tokenOut);
+        }
     }
 
     // slither-disable-end calls-loop
