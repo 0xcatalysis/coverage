@@ -66,6 +66,12 @@ interface IPremiumManager is IAccessControl {
     error ZeroAmount();
 
     /**
+     * @notice Reverts when the distribution amount is below the minimum threshold.
+     * @param amount The amount provided.
+     */
+    error InsufficientDistributionAmount(uint256 amount);
+
+    /**
      * @notice Reverts when provided policy identifier is invalid.
      */
     error InvalidPolicyId();

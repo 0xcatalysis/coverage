@@ -289,9 +289,14 @@ contract MockClaimManager {
     }
 
     mapping(uint96 => PolicyClaim) private _policyClaims;
+    mapping(uint96 => bool) private _claimApprovalRequired;
 
     constructor(address policyManager_) {
         policyManager = policyManager_;
+    }
+
+    function claimApprovalRequired(uint96 policyId) external view returns (bool) {
+        return _claimApprovalRequired[policyId];
     }
 
     function policyClaim(uint96 policyId) external view returns (PolicyClaim memory) {
@@ -307,10 +312,8 @@ contract MockClaimManager {
         external
         returns (uint256)
     {
-        // Get policy metadata from MockPolicyManager
         IPolicyManager.PolicyMetadata memory meta = MockPolicyManager(policyManager).policyMetadata(policyId);
 
-        // Build evaluation context
         ISpec.EvaluationContext memory context = ISpec.EvaluationContext({
             policyId: policyId,
             pool: meta.pool,
@@ -322,20 +325,17 @@ contract MockClaimManager {
             additionalData: additionalData
         });
 
-        // Call evaluate on the adapter (beneficiary implements ISpec)
         ISpec spec = ISpec(meta.beneficiary);
         ISpec.EvaluationResult memory result = spec.evaluate(context);
 
-        // If valid, transfer payout from pool to adapter
         if (result.isPayable) {
             (, uint256 claimedAmount) = abi.decode(additionalData, (address, uint256));
-            // Mock: mint tokens to adapter as payout
             address payoutToken = meta.payoutToken;
             MockERC20(payoutToken).mint(meta.beneficiary, claimedAmount);
 
-            // Track total paid out
             _policyClaims[policyId].totalPaidOut += claimedAmount;
             _policyClaims[policyId].claimCount++;
+            _claimApprovalRequired[policyId] = true;
         }
 
         return result.isPayable ? 1 : 0;

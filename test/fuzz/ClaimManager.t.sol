@@ -299,10 +299,10 @@ contract ClaimManagerFuzzTest is Test {
     }
 
     // ------------------------------------------------------------------
-    // Fuzz: setMaxSwapSlippageBps only accepts values < 10_000
+    // Fuzz: setMaxSwapSlippageBps only accepts values <= 3_000
     // ------------------------------------------------------------------
     function testFuzz_setMaxSwapSlippageBps_ValidRange(uint16 bps) public {
-        if (bps >= 10_000) {
+        if (bps > 3000) {
             vm.expectRevert(abi.encodeWithSelector(IClaimManager.InvalidSlippageBps.selector, bps));
             vm.prank(admin);
             claimManager.setMaxSwapSlippageBps(bps);

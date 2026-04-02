@@ -328,9 +328,31 @@ contract PremiumManagerTest is Test {
     }
 
     function test_distributePremium_WhenAmountZero_Reverts() public {
-        vm.expectRevert(IPremiumManager.ZeroAmount.selector);
+        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.InsufficientDistributionAmount.selector, uint256(0)));
         vm.prank(premiumCollector);
         premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), 0);
+    }
+
+    function test_distributePremium_WhenAmountOne_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.InsufficientDistributionAmount.selector, uint256(1)));
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), 1);
+    }
+
+    function test_distributePremium_WhenBelowMinAmount_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(IPremiumManager.InsufficientDistributionAmount.selector, uint256(999)));
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), 999);
+    }
+
+    function test_distributePremium_WhenAtMinAmount_Succeeds() public {
+        uint256 minAmount = 1000;
+        premiumToken.mint(address(premiumCollector), minAmount);
+        vm.prank(premiumCollector);
+        premiumToken.approve(address(premiumManager), minAmount);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), minAmount);
     }
 
     function test_distributePremium_WhenCommitteeIdZero_Reverts() public {
@@ -672,7 +694,7 @@ contract PremiumManagerTest is Test {
     }
 
     function test_distributePremium_WhenSmallPremium_SplitsSumToTotalPremium() public {
-        uint256 smallPremium = 100;
+        uint256 smallPremium = 1000; // minimum distribution amount
 
         (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit) =
             premiumManager.getFeeSplits(smallPremium, PLATFORM_FEE_BPS, POOL_FEE_BPS);

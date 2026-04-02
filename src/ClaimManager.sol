@@ -43,7 +43,10 @@ contract ClaimManager is
     using Address for address payable;
     using SafeERC20 for IERC20;
 
+    /// @dev BPS denominator used in slippage inflation formulas. Must not change.
     uint16 private constant _MAX_SLIPPAGE_BPS = 10_000;
+    /// @dev Upper bound for the admin-settable slippage parameter.
+    uint16 private constant _MAX_SETTABLE_SLIPPAGE_BPS = 3000;
     address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     uint32 private constant _SWAP_DEADLINE_BUFFER = 15 minutes;
 
@@ -159,7 +162,7 @@ contract ClaimManager is
      * @inheritdoc IClaimManager
      */
     function setMaxSwapSlippageBps(uint16 maxSwapSlippageBps_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(maxSwapSlippageBps_ < _MAX_SLIPPAGE_BPS, InvalidSlippageBps(maxSwapSlippageBps_));
+        require(maxSwapSlippageBps_ <= _MAX_SETTABLE_SLIPPAGE_BPS, InvalidSlippageBps(maxSwapSlippageBps_));
         maxSwapSlippageBps = maxSwapSlippageBps_;
         emit MaxSwapSlippageBpsSet(maxSwapSlippageBps_);
     }
@@ -315,7 +318,7 @@ contract ClaimManager is
         );
 
         require(
-            block.timestamp >= metadata.startTime && block.timestamp <= metadata.maturityTime,
+            block.timestamp >= metadata.startTime && block.timestamp < metadata.maturityTime,
             ClaimOutsideCoverageWindow(policyId, metadata.startTime, metadata.maturityTime, uint32(block.timestamp))
         );
 
@@ -488,6 +491,7 @@ contract ClaimManager is
                     payoutEquivalents[i] = quoted;
                 } catch {
                     payoutEquivalents[i] = 0;
+                    emit VaultExcludedFromSlashing(vaults[i], tokens[i]);
                 }
             }
             totalPayoutEquivalent += payoutEquivalents[i];
@@ -596,7 +600,6 @@ contract ClaimManager is
                 amountIn: collateralAmount,
                 amountOutMin: amountOutMin,
                 recipient: address(this),
-                swapCalldata: "",
                 deadline: block.timestamp + _SWAP_DEADLINE_BUFFER
             });
 

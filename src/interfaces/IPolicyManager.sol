@@ -237,6 +237,11 @@ interface IPolicyManager is IAccessControl {
     error InsufficientStake(uint96 policyId, uint256 required, uint256 actual);
 
     /**
+     * @notice Thrown when the oracle returns zero for the coverage limit USD value.
+     */
+    error ZeroCoverageLimitUSD();
+
+    /**
      * @notice Reverts when no vaults are bound to a policy.
      * @param policyId Policy identifier without vaults.
      */

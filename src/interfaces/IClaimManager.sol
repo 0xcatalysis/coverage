@@ -191,6 +191,16 @@ interface IClaimManager is IAccessControl {
     event TokensRecovered(address indexed token, address indexed to, uint256 amount);
 
     /**
+     * @notice Emitted when a vault is excluded from slashing because its collateral token
+     *         has no configured or functioning swap route (quoteSwap reverted).
+     * @dev Partial exclusion is not reverted; remaining vaults absorb the full claim pro-rata.
+     *      Monitor this event to detect misconfigured swap routes before a loss event.
+     * @param vault Address of the excluded vault.
+     * @param token Collateral token for which the quote failed.
+     */
+    event VaultExcludedFromSlashing(address indexed vault, address indexed token);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
@@ -255,7 +265,7 @@ interface IClaimManager is IAccessControl {
     error RequestedAmountExceedsRemainingCoverage(uint96 policyId, uint256 requestedAmount, uint256 remainingCoverage);
 
     /**
-     * @notice Reverts when the slippage tolerance exceeds the maximum allowed (10000 bps).
+     * @notice Reverts when the slippage tolerance exceeds the maximum settable bound (3000 bps).
      * @param slippageBps The invalid slippage value provided.
      */
     error InvalidSlippageBps(uint16 slippageBps);

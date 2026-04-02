@@ -199,8 +199,7 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
 
         _handleTokenInput(params.tokenIn, actualTokenIn, params.amountIn);
 
-        bytes memory effectiveCalldata = params.swapCalldata.length > 0 ? params.swapCalldata : routeCalldata;
-        amountOut = _performSwap(actualTokenIn, actualTokenOut, swapTarget, params.amountIn, effectiveCalldata);
+        amountOut = _performSwap(actualTokenIn, actualTokenOut, swapTarget, params.amountIn, routeCalldata);
 
         require(amountOut >= params.amountOutMin, InsufficientOutputAmount(amountOut, params.amountOutMin));
 

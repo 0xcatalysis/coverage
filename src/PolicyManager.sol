@@ -272,6 +272,7 @@ contract PolicyManager is
         }
         uint256 coverageLimitUSD =
             IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(request.payoutToken, boundPolicy.coverageLimit);
+        require(coverageLimitUSD > 0, ZeroCoverageLimitUSD());
         require(totalStakeUSD >= coverageLimitUSD, InsufficientStake(policyId, coverageLimitUSD, totalStakeUSD));
 
         bytes32 policyCommit = boundPolicy.policyCommit;

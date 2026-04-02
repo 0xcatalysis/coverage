@@ -170,6 +170,10 @@ abstract contract CoveredVaultStorage is
     ///         for 6-decimal tokens (e.g. USDC).
     uint256 public premiumAccrualRemainder;
 
+    /// @notice Monotonically increasing counter mixed into evidence hashes to prevent
+    ///         same-block collisions when a user files two claims with identical parameters.
+    uint256 internal _claimNonce;
+
     /*//////////////////////////////////////////////////////////////
                             ERRORS
     //////////////////////////////////////////////////////////////*/

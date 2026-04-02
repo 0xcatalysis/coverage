@@ -33,6 +33,7 @@ contract PremiumManager is
     uint16 private constant _BPS_DENOMINATOR = 10_000;
     uint16 private constant _MAX_PLATFORM_FEE_BPS = 2500; // 25%
     uint16 private constant _MAX_FEE_BPS = 5000; // 50%
+    uint256 private constant _MIN_DISTRIBUTION_AMOUNT = 1000;
 
     address public override rewardsManager;
     address public override platformTreasury;
@@ -182,7 +183,7 @@ contract PremiumManager is
         whenNotPaused
     {
         require(pool != address(0) && premiumToken != address(0), ZeroAddress());
-        require(amount != 0, ZeroAmount());
+        require(amount >= _MIN_DISTRIBUTION_AMOUNT, InsufficientDistributionAmount(amount));
         require(policyId != 0, InvalidPolicyId());
         require(ICoverPool(pool).hasBoundPolicy(policyId), PolicyNotBound(policyId, pool));
 

@@ -382,7 +382,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         _tstore(PENDING_CLAIM_AMOUNT_SLOT, cappedClaim);
 
         // aderyn-fp-next-line(weak-randomness) evidenceHash is for claim identification, not security-critical
-        bytes32 evidenceHash = keccak256(abi.encodePacked(user, policyId, cappedClaim, block.timestamp));
+        bytes32 evidenceHash = keccak256(abi.encodePacked(user, policyId, cappedClaim, block.timestamp, _claimNonce++));
         bytes memory additionalData = abi.encode(address(this), cappedClaim);
 
         // Wrap fileClaim in try/catch so ClaimManager pause doesn't block withdrawals.
@@ -470,6 +470,14 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
             return _capAndApplyDeductible(adjustedUserPrincipal - userMorphoNet, adjustedUserPrincipal);
         }
         return 0;
+    }
+
+    /// @notice Returns whether curator approval is required before the next claim can be filed.
+    /// @dev Returns false when no policy is bound (policyId == 0).
+    function isClaimApprovalRequired() external view returns (bool) {
+        uint96 pid = policyId;
+        if (pid == 0) return false;
+        return claimManager.claimApprovalRequired(pid);
     }
 
     /// @notice Returns maximum withdrawable assets accounting for premium deductions

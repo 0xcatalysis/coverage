@@ -566,6 +566,27 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request, boundPolicy);
     }
 
+    function test_bindPolicy_WhenOracleReturnsZeroForPayoutToken_Reverts() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        uint96 committeeId = request.quote.policyId;
+
+        address[] memory vaults = new address[](1);
+        vaults[0] = makeAddr("vault1");
+        mockStakeManager.createCommittee(committeeId, address(coverPool), COVERAGE_DURATION);
+        mockStakeManager.addOperatorToCommittee(curator, committeeId);
+        mockStakeManager.setCommitteeVaults(committeeId, vaults, COVERAGE_LIMIT);
+        mockStakeManager.setOperatorCommitteeStake(committeeId, COVERAGE_LIMIT);
+
+        MockChainlinkPriceFeedZero zeroFeed = new MockChainlinkPriceFeedZero(request.payoutToken);
+        vm.prank(admin);
+        policyManager.setChainlinkPriceFeed(address(zeroFeed));
+
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+        vm.expectRevert(IPolicyManager.ZeroCoverageLimitUSD.selector);
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+    }
+
     function test_bindPolicy_WhenNoVaultsBound_Reverts() public {
         IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
         uint96 committeeId = request.quote.policyId;
@@ -2161,6 +2182,23 @@ contract MockRevertingHook {
 
 contract MockChainlinkPriceFeed {
     function getUSDValue(address, uint256 amount) external pure returns (uint256) {
+        return amount;
+    }
+
+    function getTokenAmount(address, uint256 usdValue) external pure returns (uint256) {
+        return usdValue;
+    }
+}
+
+contract MockChainlinkPriceFeedZero {
+    address public zeroToken;
+
+    constructor(address zeroToken_) {
+        zeroToken = zeroToken_;
+    }
+
+    function getUSDValue(address token, uint256 amount) external view returns (uint256) {
+        if (token == zeroToken) return 0;
         return amount;
     }
 

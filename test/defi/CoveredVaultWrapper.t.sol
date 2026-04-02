@@ -288,6 +288,58 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         assertApproxEqAbs(received, 590 ether, 1 ether, "Insurance capped at maxCoverableLossBps");
     }
 
+    function test_withdraw_sameBlockSameAmount_bothReceiveInsurance() public {
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+        vm.prank(user2);
+        wrapper.deposit(DEPOSIT_AMOUNT, user2);
+
+        morphoVault.setLoss(10);
+
+        uint256 shares1 = wrapper.balanceOf(user1);
+        uint256 shares2 = wrapper.balanceOf(user2);
+
+        uint256 bal1Before = asset.balanceOf(user1);
+        uint256 bal2Before = asset.balanceOf(user2);
+
+        vm.prank(user1);
+        wrapper.redeem(shares1, user1, user1);
+        vm.prank(user2);
+        wrapper.redeem(shares2, user2, user2);
+
+        uint256 received1 = asset.balanceOf(user1) - bal1Before;
+        uint256 received2 = asset.balanceOf(user2) - bal2Before;
+
+        assertApproxEqAbs(received1, 990 ether, 1 ether, "user1 should receive assets + insurance");
+        assertApproxEqAbs(received2, 990 ether, 1 ether, "user2 should receive assets + insurance");
+    }
+
+    function test_withdraw_sameBlockDifferentAmount_bothReceiveInsurance() public {
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT * 2, user1);
+        vm.prank(user2);
+        wrapper.deposit(DEPOSIT_AMOUNT, user2);
+
+        morphoVault.setLoss(10);
+
+        uint256 halfShares1 = wrapper.balanceOf(user1) / 2;
+        uint256 halfShares2 = wrapper.balanceOf(user2) / 2;
+
+        uint256 bal1Before = asset.balanceOf(user1);
+        uint256 bal2Before = asset.balanceOf(user2);
+
+        vm.prank(user1);
+        wrapper.redeem(halfShares1, user1, user1);
+        vm.prank(user2);
+        wrapper.redeem(halfShares2, user2, user2);
+
+        uint256 received1 = asset.balanceOf(user1) - bal1Before;
+        uint256 received2 = asset.balanceOf(user2) - bal2Before;
+
+        assertGt(received1, 900 ether, "user1 should receive assets + insurance");
+        assertGt(received2, 400 ether, "user2 should receive assets + insurance");
+    }
+
     /*//////////////////////////////////////////////////////////////
                         TRANSFER TESTS
     //////////////////////////////////////////////////////////////*/
@@ -636,6 +688,26 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         );
         // Floor rounding may leave a negligible dust of shares (< 1e4); ensure position is effectively drained
         assertLe(wrapper.balanceOf(user1), 1e4, "only rounding dust remains after withdraw(maxWithdraw)");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                  CLAIM APPROVAL REQUIRED VIEW TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_isClaimApprovalRequired_beforeAnyClaim_returnsFalse() public view {
+        assertFalse(wrapper.isClaimApprovalRequired(), "Should return false before any claim");
+    }
+
+    function test_isClaimApprovalRequired_afterFirstClaim_returnsTrue() public {
+        vm.prank(user1);
+        wrapper.deposit(DEPOSIT_AMOUNT, user1);
+
+        morphoVault.setLoss(10);
+
+        vm.prank(user1);
+        wrapper.redeem(wrapper.balanceOf(user1), user1, user1);
+
+        assertTrue(wrapper.isClaimApprovalRequired(), "Should return true after first successful claim");
     }
 
     /*//////////////////////////////////////////////////////////////
