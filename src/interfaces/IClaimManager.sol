@@ -150,14 +150,17 @@ interface IClaimManager is IAccessControl {
     event RewardsManagerSet(address indexed rewardsManager);
 
     /**
-     * @notice Emitted when swap surplus payout tokens are distributed as restaker rewards.
+     * @notice Emitted when surplus collateral or payout tokens are distributed as restaker rewards.
+     * @dev Surplus arises in two cases: (1) cross-token path — swap output exceeds remainingPayout;
+     *      (2) same-token path — slashed collateral exceeds remainingPayout (no swap involved).
+     *      In both cases the surplus ERC-20 is forwarded to RewardsManager for restaker distribution.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
-     * @param payoutToken Address of the payout token distributed as reward.
-     * @param surplusAmount Amount distributed (swapOutput minus claim amount owed).
+     * @param token Address of the ERC-20 token distributed as reward.
+     * @param surplusAmount Amount distributed beyond the beneficiary payout.
      */
     event SwapSurplusDistributed(
-        uint96 indexed policyId, uint256 indexed claimId, address indexed payoutToken, uint256 surplusAmount
+        uint96 indexed policyId, uint256 indexed claimId, address indexed token, uint256 surplusAmount
     );
 
     /**

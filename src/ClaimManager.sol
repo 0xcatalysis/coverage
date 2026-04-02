@@ -401,7 +401,8 @@ contract ClaimManager is
                     metadata.payoutToken,
                     metadata.beneficiary,
                     metadata.curator,
-                    remainingPayout
+                    remainingPayout,
+                    i
                 );
                 totalPayout += amountOut;
                 remainingPayout = remainingPayout > amountOut ? remainingPayout - amountOut : 0;
@@ -531,8 +532,10 @@ contract ClaimManager is
     /**
      * @notice Processes collateral by swapping or transferring directly with cap.
      * @dev Uses quoteSwap for amountOutMin instead of oracle-based pricing.
-     *      Any swap surplus (swapOutput > remainingPayout) is distributed to restakers via RewardsManager
-     *      if configured, mirroring the PremiumManager reward distribution pattern.
+     *      Any surplus beyond remainingPayout (both same-token and cross-token paths) is distributed to
+     *      restakers via RewardsManager if configured, mirroring the PremiumManager reward distribution pattern.
+     *      vaultIndex is included in the taskId to prevent replay collisions when two vault legs share the same
+     *      collateral token (Core's executeSlashing returns one entry per vault, not deduplicated by token).
      * @param policyId Identifier of the policy (for events).
      * @param claimId Identifier of the claim (for events).
      * @param collateralToken Address of the slashed collateral token.
@@ -541,6 +544,7 @@ contract ClaimManager is
      * @param beneficiary Address to receive the payout.
      * @param curator Operator address (used as reward recipient in RewardsManager).
      * @param remainingPayout Maximum payout amount still needed.
+     * @param vaultIndex Position of this vault leg in the collateralTokens array (used in taskId).
      * @return amountOut Amount of payout token delivered to beneficiary (capped at remainingPayout).
      */
     // slither-disable-start calls-loop
@@ -552,15 +556,24 @@ contract ClaimManager is
         address payoutToken,
         address beneficiary,
         address curator,
-        uint256 remainingPayout
+        uint256 remainingPayout,
+        uint256 vaultIndex
     )
         private
         returns (uint256 amountOut)
     {
+        bytes32 surplusTaskId = keccak256(abi.encodePacked(policyId, claimId, collateralToken, vaultIndex));
+
         if (collateralToken == payoutToken) {
             uint256 transferAmount = collateralAmount > remainingPayout ? remainingPayout : collateralAmount;
             _transferToken(collateralToken, beneficiary, transferAmount);
             amountOut = transferAmount;
+
+            if (collateralAmount > transferAmount && rewardsManager != address(0) && collateralToken != _NATIVE_ETH) {
+                _distributeSurplus(
+                    policyId, claimId, collateralToken, curator, collateralAmount - transferAmount, surplusTaskId
+                );
+            }
         } else {
             _approveIfERC20(collateralToken, swapper, collateralAmount);
 
@@ -595,14 +608,7 @@ contract ClaimManager is
             _transferToken(payoutToken, beneficiary, amountOut);
 
             if (swapOutput > amountOut && rewardsManager != address(0) && payoutToken != _NATIVE_ETH) {
-                uint256 surplus = swapOutput - amountOut;
-                bytes32 taskId = keccak256(abi.encodePacked(policyId, claimId, collateralToken));
-                IERC20(payoutToken).forceApprove(rewardsManager, surplus);
-                // slither-disable-next-line calls-loop
-                IRewardsManager(rewardsManager)
-                    .distributeRewards(policyId, curator, surplus, IERC20(payoutToken), taskId);
-                IERC20(payoutToken).forceApprove(rewardsManager, 0);
-                emit SwapSurplusDistributed(policyId, claimId, payoutToken, surplus);
+                _distributeSurplus(policyId, claimId, payoutToken, curator, swapOutput - amountOut, surplusTaskId);
             }
 
             _approveIfERC20(collateralToken, swapper, 0);
@@ -612,6 +618,33 @@ contract ClaimManager is
     }
 
     // slither-disable-end calls-loop
+
+    /**
+     * @notice Distributes surplus tokens (beyond remainingPayout) to restakers via RewardsManager.
+     * @dev Guards (rewardsManager set, not native ETH) are checked by the caller before this is invoked.
+     * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
+     * @param token ERC-20 token to distribute.
+     * @param curator Operator address passed to RewardsManager as the reward recipient context.
+     * @param surplus Amount to distribute.
+     * @param taskId Unique task identifier for Core replay protection.
+     */
+    function _distributeSurplus(
+        uint96 policyId,
+        uint256 claimId,
+        address token,
+        address curator,
+        uint256 surplus,
+        bytes32 taskId
+    )
+        private
+    {
+        IERC20(token).forceApprove(rewardsManager, surplus);
+        // slither-disable-next-line calls-loop
+        IRewardsManager(rewardsManager).distributeRewards(policyId, curator, surplus, IERC20(token), taskId);
+        IERC20(token).forceApprove(rewardsManager, 0);
+        emit SwapSurplusDistributed(policyId, claimId, token, surplus);
+    }
 
     /**
      * @notice Transfers `amount` of `token` to `to`, handling native ETH and ERC-20 uniformly.

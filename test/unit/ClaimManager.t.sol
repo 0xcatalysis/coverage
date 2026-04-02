@@ -2461,6 +2461,149 @@ contract ClaimManagerTest is Test {
         );
     }
 
+    function test_fileClaim_WhenSameTokenVaultProducesSurplus_EmitsSwapSurplusDistributedEvent() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 slashedAmount = 105 ether;
+        uint256 expectedSurplus = slashedAmount - requestedAmount;
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = slashedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), slashedAmount);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit SwapSurplusDistributed(POLICY_ID, 0, payoutToken, expectedSurplus);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(rewardsMock.totalReceived(), expectedSurplus, "Surplus must be forwarded to RewardsManager");
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
+        );
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
+    }
+
+    function test_fileClaim_WhenSameTokenVaultProducesNoSurplus_RewardsManagerNotCalled() public {
+        uint256 requestedAmount = 100 ether;
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), requestedAmount);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            rewardsMock.totalReceived(), 0, "RewardsManager must not be called when there is no same-token surplus"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
+        );
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
+    }
+
+    function test_fileClaim_WhenSameTokenVaultProducesSurplusAndNoRewardsManager_SurplusStranded() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 slashedAmount = 105 ether;
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = slashedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), slashedAmount);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+        // rewardsManager remains address(0) — surplus distribution disabled
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
+            slashedAmount - requestedAmount,
+            "Surplus stays in ClaimManager when rewardsManager is not configured"
+        );
+    }
+
+    function test_fileClaim_WhenMultiVaultCrossTokenFavorableSwapLeavesSameTokenSurplus_DistributesSurplus() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 crossTokenStake = 100 ether;
+        uint256 sameTokenStake = 100 ether;
+        uint256 crossSlash = 50 ether;
+        uint256 sameSlash = 50 ether;
+        uint256 crossSwapOutput = 70 ether;
+        uint256 expectedSameTokenSurplus = sameSlash - (requestedAmount - crossSwapOutput); // 50 - 30 = 20
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("crossVault");
+        pvaults[1] = makeAddr("sameVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = payoutToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = crossTokenStake;
+        pstakes[1] = sameTokenStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(0);
+
+        collateralTokenMock.mint(address(slashMock), crossSlash);
+        payoutTokenMock.mint(address(slashMock), sameSlash);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(crossSwapOutput);
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit SwapSurplusDistributed(POLICY_ID, 0, payoutToken, expectedSameTokenSurplus);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            rewardsMock.totalReceived(), expectedSameTokenSurplus, "Same-token surplus forwarded to RewardsManager"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
+        );
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
+    }
+
     function test_fileClaim_WhenRequestedAmountTiny_DoesNotRevertWithNoCollateralSlashed() public {
         uint256 smallStake = 1;
         uint256 largeStake = 1_000_000;
