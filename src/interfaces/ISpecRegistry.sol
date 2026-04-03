@@ -98,10 +98,13 @@ interface ISpecRegistry {
     function approveSpec(address spec) external;
 
     /**
-     * @notice Revokes approval for a spec implementation, preventing future registrations.
+     * @notice Revokes approval for a spec implementation.
      * @dev Can only be called by accounts with DEFAULT_ADMIN_ROLE.
-     *      Already-registered (pool, specId) mappings remain valid; revocation only blocks
-     *      new registrations. Re-revoking is idempotent.
+     *      Revocation blocks both new registrations and claim resolution via resolveSpec()
+     *      for all (pool, specId) pairs that reference this spec address.
+     *      Use as a targeted kill switch when a spec implementation is compromised.
+     *      Re-approving the spec restores both registration and resolution.
+     *      Re-revoking is idempotent.
      * @param spec Address of the ISpec implementation contract to revoke.
      */
     function revokeSpec(address spec) external;
