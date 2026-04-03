@@ -51,7 +51,7 @@ abstract contract RealCoverageSetup is Test {
     bytes32 internal constant SPEC_ID = keccak256("morpho-spec");
     bytes32 internal constant TERMS_HASH = keccak256("terms");
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 expirationTime)"
     );
 
     /// @notice Deploys the real PolicyManager (behind ERC1967Proxy) and real CoverPool (via Clones)
@@ -124,8 +124,7 @@ abstract contract RealCoverageSetup is Test {
     /// @param claimer Address authorized to file claims
     /// @param payoutToken ERC20 token used for claim payouts
     /// @param coverageLimit Maximum payout notional (in payout token units)
-    /// @param startTime Policy coverage start timestamp
-    /// @param maturityTime Policy coverage end timestamp
+    /// @param duration Coverage duration in seconds
     /// @param buyer Address requesting coverage
     /// @param bindPolicyHook_ Hook contract notified on bind
     /// @return policyId_ The bound policy ID
@@ -134,8 +133,7 @@ abstract contract RealCoverageSetup is Test {
         address claimer,
         address payoutToken,
         uint256 coverageLimit,
-        uint32 startTime,
-        uint32 maturityTime,
+        uint32 duration,
         address buyer,
         address bindPolicyHook_
     )
@@ -144,21 +142,13 @@ abstract contract RealCoverageSetup is Test {
     {
         vm.prank(buyer);
         policyId_ = policyManager.requestCoverage(
-            address(coverPool), beneficiary, claimer, payoutToken, maturityTime - startTime, bindPolicyHook_
+            address(coverPool), beneficiary, claimer, payoutToken, duration, bindPolicyHook_
         );
 
-        _bindPolicy(policyId_, beneficiary, coverageLimit, startTime, maturityTime);
+        _bindPolicy(policyId_, beneficiary, coverageLimit);
     }
 
-    function _bindPolicy(
-        uint96 policyId_,
-        address beneficiary,
-        uint256 coverageLimit,
-        uint32 startTime,
-        uint32 maturityTime
-    )
-        private
-    {
+    function _bindPolicy(uint96 policyId_, address beneficiary, uint256 coverageLimit) private {
         ICoverPool.Quote memory quote = ICoverPool.Quote({
             pool: address(coverPool),
             policyId: policyId_,
@@ -166,9 +156,7 @@ abstract contract RealCoverageSetup is Test {
             specId: SPEC_ID,
             termsHash: TERMS_HASH,
             beneficiary: beneficiary,
-            startTime: startTime,
-            maturityTime: maturityTime,
-            expirationTime: maturityTime
+            expirationTime: uint32(block.timestamp + 1 days)
         });
 
         bytes memory signature = _signQuote(quote);
@@ -198,8 +186,6 @@ abstract contract RealCoverageSetup is Test {
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),
-            uint256(quote.startTime),
-            uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );
     }

@@ -71,16 +71,7 @@ contract CoveredVaultWrapperPrecisionTest is RealCoverageSetup {
             "Precision Vault",
             "pvVault"
         );
-        _createAndBindPolicy(
-            address(w),
-            address(w),
-            payoutToken,
-            type(uint128).max,
-            uint32(block.timestamp),
-            uint32(block.timestamp + 365 days),
-            curator,
-            address(w)
-        );
+        _createAndBindPolicy(address(w), address(w), payoutToken, type(uint128).max, 365 days, curator, address(w));
     }
 
     function _mintAndApprove(MockERC20 token, CoveredVaultWrapper w, address to, uint256 amount) internal {

@@ -62,8 +62,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(wrapper), // claimer
             address(asset),
             10_000 ether,
-            uint32(block.timestamp),
-            uint32(block.timestamp + 365 days),
+            365 days,
             curator, // buyer = wrapper.owner()
             address(wrapper)
         );
@@ -475,8 +474,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(wrapperWithPremium),
             address(asset),
             10_000 ether,
-            uint32(block.timestamp),
-            uint32(block.timestamp + 365 days),
+            365 days,
             curator,
             address(wrapperWithPremium)
         );
@@ -525,8 +523,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(wrapperWithPremium),
             address(asset),
             10_000 ether,
-            uint32(block.timestamp),
-            uint32(block.timestamp + 365 days),
+            365 days,
             curator,
             address(wrapperWithPremium)
         );
@@ -613,8 +610,6 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         // onPolicyBound sets policyStartTime = block.timestamp, so the binding IS the policy start.
         // Deposits are gated by policyBoundExecuted, meaning no deposit can arrive before binding.
         // This test verifies that accrual begins exactly at binding time and not before.
-        uint32 bindTime = uint32(block.timestamp);
-        uint32 maturity = uint32(block.timestamp + 366 days);
         CoveredVaultWrapper freshWrapper = _deployWrapperProxy(
             address(morphoVault),
             address(claimManager),
@@ -631,8 +626,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(freshWrapper),
             address(asset),
             10_000 ether,
-            bindTime,
-            maturity,
+            366 days,
             curator,
             address(freshWrapper)
         );
@@ -647,7 +641,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
         _setPremiumRate(freshWrapper, 1e9, curator);
 
         // Warp to exactly 30 days after binding/policy start
-        vm.warp(bindTime + 30 days);
+        vm.warp(block.timestamp + 30 days);
 
         // Trigger accrual via a second deposit
         vm.prank(user1);
@@ -957,16 +951,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             "RT"
         );
         morphoVault.setCurator(address(w));
-        _createAndBindPolicy(
-            address(w),
-            address(w),
-            address(asset),
-            type(uint128).max,
-            uint32(block.timestamp),
-            uint32(block.timestamp + 365 days),
-            curator,
-            address(w)
-        );
+        _createAndBindPolicy(address(w), address(w), address(asset), type(uint128).max, 365 days, curator, address(w));
 
         // 10%/year premium
         uint256 rate = uint256(1e17) / 31_536_000;
@@ -1177,8 +1162,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             address(freshWrapper),
             address(asset),
             10_000 ether,
-            uint32(block.timestamp),
-            uint32(block.timestamp + 365 days),
+            365 days,
             curator,
             address(freshWrapper)
         );
@@ -1270,16 +1254,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             "DT"
         );
         morphoVault.setCurator(address(w));
-        _createAndBindPolicy(
-            address(w),
-            address(w),
-            address(asset),
-            type(uint128).max,
-            uint32(block.timestamp),
-            uint32(block.timestamp + 365 days),
-            curator,
-            address(w)
-        );
+        _createAndBindPolicy(address(w), address(w), address(asset), type(uint128).max, 365 days, curator, address(w));
 
         vm.prank(user1);
         asset.approve(address(w), type(uint256).max);
@@ -1315,16 +1290,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             "DT2"
         );
         morphoVault.setCurator(address(w));
-        _createAndBindPolicy(
-            address(w),
-            address(w),
-            address(asset),
-            type(uint128).max,
-            uint32(block.timestamp),
-            uint32(block.timestamp + 365 days),
-            curator,
-            address(w)
-        );
+        _createAndBindPolicy(address(w), address(w), address(asset), type(uint128).max, 365 days, curator, address(w));
 
         vm.prank(user1);
         asset.approve(address(w), type(uint256).max);
@@ -1615,16 +1581,7 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
             "EF4"
         );
         morphoVault.setCurator(address(w));
-        _createAndBindPolicy(
-            address(w),
-            address(w),
-            address(asset),
-            type(uint128).max,
-            uint32(block.timestamp),
-            uint32(block.timestamp + 365 days),
-            curator,
-            address(w)
-        );
+        _createAndBindPolicy(address(w), address(w), address(asset), type(uint128).max, 365 days, curator, address(w));
 
         // ~40%/year premium rate: 40e16 / 31536000
         uint256 rate = (uint256(4e17)) / 31_536_000;

@@ -95,7 +95,7 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  */
 contract CompleteCoverageFlow is Script {
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 expirationTime)"
     );
 
     // ── Accounts ──
@@ -134,8 +134,6 @@ contract CompleteCoverageFlow is Script {
     uint256 public coverageLimit;
     bytes32 public specId;
     bytes32 public termsHash;
-    uint32 public startTime;
-    uint32 public maturityTime;
     uint32 public expirationTime;
 
     // ── Premium ──
@@ -311,8 +309,6 @@ contract CompleteCoverageFlow is Script {
             specId: specId,
             termsHash: termsHash,
             beneficiary: draft.beneficiary,
-            startTime: startTime,
-            maturityTime: maturityTime,
             expirationTime: expirationTime
         });
 
@@ -616,8 +612,6 @@ contract CompleteCoverageFlow is Script {
                 quote.specId,
                 quote.termsHash,
                 quote.beneficiary,
-                quote.startTime,
-                quote.maturityTime,
                 quote.expirationTime
             )
         );
@@ -672,8 +666,6 @@ contract CompleteCoverageFlow is Script {
         coverageLimit = vm.envUint("COVERAGE_LIMIT");
         specId = vm.envBytes32("SPEC_ID");
         termsHash = vm.envBytes32("TERMS_HASH");
-        startTime = uint32(vm.envUint("START_TIME"));
-        maturityTime = uint32(vm.envUint("MATURITY_TIME"));
         expirationTime = uint32(vm.envUint("EXPIRATION_TIME"));
     }
 

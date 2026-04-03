@@ -46,14 +46,7 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
         );
 
         policyId = _createAndBindPolicy(
-            address(wrapper),
-            address(wrapper),
-            address(asset),
-            coverageLimit,
-            uint32(block.timestamp),
-            uint32(block.timestamp + 365 days),
-            curator,
-            address(wrapper)
+            address(wrapper), address(wrapper), address(asset), coverageLimit, 365 days, curator, address(wrapper)
         );
     }
 

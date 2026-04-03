@@ -15,7 +15,7 @@ import {IBindPolicyHook} from "../../src/interfaces/IBindPolicyHook.sol";
 
 contract PolicyManagerTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 expirationTime)"
     );
     uint96 internal constant POLICY_ID = 1;
     uint256 internal constant COVERAGE_LIMIT = 1_000_000e18;
@@ -411,77 +411,6 @@ contract PolicyManagerTest is Test {
         boundPolicy.policyCommit = bytes32(0);
 
         vm.expectRevert(IPolicyManager.InvalidPolicyCommit.selector);
-        vm.prank(address(coverPool));
-        policyManager.bindPolicy(request, boundPolicy);
-    }
-
-    function test_bindPolicy_WhenInvalidCoverageWindow_Reverts() public {
-        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        request.quote.startTime = uint32(block.timestamp + 1 days);
-        request.quote.maturityTime = uint32(block.timestamp);
-
-        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPolicyManager.InvalidCoverageWindow.selector, request.quote.startTime, request.quote.maturityTime
-            )
-        );
-        vm.prank(address(coverPool));
-        policyManager.bindPolicy(request, boundPolicy);
-    }
-
-    function test_bindPolicy_WhenMaturityInPast_Reverts() public {
-        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        request.quote.startTime = uint32(block.timestamp - 2 days);
-        request.quote.maturityTime = uint32(block.timestamp - 1 days);
-
-        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPolicyManager.InvalidCoverageWindow.selector, request.quote.startTime, request.quote.maturityTime
-            )
-        );
-        vm.prank(address(coverPool));
-        policyManager.bindPolicy(request, boundPolicy);
-    }
-
-    function test_bindPolicy_WhenMaturityEqualsBlockTimestamp_Reverts() public {
-        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        request.quote.startTime = uint32(block.timestamp - 1 days);
-        request.quote.maturityTime = uint32(block.timestamp);
-
-        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPolicyManager.InvalidCoverageWindow.selector, request.quote.startTime, request.quote.maturityTime
-            )
-        );
-        vm.prank(address(coverPool));
-        policyManager.bindPolicy(request, boundPolicy);
-    }
-
-    function test_bindPolicy_WhenStartEqualsMaturity_Reverts() public {
-        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        uint32 sameTime = uint32(block.timestamp + 1 days);
-        request.quote.startTime = sameTime;
-        request.quote.maturityTime = sameTime;
-
-        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
-        vm.expectRevert(abi.encodeWithSelector(IPolicyManager.InvalidCoverageWindow.selector, sameTime, sameTime));
-        vm.prank(address(coverPool));
-        policyManager.bindPolicy(request, boundPolicy);
-    }
-
-    function test_bindPolicy_WhenQuoteDurationMismatchesDraft_Reverts() public {
-        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
-        request.quote.maturityTime = request.quote.startTime + COVERAGE_DURATION + 1 days;
-
-        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPolicyManager.DurationMismatch.selector, COVERAGE_DURATION, COVERAGE_DURATION + 1 days
-            )
-        );
         vm.prank(address(coverPool));
         policyManager.bindPolicy(request, boundPolicy);
     }
@@ -1092,7 +1021,6 @@ contract PolicyManagerTest is Test {
         );
 
         IPolicyManager.BindPolicyRequest memory request1 = _buildRequest(policyId1);
-        request1.quote.maturityTime = uint32(block.timestamp + shortDuration);
         _seedCommitteeForTesting(request1.quote.policyId, curator, true);
         ICoverPool.BoundPolicy memory boundPolicy1 = _getBoundPolicy(request1);
 
@@ -1100,7 +1028,6 @@ contract PolicyManagerTest is Test {
         policyManager.bindPolicy(request1, boundPolicy1);
 
         IPolicyManager.BindPolicyRequest memory request2 = _buildRequest(policyId2);
-        request2.quote.maturityTime = uint32(block.timestamp + longDuration);
         _seedCommitteeForTesting(request2.quote.policyId, curator, true);
         ICoverPool.BoundPolicy memory boundPolicy2 = _getBoundPolicy(request2);
 
@@ -1737,7 +1664,6 @@ contract PolicyManagerTest is Test {
         );
 
         IPolicyManager.BindPolicyRequest memory request = _buildRequest(policyId);
-        request.quote.maturityTime = uint32(block.timestamp + customDuration);
         _seedCommitteeForTesting(request.quote.policyId, curator, true);
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
@@ -1883,8 +1809,6 @@ contract PolicyManagerTest is Test {
             specId: specId,
             termsHash: termsHash,
             beneficiary: beneficiary,
-            startTime: uint32(block.timestamp),
-            maturityTime: uint32(block.timestamp + COVERAGE_DURATION),
             expirationTime: uint32(block.timestamp + 1 hours)
         });
 
@@ -1928,8 +1852,6 @@ contract PolicyManagerTest is Test {
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),
-            uint256(quote.startTime),
-            uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );
     }

@@ -11,12 +11,10 @@ import {Test} from "forge-std/Test.sol";
 import {CoverPool} from "../../src/CoverPool.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
-import {ISpecRegistry} from "../../src/interfaces/ISpecRegistry.sol";
-import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
 
 contract CoverPoolTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 expirationTime)"
     );
     string internal constant NAME = "Catalysis Cover Pool";
     string internal constant VERSION = "1";
@@ -635,23 +633,6 @@ contract CoverPoolTest is Test {
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
     }
 
-    function test_bindPolicyForRequest_WhenQuoteStartTimeAfterMaturity_Reverts() public {
-        uint96 policyId = _createDraft();
-        ICoverPool.Quote memory quote = _defaultQuote();
-        quote.policyId = policyId;
-        quote.beneficiary = beneficiary;
-        quote.startTime = uint32(block.timestamp + 25 hours);
-        quote.maturityTime = uint32(block.timestamp + 1 hours);
-        bytes memory signature = _signQuote(quote);
-        address[] memory vaults = new address[](1);
-        vaults[0] = makeAddr("vault1");
-        address spec = makeAddr("spec");
-
-        vm.expectRevert(ICoverPool.InvalidCoverageWindow.selector);
-        vm.prank(curator);
-        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
-    }
-
     function test_bindPolicyForRequest_WhenQuoteExpired_Reverts() public {
         uint96 policyId = _createDraft();
         ICoverPool.Quote memory quote = _defaultQuote();
@@ -665,46 +646,6 @@ contract CoverPoolTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(ICoverPool.QuoteExpired.selector, uint32(block.timestamp - 1), block.timestamp)
-        );
-        vm.prank(curator);
-        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
-    }
-
-    function test_bindPolicyForRequest_WhenStartTimeJustPast_WithinTolerance_Succeeds() public {
-        uint96 policyId = _createDraft();
-        ICoverPool.Quote memory quote = _defaultQuote();
-        quote.policyId = policyId;
-        quote.beneficiary = beneficiary;
-        quote.startTime = uint32(block.timestamp) - 1; // 1 second in the past
-        quote.maturityTime = uint32(block.timestamp + 25 hours);
-        bytes memory signature = _signQuote(quote);
-        address[] memory vaults = new address[](1);
-        vaults[0] = makeAddr("vault1");
-        address spec = makeAddr("spec");
-
-        vm.mockCall(specRegistry, abi.encodeWithSelector(ISpecRegistry.registerSpec.selector), abi.encode());
-        vm.mockCall(stakeManager, abi.encodeWithSelector(IStakeManager.setCommitteeVaults.selector), abi.encode());
-
-        vm.prank(curator);
-        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
-    }
-
-    function test_bindPolicyForRequest_WhenStartTimeBeyondTolerance_Reverts() public {
-        uint96 policyId = _createDraft();
-        ICoverPool.Quote memory quote = _defaultQuote();
-        quote.policyId = policyId;
-        quote.beneficiary = beneficiary;
-        quote.startTime = uint32(block.timestamp) - 6 minutes; // beyond 5-minute tolerance
-        quote.maturityTime = uint32(block.timestamp + 25 hours);
-        bytes memory signature = _signQuote(quote);
-        address[] memory vaults = new address[](1);
-        vaults[0] = makeAddr("vault1");
-        address spec = makeAddr("spec");
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ICoverPool.InvalidStartTime.selector, uint32(block.timestamp) - 6 minutes, block.timestamp
-            )
         );
         vm.prank(curator);
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
@@ -1311,8 +1252,6 @@ contract CoverPoolTest is Test {
             specId: specId,
             termsHash: termsHash,
             beneficiary: beneficiary,
-            startTime: uint32(block.timestamp + 1 hours),
-            maturityTime: uint32(block.timestamp + 25 hours),
             expirationTime: uint32(block.timestamp + 2 days)
         });
     }
@@ -1337,8 +1276,6 @@ contract CoverPoolTest is Test {
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),
-            uint256(quote.startTime),
-            uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );
     }

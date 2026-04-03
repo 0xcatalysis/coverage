@@ -191,13 +191,6 @@ interface IPolicyManager is IAccessControl {
     error ZeroAddress();
 
     /**
-     * @notice Reverts when supplied coverage timestamps are invalid.
-     * @param startTime Coverage start timestamp.
-     * @param maturityTime Coverage maturity timestamp.
-     */
-    error InvalidCoverageWindow(uint32 startTime, uint32 maturityTime);
-
-    /**
      * @notice Reverts when coverage limit is zero.
      */
     error InvalidCoverageLimit();
@@ -274,13 +267,6 @@ interface IPolicyManager is IAccessControl {
      * @notice Reverts when request parameters don't match the stored draft.
      */
     error RequestDraftMismatch();
-
-    /**
-     * @notice Reverts when the quote's coverage window does not match the draft's requested duration.
-     * @param expectedDuration Duration in seconds recorded in the policy draft.
-     * @param actualDuration Duration derived from the signed quote (maturityTime - startTime).
-     */
-    error DurationMismatch(uint32 expectedDuration, uint32 actualDuration);
 
     /**
      * @notice Reverts when attempting to register a policy with a commit that's already been used.

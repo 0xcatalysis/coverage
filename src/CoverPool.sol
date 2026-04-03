@@ -31,10 +31,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     string private constant _NAME = "Catalysis Cover Pool";
     string private constant _VERSION = "1";
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 expirationTime)"
     );
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
-    uint32 private constant _BIND_START_TIME_TOLERANCE = 5 minutes;
 
     address public override policyManager;
     address public override stakeManager;
@@ -57,14 +56,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         require(quote.specId != bytes32(0), InvalidSpecId());
         require(quote.termsHash != bytes32(0), InvalidTermsHash());
         require(quote.beneficiary != address(0), InvalidBeneficiary());
-        require(quote.startTime < quote.maturityTime, InvalidCoverageWindow());
 
         // forge-lint: disable-next-line(unsafe-typecast)
         uint32 currentTimestamp = uint32(block.timestamp);
-        require(
-            quote.startTime + _BIND_START_TIME_TOLERANCE >= currentTimestamp,
-            InvalidStartTime(quote.startTime, currentTimestamp)
-        );
         require(quote.expirationTime >= currentTimestamp, QuoteExpired(quote.expirationTime, currentTimestamp));
         _;
     }
@@ -373,8 +367,6 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),
-            uint256(quote.startTime),
-            uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );
     }

@@ -32,10 +32,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         bytes32 termsHash;
         /// @notice Address that will receive claim payouts for this policy.
         address beneficiary;
-        /// @notice Policy coverage start timestamp proposed in the quote.
-        uint32 startTime;
-        /// @notice Policy coverage maturity timestamp proposed in the quote.
-        uint32 maturityTime;
         /// @notice Expiration timestamp for the signed quote.
         uint32 expirationTime;
     }
@@ -104,18 +100,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param actual Supplied pool address that failed validation.
      */
     error PoolAddressMismatch(address expected, address actual);
-
-    /**
-     * @notice Reverts when coverage start and maturity timestamps are mis-ordered.
-     */
-    error InvalidCoverageWindow();
-
-    /**
-     * @notice Reverts when the quote start time is not in the future.
-     * @param startTime Coverage start timestamp from the quote.
-     * @param currentTimestamp Current block timestamp at validation.
-     */
-    error InvalidStartTime(uint32 startTime, uint32 currentTimestamp);
 
     /**
      * @notice Reverts when a quote has already expired.
