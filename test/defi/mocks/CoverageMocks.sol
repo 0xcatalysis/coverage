@@ -69,10 +69,6 @@ contract MockChainlinkPriceFeedDefi is IChainlinkPriceFeed {
     function getUSDValue(address, uint256 amount) external pure override returns (uint256) {
         return amount;
     }
-
-    function getTokenAmount(address, uint256 usdValue) external pure override returns (uint256) {
-        return usdValue;
-    }
 }
 
 contract MockCoverPoolFactory {

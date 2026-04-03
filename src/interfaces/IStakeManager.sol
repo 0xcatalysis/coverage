@@ -8,24 +8,6 @@ pragma solidity 0.8.28;
  *      Admin functions (setRouter, setCoverPoolFactory, etc.) are not called by coverage contracts.
  */
 interface IStakeManager {
-    /// @notice Thrown when committee ID 0 is used (reserved as sentinel value)
-    error InvalidCommitteeId();
-
-    /// @notice Thrown when attempting to create a committee that already exists
-    error CommitteeAlreadyExists();
-
-    /// @notice Thrown when an invalid duration is provided (zero)
-    error InvalidDuration();
-
-    /// @notice Thrown when attempting to add an operator that is already in a committee
-    error OperatorAlreadyInCommittee();
-
-    /// @notice Thrown when attempting to add an operator to a committee that already has an operator
-    error CommitteeAlreadyHasOperator();
-
-    /// @notice Thrown when attempting to interact with a committee that has no operator assigned
-    error OperatorNotInCommittee();
-
     /// @notice Creates a committee by setting up operator sets and network limits across protocols.
     /// @param committeeId The committee ID (1:1 with policyId).
     /// @param coverPool The address of the cover pool authorized for this committee.
