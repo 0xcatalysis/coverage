@@ -52,7 +52,6 @@ interface IPolicyManagerView {
 
 interface IClaimManagerView {
     function slashingManager() external view returns (address);
-    function chainlinkPriceFeed() external view returns (address);
 }
 
 interface IPremiumManagerView {
@@ -80,7 +79,7 @@ interface ICoverPoolFactoryView {
  *        Flow 4  – PrepareBindPolicy:     Adapter chainlinkPriceFeed, SSPRouter adapters
  *        Flow 5  – BindPolicy:            SSPRouter vault module registration
  *        Flow 6-7– DistributePremium:     RewardsManager wiring + PREMIUM_MANAGER_ROLE
- *        Flow 8  – FileClaim:             SlashingManager wiring + CLAIM_MANAGER_ROLE + price feed
+ *        Flow 8  – FileClaim:             SlashingManager wiring + CLAIM_MANAGER_ROLE
  *
  *      Output:
  *        [OK]   – value matches expected
@@ -142,7 +141,7 @@ contract VerifySepoliaConfig is Script {
 
         console2.log("");
         if (_failures == 0) {
-            console2.log("[ALL OK] All", uint256(26), "checks passed. Configuration is complete for E2E testing.");
+            console2.log("[ALL OK] All", uint256(25), "checks passed. Configuration is complete for E2E testing.");
         } else {
             console2.log("[INCOMPLETE]", _failures, "check(s) failed. See [FAIL] lines above.");
             console2.log("  Fix: run cast send commands in docs/deployment/CoreAdminActions-Sepolia.md");
@@ -281,18 +280,13 @@ contract VerifySepoliaConfig is Script {
     // ─────────────────────────────────────────────────────────────────────────
     //  Flow 8 – FileClaim
     //  Requires: ClaimManager → SlashingManager address + CLAIM_MANAGER_ROLE,
-    //            ChainlinkPriceFeed WETH feed, SlashingManager → SSPRouter + StakeManager
+    //            SlashingManager → SSPRouter + StakeManager
     // ─────────────────────────────────────────────────────────────────────────
 
     function _checkFlow8_fileClaim() internal {
         console2.log("--- Flow 8: FileClaim ---");
 
         _check("ClaimManager.slashingManager", IClaimManagerView(CLAIM_MANAGER).slashingManager(), SLASHING_MANAGER);
-        _check(
-            "ClaimManager.chainlinkPriceFeed",
-            IClaimManagerView(CLAIM_MANAGER).chainlinkPriceFeed(),
-            CHAINLINK_PRICE_FEED
-        );
         _checkRole(
             "SlashingManager: CLAIM_MANAGER_ROLE -> ClaimManager", SLASHING_MANAGER, CLAIM_MANAGER_ROLE, CLAIM_MANAGER
         );
