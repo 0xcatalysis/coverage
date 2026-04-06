@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {CoveredVaultStorage} from "./CoveredVaultStorage.sol";
-import {IVaultV2} from "../../interfaces/Morpho/IVaultV2.sol";
+import {IERC4626 as IMorphoVault} from "vault-v2/interfaces/IERC4626.sol";
 import {IEvents as IE} from "../../interfaces/IEvents.sol";
 import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
 import {IPremiumManager} from "coverage/interfaces/IPremiumManager.sol";
@@ -196,7 +196,7 @@ abstract contract CoveredVaultAccrual is CoveredVaultStorage {
 
     /// @notice Returns the total Morpho vault value, falling back to cached value on revert
     function _morphoValue() internal view returns (uint256) {
-        try IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this))) returns (
+        try IMorphoVault(morphoVault).convertToAssets(IMorphoVault(morphoVault).balanceOf(address(this))) returns (
             uint256 val
         ) {
             return val;

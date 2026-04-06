@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {CoveredVaultWrapper} from "../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
-import {IVaultV2} from "../../src/defi/interfaces/Morpho/IVaultV2.sol";
+import {IVaultV2} from "vault-v2/interfaces/IVaultV2.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";

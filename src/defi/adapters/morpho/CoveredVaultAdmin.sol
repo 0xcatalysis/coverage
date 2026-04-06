@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {CoveredVaultAccrual} from "./CoveredVaultAccrual.sol";
-import {IVaultV2} from "../../interfaces/Morpho/IVaultV2.sol";
+import {IERC4626 as IMorphoVault} from "vault-v2/interfaces/IERC4626.sol";
 import {IAlerts as IA} from "../../interfaces/IAlerts.sol";
 import {IEvents as IE} from "../../interfaces/IEvents.sol";
 import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
@@ -245,7 +245,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     function setMorphoGateActive(bool active) external override onlyOwner {
         _accruePremium();
         if (active && !morphoGateActive) {
-            try IVaultV2(morphoVault).convertToAssets(IVaultV2(morphoVault).balanceOf(address(this))) returns (
+            try IMorphoVault(morphoVault).convertToAssets(IMorphoVault(morphoVault).balanceOf(address(this))) returns (
                 uint256 val
             ) {
                 lastKnownMorphoValue = val;
@@ -277,8 +277,8 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
             // convertToShares(totalPrincipal) is a conservative lower bound — actual user entitlements
             // include accrued yield, but we protect principal. In a loss scenario (shares worth less per asset)
             // convertToShares(totalPrincipal) > balance, so sweepable floors to 0. _safeSub guards underflow.
-            uint256 balance = IVaultV2(morphoVault).balanceOf(address(this));
-            uint256 minTracked = IVaultV2(morphoVault).convertToShares(totalPrincipal);
+            uint256 balance = IMorphoVault(morphoVault).balanceOf(address(this));
+            uint256 minTracked = IMorphoVault(morphoVault).convertToShares(totalPrincipal);
             uint256 sweepable = balance > minTracked ? balance - minTracked : 0;
             require(amount <= sweepable, IA.InvalidParameters());
         }

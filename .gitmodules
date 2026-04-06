@@ -13,3 +13,6 @@
 [submodule "lib/solady"]
 	path = lib/solady
 	url = https://github.com/Vectorized/solady
+[submodule "lib/vault-v2"]
+	path = lib/vault-v2
+	url = https://github.com/morpho-org/vault-v2

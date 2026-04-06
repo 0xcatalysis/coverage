@@ -3,4 +3,5 @@
 @openzeppelin/upgrades/=lib/openzeppelin-foundry-upgrades/src/
 @solady/=lib/solady/src/
 forge-std/=lib/forge-std/src/
+vault-v2/=lib/vault-v2/src/
 coverage/=src/

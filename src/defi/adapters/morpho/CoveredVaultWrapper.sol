@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {CoveredVaultAdmin} from "./CoveredVaultAdmin.sol";
 import {ICoveredVaultWrapper} from "../../interfaces/ICoveredVaultWrapper.sol";
-import {IVaultV2} from "../../interfaces/Morpho/IVaultV2.sol";
+import {IERC4626 as IMorphoVault} from "vault-v2/interfaces/IERC4626.sol";
 import {IAlerts as IA} from "../../interfaces/IAlerts.sol";
 import {IEvents as IE} from "../../interfaces/IEvents.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
@@ -87,7 +87,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         require(_maxCoverableLossBps > 0 && _maxCoverableLossBps <= BPS_DENOMINATOR, IA.InvalidMaxCoverableLoss());
         require(_deductibleBps < _maxCoverableLossBps, IA.InvalidParameters());
 
-        __ERC4626_init(IERC20(IVaultV2(_morphoVault).asset()));
+        __ERC4626_init(IERC20(IMorphoVault(_morphoVault).asset()));
         __ERC20_init(_name, _symbol);
         __Ownable_init(_owner);
         __BasePolicyInteractions_init(IClaimManager(_claimManager).policyManager(), _claimManager, _coverPool);
@@ -101,7 +101,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
 
         // Set scale factor for premium precision: normalises principal to 18-decimal space so that
         // sub-unit accrual is not silently discarded for 6-decimal tokens (e.g. USDC).
-        uint8 assetDecimals = IERC20Metadata(IVaultV2(_morphoVault).asset()).decimals();
+        uint8 assetDecimals = IERC20Metadata(IMorphoVault(_morphoVault).asset()).decimals();
         premiumScaleFactor = assetDecimals < 18 ? 10 ** (18 - assetDecimals) : 1;
     }
 
@@ -128,7 +128,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         IERC20(asset()).safeTransferFrom(caller, address(this), assets);
         IERC20(asset()).forceApprove(address(morphoVault), assets);
         // slither-disable-next-line reentrancy-state-change,unused-return
-        uint256 morphoSharesReceived = IVaultV2(morphoVault).deposit(assets, address(this));
+        uint256 morphoSharesReceived = IMorphoVault(morphoVault).deposit(assets, address(this));
         require(morphoSharesReceived > 0, IA.ZeroSharesReceived());
         lastKnownMorphoValue = _morphoValue();
         userMorphoShares[receiver] += morphoSharesReceived;
@@ -528,11 +528,11 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
     function _userMorphoValue(address user) private view returns (uint256) {
         uint256 shares = userMorphoShares[user];
         if (shares == 0) return 0;
-        try IVaultV2(morphoVault).convertToAssets(shares) returns (uint256 val) {
+        try IMorphoVault(morphoVault).convertToAssets(shares) returns (uint256 val) {
             return val;
         } catch {
             // Pro-rata fallback from cached global value
-            try IVaultV2(morphoVault).balanceOf(address(this)) returns (uint256 totalShares) {
+            try IMorphoVault(morphoVault).balanceOf(address(this)) returns (uint256 totalShares) {
                 return totalShares > 0 ? lastKnownMorphoValue * shares / totalShares : 0;
             } catch {
                 return 0;
@@ -580,7 +580,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         // accumulated over many partial withdrawals (sum(userMorphoShares) may exceed actual balance by N dust).
         // slither-disable-next-line incorrect-equality
         if (shares_ == ownerBalance_) {
-            uint256 actualMorphoBalance = IVaultV2(morphoVault).balanceOf(address(this));
+            uint256 actualMorphoBalance = IMorphoVault(morphoVault).balanceOf(address(this));
             if (redeemShares > actualMorphoBalance) redeemShares = actualMorphoBalance;
         }
 
@@ -600,7 +600,9 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
             // There is no alternative asset path (wrapper holds only Morpho shares), so withdrawal
             // cannot succeed if Morpho is gated. A clear revert is preferable to a silent 0.
             // slither-disable-next-line reentrancy-state-change
-            try IVaultV2(morphoVault).redeem(redeemShares, address(this), address(this)) returns (uint256 received) {
+            try IMorphoVault(morphoVault).redeem(redeemShares, address(this), address(this)) returns (
+                uint256 received
+            ) {
                 assetsReceived = received;
                 // Update cached Morpho value after successful redeem
                 lastKnownMorphoValue = _morphoValue();
