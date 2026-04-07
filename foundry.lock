@@ -28,5 +28,8 @@
       "name": "v0.1.26",
       "rev": "acd959aa4bd04720d640bf4e6a5c71037510cc4b"
     }
+  },
+  "lib/vault-v2": {
+    "rev": "b6c91d97d1129f5a87089c9c244fbcbbd74393bd"
   }
 }
