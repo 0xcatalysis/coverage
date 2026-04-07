@@ -40,8 +40,6 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *   - COVERAGE_LIMIT: Coverage limit in payout token units
  *   - SPEC_ID: Spec identifier (bytes32 hex)
  *   - TERMS_HASH: Policy terms hash (bytes32 hex)
- *   - START_TIME: Coverage start timestamp
- *   - MATURITY_TIME: Coverage end timestamp
  *   - EXPIRATION_TIME: Quote expiration timestamp
  *
  * Prerequisites:
