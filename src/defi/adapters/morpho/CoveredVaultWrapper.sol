@@ -109,7 +109,12 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
                     ERC-4626 OVERRIDES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Returns total assets managed by this wrapper, net of premium liabilities.
+    /// @notice Returns total assets managed by this wrapper, net of all outstanding premium liabilities.
+    /// @dev The deduction is *global* — it spreads the combined premium obligations of every
+    ///      depositor uniformly across all shares. This is intentional for ERC-4626 invariant
+    ///      compliance (`previewRedeem / previewWithdraw` must satisfy the no-revert guarantee),
+    ///      but it means individual users' real exit proceeds may differ from the proportional
+    ///      share price implied by this value. See `maxWithdraw` for details.
     function totalAssets() public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
         uint256 mv = _morphoValue();
         uint256 totalLiability = totalPremiumLiability + _accruedPremiumFor(mv);
@@ -452,6 +457,9 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
     }
 
     /// @inheritdoc ICoveredVaultWrapper
+    /// @dev Mirrors the per-user cap-and-deductible path in `_settleWithdrawalTransfer` exactly,
+    ///      so the returned estimate matches what `redeem` would claim from the ClaimManager
+    ///      (subject to policy status and remaining coverage at execution time).
     // slither-disable-next-line incorrect-equality
     function userShortfall(address user) external view override returns (uint256) {
         if (balanceOf(user) == 0) return 0;
@@ -480,7 +488,44 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         return claimManager.claimApprovalRequired(pid);
     }
 
-    /// @notice Returns maximum withdrawable assets accounting for premium deductions
+    /// @notice ERC-4626 compliant upper bound on withdrawable assets for `owner`.
+    ///
+    /// @dev **What this returns** — a proportional share of the pool:
+    ///      `shares * totalAssets() / totalSupply`
+    ///      where `totalAssets()` deducts the *global* premium liability (all depositors combined)
+    ///      spread uniformly across every share in the vault.
+    ///
+    /// @dev **Why this is a conservative lower bound, not the actual exit value** —
+    ///      Actual withdrawal is computed per-user, not proportionally:
+    ///      - Only the user's own owed premium is deducted from their own Morpho proceeds.
+    ///      - If a loss has occurred and the policy is active, insurance tops up the proceeds.
+    ///
+    ///      Because `totalAssets()` spreads *all* depositors' premiums proportionally,
+    ///      users with below-average premium obligations see their `maxWithdraw` understated
+    ///      relative to what `redeem` would actually deliver. Insurance payouts are additive on top.
+    ///
+    ///      This design satisfies the ERC-4626 invariant that `withdraw(maxWithdraw(owner))`
+    ///      MUST NOT revert, at the cost of over-estimating the discount for some users.
+    ///
+    /// @dev **How to get an accurate exit estimate** —
+    ///      No single view function returns the exact exit proceeds because the insurance payout
+    ///      depends on ClaimManager approval and remaining policy coverage at the time of the
+    ///      transaction. The best off-chain estimate is:
+    ///
+    ///      1. Gross Morpho proceeds:
+    ///         `morphoVault.convertToAssets(userMorphoShares[owner])`
+    ///
+    ///      2. Owed premium (approximate — accrual runs to the latest block):
+    ///         `principal * cumulativePremiumPerUnit / WAD - userPremiumDebt[owner]`
+    ///         where `principal = userPrincipal[owner]`
+    ///
+    ///      3. Expected insurance top-up (if in loss):
+    ///         `userShortfall(owner)` — mirrors the cap-and-deductible logic used at withdrawal
+    ///
+    ///      4. Estimated net exit: (1) - min((2), (1)) + (3)
+    ///
+    ///      The canonical on-chain exit is `redeem(maxRedeem(owner), receiver, owner)`, which
+    ///      executes at actual real-time values and returns the true assets transferred.
     function maxWithdraw(address owner) public view override (ERC4626Upgradeable, IERC4626) returns (uint256) {
         uint256 shares = balanceOf(owner);
         if (shares == 0) return 0;

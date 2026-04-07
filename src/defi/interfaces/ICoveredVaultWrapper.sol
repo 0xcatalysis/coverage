@@ -6,6 +6,24 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 /// @title ICoveredVaultWrapper
 /// @notice Interface for the CoveredVaultWrapper — a user-facing ERC-4626 vault that sits on top of a Morpho V2 vault
 ///         and provides per-user insurance coverage.
+///
+/// @dev **Exit-value semantics** — ERC-4626 view functions (`maxWithdraw`, `previewRedeem`) return
+///      a proportional share of the pool. They satisfy the standard no-revert invariants but are a
+///      *conservative lower bound*, not the precise exit amount, because:
+///
+///      - `totalAssets()` deducts the *global* premium liability across all shares, whereas the
+///        actual withdrawal deducts only the individual user's owed premium from their own Morpho
+///        proceeds.
+///      - Insurance payouts (when a loss has occurred and the policy is active) are additive but
+///        not reflected in the share price.
+///
+///      For an accurate off-chain exit estimate, combine:
+///        1. Gross Morpho proceeds:  `morphoVault.convertToAssets(userMorphoShares[user])`
+///        2. Owed premium:           `userPrincipal[user] × cumulativePremiumPerUnit / WAD − userPremiumDebt[user]`
+///        3. Insurance top-up:       `userShortfall(user)` (zero if no loss or policy expired)
+///        4. Net estimate:           (1) − min((2),(1)) + (3)
+///
+///      The canonical on-chain full exit is `redeem(maxRedeem(owner), receiver, owner)`.
 interface ICoveredVaultWrapper is IERC4626 {
     /// @notice Returns the underlying Morpho V2 vault address
     function morphoVault() external view returns (address);
@@ -66,10 +84,31 @@ interface ICoveredVaultWrapper is IERC4626 {
     /// maxCoverableLossBps.
     function depositCap() external view returns (uint256);
 
-    /// @notice Returns the global insurable shortfall (capped by maxCoverableLossBps and deductible)
+    /// @notice Returns the estimated insurance payout for the entire vault in a full-redemption scenario.
+    ///         Applies the same cap (`maxCoverableLossBps`) and deductible as actual claims.
+    ///         Returns 0 when `totalPrincipal == 0` or when there is no net loss after premiums.
     function calculateShortfall() external view returns (uint256);
 
-    /// @notice Returns the per-user insurable shortfall (capped by maxCoverableLossBps and deductible)
+    /// @notice Returns the estimated insurance payout for a single user's position.
+    ///
+    /// @dev This mirrors the per-user cap-and-deductible logic executed inside `_settleWithdrawalTransfer`
+    ///      during `redeem`. It is the closest available view-function approximation to the insurance
+    ///      component of a user's exit proceeds.
+    ///
+    ///      **Interpretation**:
+    ///      - A non-zero return means the user's Morpho proceeds (net of owed premium) fall short of
+    ///        their adjusted principal, and the gap is insurable under the current policy terms.
+    ///      - Zero means either no loss has occurred, the policy is not active, or the loss is below
+    ///        the deductible threshold.
+    ///
+    ///      **Limitations** — this is an *estimate*:
+    ///      - The actual payout also depends on ClaimManager approval and the remaining coverage
+    ///        limit at execution time; `userShortfall` cannot predict either.
+    ///      - If the ClaimManager is paused or rejects the claim, the actual payout will be 0
+    ///        even when `userShortfall` returns a positive value.
+    ///
+    /// @param user The account to evaluate.
+    /// @return Estimated insurance payout, in the vault's underlying asset, post-cap and post-deductible.
     function userShortfall(address user) external view returns (uint256);
 
     /// @notice Accrues and transfers any pending premium to premiumRecipient
