@@ -91,23 +91,22 @@ interface ICoverPoolFactoryView {
 contract VerifySepoliaConfig is Script {
     // ── Coverage contracts
     // ──────────────────────────────────────────────────
-    address internal constant COVER_POOL_FACTORY = 0xBde5ae27f81E03Cd8bCc2128b37893C9789bfB3e;
-    address internal constant POLICY_MANAGER = 0x092887CfA8Abf57A4C32006ef1cA52862468d648;
-    address internal constant CLAIM_MANAGER = 0xB370cEc9998fBea096A70686620BB2BED4139FAA;
-    address internal constant PREMIUM_MANAGER = 0x5bfFCDE74dA50c5415ADa30c4cA1f274eA0e6371;
+    address internal constant COVER_POOL_FACTORY = 0x43c1AC362f88f461d2CF358D6fF76C833585B830;
+    address internal constant POLICY_MANAGER = 0x48Ded2CB83623d5dE7D51Eab045A452bA70C2A35;
+    address internal constant CLAIM_MANAGER = 0x568191F923C10A5447d8349eFD63687836D52099;
+    address internal constant PREMIUM_MANAGER = 0xD75357f1AA43d87edA20A128D1A525FF320cB743;
 
     // ── Core contracts
     // ──────────────────────────────────────────────────────
-    address internal constant STAKE_MANAGER = 0x3dB3ca70f23CeF23c7fEDB36dF6019B5ECB5Cb0c;
-    address internal constant SLASHING_MANAGER = 0x4609a19E40f8262b3E42dEC45AACf18961fd4143;
-    address internal constant REWARDS_MANAGER = 0xF4cdFcD4bb8c1ABa3F79AFF9303429cAf79052a9;
-    address internal constant SSP_ROUTER = 0xc2F3906Bb57c8Db7DF2DddF0f2CEc521fE6834f8;
-    address internal constant EIGEN_ADAPTER = 0xA28871e253C972A96003D3f432CA4170f4ae2A78;
-    address internal constant SYMBIOTIC_ADAPTER = 0x533115b15C3c41e42652c35694a20eb6F7b2cbD2;
-    address internal constant CHAINLINK_PRICE_FEED = 0x2c0334283E06839Eb9Ab01f091Dca4A98443d120;
+    address internal constant STAKE_MANAGER = 0xF26d310D98b9eB0B20d96B605d9Af15bC31f5c32;
+    address internal constant SLASHING_MANAGER = 0xF397bbFDB272b31366D472Fcdbf4DC0982ec8714;
+    address internal constant REWARDS_MANAGER = 0x6A0823fC61F970BB8a52cF95BfB8F32265Ada8b8;
+    address internal constant SSP_ROUTER = 0xf68c72E92f9BdB7Cdba2AF4026Bab8DC22781148;
+    address internal constant EIGEN_ADAPTER = 0xB4bB09dcE1C1D9d987D5dc0dC2c8770D4fbBD49b;
+    address internal constant CHAINLINK_PRICE_FEED = 0x2b48F18f73C66075168b727524c99aFE12814417;
 
-    // ── Known E2E vault (EigenLayer WETH DurationVaultStrategy, deployed by SSPRouter) ──
-    address internal constant WETH_EL_STRATEGY = 0x424246eF71b01ee33aA33aC590fd9a0855F5eFbc;
+    // ── Known E2E vault (EigenLayer wstETH DurationVaultStrategy, deployed by SSPRouter) ──
+    address internal constant WETH_EL_STRATEGY = 0x7db0C347645bE3E19Af87d72E6220361cdD2428D;
 
     // ── Reference token
     // ─────────────────────────────────────────────────────
@@ -120,7 +119,6 @@ contract VerifySepoliaConfig is Script {
     bytes32 internal constant PREMIUM_MANAGER_ROLE = keccak256("PREMIUM_MANAGER_ROLE");
 
     // ── SSPRouter module type enum values (ISSPRouter.SSPModuleType) ─────────
-    uint8 internal constant MODULE_SYMBIOTIC = 1;
     uint8 internal constant MODULE_EIGENLAYER = 2;
 
     uint256 internal _failures;
@@ -141,7 +139,7 @@ contract VerifySepoliaConfig is Script {
 
         console2.log("");
         if (_failures == 0) {
-            console2.log("[ALL OK] All", uint256(25), "checks passed. Configuration is complete for E2E testing.");
+            console2.log("[ALL OK] All", uint256(23), "checks passed. Configuration is complete for E2E testing.");
         } else {
             console2.log("[INCOMPLETE]", _failures, "check(s) failed. See [FAIL] lines above.");
             console2.log("  Fix: run cast send commands in docs/deployment/CoreAdminActions-Sepolia.md");
@@ -187,7 +185,7 @@ contract VerifySepoliaConfig is Script {
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Flow 4 – PrepareBindPolicy
-    //  Requires: SSPRouter adapters, price feeds on both adapters
+    //  Requires: SSPRouter EigenLayer adapter, price feed on EigenAdapter
     // ─────────────────────────────────────────────────────────────────────────
 
     function _checkFlow4_prepareBindPolicy() internal {
@@ -197,17 +195,7 @@ contract VerifySepoliaConfig is Script {
             "SSPRouter.getAdapter(EIGENLAYER)", ISSPRouterView(SSP_ROUTER).getAdapter(MODULE_EIGENLAYER), EIGEN_ADAPTER
         );
         _check(
-            "SSPRouter.getAdapter(SYMBIOTIC)",
-            ISSPRouterView(SSP_ROUTER).getAdapter(MODULE_SYMBIOTIC),
-            SYMBIOTIC_ADAPTER
-        );
-        _check(
             "EigenAdapter.chainlinkPriceFeed", IAdapterView(EIGEN_ADAPTER).chainlinkPriceFeed(), CHAINLINK_PRICE_FEED
-        );
-        _check(
-            "SymbioticAdapter.chainlinkPriceFeed",
-            IAdapterView(SYMBIOTIC_ADAPTER).chainlinkPriceFeed(),
-            CHAINLINK_PRICE_FEED
         );
 
         console2.log("");
