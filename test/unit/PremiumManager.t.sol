@@ -642,8 +642,8 @@ contract PremiumManagerTest is Test {
         assertEq(rewardsManager.distributeRewardsCallCount(), 1, "DistributeRewards not called");
     }
 
-    function test_distributePremium_WhenSSPRouterApproved_CanPullRestakerSplitFromPM() public {
-        address sspRouter = makeAddr("sspRouter");
+    function test_distributePremium_WhenRewardsManagerApproved_CanPullRestakerSplitFromPM() public {
+        address rewardsMgr = makeAddr("rewardsManager");
         (,, uint256 restakerSplit) = premiumManager.getFeeSplits(PREMIUM_AMOUNT, PLATFORM_FEE_BPS, POOL_FEE_BPS);
 
         premiumToken.mint(premiumCollector, PREMIUM_AMOUNT);
@@ -654,13 +654,13 @@ contract PremiumManagerTest is Test {
         vm.stopPrank();
 
         vm.prank(admin);
-        premiumManager.approveSpender(address(premiumToken), sspRouter, type(uint256).max);
+        premiumManager.approveSpender(address(premiumToken), rewardsMgr, type(uint256).max);
 
-        vm.prank(sspRouter);
+        vm.prank(rewardsMgr);
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        premiumToken.transferFrom(address(premiumManager), sspRouter, restakerSplit);
+        premiumToken.transferFrom(address(premiumManager), rewardsMgr, restakerSplit);
 
-        assertEq(premiumToken.balanceOf(sspRouter), restakerSplit, "SSPRouter balance mismatch");
+        assertEq(premiumToken.balanceOf(rewardsMgr), restakerSplit, "RewardsManager balance mismatch");
         assertEq(premiumToken.balanceOf(address(premiumManager)), 0, "PM should be empty after pull");
     }
 

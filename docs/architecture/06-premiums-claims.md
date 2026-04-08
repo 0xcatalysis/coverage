@@ -4,53 +4,50 @@
 
 Coverage economics are split into two operational paths:
 
-- **premium path**: covered-vault share accrual -> redemption -> split -> reward routing,
-- **claim path**: claim evaluation -> committee slashing -> collateral conversion -> beneficiary payout.
+- **premium path**: continuous accrual in `CoveredVaultWrapper` against depositor principal → `collectPremium()` flush → fee split in `PremiumManager` → restaker reward routing,
+- **claim path**: withdrawal-time shortfall detection → `fileClaim` evaluation → token-native committee slashing → collateral conversion → beneficiary payout.
 
 Premiums and claims both use the same policy/committee identity (`policyId`).
 
 Policy actor note:
 
-- In this architecture, the policy `buyer` is expected to be the covered vault or its adapter contract.
+- In this architecture, the policy `buyer` is expected to be the `CoveredVaultWrapper` or its operator contract.
 
-## Dual Vault Model Context
+## CoveredVaultWrapper Integration Context
 
-The covered integration assumes:
+The covered integration uses a single `CoveredVaultWrapper`:
 
-- **Covered Vault (Morpho V2)**: insured user entrypoint.
-- **Catalysis Cover Adapter**: allocation/deallocation + shortfall detection + claim trigger.
-- **Base Vault (Morpho V1/V2)**: underlying capital destination.
+- **CoveredVaultWrapper**: UUPS-upgradeable ERC-4626 vault that wraps a Morpho V2 vault; user-facing and premium-bearing.
+- **Morpho Vault (underlying)**: yield source; wrapper is its sole depositor.
 
-A covered vault maps to one base vault. Users opt into insurance by choosing the covered vault path.
+Users opt into insurance by depositing into the `CoveredVaultWrapper` rather than directly into the Morpho vault.
 
 ## Deposit Flow (Covered Path)
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant CV as Covered Vault
-    participant ADP as Catalysis Cover Adapter
-    participant BV as Base Vault
+    participant CVW as CoveredVaultWrapper
+    participant MV as Morpho Vault
 
-    User->>CV: approve + deposit(assets, receiver)
-    CV->>ADP: allocate(amount)
-    ADP->>ADP: record principal + PPS reference
-    ADP->>BV: deposit(amount)
-    BV-->>ADP: base-vault shares
-    ADP-->>CV: update reporting (adapter interface)
-    CV-->>User: mint covered-vault shares
+    User->>CVW: approve + deposit(assets, receiver)
+    CVW->>CVW: _accruePremium() — checkpoint premium accumulator
+    CVW->>CVW: record userPrincipal[receiver] += assets
+    CVW->>MV: deposit(assets)
+    MV-->>CVW: Morpho shares
+    CVW-->>User: mint CoveredVaultWrapper shares
 ```
 
-Adapter accounting details (implementation-specific):
+Accounting details:
 
-- principal and reference PPS tracking are adapter responsibilities,
-- these references are later used to detect withdrawal-time shortfall.
+- `userPrincipal[receiver]` tracks cost-basis (not yield); premium accrues on principal only,
+- a per-user `userPremiumDebt` offset prevents the depositor from inheriting liability that accrued before they arrived.
 
 ## Premium Flow
 
 ### Components
 
-- `PremiumCollector` - collects ERC-4626 shares and redeems to underlying.
+- `CoveredVaultWrapper` - accrues premiums internally; exposes `collectPremium()` as a permissionless flush.
 - `PremiumManager` - fee splitting and reward routing.
 - `CoverPool` - source of pool fee settings and fee recipient.
 - Core `RewardsManager` - downstream restaker reward distribution.
@@ -59,8 +56,8 @@ Adapter accounting details (implementation-specific):
 
 ```mermaid
 sequenceDiagram
-    participant Vault as Covered Vault (ERC-4626)
-    participant PC as PremiumCollector
+    participant Anyone
+    participant CVW as CoveredVaultWrapper
     participant PRM as PremiumManager
     participant Pool as CoverPool
     participant Treasury as Platform Treasury
@@ -68,17 +65,20 @@ sequenceDiagram
     participant RM as Core RewardsManager
     participant SSP as SSPRouter
 
-    Vault->>PC: management fee shares accrue
-    PC->>PC: redeem(shares) -> underlying assets
-    PC->>PRM: transfer underlying
-    PC->>PRM: distributePremium(pool, policyId, token, amount)
+    Note over CVW: premium accrues continuously<br/>against totalPrincipal × premiumRatePerSecond
+    Anyone->>CVW: collectPremium()
+    CVW->>CVW: _accruePremium() — checkpoint accumulator
+    CVW->>PRM: approve(pending premium)
+    CVW->>PRM: distributePremium(pool, policyId, token, pending)
+    PRM->>PRM: safeTransferFrom(CVW, PRM, amount)
     PRM->>Pool: read poolFeeBps + feeRecipient + owner
-    PRM->>PRM: compute fee splits (retain restaker share)
+    PRM->>PRM: compute fee splits (retain restaker share in PRM)
     PRM->>Treasury: platform fee
     PRM->>PoolRecipient: pool fee
-    PRM->>RM: distributeRewards(policyId, operator, amount, token)
-    RM->>SSP: distributeRewards(..., tokenSource=premiumManager)
-    SSP->>PRM: safeTransferFrom(premiumManager, adapter, restakerShare)
+    PRM->>RM: distributeRewards(policyId, curator, restakerSplit, token, taskId)
+    RM->>PRM: safeTransferFrom(premiumManager, rewardsManager, restakerShare)
+    RM->>SSP: distributeRewards(..., tokenSource=rewardsManager)
+    SSP->>RM: safeTransferFrom(rewardsManager, adapter, restakerShare)
 ```
 
 ### Fee Split Logic
@@ -89,9 +89,10 @@ sequenceDiagram
 - `poolSplit = gross * poolFeeBps / 10_000`
 - `restakerSplit = gross - platformSplit - poolSplit`
 
-Guardrail:
+Guardrails:
 
-- `platformFeeBps + poolFeeBps <= 10_000`.
+- `platformFeeBps <= 2_500` (25% max for platform fee),
+- `platformFeeBps + poolFeeBps <= 5_000` (combined fee cap of 50%).
 
 ## Claim Flow
 
@@ -101,9 +102,8 @@ Guardrail:
 - `SpecRegistry` + `ISpec` - payability decision logic. Only admin-approved `ISpec` implementations
   can be registered; once registered, a spec remains resolvable for existing policies regardless of
   subsequent revocation.
-- Core `ChainlinkPriceFeed` - payout token amount -> USD slash target.
-- Core `SlashingManager` - committee slashing execution.
-- `Swapper` - collateral token conversion.
+- Core `SlashingManager` - committee slashing execution (token-native amounts, no USD conversion).
+- `Swapper` + `quoteSwap` - collateral token conversion and slippage-adjusted minimum output.
 
 ### Claim Settlement Sequence
 
@@ -113,13 +113,13 @@ sequenceDiagram
     participant CM as ClaimManager
     participant SR as SpecRegistry
     participant Spec as ISpec
-    participant PF as Core ChainlinkPriceFeed
     participant SLM as Core SlashingManager
     participant SW as Swapper
     participant Beneficiary
+    participant RM as RewardsManager
 
     Claimer->>CM: fileClaim(policyId, requestedAmount, evidenceHash, data)
-    CM->>CM: validate claimer, window, remaining coverage
+    CM->>CM: validate claimApprovalRequired==false, claimer, window,<br/>remaining coverage, evidenceHash unique, !premiumDefaulted
     CM->>SR: resolveSpec(pool, specId)
     SR-->>CM: spec
     CM->>Spec: evaluate(context)
@@ -128,19 +128,24 @@ sequenceDiagram
     alt non-payable
         CM-->>Claimer: claim rejected
     else payable
-        CM->>PF: getUSDValue(payoutToken, requestedAmount)
-        PF-->>CM: slashAmountUSD
-        CM->>SLM: executeSlashing(policyId, operator, slashAmountUSD)
+        CM->>SLM: previewSlashing(policyId, operator)
+        SLM-->>CM: vaults[], tokens[], tokenStakes[] (token-native)
+        CM->>SW: quoteSwap(tokenIn, payoutToken, stake) per cross-token vault
+        CM->>CM: _computeVaultSlashes — proportional + slippage-inflated VaultSlash[]
+        CM->>SLM: executeSlashing(policyId, operator, VaultSlash[], taskId)
         SLM-->>CM: collateralTokens[], collateralAmounts[]
         loop each collateral token
             alt token == payoutToken
-                CM->>Beneficiary: transfer payout token
+                CM->>Beneficiary: transfer payout token (up to remainingPayout)
+                CM->>RM: distributeRewards(surplus, if any)
             else token != payoutToken
-                CM->>SW: executeSwap(tokenIn -> payoutToken)
+                CM->>SW: executeSwap(tokenIn -> payoutToken, amountOutMin=quoteSwap×slippage)
                 SW-->>CM: payoutToken amountOut
-                CM->>Beneficiary: transfer payout token
+                CM->>Beneficiary: transfer payout token (up to remainingPayout)
+                CM->>RM: distributeRewards(surplus, if any)
             end
         end
+        CM->>CM: claimApprovalRequired[policyId] = true
     end
 ```
 
@@ -149,18 +154,16 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant User
-    participant CV as Covered Vault
-    participant ADP as Catalysis Cover Adapter
-    participant BV as Base Vault
+    participant CVW as CoveredVaultWrapper
+    participant MV as Morpho Vault
 
-    User->>CV: redeem/withdraw
-    CV->>ADP: deallocate(amount)
-    ADP->>BV: deallocate(amount)
-    BV-->>ADP: assets_received
-    ADP->>ADP: compare assets_received vs covered reference
-    Note over ADP: assets_received >= assets_deposited
-    ADP-->>CV: transfer assets
-    CV-->>User: transfer assets
+    User->>CVW: redeem/withdraw
+    CVW->>CVW: _accruePremium() + compute userPrincipalForWithdrawal
+    CVW->>MV: redeem(shares)
+    MV-->>CVW: assetsReceived
+    CVW->>CVW: insuredBasis = principal - premiumForWithdrawal
+    Note over CVW: netAssets >= insuredBasis → no shortfall
+    CVW-->>User: transfer netAssets
 ```
 
 ### Withdrawal (With Shortfall / Claim Path)
@@ -168,28 +171,23 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant User
-    participant CV as Covered Vault
-    participant ADP as Catalysis Cover Adapter
-    participant BV as Base Vault
+    participant CVW as CoveredVaultWrapper
+    participant MV as Morpho Vault
     participant CM as ClaimManager
 
-    User->>CV: redeem/withdraw
-    CV->>ADP: deallocate(amount)
-    ADP->>BV: deallocate(amount)
-    BV-->>ADP: assets_received
-    ADP->>ADP: detect shortfall
-    Note over ADP: assets_received < assets_deposited
-    ADP->>CM: fileClaim(policyId, shortfallAmount, evidenceHash, data)
-    CM-->>ADP: payout assets (if payable)
-    ADP-->>CV: transfer assets_received + payout
-    CV-->>User: transfer assets
+    User->>CVW: redeem/withdraw
+    CVW->>CVW: _accruePremium() + compute userPrincipalForWithdrawal
+    CVW->>MV: redeem(shares)
+    MV-->>CVW: assetsReceived
+    CVW->>CVW: insuredBasis = principal - premiumForWithdrawal
+    CVW->>CVW: shortfall = insuredBasis - netAssets > 0
+    CVW->>CVW: _capAndApplyDeductible(shortfall, insuredBasis)
+    CVW->>CM: fileClaim(policyId, claimAmount, evidenceHash, data)
+    CM-->>CVW: payout (if approved)
+    CVW-->>User: transfer netAssets + payout
 ```
 
-Function naming note:
-
-- external docs may refer to `fileAndResolveClaim(...)`,
-- current Coverage implementation uses `ClaimManager.fileClaim(...)`, which performs file + resolve atomically.
-- for adapter-based make-whole flows, `payoutToken` is typically set to the base-vault underlying token.
+Note: `ClaimManager.fileClaim(...)` performs file + resolve atomically. `payoutToken` is set to the Morpho vault's underlying token.
 
 ## Coverage and Payout Controls
 
@@ -205,11 +203,19 @@ For each policy:
 
 Claims are accepted only while policy is active:
 
-- `startTime <= now <= maturityTime`.
+- `startTime <= now < maturityTime`.
 
-### Approval Gate
+### Spec Approval Gate
 
 Claim payout path is entered only if `ISpec.evaluate(context).isPayable == true`.
+
+### Curator Approval Gate (per successive claim)
+
+After each approved claim, `claimApprovalRequired[policyId]` is set to `true`. The policy curator must call `ClaimManager.approveNextClaim(policyId)` before the next `fileClaim` will be accepted. This gives the curator a mandatory review window between successive payouts.
+
+### Premium Default Gate
+
+`fileClaim` checks `!metadata.premiumDefaulted`. If the admin has flagged the policy as premium-defaulted (via `PolicyManager`), claims are rejected until the default is cleared.
 
 ### Evidence Hash
 
@@ -226,14 +232,17 @@ digest (`keccak256` of the CID multihash bytes), to enable off-chain verificatio
 In `_processCollateral(...)`:
 
 - If collateral already equals payout token:
-  - transfer directly up to remaining payout target.
-- Else:
-  - approve `Swapper`,
-  - execute configured route,
-  - cap delivered amount to remaining payout target,
-  - clear approval.
+  - transfer directly up to `remainingPayout`; any surplus is forwarded to `RewardsManager`.
+- Else (cross-token):
+  - `_computeAmountOutMin` calls `Swapper.quoteSwap(tokenIn, tokenOut, amountIn)` and applies `maxSwapSlippageBps` to get a slippage-adjusted minimum output,
+  - approve `Swapper` for `collateralAmount`,
+  - call `Swapper.executeSwap(params)` with the computed `amountOutMin`,
+  - cap delivered amount to `remainingPayout`; any surplus swap output is forwarded to `RewardsManager`,
+  - clear residual approval.
 
-This supports heterogeneous slash collateral while preserving payout-token settlement.
+Vault slashes are pre-inflated in `_computeVaultSlashes` (by `1 / (1 - maxSwapSlippageBps)` for cross-token vaults) so that worst-case slippage still yields the full `requestedAmount` to the beneficiary.
+
+This supports heterogeneous slash collateral while preserving payout-token settlement without relying on an oracle.
 
 ## Swapper Configuration for Cross-Token Payouts
 
@@ -274,12 +283,12 @@ target is whitelisted. It reverts before broadcasting if any route is missing.
 
 - Missing or bad swap routes can impair payout conversion for non-payout collateral.
 - Incorrect fee settings can over-route or under-route premium shares.
-- Wrong vault registration in `PremiumCollector` can mis-route policy rewards.
+- Wrong `pool`/`policyId` passed to `distributePremium` can mis-route policy rewards.
 
 ### Runtime Risks
 
 - If Core slashing returns no collateral, payout path reverts.
-- If price conversion fails, slash target cannot be computed.
+- If `Swapper.quoteSwap` reverts or returns zero for a cross-token vault, that vault is excluded from slashing (`VaultExcludedFromSlashing` event emitted).
 - Claim timing outside coverage window always reverts.
 
 ### Operational Controls
@@ -303,12 +312,12 @@ This migration is an integration-layer flow and usually implemented outside Cove
 
 The scripts in `script/testing/` map directly to this document:
 
-- `DistributePremium.s.sol` validates premium distribution path.
-- `FileClaim.s.sol` validates claim evaluation and payout path.
-- `CompleteCoverageFlow.s.sol` exercises both paths in sequence.
+- `DistributePremium.s.sol` — calls `CoveredVaultWrapper.collectPremium()`, validating the premium flush and distribution path.
+- `FileClaim.s.sol` — phases: prerequisites → Swapper readiness → pre-claim snapshot → file → result; validates claim evaluation and payout path including swap metrics.
+- `CompleteCoverageFlow.s.sol` — exercises both paths end-to-end; includes lightweight Swapper readiness logging and skip-if-zero-amount guards for re-runs.
 
 ## Next Steps
 
-- [Covered Vault Integration](./07-covered-vault-integration.md)
 - [System Overview](./01-system-overview.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
+- [CoveredVaultWrapper Accounting](../COVERED_VAULT_ACCOUNTING.md)

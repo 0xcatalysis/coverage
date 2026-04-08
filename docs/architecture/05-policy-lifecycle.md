@@ -32,14 +32,14 @@ stateDiagram-v2
 
 ## Phase 1: Request Coverage
 
-Entry: Covered vault (or its adapter, recorded as `buyer`) calls `PolicyManager.requestCoverage(...)`.
+Entry: Covered vault (or its agent, recorded as `buyer`) calls `PolicyManager.requestCoverage(...)`.
 
-Recommended adapter-based tuple:
+Recommended tuple for the `CoveredVaultWrapper` integration:
 
-- `buyer`: covered vault or adapter,
-- `claimer`: adapter,
-- `beneficiary`: adapter,
-- `bindPolicyHook`: adapter (for post-bind cap/config sync).
+- `buyer`: `CoveredVaultWrapper`,
+- `claimer`: `CoveredVaultWrapper` (files claims atomically on withdrawal shortfall),
+- `beneficiary`: `CoveredVaultWrapper` (receives payout and tops up user exit),
+- `bindPolicyHook`: `CoveredVaultWrapper` (receives `onPolicyBound` callback to store `policyId` and set deposit cap).
 
 Checks:
 
@@ -52,8 +52,8 @@ Effects:
 
 - new `policyId` reserved,
 - `PolicyDraft` stored with status `Created`,
-- Core committee created with id = `policyId`;
-  `createCommittee` auto-assigns the pool curator as committee operator.
+- Core committee created with id = `policyId` via `StakeManager.createCommittee(policyId, pool, duration)`.
+- Pool curator explicitly added as committee operator via `StakeManager.addOperatorToCommittee(curator, policyId)`.
 
 ## Phase 2: Optional Draft Cancellation
 
@@ -90,7 +90,7 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 - `SpecRegistry.registerSpec(specId, spec)` called by pool. The `ISpec` implementation must be
   pre-approved by the protocol admin via `SpecRegistry.approveSpec(spec)` before this call will
   succeed; an unapproved spec causes the entire bind transaction to revert.
-- `StakeManager.addCommitteeVaults(policyId, vaults[])` binds committee backing vaults.
+- `StakeManager.setCommitteeVaults(policyId, vaults[], coverageLimit)` binds committee backing vaults and configures TVL limits.
 
 ### 3.3 PolicyManager Finalization
 
@@ -107,34 +107,36 @@ Then it:
 
 - marks draft as `Bound`,
 - stores canonical `PolicyMetadata`,
-- triggers `IBindPolicyHook.onPolicyBound(policyId, coverageLimit)` (typically adapter callback).
+- triggers `IBindPolicyHook.onPolicyBound(policyId, coverageLimit)` (on `CoveredVaultWrapper`: stores `policyId` and configures the deposit cap from `coverageLimit`).
 
 ## Phase 4: Active Coverage Window
 
 A bound policy is claimable only during:
 
-- `startTime <= block.timestamp <= maturityTime`.
+- `startTime <= block.timestamp < maturityTime`.
 
 Claims outside this window revert in `ClaimManager`.
 
 ## Phase 5: Claim Path
 
-Entry: adapter (as authorized claimer) calls `ClaimManager.fileClaim(...)`, typically on withdrawal-time shortfall detection.
+Entry: authorized claimer (typically `CoveredVaultWrapper` acting as claimer) calls `ClaimManager.fileClaim(...)`, triggered atomically on withdrawal-time shortfall detection.
 
 Checks:
 
+- `claimApprovalRequired[policyId] == false` — curator must call `approveNextClaim(policyId)` between any two successive approved claims,
 - policy metadata exists,
+- `!metadata.premiumDefaulted` — filing is blocked if the policy owner has been flagged for premium default,
 - caller equals metadata `claimer`,
 - requested amount > 0 and <= remaining coverage,
-- evidence hash non-zero,
-- claim is inside coverage window.
+- evidence hash non-zero and not previously consumed for this policy,
+- claim is inside coverage window (`startTime <= now < maturityTime`).
 
 Evaluation and resolution:
 
 - resolve spec by `(pool, specId)`,
 - evaluate spec with current context,
-- if non-payable -> claim rejected,
-- if payable -> slash and settle payout to configured beneficiary (typically adapter).
+- if non-payable → claim rejected,
+- if payable → slash and settle payout to configured beneficiary; sets `claimApprovalRequired[policyId] = true` to gate the next claim.
 
 ## Invariants
 
@@ -162,9 +164,10 @@ Evaluation and resolution:
 - Ensure swap routes are configured before enabling live claim payouts.
 - Ensure the `ISpec` implementation is approved via `SpecRegistry.approveSpec()` before attempting
   policy binding. An unapproved spec causes `bindPolicyForRequest` to revert.
+- After each approved claim, the curator must call `ClaimManager.approveNextClaim(policyId)` to clear
+  the approval gate before the next claim can be filed.
 
 ## Next Steps
 
 - [Restaker Setup and Delegation Lifecycle](./04-restaker-setup.md)
 - [Premiums and Claims](./06-premiums-claims.md)
-- [Covered Vault Integration](./07-covered-vault-integration.md)

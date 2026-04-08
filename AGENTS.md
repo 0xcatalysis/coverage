@@ -16,26 +16,28 @@ Coverage contracts live in `src/`. Tests in `test/unit`, `test/fuzz`, and `test/
 | `CoverPoolFactory.sol` | Creates CoverPool clones and assigns PolicyManager role to each new pool. |
 | `PolicyManager.sol` | Entrypoint for policy binding; coordinates premium collection and mints Policy NFTs. |
 | `PremiumManager.sol` | Collects premiums and distributes fees to curators and platform treasury. |
-| `PremiumCollector.sol` | Redeems ERC-4626 vault shares and forwards underlying assets to PremiumManager for distribution. |
 | `ClaimManager.sol` | Processes parametric/discretionary claims; orchestrates slashing and payouts. |
 | `Swapper.sol` | Converts slashed collateral via configured swap routes. |
-| `SpecRegistry.sol` | Registry mapping (pool, specId) pairs to ISpec evaluation implementations. |
+| `SpecRegistry.sol` | Registry mapping `(pool, specId)` pairs to `ISpec` evaluation implementations. |
 
 ### Interfaces (`src/interfaces/`)
 
 Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus external Catalysis Core dependencies (`ISpecRegistry`, `ISlashingManager`, `IRewardsManager`, `IChainlinkPriceFeed`, `IStakeManager`).
 
-### Adapters (`src/adapters/`)
+### Swappers (`src/swappers/`)
 
-Thin integration contracts connecting Coverage contracts to external protocols:
-
-| Adapter | Purpose |
-|---------|---------|
+| Contract | Purpose |
+|----------|---------|
 | `UniswapV3Adapter.sol` | Bridges the Swapper's static-calldata pattern to Uniswap V3 SwapRouter02; deployed as `swapTarget` for Swapper routes when collateral must be swapped to payout token. |
 
-### Mock Contracts (`src/mocks/`)
+### DeFi Integration Layer (`src/defi/`)
 
-Mock implementations of external dependencies for testnet deployments:
+| Contract | Purpose |
+|----------|---------|
+| `adapters/morpho/CoveredVaultWrapper.sol` | UUPS ERC-4626 vault wrapping a Morpho V2 vault. Accrues premiums against depositor principal, files claims on withdrawal if NAV has fallen. Shares are non-transferable. |
+| `base/BasePolicyInteractions.sol` | Shared base for filing and resolving claims against a bound Catalysis policy. |
+
+### Mock Contracts (`src/mocks/`)
 
 | Mock | Purpose |
 |------|---------|
@@ -52,25 +54,36 @@ Mock implementations of external dependencies for testnet deployments:
 
 **Initial Deployment:**
 - `Deploy.s.sol` – shared base handling all deployment logic
-- `DeployAnvil.s.sol` – local Anvil deployment for rapid iteration
+- `DeployAnvil.s.sol` – local Anvil deployment
 - `DeploySepolia.s.sol` – Sepolia deployment
 - `DeployEthereum.s.sol` – mainnet deployment
 
-**UUPS Upgrades:**
-- `UpgradeCoverPoolFactory.s.sol` – shared base for CoverPoolFactory UUPS proxy upgrades
-- `UpgradeCoverPoolFactorySepolia.s.sol` – Sepolia CoverPoolFactory upgrade
-- `UpgradeCoverPoolFactoryEthereum.s.sol` – mainnet CoverPoolFactory upgrade
+**UUPS Upgrades** (shared base + Sepolia variant for each; CoverPoolFactory also has an Ethereum variant):
+- `UpgradeCoverPoolFactory.s.sol`, `UpgradePolicyManager.s.sol`, `UpgradePremiumManager.s.sol`
+- `UpgradeClaimManager.s.sol`, `UpgradeSwapper.s.sol`, `UpgradeSpecRegistry.s.sol`
 
-**Inspection:**
+**Post-Deployment:**
+- `WireCoreContracts.s.sol` – grants cross-contract roles between Coverage and Catalysis Core contracts
+- `ApproveSpec.s.sol` – registers a Spec implementation in SpecRegistry
+- `DeployUniswapV3Adapter.s.sol` – deploys and registers a UniswapV3Adapter swap route
+- `VerifySepoliaConfig.s.sol` – reads and logs all on-chain configuration for a Sepolia deployment
 - `Show.s.sol`, `ShowSepolia.s.sol`, `ShowEthereum.s.sol` – inspect deployment metadata
 
+**DeFi Adapter (`script/adapter/`):**
+- `DeployCoveredVaultWrapper.s.sol` – deploys a CoveredVaultWrapper UUPS proxy
+- `UpgradeCoveredVaultWrapper.s.sol` – upgrades an existing CoveredVaultWrapper proxy
+
 **Testing Scripts (`script/testing/`):**
-- `CreateCoverPool.s.sol` – Flow 1: creates a CoverPool via CoverPoolFactory
-- `RequestCoverage.s.sol` – Flows 2–3: requests coverage, creates policy draft and committee
-- `BindPolicy.s.sol` – Flow 5: signs quote, binds policy, associates vaults
-- `DistributePremium.s.sol` – Flows 6–7: collects and distributes premiums from vault shares
-- `FileClaim.s.sol` – Flow 8: files claim; includes Swapper readiness check (route/target verification, oracle preview) and post-claim swap metrics (effective rate vs oracle)
-- `CompleteCoverageFlow.s.sol` – end-to-end lifecycle from pool creation through claim settlement; Phase 8 includes lightweight Swapper readiness logging
+- `CreateCoverPool.s.sol` – creates a CoverPool via CoverPoolFactory
+- `RequestCoverage.s.sol` – requests coverage, creates policy draft and committee
+- `BindPolicy.s.sol` – signs quote, binds policy, associates vaults
+- `DistributePremium.s.sol` – collects and distributes premiums from vault shares
+- `FileClaim.s.sol` – files claim; includes Swapper readiness checks and post-claim swap metrics
+- `SetPremiumRate.s.sol` – sets the per-second premium rate on a CoveredVaultWrapper
+- `ResetPolicyBinding.s.sol` – resets policy binding state on a CoveredVaultWrapper
+- `PrepareEigenLayer.s.sol` – configures EigenLayer magnitude allocation for an operator
+- `DeployControllableVault.s.sol` – deploys a test ERC-4626 vault with controllable NAV
+- `CompleteCoverageFlow.s.sol` – end-to-end lifecycle from pool creation through claim settlement
 
 ## Build, Test, and Development Commands
 
@@ -101,12 +114,13 @@ All network deployments extend `Deploy.s.sol`. The base script deploys contracts
 
 ### Required Environment Variables
 
-**All deployments**:
+**All deployments:**
 - `PRIVATE_KEY` – deployer key
 - Network-specific RPC: `SEPOLIA_RPC_URL`, `ETHEREUM_RPC_URL`
+- Catalysis Core addresses: `NATIVE_WRAPPER`, `CHAINLINK_PRICE_FEED`, `SLASHING_MANAGER`, `STAKE_MANAGER`, `REWARDS_MANAGER`
 
-**Optional role overrides** (default to deployer):
-- `ADMIN`, `PLATFORM_TREASURY`, `COVER_POOL_FACTORY_CREATOR`, `CLAIM_OPERATOR`, `SWAP_MANAGER`
+**Optional role overrides** (default to deployer/admin):
+- `ADMIN`, `PLATFORM_TREASURY`, `COVER_POOL_FACTORY_CREATOR`, `SWAP_MANAGER`, `PLATFORM_FEE_BPS`
 
 ## Commit & Pull Request Guidelines
 

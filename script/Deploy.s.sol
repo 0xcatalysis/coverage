@@ -35,6 +35,7 @@ import {Swapper} from "../src/Swapper.sol";
  *      Environment Variables:
  *        - PRIVATE_KEY: Deployer private key (defaults to Anvil key 0)
  *        - ADMIN: Admin address for all contracts (defaults to deployer)
+ *        - NATIVE_WRAPPER: WETH or equivalent native token wrapper address (required)
  *        - SLASHING_MANAGER: Catalysis Core SlashingManager address (required)
  *        - STAKE_MANAGER: Catalysis Core StakeManager address (required)
  *        - REWARDS_MANAGER: Catalysis Core RewardsManager address (required)

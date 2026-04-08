@@ -69,8 +69,6 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   - COVERAGE_LIMIT: Coverage limit in payout token units
  *   - SPEC_ID: Spec identifier (bytes32)
  *   - TERMS_HASH: Terms hash (bytes32)
- *   - START_TIME: Coverage start timestamp
- *   - MATURITY_TIME: Coverage end timestamp
  *   - EXPIRATION_TIME: Quote expiration timestamp
  *
  *   Premium Params:
@@ -79,7 +77,7 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   Re-run Cleanup (optional):
  *   - PRIOR_COMMITTEE_ID: Committee ID the curator/operator was assigned to in a previous run.
  *       When set to a non-zero value, Phase 1b calls removeOperatorFromCommittee before
- *       requestCoverage so the re-run does not revert with OperatorAlreadyInCommittee.
+ *       requestCoverage so the re-run does not revert with CommitteeAlreadyHasOperator.
  *       Defaults to 0 (phase is skipped). Obtain this value from the POLICY_ID output of
  *       the previous run (committeeId == policyId).
  *
@@ -570,7 +568,7 @@ contract CompleteCoverageFlow is Script {
      *         assign them to the new one.
      * @dev StakeManager enforces one-operator-per-committee AND one-committee-per-operator.
      *      Calling requestCoverage when the operator is already in a committee reverts with
-     *      OperatorAlreadyInCommittee, breaking re-runs of this script.
+     *      CommitteeAlreadyHasOperator, breaking re-runs of this script.
      *
      *      The prior committee ID is read from the PRIOR_COMMITTEE_ID environment variable.
      *      Set it to the POLICY_ID value logged by the previous run (committeeId == policyId).
