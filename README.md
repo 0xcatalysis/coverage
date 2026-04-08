@@ -34,7 +34,6 @@ External dependencies from Catalysis Core:
 | `SlashingManager` | Collateral slashing execution across restaking networks. |
 | `StakeManager` | Manages restaker stake and delegation. |
 | `RewardsManager` | Distributes rewards to restakers. |
-| `SSPRouter` | Routes shared security provider interactions. |
 | `ChainlinkPriceFeed` | Converts token amounts to USD values for slashing calculations. |
 
 ### Swappers (`src/swappers/`)
@@ -118,7 +117,7 @@ make verify-ethereum         # verify all contracts on Ethereum Etherscan
 
 ### Upgrade Scripts
 
-Each core UUPS proxy has a dedicated upgrade script pair (`UpgradeX.s.sol` + `UpgradeXSepolia.s.sol`):
+Each core UUPS proxy has a shared base (`UpgradeX.s.sol`) plus a Sepolia variant (`UpgradeXSepolia.s.sol`). `CoverPoolFactory` additionally has an Ethereum variant:
 
 - `UpgradeCoverPoolFactory` / `UpgradePolicyManager` / `UpgradePremiumManager`
 - `UpgradeClaimManager` / `UpgradeSwapper` / `UpgradeSpecRegistry`
@@ -129,6 +128,7 @@ Each core UUPS proxy has a dedicated upgrade script pair (`UpgradeX.s.sol` + `Up
 |--------|-------------|
 | `WireCoreContracts.s.sol` | Grants cross-contract roles between Coverage and Catalysis Core contracts. |
 | `ApproveSpec.s.sol` | Registers a `Spec` implementation in `SpecRegistry` for a given pool. |
+| `DeployUniswapV3Adapter.s.sol` | Deploys and registers a `UniswapV3Adapter` swap route on `Swapper`. |
 | `VerifySepoliaConfig.s.sol` | Reads and logs all on-chain configuration for a Sepolia deployment. |
 
 ### DeFi Adapter Scripts (`script/adapter/`)
@@ -153,7 +153,6 @@ Step-by-step scripts that exercise the full coverage lifecycle:
 | `ResetPolicyBinding.s.sol` | Resets policy binding state on a `CoveredVaultWrapper`. |
 | `PrepareEigenLayer.s.sol` | Configures EigenLayer magnitude allocation for an operator. |
 | `DeployControllableVault.s.sol` | Deploys a test ERC-4626 vault with controllable NAV. |
-| `DeployUniswapV3Adapter.s.sol` | Deploys and registers a `UniswapV3Adapter` swap route. |
 | `CompleteCoverageFlow.s.sol` | End-to-end lifecycle from pool creation through claim settlement. |
 
 ## Environment Variables
@@ -166,11 +165,11 @@ See [`.env.example`](.env.example) for all variables with inline documentation. 
 
 | Variable | Description |
 |----------|-------------|
+| `NATIVE_WRAPPER` | WETH or equivalent native token wrapper |
 | `CHAINLINK_PRICE_FEED` | ChainlinkPriceFeed contract |
 | `SLASHING_MANAGER` | SlashingManager from Catalysis Core |
 | `STAKE_MANAGER` | StakeManager from Catalysis Core |
 | `REWARDS_MANAGER` | RewardsManager from Catalysis Core |
-| `SSP_ROUTER` | SSPRouter from Catalysis Core |
 
 **Role overrides** (all default to deployer/admin):
 

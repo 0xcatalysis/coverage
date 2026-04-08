@@ -58,13 +58,14 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus 
 - `DeploySepolia.s.sol` – Sepolia deployment
 - `DeployEthereum.s.sol` – mainnet deployment
 
-**UUPS Upgrades** (each contract has a shared base + Sepolia/Ethereum variant):
+**UUPS Upgrades** (shared base + Sepolia variant for each; CoverPoolFactory also has an Ethereum variant):
 - `UpgradeCoverPoolFactory.s.sol`, `UpgradePolicyManager.s.sol`, `UpgradePremiumManager.s.sol`
 - `UpgradeClaimManager.s.sol`, `UpgradeSwapper.s.sol`, `UpgradeSpecRegistry.s.sol`
 
 **Post-Deployment:**
 - `WireCoreContracts.s.sol` – grants cross-contract roles between Coverage and Catalysis Core contracts
 - `ApproveSpec.s.sol` – registers a Spec implementation in SpecRegistry
+- `DeployUniswapV3Adapter.s.sol` – deploys and registers a UniswapV3Adapter swap route
 - `VerifySepoliaConfig.s.sol` – reads and logs all on-chain configuration for a Sepolia deployment
 - `Show.s.sol`, `ShowSepolia.s.sol`, `ShowEthereum.s.sol` – inspect deployment metadata
 
@@ -82,7 +83,6 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus 
 - `ResetPolicyBinding.s.sol` – resets policy binding state on a CoveredVaultWrapper
 - `PrepareEigenLayer.s.sol` – configures EigenLayer magnitude allocation for an operator
 - `DeployControllableVault.s.sol` – deploys a test ERC-4626 vault with controllable NAV
-- `DeployUniswapV3Adapter.s.sol` – deploys and registers a UniswapV3Adapter swap route
 - `CompleteCoverageFlow.s.sol` – end-to-end lifecycle from pool creation through claim settlement
 
 ## Build, Test, and Development Commands
@@ -117,7 +117,7 @@ All network deployments extend `Deploy.s.sol`. The base script deploys contracts
 **All deployments:**
 - `PRIVATE_KEY` – deployer key
 - Network-specific RPC: `SEPOLIA_RPC_URL`, `ETHEREUM_RPC_URL`
-- Catalysis Core addresses: `CHAINLINK_PRICE_FEED`, `SLASHING_MANAGER`, `STAKE_MANAGER`, `REWARDS_MANAGER`, `SSP_ROUTER`
+- Catalysis Core addresses: `NATIVE_WRAPPER`, `CHAINLINK_PRICE_FEED`, `SLASHING_MANAGER`, `STAKE_MANAGER`, `REWARDS_MANAGER`
 
 **Optional role overrides** (default to deployer/admin):
 - `ADMIN`, `PLATFORM_TREASURY`, `COVER_POOL_FACTORY_CREATOR`, `SWAP_MANAGER`, `PLATFORM_FEE_BPS`
