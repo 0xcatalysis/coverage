@@ -24,9 +24,22 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Proposes a new premium rate. Call executePremiumRate() after the delay to apply.
+    ///         Exception: if the policy is bound but no rate has ever been applied (premiumRatePerSecond == 0),
+    ///         the first call applies the rate immediately without a timelock.
     // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function setPremiumRate(uint256 newRate) external override onlyOwner {
         require(newRate <= MAX_PREMIUM_RATE_PER_SECOND, IA.InvalidParameters());
+
+        // Fast-path: policy is bound but no rate has been applied yet — apply immediately.
+        if (policyBoundExecuted && premiumRatePerSecond == 0) {
+            _accruePremium();
+            pendingPremiumRate = 0;
+            pendingPremiumRateTimestamp = 0;
+            premiumRatePerSecond = newRate;
+            emit IE.PremiumRateExecuted(0, newRate);
+            return;
+        }
+
         pendingPremiumRateTimestamp = _propose(pendingPremiumRateTimestamp, "premiumRate", OPERATIONAL_DELAY);
         pendingPremiumRate = newRate;
         emit IE.PremiumRateProposed(newRate, pendingPremiumRateTimestamp);
