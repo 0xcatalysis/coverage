@@ -24,8 +24,10 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Proposes a new premium rate. Call executePremiumRate() after the delay to apply.
-    ///         Exception: if the policy is bound but no rate has ever been applied this period,
-    ///         the first call applies the rate immediately without a timelock.
+    ///         Exception: if the policy is bound and no rate has been applied yet this period
+    ///         (premiumRateInitialized == false, which also guarantees premiumRatePerSecond == 0
+    ///         because resetPolicyBinding clears both together), the call applies the rate
+    ///         immediately and emits PremiumRateExecuted(0, newRate) with no timelock.
     // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function setPremiumRate(uint256 newRate) external override onlyOwner {
         require(newRate <= MAX_PREMIUM_RATE_PER_SECOND, IA.InvalidParameters());
@@ -215,8 +217,10 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
 
     /// @notice Resets the policy binding flag so a new policy can be bound after the current one expires.
     /// @dev Only callable after the current policy's raw maturity has passed (no grace period extension).
-    ///      Clears policyId, policyBoundExecuted, depositCap, and policyStartTime so that onPolicyBound
-    ///      can be called again by PolicyManager for a successive coverage period.
+    ///      Clears policyId, policyBoundExecuted, depositCap, policyStartTime, and premiumRatePerSecond
+    ///      so that onPolicyBound can be called again by PolicyManager for a successive coverage period.
+    ///      premiumRatePerSecond is cleared alongside premiumRateInitialized so that the fast-path in
+    ///      setPremiumRate always fires with a zero old rate, keeping PremiumRateExecuted accurate.
     ///      Existing depositors retain their shares and principal during the transition; the new policy
     ///      binding will set a fresh accrual start anchor.
     //slither-disable-start reentrancy-no-eth,reentrancy-benign
@@ -248,7 +252,12 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         pendingPremiumRecipientTimestamp = 0;
         // Clear any sub-unit WAD remainder so it does not leak into the next policy's accrual epoch.
         premiumAccrualRemainder = 0;
-        // Re-enable the first-rate fast-path for the next policy period.
+        // Clear the active rate and re-enable the first-rate fast-path for the next policy period.
+        // premiumRatePerSecond must be zeroed together with premiumRateInitialized so that the
+        // invariant (!premiumRateInitialized → premiumRatePerSecond == 0) holds. Without this,
+        // _applyPremiumRate would read the stale previous-period rate as oldRate and emit it in
+        // PremiumRateExecuted, incorrectly suggesting a rate change rather than a fresh-period init.
+        premiumRatePerSecond = 0;
         premiumRateInitialized = false;
         emit IE.PolicyBindingReset(prevPolicyId);
     }
