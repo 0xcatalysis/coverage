@@ -30,10 +30,9 @@ Coverage and Core share a canonical identifier:
 
 Coverage request actor mapping:
 
-- The `buyer` field in policy metadata is typically the covered vault itself or its adapter/agent contract.
-- The `claimer` is a separately authorized address that can file claims for that policy.
-- In adapter-based integrations, `claimer` is typically the cover adapter.
-- In atomic shortfall make-whole flows, `beneficiary` is typically the cover adapter so it can top up the exit path.
+- The `buyer` field in policy metadata is typically the `CoveredVaultWrapper` (or more generally, the covered vault / its agent).
+- The `claimer` is a separately authorized address that can file claims for that policy; in the `CoveredVaultWrapper` model, `claimer` is the wrapper itself.
+- The `beneficiary` receives the claim payout; in the `CoveredVaultWrapper` model, `beneficiary` is also the wrapper, which tops up the user's withdrawal atomically.
 
 This 1:1 mapping keeps capacity, accounting, and loss handling aligned across layers.
 
@@ -52,7 +51,6 @@ graph TB
         CPF[CoverPoolFactory]
         CP[CoverPool clones]
         PM[PolicyManager]
-        PC[PremiumCollector]
         PRM[PremiumManager]
         CM[ClaimManager]
         SR[SpecRegistry]
@@ -72,9 +70,8 @@ graph TB
     end
 
     subgraph Morpho Integration
-        CV[Covered Vault]
-        ADP[Catalysis Cover Adapter]
-        BV[Base Vault]
+        CVW[CoveredVaultWrapper]
+        MV[Morpho Vault]
     end
 
     CURATOR --> CPF
@@ -90,14 +87,13 @@ graph TB
     CP --> PM
     CP --> SM
 
-    PC --> PRM
     PRM --> RM
 
     CLAIMER --> CM
     CM --> SR
-    CM --> PF
     CM --> SLM
     CM --> SW
+    PM --> PF
 
     SM --> SYM
     SM --> EIG
@@ -106,28 +102,24 @@ graph TB
     SLM --> SYM
     SLM --> EIG
 
-    USER --> CV
-    CV --> ADP
-    ADP --> BV
-    ADP --> PM
-    ADP --> CM
-    BV --> PC
+    USER --> CVW
+    CVW --> MV
+    CVW --> PRM
+    CVW --> CM
 ```
 
-## Dual Vault Integration Model
+## CoveredVaultWrapper Integration Model
 
-For Morpho-style integrations, the insured product uses a dual-vault topology:
+For Morpho-style integrations, the insured product is a single `CoveredVaultWrapper`:
 
-- **Covered Vault (Morpho V2)**: user-facing insured vault.
-- **Catalysis Cover Adapter**: strategy adapter that allocates to base vault and handles shortfall claims.
-- **Base Vault (Morpho V1/V2)**: underlying yield vault.
+- **CoveredVaultWrapper**: UUPS-upgradeable ERC-4626 vault wrapping a Morpho V2 vault; user-facing and premium-bearing.
+- **Morpho Vault (underlying)**: yield source; the wrapper is its sole depositor.
 
-Behavioral split:
+Key behaviors:
 
-- deposits into **Covered Vault** are premium-bearing and insured,
-- deposits into **Base Vault** are not insured by Coverage.
-
-Each covered vault maps to one base vault for deterministic accounting and claim attribution.
+- premiums accrue continuously on depositor principal via an on-chain accumulator; `collectPremium()` flushes them to `PremiumManager`,
+- on withdrawal, if the Morpho vault has suffered a loss the wrapper detects the shortfall against the user's insured basis and calls `ClaimManager.fileClaim(...)` atomically,
+- the payout is received from `ClaimManager` and forwarded directly to the withdrawing user.
 
 ## Key Design Principles
 
@@ -174,12 +166,12 @@ Claim logic is delegated to registered `ISpec` implementations:
 4. Core committee is created with `committeeId = policyId`; operator assigned.
 5. Restakers delegate stake in supported vaults/strategies.
 6. Curator binds policy with signed quote and committee vault list.
-7. Covered-vault management fees accrue as ERC-4626 shares to `PremiumCollector`.
-8. Collector redeems shares, `PremiumManager` splits fees; restaker share stays in `PremiumManager` and `SSPRouter` pulls it directly via a pre-set approval.
+7. Premiums accrue continuously in `CoveredVaultWrapper` against depositor principal.
+8. Anyone calls `CoveredVaultWrapper.collectPremium()`; it flushes accrued premium directly to `PremiumManager.distributePremium()`, which splits fees (platform, pool, restaker) and routes the restaker share via `RewardsManager`.
 9. On user withdrawal:
-   - no shortfall: adapter deallocates from base vault and returns assets,
-   - shortfall: adapter triggers claim, receives payout, and makes exit whole.
-10. If claim is payable, `ClaimManager` triggers Core slashing for the policy committee, swaps collateral if needed, and pays the configured beneficiary (typically the adapter in this model).
+   - no shortfall: `CoveredVaultWrapper` redeems from Morpho and returns assets,
+   - shortfall: wrapper calls `ClaimManager.fileClaim(...)` atomically, receives payout, and tops up the user's exit.
+10. If claim is payable, `ClaimManager` calls `SlashingManager.previewSlashing` + `executeSlashing` (token-native `VaultSlash[]`), swaps collateral if needed, and pays the `CoveredVaultWrapper` which forwards to the user.
 
 ## Scope of This Architecture Set
 
@@ -188,4 +180,4 @@ Claim logic is delegated to registered `ISpec` implementations:
 - [Restaker Setup and Delegation Lifecycle](./04-restaker-setup.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
 - [Premiums and Claims](./06-premiums-claims.md)
-- [Covered Vault Integration](./07-covered-vault-integration.md)
+- [CoveredVaultWrapper Accounting](../COVERED_VAULT_ACCOUNTING.md)

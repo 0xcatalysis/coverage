@@ -14,12 +14,15 @@ This separation keeps restaking platform complexity out of Coverage contracts.
 
 | Coverage Contract | Core Contract | Function | Purpose |
 |---|---|---|---|
-| `PolicyManager` | `StakeManager` | `createCommittee(policyId, coverageAmount, pool, duration)` | Create policy-scoped committee; auto-assigns pool curator as operator |
-| `CoverPool` | `StakeManager` | `addCommitteeVaults(policyId, vaults[])` | Bind selected vaults/strategies backing policy; triggers internal stake sufficiency check |
+| `PolicyManager` | `StakeManager` | `createCommittee(policyId, pool, duration)` | Create policy-scoped committee scaffold |
+| `PolicyManager` | `StakeManager` | `addOperatorToCommittee(curator, policyId)` | Explicitly register pool curator as committee operator (called immediately after `createCommittee`) |
+| `CoverPool` | `StakeManager` | `setCommitteeVaults(policyId, vaults[], coverageLimit)` | Bind selected vaults/strategies; configures TVL limits on EigenLayer vaults |
 | `PolicyManager` | `StakeManager` | `getCommitteeVaults(policyId)` | Verify vault backing exists before bind finalization |
-| `PremiumManager` | `RewardsManager` | `distributeRewards(policyId, operator, amount, token, taskId)` | Trigger Core reward fan-out; SSPRouter pulls restaker share from PremiumManager |
-| `ClaimManager` | `ChainlinkPriceFeed` | `getUSDValue(token, amount)` | Normalize requested payout to USD slash target |
-| `ClaimManager` | `SlashingManager` | `executeSlashing(policyId, operator, slashAmountUSD, taskId)` | Execute policy-scoped slashing and retrieve collateral |
+| `PolicyManager` | `StakeManager` | `getCommitteeTokenStakes(policyId)` | Retrieve per-vault token-native stake amounts for USD sufficiency check |
+| `PolicyManager` | `ChainlinkPriceFeed` | `getUSDValue(token, amount)` | Convert `coverageLimit` and committee token stakes to USD for bind-time sufficiency check |
+| `PremiumManager` | `RewardsManager` | `distributeRewards(policyId, operator, amount, token, taskId)` | Trigger Core reward fan-out; RewardsManager pulls restaker share from PremiumManager, then routes via SSPRouter |
+| `ClaimManager` | `SlashingManager` | `previewSlashing(committeeId, operator)` | Read per-vault token-native stake amounts before executing |
+| `ClaimManager` | `SlashingManager` | `executeSlashing(committeeId, operator, VaultSlash[], taskId)` | Execute token-native per-vault slashing and return seized collateral |
 
 > **Note:** EigenLayer operator setup (depositing stake, allocating magnitude, and registering to the
 > committee's operator set) is performed off-chain by the restaker before bind. See
@@ -35,11 +38,11 @@ Implications:
 - Vault assignment is attached to the same id at bind time.
 - Rewards and slashing are naturally scoped to the policy's committee.
 
-Typical covered-vault actor mapping:
+Typical covered-vault actor mapping (CoveredVaultWrapper model):
 
-- `buyer`: covered vault or cover adapter.
-- `claimer`: cover adapter (withdrawal-triggered claim path).
-- `beneficiary`: cover adapter for atomic shortfall make-whole, then forwarded to covered vault/user path.
+- `buyer`: `CoveredVaultWrapper`.
+- `claimer`: `CoveredVaultWrapper` (withdrawal-triggered claim path).
+- `beneficiary`: `CoveredVaultWrapper` — receives the payout and tops up the withdrawing user atomically.
 
 ## Flow-by-Flow Integration
 
@@ -61,8 +64,8 @@ Sequence:
 
 1. Covered vault (or its adapter acting as buyer) calls `PolicyManager.requestCoverage(...)`.
 2. Manager creates draft and increments `policyId`.
-3. Manager calls `StakeManager.createCommittee(policyId, coverageAmount, pool, duration)`.
-   `createCommittee` auto-assigns the pool's curator as the committee operator internally.
+3. Manager calls `StakeManager.createCommittee(policyId, pool, duration)`.
+4. Manager calls `StakeManager.addOperatorToCommittee(curator, policyId)` to explicitly register the pool's curator as committee operator.
 
 Outcome:
 
@@ -74,12 +77,11 @@ Outcome:
 Sequence:
 
 1. Curator calls `CoverPool.bindPolicyForRequest(...)` with quote and vaults.
-2. Pool calls `StakeManager.addCommitteeVaults(policyId, vaults)`.
-   - `SSPRouter._checkDelegation` runs internally and reverts with `InsufficientDelegationAmount`
-     if `EigenAdapter.getStrategiesStakeUSD(vaults)` < `committeeMaxStake` (= `coverageAmount`).
+2. Pool calls `StakeManager.setCommitteeVaults(policyId, vaults, coverageLimit)`.
+   - `SSPRouter._configureEigenStrategies` runs internally: adds strategies to operator set, sets TVL limits (converting `coverageLimit` USD to token-native amounts), and locks duration vaults.
 3. `PolicyManager.bindPolicy(...)` checks:
    - committee has at least one vault (`getCommitteeVaults`),
-   - committee total stake (USD) >= `coverageLimit` converted to USD via `ChainlinkPriceFeed`.
+   - `getCommitteeTokenStakes(policyId)` returns per-vault stakes; their USD values (via `ChainlinkPriceFeed.getUSDValue`) sum to >= `coverageLimit` USD-equivalent.
 
 Outcome:
 
@@ -89,10 +91,12 @@ Outcome:
 
 Sequence:
 
-1. `PremiumCollector` redeems covered-vault shares to underlying.
-2. `PremiumManager.distributePremium(...)` computes fee splits.
-3. Coverage calls `RewardsManager.distributeRewards(policyId, operator, amount, token)`.
-4. `SSPRouter` pulls the restaker share directly from `PremiumManager` (approved via `approveSpender`).
+1. `CoveredVaultWrapper.collectPremium()` flushes accrued premium and calls `PremiumManager.distributePremium(...)`.
+2. `PremiumManager` pulls tokens via `safeTransferFrom`, computes fee splits.
+3. Platform fee → `platformTreasury`; pool fee → pool `feeRecipient`.
+4. `PremiumManager` calls `RewardsManager.distributeRewards(policyId, curator, restakerSplit, token, taskId)`.
+5. `RewardsManager` pulls the restaker share from `PremiumManager` to itself via `safeTransferFrom(premiumManager, address(this), ...)` (requires PremiumManager to have approved RewardsManager), then calls `SSPRouter.distributeRewards(..., tokenSource=address(this))`.
+6. `SSPRouter` pulls from `RewardsManager` and fans out to adapters.
 
 Outcome:
 
@@ -103,26 +107,29 @@ Outcome:
 
 Sequence:
 
-1. During covered-vault withdrawal, adapter detects shortfall and files claim.
-2. `ClaimManager` converts requested payout amount to USD via Core price feed.
-3. `ClaimManager` calls `SlashingManager.executeSlashing(policyId, operator, slashAmountUSD)`.
-4. Core returns collateral token arrays.
-5. Coverage swaps or directly transfers to beneficiary (adapter in this integration model).
+1. `CoveredVaultWrapper._settleWithdrawalTransfer` detects a shortfall and calls `ClaimManager.fileClaim(...)`.
+2. `ClaimManager` calls `SlashingManager.previewSlashing(policyId, operator)` to get per-vault token-native stake amounts.
+3. `ClaimManager._computeVaultSlashes` quotes each cross-token stake via `Swapper.quoteSwap`, then computes proportional token-native `VaultSlash[]` amounts, inflating cross-token amounts by `1 / (1 - maxSwapSlippageBps)` for slippage coverage.
+4. `ClaimManager` calls `SlashingManager.executeSlashing(policyId, operator, VaultSlash[], taskId)`.
+5. Core returns seized collateral token arrays.
+6. Coverage swaps or directly transfers to beneficiary; surplus collateral is routed to `RewardsManager`.
+
+No USD conversion or price feed is involved in the claim execution path. The only price-feed use in Coverage is at **bind time** inside `PolicyManager._validateStakeSufficiency`, which converts the committee's token-native stake to USD and compares it against `coverageLimit`.
 
 Outcome:
 
 - Core performs SSP slashing mechanics.
-- Coverage performs beneficiary-facing settlement, then adapter completes make-whole transfer flow.
+- Coverage performs beneficiary-facing settlement; `CoveredVaultWrapper` receives the payout and tops up the user's withdrawal.
 
 No-shortfall withdrawal path:
 
-- If adapter deallocation returns sufficient assets, no claim is filed and no Core slashing call is made.
+- If the Morpho vault returns sufficient assets, no claim is filed and no Core slashing call is made.
 
 ## Data and Unit Conventions
 
-- Committee slash target input to Core is USD-valued (8 decimals) from `ChainlinkPriceFeed`.
+- Slash amounts passed to `executeSlashing` are **token-native** (not USD); `ClaimManager` computes them via `previewSlashing` + `quoteSwap`.
 - Coverage payouts are token-denominated by `payoutToken`.
-- `coverageAmount` in `PolicyDraft` is treated as the committee stake requirement.
+- `coverageAmount` in `PolicyDraft` is treated as the committee stake requirement (USD, 8 decimals) for bind-time sufficiency checks only; `ChainlinkPriceFeed` is used exclusively there.
 
 ## Trust and Failure Boundaries
 
@@ -136,19 +143,18 @@ Failure patterns:
 
 - If Core stake is insufficient at bind check, policy bind reverts.
 - If slashing returns empty arrays, claim payout reverts.
-- If price feed conversion fails or is stale, slash calculation path fails.
+- If price feed conversion fails or is stale, policy bind path fails (bind-time stake sufficiency check).
 
 ## Operational Best Practices
 
 - Keep `policyId` and committee references consistent in all off-chain orchestration.
 - Ensure restakers have deposited into the committee's duration vault before bind. Duration vaults act as EigenLayer operators — no separate magnitude allocation or operator-set registration is needed. See [Restaker Setup](./04-restaker-setup.md).
 - Register and verify vault module mappings in Core (`SSPRouter.registerVaultModule`) before bind.
-- Configure swap routes for expected collateral → payout token pairs before claims.
-- `WETH` price feed must be registered in `ChainlinkPriceFeed` before claims can be filed against WETH-payout policies.
+- Configure swap routes for expected collateral → payout token pairs before claims; `Swapper.quoteSwap` is used at claim time for slippage computation.
+- `WETH` price feed must be registered in `ChainlinkPriceFeed` before binding policies whose payout token is WETH (stake USD sufficiency check at bind).
 
 ## Next Steps
 
 - [Restaker Setup and Delegation Lifecycle](./04-restaker-setup.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
 - [Premiums and Claims](./06-premiums-claims.md)
-- [Covered Vault Integration](./07-covered-vault-integration.md)
