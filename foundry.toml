@@ -7,7 +7,7 @@ script = "script"
 solc = "0.8.28"
 auto_detect_solc = false
 optimizer = true
-optimizer_runs = 200
+optimizer_runs = 150
 evm_version = "cancun"
 via_ir = false
 fuzz = { runs = 250, seed = "0x3e8" }
@@ -52,10 +52,6 @@ optimizer_runs = 1_000
 via_ir = false
 gas_reports = ["*"]
 
-# Fork tests require --isolate to reset VaultV2's transient storage
-# (`firstTotalAssets`) between calls so accrueInterest() recalculates
-# _totalAssets correctly within a single Foundry test.
-# Usage: FOUNDRY_PROFILE=fork forge test --match-path "test/adapter/CatalysisCoverAdapter.fork.t.sol"
 [profile.fork]
 isolate = true
 

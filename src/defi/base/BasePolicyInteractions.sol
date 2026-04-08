@@ -31,9 +31,6 @@ abstract contract BasePolicyInteractions is Initializable, ISpec {
     // Errors
     // ========================================
 
-    /// @notice Reverts when querying a policy that doesn't exist.
-    error PolicyNotFound();
-
     /// @notice Reverts when a required address argument is zero.
     error ZeroAddress();
 
@@ -42,9 +39,6 @@ abstract contract BasePolicyInteractions is Initializable, ISpec {
 
     /// @notice Reverts when the coverPool address is invalid (not a properly initialized CoverPool).
     error InvalidCoverPoolAddress();
-
-    /// @notice Reverts when a required evidence hash is empty.
-    error InvalidEvidenceHash();
 
     // ========================================
     // Initializer
@@ -86,54 +80,6 @@ abstract contract BasePolicyInteractions is Initializable, ISpec {
     // ========================================
     // Internal Functions
     // ========================================
-
-    /**
-     * @notice Internal function to file and resolve a claim against a policy atomically.
-     * @param policyId The policy ID to file claim against.
-     * @param requestedAmount The requested payout amount in payout token terms.
-     * @param evidenceHash Hash of evidence supporting the claim.
-     * @param additionalData Optional ABI-encoded data for Spec evaluation.
-     * @return claimId The unique identifier for the filed claim.
-     */
-    // slither-disable-next-line incorrect-equality
-    function _fileAndResolveClaim(
-        uint96 policyId,
-        uint256 requestedAmount,
-        bytes32 evidenceHash,
-        bytes memory additionalData
-    )
-        internal
-        returns (uint256 claimId)
-    {
-        if (evidenceHash == bytes32(0)) {
-            revert InvalidEvidenceHash();
-        }
-
-        // Validate policy exists before filing claim
-        IPolicyManager.PolicyMetadata memory metadata = _policyManager.policyMetadata(policyId);
-        if (metadata.buyer == address(0)) {
-            revert PolicyNotFound();
-        }
-
-        claimId = claimManager.fileClaim(policyId, requestedAmount, evidenceHash, additionalData);
-    }
-
-    /**
-     * @notice Internal function to get the coverage parameters for a policy.
-     * @param policyId The policy ID to query.
-     * @return coverageLimit The maximum coverage amount in payout token terms.
-     * @return payoutToken The token address used for claim payouts.
-     */
-    function _getCoverageParams(uint96 policyId) internal view returns (uint256 coverageLimit, address payoutToken) {
-        IPolicyManager.PolicyMetadata memory metadata = _policyManager.policyMetadata(policyId);
-
-        if (metadata.buyer == address(0)) {
-            revert PolicyNotFound();
-        }
-
-        coverageLimit = metadata.coverageLimit;
-        payoutToken = metadata.payoutToken;
-    }
 
     /**
      * @notice Internal function to get the total amount of cover already paid out for a policy.

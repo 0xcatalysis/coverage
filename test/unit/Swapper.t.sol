@@ -557,7 +557,13 @@ contract SwapperTest is Test {
         swapper.setSwapTargetWhitelist(dexTarget2, true);
 
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true, "");
+        swapper.setSwapRoute(
+            address(tokenIn),
+            address(tokenOut),
+            dexTarget2,
+            true,
+            abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut))
+        );
 
         uint256 amountIn = 100 ether;
         uint256 amountOut = 95 ether;
@@ -565,14 +571,12 @@ contract SwapperTest is Test {
         tokenIn.mint(swapExecutor, amountIn);
         tokenOut.mint(dexTarget2, amountOut);
 
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
             tokenIn: address(tokenIn),
             tokenOut: address(tokenOut),
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
 
@@ -607,6 +611,19 @@ contract SwapperTest is Test {
         vm.stopPrank();
     }
 
+    function test_setSwapRoute_WithNonEmptyCalldata_StoresAndReturnsIt() public {
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        bytes memory storedCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, storedCalldata);
+
+        ISwapper.SwapRoute memory route = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertEq(route.swapCalldata, storedCalldata, "Stored calldata mismatch");
+    }
+
     /*//////////////////////////////////////////////////////////////
                             EXECUTE SWAP
     //////////////////////////////////////////////////////////////*/
@@ -618,7 +635,6 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: "",
             deadline: block.timestamp - 1
         });
 
@@ -636,7 +652,6 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: "",
             deadline: block.timestamp
         });
 
@@ -652,7 +667,6 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: "",
             deadline: block.timestamp
         });
 
@@ -668,7 +682,6 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: address(0),
-            swapCalldata: "",
             deadline: block.timestamp
         });
 
@@ -684,7 +697,6 @@ contract SwapperTest is Test {
             amountIn: 0,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: "",
             deadline: block.timestamp
         });
 
@@ -700,7 +712,6 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 0,
             recipient: recipient,
-            swapCalldata: "",
             deadline: block.timestamp
         });
 
@@ -716,7 +727,6 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: "",
             deadline: block.timestamp
         });
 
@@ -740,7 +750,6 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: "",
             deadline: block.timestamp
         });
 
@@ -767,7 +776,6 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: "",
             deadline: block.timestamp
         });
 
@@ -817,7 +825,6 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
 
@@ -845,7 +852,6 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: minOut,
             recipient: recipient,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
 
@@ -872,7 +878,6 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
 
@@ -906,7 +911,6 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
 
@@ -916,10 +920,6 @@ contract SwapperTest is Test {
         swapper.executeSwap(params);
         vm.stopPrank();
     }
-
-    /*//////////////////////////////////////////////////////////////
-                     EXECUTE SWAP - NATIVE ETH
-    //////////////////////////////////////////////////////////////*/
 
     function test_executeSwap_WhenNativeETHInput_WrapsAndSwaps() public {
         MockWETH mockWeth = new MockWETH();
@@ -931,20 +931,24 @@ contract SwapperTest is Test {
         swapper.setSwapTargetWhitelist(dexTarget, true);
         vm.stopPrank();
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true, "");
+        swapper.setSwapRoute(
+            address(mockWeth),
+            address(tokenOut),
+            dexTarget,
+            true,
+            abi.encodeWithSelector(MockDEX.swap.selector, address(mockWeth), address(tokenOut))
+        );
 
         uint256 amountIn = 1 ether;
         uint256 amountOut = 0.95 ether;
         tokenOut.mint(dexTarget, amountOut);
 
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(mockWeth), address(tokenOut));
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
             tokenIn: swapper.NATIVE_ETH(),
             tokenOut: address(tokenOut),
             amountIn: amountIn,
             amountOutMin: 0.9 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
 
@@ -967,7 +971,13 @@ contract SwapperTest is Test {
         swapper.setSwapTargetWhitelist(dexTarget, true);
         vm.stopPrank();
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true, "");
+        swapper.setSwapRoute(
+            address(tokenIn),
+            address(mockWeth),
+            dexTarget,
+            true,
+            abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(mockWeth))
+        );
 
         uint256 amountIn = 100 ether;
         uint256 amountOut = 1 ether;
@@ -975,14 +985,12 @@ contract SwapperTest is Test {
         tokenIn.mint(swapExecutor, amountIn);
         vm.deal(dexTarget, amountOut);
 
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(mockWeth));
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
             tokenIn: address(tokenIn),
             tokenOut: swapper.NATIVE_ETH(),
             amountIn: amountIn,
             amountOutMin: 0.9 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
 
@@ -1018,7 +1026,6 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 0.9 ether,
             recipient: recipient,
-            swapCalldata: "",
             deadline: block.timestamp
         });
 
@@ -1037,7 +1044,6 @@ contract SwapperTest is Test {
             amountIn: 100 ether,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: "",
             deadline: block.timestamp
         });
 
@@ -1057,7 +1063,13 @@ contract SwapperTest is Test {
         swapper.setSwapTargetWhitelist(dexTarget, true);
         vm.stopPrank();
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(mockWeth), dexTarget, true, "");
+        swapper.setSwapRoute(
+            address(tokenIn),
+            address(mockWeth),
+            dexTarget,
+            true,
+            abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(mockWeth))
+        );
 
         uint256 amountIn = 100 ether;
         uint256 amountOut = 1 ether;
@@ -1067,14 +1079,12 @@ contract SwapperTest is Test {
 
         RejectEther rejecter = new RejectEther();
 
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(mockWeth));
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
             tokenIn: address(tokenIn),
             tokenOut: swapper.NATIVE_ETH(),
             amountIn: amountIn,
             amountOutMin: 0.9 ether,
             recipient: address(rejecter),
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
 
@@ -1100,7 +1110,6 @@ contract SwapperTest is Test {
             amountIn: amountIn1,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
 
@@ -1120,7 +1129,6 @@ contract SwapperTest is Test {
             amountIn: amountIn2,
             amountOutMin: 45 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
 
@@ -1143,8 +1151,6 @@ contract SwapperTest is Test {
         uint256 amountIn = 100 ether;
         uint256 amountOut = 95 ether;
 
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
-
         vm.startPrank(swapExecutor);
 
         tokenIn.mint(swapExecutor, amountIn);
@@ -1156,7 +1162,6 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
         swapper.executeSwap(params1);
@@ -1170,7 +1175,6 @@ contract SwapperTest is Test {
             amountIn: amountIn,
             amountOutMin: 90 ether,
             recipient: recipient2,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
         swapper.executeSwap(params2);
@@ -1181,8 +1185,72 @@ contract SwapperTest is Test {
         assertEq(tokenOut.balanceOf(recipient2), amountOut, "Recipient2 balance mismatch");
     }
 
+    function test_executeSwap_WhenParamsCalldataEmpty_UsesStoredRouteCalldata() public {
+        uint256 amountIn = 100 ether;
+        uint256 amountOut = 95 ether;
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        bytes memory storedCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, storedCalldata);
+
+        tokenIn.mint(swapExecutor, amountIn);
+        tokenOut.mint(dexTarget, amountOut);
+
+        ISwapper.SwapParams memory params = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: address(tokenOut),
+            amountIn: amountIn,
+            amountOutMin: 90 ether,
+            recipient: recipient,
+            deadline: block.timestamp
+        });
+
+        vm.startPrank(swapExecutor);
+        tokenIn.approve(address(swapper), amountIn);
+        uint256 actualOut = swapper.executeSwap(params);
+        vm.stopPrank();
+
+        assertEq(actualOut, amountOut, "amountOut mismatch");
+        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient did not receive output");
+    }
+
+    function test_executeSwap_AlwaysUsesStoredRouteCalldata() public {
+        uint256 amountIn = 100 ether;
+        uint256 amountOut = 95 ether;
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+
+        bytes memory storedCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, storedCalldata);
+
+        tokenIn.mint(swapExecutor, amountIn);
+        tokenOut.mint(dexTarget, amountOut);
+
+        ISwapper.SwapParams memory params = ISwapper.SwapParams({
+            tokenIn: address(tokenIn),
+            tokenOut: address(tokenOut),
+            amountIn: amountIn,
+            amountOutMin: 90 ether,
+            recipient: recipient,
+            deadline: block.timestamp
+        });
+
+        vm.startPrank(swapExecutor);
+        tokenIn.approve(address(swapper), amountIn);
+        uint256 actualOut = swapper.executeSwap(params);
+        vm.stopPrank();
+
+        assertEq(actualOut, amountOut, "amountOut mismatch");
+        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient did not receive output");
+    }
+
     /*//////////////////////////////////////////////////////////////
-                                UPGRADE
+                            UPGRADE
     //////////////////////////////////////////////////////////////*/
 
     function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
@@ -1208,21 +1276,8 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                     SET SWAP ROUTE (STORED CALLDATA)
+                            GET SWAP ROUTE
     //////////////////////////////////////////////////////////////*/
-
-    function test_setSwapRoute_WithNonEmptyCalldata_StoresAndReturnsIt() public {
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-
-        bytes memory storedCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
-
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, storedCalldata);
-
-        ISwapper.SwapRoute memory route = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
-        assertEq(route.swapCalldata, storedCalldata, "Stored calldata mismatch");
-    }
 
     function test_getSwapRoute_WhenRouteNotConfigured_ReturnsZeroStruct() public {
         address unknown1 = makeAddr("unknown1");
@@ -1236,39 +1291,6 @@ contract SwapperTest is Test {
         assertEq(route.swapCalldata.length, 0, "swapCalldata should be empty");
     }
 
-    function test_executeSwap_WhenParamsCalldataEmpty_UsesStoredRouteCalldata() public {
-        uint256 amountIn = 100 ether;
-        uint256 amountOut = 95 ether;
-
-        vm.prank(admin);
-        swapper.setSwapTargetWhitelist(dexTarget, true);
-
-        bytes memory storedCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
-        vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, storedCalldata);
-
-        tokenIn.mint(swapExecutor, amountIn);
-        tokenOut.mint(dexTarget, amountOut);
-
-        ISwapper.SwapParams memory params = ISwapper.SwapParams({
-            tokenIn: address(tokenIn),
-            tokenOut: address(tokenOut),
-            amountIn: amountIn,
-            amountOutMin: 90 ether,
-            recipient: recipient,
-            swapCalldata: "",
-            deadline: block.timestamp
-        });
-
-        vm.startPrank(swapExecutor);
-        tokenIn.approve(address(swapper), amountIn);
-        uint256 actualOut = swapper.executeSwap(params);
-        vm.stopPrank();
-
-        assertEq(actualOut, amountOut, "amountOut mismatch");
-        assertEq(tokenOut.balanceOf(recipient), amountOut, "Recipient did not receive output");
-    }
-
     /*//////////////////////////////////////////////////////////////
                               HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -1277,8 +1299,9 @@ contract SwapperTest is Test {
         vm.prank(admin);
         swapper.setSwapTargetWhitelist(dexTarget, true);
 
+        bytes memory storedCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
         vm.prank(swapManager);
-        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, "");
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, storedCalldata);
     }
 
     function _createSwapParams(
@@ -1289,14 +1312,12 @@ contract SwapperTest is Test {
         view
         returns (ISwapper.SwapParams memory)
     {
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
         return ISwapper.SwapParams({
             tokenIn: address(tokenIn),
             tokenOut: address(tokenOut),
             amountIn: amountIn,
             amountOutMin: amountOutMin,
             recipient: recipient,
-            swapCalldata: swapCalldata,
             deadline: block.timestamp
         });
     }
@@ -1362,7 +1383,6 @@ contract MockDEX {
             amountIn: 0,
             amountOutMin: 1,
             recipient: msg.sender,
-            swapCalldata: "",
             deadline: block.timestamp
         });
 

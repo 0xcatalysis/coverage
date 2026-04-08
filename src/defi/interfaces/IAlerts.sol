@@ -64,7 +64,7 @@ interface IAlerts {
     error InvalidMaxCoverableLoss();
 
     /// @notice Thrown when parentVault and underlyingVault are the same address
-    // aderyn-fp-next-line(unused-error) Declared locally in CatalysisCoverAdapter
+    // aderyn-fp-next-line(unused-error) Reserved for external protocol integrations
     error SameVault();
 
     /// @notice Thrown when policyId is zero (adapter requires a valid policy)
@@ -85,4 +85,10 @@ interface IAlerts {
 
     /// @notice Thrown when not owner of Covered Vault tries to upgrade adapter.
     error NotAuthorizedUpgrader(address account);
+
+    /// @notice Thrown when a Morpho deposit returns zero shares (dust deposit protection).
+    error ZeroSharesReceived();
+
+    /// @notice Thrown when the proposed premium recipient does not implement IPremiumManager.
+    error InvalidPremiumRecipient();
 }

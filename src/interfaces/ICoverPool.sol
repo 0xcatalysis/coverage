@@ -26,18 +26,12 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         uint96 policyId;
         /// @notice Maximum notional coverage in payout token units supplied by this pool.
         uint256 coverageLimit;
-        /// @notice Base premium amount owed to the pool for this coverage.
-        uint256 basePremium;
         /// @notice Spec identifier the pool intends to use for parametric claims.
         bytes32 specId;
         /// @notice Hash of the pool's policy terms document anchoring off-chain clauses.
         bytes32 termsHash;
         /// @notice Address that will receive claim payouts for this policy.
         address beneficiary;
-        /// @notice Policy coverage start timestamp proposed in the quote.
-        uint32 startTime;
-        /// @notice Policy coverage maturity timestamp proposed in the quote.
-        uint32 maturityTime;
         /// @notice Expiration timestamp for the signed quote.
         uint32 expirationTime;
     }
@@ -59,10 +53,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         uint256 coverageLimit;
         /// @notice Destination address for potential claim payouts (the policy holder).
         address beneficiary;
-        /// @notice Policy coverage start timestamp confirmed at bind.
-        uint32 startTime;
-        /// @notice Policy coverage maturity timestamp confirmed at bind.
-        uint32 maturityTime;
     }
 
     /**
@@ -71,6 +61,19 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param newPoolFeeBps Pool fee basis points after the update.
      */
     event PoolFeeBpsSet(uint16 previousPoolFeeBps, uint16 newPoolFeeBps);
+
+    /**
+     * @notice Emitted when a pool fee change is proposed (starts the timelock).
+     * @param proposedPoolFeeBps Proposed new fee in basis points.
+     * @param effectiveAt Timestamp at which the change may be executed.
+     */
+    event PoolFeeBpsProposed(uint16 proposedPoolFeeBps, uint256 effectiveAt);
+
+    /**
+     * @notice Emitted when a pending pool fee proposal is cancelled by a new proposal before its timelock expires.
+     * @param cancelledPoolFeeBps The proposed fee value that was discarded.
+     */
+    event PoolFeeBpsProposalCancelled(uint16 cancelledPoolFeeBps);
 
     /**
      * @notice Emitted when a policy is bound through bindPolicyForRequest.
@@ -97,18 +100,6 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @param actual Supplied pool address that failed validation.
      */
     error PoolAddressMismatch(address expected, address actual);
-
-    /**
-     * @notice Reverts when coverage start and maturity timestamps are mis-ordered.
-     */
-    error InvalidCoverageWindow();
-
-    /**
-     * @notice Reverts when the quote start time is not in the future.
-     * @param startTime Coverage start timestamp from the quote.
-     * @param currentTimestamp Current block timestamp at validation.
-     */
-    error InvalidStartTime(uint32 startTime, uint32 currentTimestamp);
 
     /**
      * @notice Reverts when a quote has already expired.
@@ -186,14 +177,14 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     error InvalidFeeBps();
 
     /**
+     * @notice Reverts when finalizePoolFeeBps is called but no matured pending proposal exists.
+     */
+    error NoPendingFeeProposal();
+
+    /**
      * @notice Reverts when attempting to bind an empty array of vaults.
      */
     error EmptyVaults();
-
-    /**
-     * @notice Reverts when policy identifier is invalid or mismatched.
-     */
-    error InvalidPolicyId();
 
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
@@ -225,10 +216,20 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function unpause() external;
 
     /**
-     * @notice Updates the pool fee expressed in basis points.
-     * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
+     * @notice Sets the pool fee in basis points. The new rate takes effect automatically after
+     *         a cooldown of `POOL_FEE_TIMELOCK` seconds; until then the previous rate remains active.
+     *         If a matured pending proposal exists it is committed first; if an unexpired pending
+     *         proposal exists it is cancelled (emitting `PoolFeeBpsProposalCancelled`) and replaced.
+     * @param poolFeeBps_ New pool fee in basis points, capped by protocol limits.
      */
     function setPoolFeeBps(uint16 poolFeeBps_) external;
+
+    /**
+     * @notice Materialises a matured pending pool fee proposal into storage.
+     * @dev Callable by anyone once the `POOL_FEE_TIMELOCK` has elapsed on the pending proposal.
+     *      Clears the pending state so `_poolFeeBps` remains the single source of truth.
+     */
+    function finalizePoolFeeBps() external;
 
     /**
      * @notice Updates the fee recipient address.
@@ -290,8 +291,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     function setPremiumDefaulted(uint96 policyId, bool defaulted) external;
 
     /**
-     * @notice Pool fee expressed in basis points that is applied to premiums.
-     * @return The pool fee in basis points.
+     * @notice Returns the currently active pool fee in basis points.
+     *         Returns the pending fee once the cooldown period has elapsed.
+     * @return The active pool fee in basis points.
      */
     function poolFeeBps() external view returns (uint16);
 

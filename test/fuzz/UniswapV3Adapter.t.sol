@@ -18,6 +18,24 @@ contract FuzzERC20 is ERC20 {
     }
 }
 
+contract FuzzQuoterV2 {
+    struct QuoteExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint256 amountIn;
+        uint24 fee;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    function quoteExactInputSingle(QuoteExactInputSingleParams memory params)
+        external
+        pure
+        returns (uint256 amountOut, uint160, uint32, uint256)
+    {
+        return (params.amountIn, 0, 0, 0);
+    }
+}
+
 contract FuzzSwapRouter {
     uint256 public lastAmountOutMinimum;
 
@@ -42,8 +60,8 @@ contract FuzzSwapRouter {
 
         require(_outputAmount >= params.amountOutMinimum, "FuzzSwapRouter: insufficient output");
 
-        IERC20(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn);
-        FuzzERC20(params.tokenOut).transfer(params.recipient, _outputAmount);
+        require(IERC20(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn));
+        require(FuzzERC20(params.tokenOut).transfer(params.recipient, _outputAmount));
 
         return _outputAmount;
     }
@@ -56,6 +74,7 @@ contract FuzzSwapRouter {
 contract UniswapV3AdapterFuzzTest is Test {
     UniswapV3Adapter internal adapter;
     FuzzSwapRouter internal router;
+    FuzzQuoterV2 internal quoter;
     FuzzERC20 internal tokenIn;
     FuzzERC20 internal tokenOut;
 
@@ -66,10 +85,11 @@ contract UniswapV3AdapterFuzzTest is Test {
         swapper = makeAddr("swapper");
 
         router = new FuzzSwapRouter();
+        quoter = new FuzzQuoterV2();
         tokenIn = new FuzzERC20("Token In", "TIN");
         tokenOut = new FuzzERC20("Token Out", "TOUT");
 
-        adapter = new UniswapV3Adapter(address(router), swapper);
+        adapter = new UniswapV3Adapter(address(router), address(quoter), swapper);
     }
 
     function testFuzz_swap_ForwardsAmountOutMinimum(uint256 amountIn, uint256 routerOutput, uint256 minimum) public {
@@ -125,5 +145,24 @@ contract UniswapV3AdapterFuzzTest is Test {
         vm.expectRevert(UniswapV3Adapter.UnauthorizedCaller.selector);
         vm.prank(randomCaller);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, 0);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                QUOTE
+    //////////////////////////////////////////////////////////////*/
+
+    function testFuzz_quote_WhenCalldataTooShort_ReturnsZero(uint256 len) public {
+        len = bound(len, 0, 131);
+        uint256 out = adapter.quote(1 ether, new bytes(len));
+        assertEq(out, 0, "calldata shorter than 132 bytes must return 0");
+    }
+
+    function testFuzz_quote_WhenCalldataValidLength_ReturnsQuoterOutput(uint256 amountIn) public {
+        amountIn = bound(amountIn, 1, type(uint128).max);
+        bytes memory cd =
+            abi.encodeWithSelector(adapter.swap.selector, address(tokenIn), address(tokenOut), FEE, uint256(0));
+        assertEq(cd.length, 132);
+        uint256 out = adapter.quote(amountIn, cd);
+        assertEq(out, amountIn, "quote must return the quoter output for valid calldata");
     }
 }

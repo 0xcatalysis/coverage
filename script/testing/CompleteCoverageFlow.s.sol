@@ -4,12 +4,10 @@ pragma solidity 0.8.28;
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {ICoverPoolFactory} from "../../src/interfaces/ICoverPoolFactory.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 import {IClaimManager} from "../../src/interfaces/IClaimManager.sol";
-import {IPremiumCollector} from "../../src/interfaces/IPremiumCollector.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
 import {ISpecRegistry} from "../../src/interfaces/ISpecRegistry.sol";
 import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
@@ -49,7 +47,6 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   - COVER_POOL_FACTORY: CoverPoolFactory proxy address
  *   - POLICY_MANAGER: PolicyManager proxy address
  *   - CLAIM_MANAGER: ClaimManager proxy address
- *   - PREMIUM_COLLECTOR: PremiumCollector proxy address
  *   - PREMIUM_MANAGER: PremiumManager proxy address
  *   - SPEC_REGISTRY: SpecRegistry proxy address (optional but recommended; enables pre-flight
  *       approval check in Phase 4 — if omitted, an unapproved spec only fails at the contract level)
@@ -63,7 +60,6 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   Coverage Request Params:
  *   - BENEFICIARY: Claim payout beneficiary
  *   - PAYOUT_TOKEN: ERC20 token for payouts
- *   - COVERAGE_AMOUNT: Coverage amount (USD, 8 decimals)
  *   - DURATION: Coverage duration in seconds
  *   - BIND_POLICY_HOOK: Hook contract for policy binding callback
  *
@@ -71,7 +67,6 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *   - SPEC_ADDRESS: ISpec implementation contract address (must be approved in SpecRegistry first)
  *   - VAULTS: Comma-separated vault addresses
  *   - COVERAGE_LIMIT: Coverage limit in payout token units
- *   - BASE_PREMIUM: Base premium amount
  *   - SPEC_ID: Spec identifier (bytes32)
  *   - TERMS_HASH: Terms hash (bytes32)
  *   - START_TIME: Coverage start timestamp
@@ -100,7 +95,7 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  */
 contract CompleteCoverageFlow is Script {
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 expirationTime)"
     );
 
     // ── Accounts ──
@@ -118,7 +113,6 @@ contract CompleteCoverageFlow is Script {
     address public coverPoolFactory;
     address public policyManager;
     address public claimManager;
-    address public premiumCollector;
     address public premiumManager;
     address public specRegistry;
 
@@ -131,7 +125,6 @@ contract CompleteCoverageFlow is Script {
     // ── Coverage Request ──
     address public beneficiary;
     address public payoutToken;
-    uint256 public coverageAmount;
     uint32 public duration;
     address public bindPolicyHook;
 
@@ -139,11 +132,8 @@ contract CompleteCoverageFlow is Script {
     address public specAddress;
     address[] public vaults;
     uint256 public coverageLimit;
-    uint256 public basePremium;
     bytes32 public specId;
     bytes32 public termsHash;
-    uint32 public startTime;
-    uint32 public maturityTime;
     uint32 public expirationTime;
 
     // ── Premium ──
@@ -272,8 +262,7 @@ contract CompleteCoverageFlow is Script {
         IPolicyManager pm = IPolicyManager(policyManager);
 
         vm.startBroadcast(buyerPrivateKey);
-        policyId =
-            pm.requestCoverage(coverPool, beneficiary, claimer, payoutToken, coverageAmount, duration, bindPolicyHook);
+        policyId = pm.requestCoverage(coverPool, beneficiary, claimer, payoutToken, duration, bindPolicyHook);
         vm.stopBroadcast();
 
         console.log("Policy ID:", policyId);
@@ -317,12 +306,9 @@ contract CompleteCoverageFlow is Script {
             pool: coverPool,
             policyId: policyId,
             coverageLimit: coverageLimit,
-            basePremium: basePremium,
             specId: specId,
             termsHash: termsHash,
             beneficiary: draft.beneficiary,
-            startTime: startTime,
-            maturityTime: maturityTime,
             expirationTime: expirationTime
         });
 
@@ -355,7 +341,7 @@ contract CompleteCoverageFlow is Script {
 
         console.log("Policy bound with coverage limit:", coverageLimit);
         console.log("Committee vaults:", committeeVaults.length);
-        console.log("Coverage window:", startTime, "-", maturityTime);
+        console.log("On-chain coverage window:", metadata.startTime, "-", metadata.maturityTime);
         console.log("[OK] Policy binding complete, policy active");
         emit FlowCompleted("Policy Binding", 4);
     }
@@ -372,26 +358,10 @@ contract CompleteCoverageFlow is Script {
             return;
         }
 
-        IPremiumCollector collector = IPremiumCollector(premiumCollector);
-        IPremiumCollector.VaultConfig memory config = collector.getVaultConfig(coveredVault);
-
-        if (!config.registered) {
-            console.log("Vault not registered in PremiumCollector yet");
-            console.log("NOTE: Admin must call registerVault() to enable premium collection");
-        } else {
-            console.log("Vault registered:");
-            console.log("  Underlying:", config.underlying);
-            console.log("  Pool:", config.pool);
-            console.log("  Policy ID:", config.policyId);
-
-            uint256 shares = collector.getAccruedShares(coveredVault);
-            console.log("  Accrued shares:", shares);
-
-            if (shares > 0) {
-                uint256 previewAssets = IERC4626(coveredVault).previewRedeem(shares);
-                console.log("  Preview assets:", previewAssets);
-            }
-        }
+        // CoveredVaultWrapper accrues premiums internally via its own accumulator.
+        // collectPremium() can be called by anyone to flush pending premium to PremiumManager.
+        console.log("[INFO] CoveredVaultWrapper accrues premiums internally.");
+        console.log("[INFO] Call collectPremium() on the vault to distribute accrued premium.");
 
         console.log("[OK] Premium accrual check done");
         emit FlowCompleted("Premium Accrual Check", 5);
@@ -409,28 +379,23 @@ contract CompleteCoverageFlow is Script {
             return;
         }
 
-        IPremiumCollector collector = IPremiumCollector(premiumCollector);
-        uint256 shares = collector.getAccruedShares(coveredVault);
-
-        if (shares == 0) {
-            console.log("[SKIP] No shares to distribute");
-            return;
-        }
-
         IPremiumManager manager = IPremiumManager(premiumManager);
         uint16 platformFee = manager.platformFeeBps();
         uint16 poolFee = ICoverPool(coverPool).poolFeeBps();
         console.log("Platform fee BPS:", platformFee);
         console.log("Pool fee BPS:", poolFee);
 
-        address[] memory vaultsToDistribute = new address[](1);
-        vaultsToDistribute[0] = coveredVault;
-
+        // CoveredVaultWrapper.collectPremium() is permissionless — anyone can call it.
+        // It flushes accrued premium to PremiumManager and calls distributePremium() directly.
         vm.startBroadcast(curatorPrivateKey);
-        collector.distributeBatch(vaultsToDistribute);
+        (bool success,) = coveredVault.call(abi.encodeWithSignature("collectPremium()"));
         vm.stopBroadcast();
+        if (success) {
+            console.log("[OK] collectPremium() called on CoveredVaultWrapper");
+        } else {
+            console.log("[SKIP] collectPremium() reverted or no pending premium");
+        }
 
-        console.log("[OK] Premiums distributed");
         emit FlowCompleted("Premium Distribution", 6);
     }
 
@@ -458,6 +423,12 @@ contract CompleteCoverageFlow is Script {
         console.log("Pre-claim beneficiary balance:", beneficiaryBalanceBefore);
 
         require(requestedClaimAmount <= remainingBefore, "Phase 7: Exceeds remaining coverage");
+
+        bool approvalRequired = cm.claimApprovalRequired(policyId);
+        console.log("Curator approval required before next claim:", approvalRequired);
+        require(
+            !approvalRequired, "Phase 7: Curator must call approveNextClaim() before this policy can file another claim"
+        );
 
         if (block.timestamp < metadata.startTime) {
             console.log("Warping to coverage start time...");
@@ -638,12 +609,9 @@ contract CompleteCoverageFlow is Script {
                 quote.pool,
                 quote.policyId,
                 quote.coverageLimit,
-                quote.basePremium,
                 quote.specId,
                 quote.termsHash,
                 quote.beneficiary,
-                quote.startTime,
-                quote.maturityTime,
                 quote.expirationTime
             )
         );
@@ -669,7 +637,6 @@ contract CompleteCoverageFlow is Script {
         coverPoolFactory = vm.envAddress("COVER_POOL_FACTORY");
         policyManager = vm.envAddress("POLICY_MANAGER");
         claimManager = vm.envAddress("CLAIM_MANAGER");
-        premiumCollector = vm.envAddress("PREMIUM_COLLECTOR");
         premiumManager = vm.envAddress("PREMIUM_MANAGER");
         specRegistry = vm.envOr("SPEC_REGISTRY", address(0));
 
@@ -683,7 +650,6 @@ contract CompleteCoverageFlow is Script {
     function _loadCoverageRequestParams() internal {
         beneficiary = vm.envAddress("BENEFICIARY");
         payoutToken = vm.envAddress("PAYOUT_TOKEN");
-        coverageAmount = vm.envUint("COVERAGE_AMOUNT");
         duration = uint32(vm.envUint("DURATION"));
         bindPolicyHook = vm.envAddress("BIND_POLICY_HOOK");
     }
@@ -698,11 +664,8 @@ contract CompleteCoverageFlow is Script {
         }
 
         coverageLimit = vm.envUint("COVERAGE_LIMIT");
-        basePremium = vm.envUint("BASE_PREMIUM");
         specId = vm.envBytes32("SPEC_ID");
         termsHash = vm.envBytes32("TERMS_HASH");
-        startTime = uint32(vm.envUint("START_TIME"));
-        maturityTime = uint32(vm.envUint("MATURITY_TIME"));
         expirationTime = uint32(vm.envUint("EXPIRATION_TIME"));
     }
 

@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 import {PolicyManager} from "coverage/PolicyManager.sol";
 import {CoverPool} from "coverage/CoverPool.sol";
 import {ICoverPool} from "coverage/interfaces/ICoverPool.sol";
-import {IPolicyManager} from "coverage/interfaces/IPolicyManager.sol";
-import {IClaimManager} from "coverage/interfaces/IClaimManager.sol";
-import {CatalysisCoverAdapter} from "../../../src/defi/adapters/morpho/CatalysisCoverAdapter.sol";
+import {CoveredVaultWrapper} from "../../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
@@ -18,10 +16,11 @@ import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {MockClaimManager} from "../mocks/Mocks.sol";
 import {
     MockStakeManager,
+    MockChainlinkPriceFeedDefi,
     MockCoverPoolFactory,
     MockSpecRegistry,
     MockBindPolicyHook,
-    MockChainlinkPriceFeed
+    MockPremiumManager
 } from "../mocks/CoverageMocks.sol";
 
 /// @title RealCoverageSetup
@@ -41,7 +40,8 @@ abstract contract RealCoverageSetup is Test {
     MockCoverPoolFactory internal mockCoverPoolFactory;
     MockSpecRegistry internal mockSpecRegistry;
     MockBindPolicyHook internal mockBindPolicyHook;
-    MockChainlinkPriceFeed internal mockChainlinkPriceFeed;
+    MockChainlinkPriceFeedDefi internal mockChainlinkPriceFeed;
+    MockPremiumManager internal mockPremiumManager;
 
     // ── EIP-712 quote signing ──
     uint256 internal quoteSignerKey;
@@ -51,7 +51,7 @@ abstract contract RealCoverageSetup is Test {
     bytes32 internal constant SPEC_ID = keccak256("morpho-spec");
     bytes32 internal constant TERMS_HASH = keccak256("terms");
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 expirationTime)"
     );
 
     /// @notice Deploys the real PolicyManager (behind ERC1967Proxy) and real CoverPool (via Clones)
@@ -63,20 +63,21 @@ abstract contract RealCoverageSetup is Test {
         mockCoverPoolFactory = new MockCoverPoolFactory();
         mockSpecRegistry = new MockSpecRegistry();
         mockBindPolicyHook = new MockBindPolicyHook();
+        mockPremiumManager = new MockPremiumManager();
 
         // ── EIP-712 signer ──
         quoteSignerKey = uint256(keccak256("quote-signer-key"));
         quoteSigner = vm.addr(quoteSignerKey);
 
         // ── Deploy MockClaimManager with pre-computed PolicyManager proxy address ──
-        // Nonce layout: +0 = MockClaimManager, +1 = MockChainlinkPriceFeed, +2 = PolicyManager impl,
+        // Nonce layout: +0 = MockClaimManager, +1 = MockChainlinkPriceFeedDefi, +2 = PolicyManager impl,
         //               +3 = ERC1967Proxy (= PM proxy)
         uint256 nonce = vm.getNonce(address(this));
         address expectedPmProxy = vm.computeCreateAddress(address(this), nonce + 3);
         claimManager = new MockClaimManager(expectedPmProxy);
 
-        // ── Deploy MockChainlinkPriceFeed (returns 0 so totalStake >= 0 always passes) ──
-        mockChainlinkPriceFeed = new MockChainlinkPriceFeed();
+        // ── Deploy MockChainlinkPriceFeedDefi (returns input amount as USD value) ──
+        mockChainlinkPriceFeed = new MockChainlinkPriceFeedDefi();
 
         // ── Deploy real PolicyManager behind UUPS proxy ──
         PolicyManager pmImpl = new PolicyManager();
@@ -119,91 +120,52 @@ abstract contract RealCoverageSetup is Test {
     }
 
     /// @notice Creates a policy draft and binds it through the real PolicyManager + CoverPool flow
-    /// @dev Uses the full requestCoverage → signQuote → bindPolicyForRequest pipeline
-    /// @param beneficiary Address that receives claim payouts (typically the adapter address)
-    /// @param claimer Address authorized to file claims (typically the adapter address)
+    /// @param beneficiary Address that receives claim payouts
+    /// @param claimer Address authorized to file claims
     /// @param payoutToken ERC20 token used for claim payouts
-    /// @param coverageAmount Stake requirement (in USD 8 decimals)
     /// @param coverageLimit Maximum payout notional (in payout token units)
-    /// @param startTime Policy coverage start timestamp
-    /// @param maturityTime Policy coverage end timestamp
-    /// @param buyer Address requesting coverage (typically the curator)
-    /// @param bindPolicyHook_ Address of the hook contract to be notified on bind (typically the adapter)
+    /// @param duration Coverage duration in seconds
+    /// @param buyer Address requesting coverage
+    /// @param bindPolicyHook_ Hook contract notified on bind
     /// @return policyId_ The bound policy ID
     function _createAndBindPolicy(
         address beneficiary,
         address claimer,
         address payoutToken,
-        uint256 coverageAmount,
         uint256 coverageLimit,
-        uint32 startTime,
-        uint32 maturityTime,
+        uint32 duration,
         address buyer,
         address bindPolicyHook_
     )
         internal
         returns (uint96 policyId_)
     {
-        // 1. Request coverage (creates draft) — uses claimer, payoutToken, buyer (freed after this call)
         vm.prank(buyer);
         policyId_ = policyManager.requestCoverage(
-            address(coverPool),
-            beneficiary,
-            claimer,
-            payoutToken,
-            coverageAmount,
-            maturityTime - startTime, // duration
-            bindPolicyHook_
+            address(coverPool), beneficiary, claimer, payoutToken, duration, bindPolicyHook_
         );
 
-        // 2-5. Build quote, sign, and bind policy
-        _bindPolicy(policyId_, beneficiary, coverageAmount, coverageLimit, startTime, maturityTime);
+        _bindPolicy(policyId_, beneficiary, coverageLimit);
     }
 
-    /// @notice Builds a quote, signs it, and binds the policy through the CoverPool
-    function _bindPolicy(
-        uint96 policyId_,
-        address beneficiary,
-        uint256 coverageAmount,
-        uint256 coverageLimit,
-        uint32 startTime,
-        uint32 maturityTime
-    )
-        private
-    {
-        // 2. Build quote
+    function _bindPolicy(uint96 policyId_, address beneficiary, uint256 coverageLimit) private {
         ICoverPool.Quote memory quote = ICoverPool.Quote({
             pool: address(coverPool),
             policyId: policyId_,
             coverageLimit: coverageLimit,
-            basePremium: 0,
             specId: SPEC_ID,
             termsHash: TERMS_HASH,
             beneficiary: beneficiary,
-            startTime: startTime,
-            maturityTime: maturityTime,
-            expirationTime: maturityTime // quote valid until maturity
+            expirationTime: uint32(block.timestamp + 1 days)
         });
 
-        // 3. Sign quote (EIP-712)
         bytes memory signature = _signQuote(quote);
 
-        // 4. Set sufficient operator stake
-        address curator_ = coverPool.owner();
-        mockStakeManager.setOperatorStake(curator_, policyId_, coverageAmount);
-
-        // 5. Bind policy (as curator = pool admin)
         address[] memory vaults = new address[](1);
-        vaults[0] = address(0xDEAD); // placeholder vault for committee
+        vaults[0] = address(0xDEAD);
 
-        vm.prank(curator_);
-        coverPool.bindPolicyForRequest(
-            policyId_,
-            quote,
-            beneficiary, // spec address = beneficiary (adapter implements ISpec)
-            vaults,
-            signature
-        );
+        vm.prank(coverPool.owner());
+        coverPool.bindPolicyForRequest(policyId_, quote, beneficiary, vaults, signature);
     }
 
     /// @notice Signs a CoverPool quote using the quoteSignerKey
@@ -221,37 +183,76 @@ abstract contract RealCoverageSetup is Test {
             uint256(uint160(quote.pool)),
             uint256(quote.policyId),
             quote.coverageLimit,
-            quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),
-            uint256(quote.startTime),
-            uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );
     }
 
-    /// @notice Deploys CatalysisCoverAdapter behind a UUPS proxy using the Upgrades library
-    function _deployAdapterProxy(
-        address parentVault_,
-        address underlyingVault_,
+    /// @notice Deploys CoveredVaultWrapper behind a UUPS proxy using the Upgrades library
+    function _deployWrapperProxy(
+        address morphoVault_,
         address claimManager_,
         address coverPool_,
-        uint16 maxCoverableLossBps_
+        uint16 maxCoverableLossBps_,
+        uint16 deductibleBps_,
+        address premiumRecipient_,
+        address owner_,
+        string memory name_,
+        string memory symbol_
     )
         internal
-        returns (CatalysisCoverAdapter)
+        returns (CoveredVaultWrapper)
     {
         Options memory deployOpts;
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
-            "CatalysisCoverAdapter.sol",
+            "CoveredVaultWrapper.sol",
             abi.encodeCall(
-                CatalysisCoverAdapter.initialize,
-                (parentVault_, underlyingVault_, claimManager_, coverPool_, maxCoverableLossBps_)
+                CoveredVaultWrapper.initialize,
+                (
+                    morphoVault_,
+                    claimManager_,
+                    coverPool_,
+                    maxCoverableLossBps_,
+                    deductibleBps_,
+                    premiumRecipient_,
+                    owner_,
+                    name_,
+                    symbol_
+                )
             ),
             deployOpts
         );
-        return CatalysisCoverAdapter(proxy);
+        return CoveredVaultWrapper(proxy);
+    }
+
+    /// @notice Helper: set premium rate in tests, bypassing the 2-day timelock (L-04).
+    /// @dev Triggers collectPremium() to settle any pending premium at the old rate
+    ///      (mirrors the old setPremiumRate behavior), then directly writes the new rate
+    ///      and advances lastPremiumAccrualTime to avoid stale timestamps.
+    ///      Caller prank must NOT be active when calling this.
+    ///      Storage slots verified via `forge inspect CoveredVaultWrapper storageLayout`:
+    ///        premiumRatePerSecond = slot 57, lastPremiumAccrualTime = slot 58.
+    function _setPremiumRate(
+        CoveredVaultWrapper w,
+        uint256 newRate,
+        address /* caller_ */
+    )
+        internal
+    {
+        // Settle any pending premium at the old rate (mirrors old setPremiumRate behavior)
+        w.collectPremium();
+        // Directly write the new rate and advance lastPremiumAccrualTime.
+        // Storage slots verified via `forge inspect CoveredVaultWrapper storageLayout`:
+        //   premiumRatePerSecond   = slot 57
+        //   lastPremiumAccrualTime = slot 58
+        //   premiumRateInitialized = slot 79
+        vm.store(address(w), bytes32(uint256(57)), bytes32(newRate));
+        vm.store(address(w), bytes32(uint256(58)), bytes32(block.timestamp));
+        // Mark as initialized so the first-rate fast-path in setPremiumRate is not re-triggered
+        // by a subsequent call that finds premiumRatePerSecond == 0.
+        vm.store(address(w), bytes32(uint256(79)), bytes32(uint256(1)));
     }
 }

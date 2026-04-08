@@ -25,8 +25,9 @@ abstract contract Show is Script {
     }
 
     /**
-     * @notice Loads the latest broadcast artifact for the target network and prints contract addresses.
+     * @notice Loads the latest broadcast artifact for the target network and prints all contract addresses.
      * @dev Reverts when the active chain id does not match `getShowConfig` or when the broadcast artifact is missing.
+     *      Reads all proxy and implementation addresses from the named return values of the Deploy script.
      */
     function run() external view {
         ShowConfig memory config = getShowConfig();
@@ -40,19 +41,73 @@ abstract contract Show is Script {
 
         // forge-lint: disable-next-line(unsafe-cheatcode)
         string memory artifact = vm.readFile(artifactPath);
-        address coverPoolFactoryProxy =
-            abi.decode(vm.parseJson(artifact, ".returns.coverPoolFactoryProxy.value"), (address));
-        address coverPoolFactoryImplementation =
-            abi.decode(vm.parseJson(artifact, ".returns.coverPoolFactoryImpl.value"), (address));
-        address coverPoolImplementation =
-            abi.decode(vm.parseJson(artifact, ".transactions[0].contractAddress"), (address));
 
         console2.log(string.concat("=== ", config.networkName, " Deployment ==="));
         console2.log("Chain ID:", block.chainid);
         console2.log("Deployment Script:", config.deploymentScript);
-        console2.log("CoverPool Implementation:", coverPoolImplementation);
-        console2.log("CoverPoolFactory Proxy:", coverPoolFactoryProxy);
-        console2.log("CoverPoolFactory Implementation:", coverPoolFactoryImplementation);
+        console2.log("");
+        _logAddresses(artifact);
+    }
+
+    function _logAddresses(string memory artifact) private pure {
+        console2.log(
+            "CoverPool Implementation:       ",
+            abi.decode(vm.parseJson(artifact, ".returns.coverPoolImplementation.value"), (address))
+        );
+        console2.log("");
+        console2.log(
+            "Swapper Proxy:                  ",
+            abi.decode(vm.parseJson(artifact, ".returns.swapperProxy.value"), (address))
+        );
+        console2.log(
+            "Swapper Implementation:         ",
+            abi.decode(vm.parseJson(artifact, ".returns.swapperImpl.value"), (address))
+        );
+        console2.log("");
+        console2.log(
+            "PremiumManager Proxy:           ",
+            abi.decode(vm.parseJson(artifact, ".returns.premiumManagerProxy.value"), (address))
+        );
+        console2.log(
+            "PremiumManager Implementation:  ",
+            abi.decode(vm.parseJson(artifact, ".returns.premiumManagerImpl.value"), (address))
+        );
+        console2.log("");
+        console2.log(
+            "ClaimManager Proxy:             ",
+            abi.decode(vm.parseJson(artifact, ".returns.claimManagerProxy.value"), (address))
+        );
+        console2.log(
+            "ClaimManager Implementation:    ",
+            abi.decode(vm.parseJson(artifact, ".returns.claimManagerImpl.value"), (address))
+        );
+        console2.log("");
+        console2.log(
+            "PolicyManager Proxy:            ",
+            abi.decode(vm.parseJson(artifact, ".returns.policyManagerProxy.value"), (address))
+        );
+        console2.log(
+            "PolicyManager Implementation:   ",
+            abi.decode(vm.parseJson(artifact, ".returns.policyManagerImpl.value"), (address))
+        );
+        console2.log("");
+        console2.log(
+            "CoverPoolFactory Proxy:         ",
+            abi.decode(vm.parseJson(artifact, ".returns.coverPoolFactoryProxy.value"), (address))
+        );
+        console2.log(
+            "CoverPoolFactory Implementation:",
+            abi.decode(vm.parseJson(artifact, ".returns.coverPoolFactoryImpl.value"), (address))
+        );
+        console2.log("");
+        console2.log(
+            "SpecRegistry Proxy:             ",
+            abi.decode(vm.parseJson(artifact, ".returns.specRegistryProxy.value"), (address))
+        );
+        console2.log(
+            "SpecRegistry Implementation:    ",
+            abi.decode(vm.parseJson(artifact, ".returns.specRegistryImpl.value"), (address))
+        );
         console2.log("=====================================");
     }
 

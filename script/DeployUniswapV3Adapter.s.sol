@@ -16,11 +16,10 @@ import {ISwapper} from "../src/interfaces/ISwapper.sol";
  * Required Environment Variables:
  *   - PRIVATE_KEY: Deployer/admin private key (must hold DEFAULT_ADMIN_ROLE and SWAP_MANAGER_ROLE on Swapper)
  *   - SWAPPER: Swapper proxy address (read from ClaimManager.swapper() if unknown)
- *   - SWAP_ROUTER: Uniswap V3 SwapRouter02 address
- *                  Sepolia default: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E
- *   - TOKEN_IN: Collateral token address (e.g. Uniswap-native WETH on Sepolia:
- * 0xfff9976782d46cc05630d1f6ebab18b2324d6b14)
- *   - TOKEN_OUT: Payout token address (e.g. Circle Sepolia USDC: 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238)
+ *   - SWAP_ROUTER: Uniswap V3 SwapRouter02 address (Sepolia default: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E)
+ *   - QUOTER_V2: Uniswap V3 QuoterV2 address (Sepolia default: 0xEd1f6473345F45b75833fd55D191EBE6d13fB0cB)
+ *   - TOKEN_IN: Collateral token address
+ *   - TOKEN_OUT: Payout token address
  *   - POOL_FEE: Uniswap V3 pool fee tier (e.g. 3000 for 0.3%, 500 for 0.05%)
  */
 contract DeployUniswapV3Adapter is Script {
@@ -30,6 +29,7 @@ contract DeployUniswapV3Adapter is Script {
 
         address swapper = vm.envAddress("SWAPPER");
         address swapRouter = vm.envOr("SWAP_ROUTER", address(0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E));
+        address quoter = vm.envOr("QUOTER_V2", address(0xED1f6473345f45B75833Fd55D191eBe6d13FB0cB));
         address tokenIn = vm.envAddress("TOKEN_IN");
         address tokenOut = vm.envAddress("TOKEN_OUT");
         uint24 poolFee = uint24(vm.envUint("POOL_FEE"));
@@ -44,7 +44,7 @@ contract DeployUniswapV3Adapter is Script {
 
         vm.startBroadcast(deployerKey);
 
-        UniswapV3Adapter adapter = new UniswapV3Adapter(swapRouter, swapper);
+        UniswapV3Adapter adapter = new UniswapV3Adapter(swapRouter, quoter, swapper);
         console.log("UniswapV3Adapter deployed at:", address(adapter));
 
         ISwapper(swapper).setSwapTargetWhitelist(address(adapter), true);

@@ -1,54 +1,76 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {IStakeManager} from "coverage/interfaces/IStakeManager.sol";
-import {ICoverPoolFactory} from "coverage/interfaces/ICoverPoolFactory.sol";
-import {ISpecRegistry} from "coverage/interfaces/ISpecRegistry.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IChainlinkPriceFeed} from "coverage/interfaces/IChainlinkPriceFeed.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
 import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import {IChainlinkPriceFeed} from "coverage/interfaces/IChainlinkPriceFeed.sol";
 
-/// @title MockStakeManager
-/// @notice Minimal StakeManager mock for testing with real PolicyManager and CoverPool
 contract MockStakeManager {
     mapping(uint96 => address[]) private _committeeVaults;
-    mapping(bytes32 => uint256) private _operatorStakes;
+    mapping(uint96 => address[]) private _committeeTokens;
+    mapping(uint96 => uint256[]) private _committeeTokenStakes;
+    mapping(uint96 => uint256) private _committeeCoverageLimit;
 
-    function createCommittee(uint96, uint256, address, uint32) external {
-        // No-op: just accept the call from PolicyManager.requestCoverage
-    }
+    function createCommittee(uint96, address, uint32) external {}
 
-    function addOperatorToCommittee(address, uint96) external {
-        // No-op: just accept the call from PolicyManager.requestCoverage
-    }
+    function addOperatorToCommittee(address, uint96) external {}
 
-    function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external {
+    function removeOperatorFromCommittee(address, uint96) external {}
+
+    function setCommitteeVaults(uint96 committeeId, address[] calldata vaults, uint256 coverageLimit) external {
         for (uint256 i = 0; i < vaults.length; i++) {
             _committeeVaults[committeeId].push(vaults[i]);
         }
+        _committeeCoverageLimit[committeeId] = coverageLimit;
     }
 
     function getCommitteeVaults(uint96 committeeId) external view returns (address[] memory) {
         return _committeeVaults[committeeId];
     }
 
-    function getOperatorCommitteeStake(address operator, uint96 committeeId) external view returns (uint256) {
-        return _operatorStakes[keccak256(abi.encode(operator, committeeId))];
+    function getCommitteeTokenStakes(uint96 committeeId)
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        vaults = _committeeVaults[committeeId];
+        tokens = _committeeTokens[committeeId];
+        tokenStakes = _committeeTokenStakes[committeeId];
+
+        if (tokens.length == 0 && vaults.length > 0) {
+            uint256 coverageLimit = _committeeCoverageLimit[committeeId];
+            tokens = new address[](vaults.length);
+            tokenStakes = new uint256[](vaults.length);
+            for (uint256 i = 0; i < vaults.length; i++) {
+                tokenStakes[i] = coverageLimit;
+            }
+        }
     }
 
-    function getCommitteeTotalStakeUSD(uint96) external pure returns (uint256) {
-        return type(uint256).max; // Return maximum value to avoid InsufficientStake errors
-    }
-
-    /// @notice Test helper to set the stake for an operator in a committee
-    function setOperatorStake(address operator, uint96 committeeId, uint256 stake) external {
-        _operatorStakes[keccak256(abi.encode(operator, committeeId))] = stake;
+    /// @notice Test helper: set per-vault token stakes for a committee
+    function setCommitteeTokenStakes(
+        uint96 committeeId,
+        address[] calldata tokens,
+        uint256[] calldata stakes
+    )
+        external
+    {
+        _committeeTokens[committeeId] = tokens;
+        _committeeTokenStakes[committeeId] = stakes;
     }
 }
 
-/// @title MockCoverPoolFactory
-/// @notice Minimal CoverPoolFactory mock that tracks registered pools
+/// @title MockChainlinkPriceFeedDefi
+/// @notice Returns input amount as USD value (1:1 identity) so stake checks always pass when stakes >= coverageLimit
+contract MockChainlinkPriceFeedDefi is IChainlinkPriceFeed {
+    function getUSDValue(address, uint256 amount) external pure override returns (uint256) {
+        return amount;
+    }
+}
+
 contract MockCoverPoolFactory {
     mapping(address => bool) private _pools;
 
@@ -56,14 +78,11 @@ contract MockCoverPoolFactory {
         return _pools[pool];
     }
 
-    /// @notice Test helper to register a pool
     function register(address pool) external {
         _pools[pool] = true;
     }
 }
 
-/// @title MockSpecRegistry
-/// @notice Minimal SpecRegistry mock that accepts registerSpec calls
 contract MockSpecRegistry {
     mapping(bytes32 => mapping(address => address)) private _specs;
 
@@ -76,29 +95,25 @@ contract MockSpecRegistry {
     }
 }
 
-/// @title MockChainlinkPriceFeed
-/// @notice Minimal ChainlinkPriceFeed mock that always approves stake validation
-/// @dev Returns type(uint256).max for getUSDValue so the stake check always passes when
-///      MockStakeManager.getCommitteeTotalStakeUSD also returns type(uint256).max.
-contract MockChainlinkPriceFeed is IChainlinkPriceFeed {
-    function getUSDValue(address, uint256) external pure override returns (uint256) {
-        return 0; // 0 <= type(uint256).max always passes the InsufficientStake check
-    }
-
-    function getTokenAmount(address, uint256) external pure override returns (uint256) {
-        return 0;
-    }
-}
-
-/// @title MockBindPolicyHook
-/// @notice Minimal IBindPolicyHook mock for the chicken-and-egg problem
-/// @dev Used as the hook during requestCoverage since the real adapter doesn't exist yet
 contract MockBindPolicyHook is IBindPolicyHook {
-    function onPolicyBound(uint96, uint256) external override {
-        // No-op
-    }
+    function onPolicyBound(uint96, uint256) external override {}
 
     function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
         return interfaceId == type(IBindPolicyHook).interfaceId || interfaceId == type(IERC165).interfaceId;
+    }
+}
+
+/// @notice Minimal PremiumManager stub for adapter tests.
+/// @dev Pulls tokens from msg.sender (the vault) via safeTransferFrom, mirroring the pull
+///      model of the real PremiumManager so balance-checking tests see tokens arrive here.
+contract MockPremiumManager {
+    using SafeERC20 for IERC20;
+
+    function distributePremium(address, uint96, address token, uint256 amount) external {
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    function platformTreasury() external pure returns (address) {
+        return address(0x1); // non-zero sentinel satisfying IPremiumManager interface check
     }
 }

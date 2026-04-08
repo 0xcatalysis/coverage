@@ -17,8 +17,9 @@ import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
  * @title PolicyManager
  * @notice Single entrypoint for binding coverage policies, orchestrating quote validation,
  *         and policy record storage.
- * @dev Integrates with CoverPool for quote validation. Premium collection is handled separately
- *      by PremiumCollector and PremiumManager. Stores policy metadata directly for efficient
+ * @dev Integrates with CoverPool for quote validation. Premium collection is handled by vault
+ *      adapters (e.g. CoveredVaultWrapper) routing directly through PremiumManager. Stores policy metadata directly for
+ * efficient
  *      access by ClaimManager and other contracts.
  */
 // slither-disable-next-line unimplemented-functions
@@ -157,7 +158,6 @@ contract PolicyManager is
         address beneficiary,
         address claimer,
         address payoutToken,
-        uint256 coverageAmount,
         uint32 duration,
         address bindPolicyHook
     )
@@ -170,7 +170,6 @@ contract PolicyManager is
         require(ICoverPoolFactory(coverPoolFactory).coverPoolExists(pool), InvalidCoverPool(pool));
         require(beneficiary != address(0) && claimer != address(0) && payoutToken != address(0), ZeroAddress());
         require(supportedPayoutTokens[payoutToken], UnsupportedPayoutToken(payoutToken));
-        require(coverageAmount != 0, InvalidCoverageAmount());
         require(duration != 0, InvalidDuration());
         require(bindPolicyHook != address(0), InvalidBindPolicyHook());
 
@@ -192,17 +191,16 @@ contract PolicyManager is
             claimer: claimer,
             payoutToken: payoutToken,
             curator: curator,
-            coverageAmount: coverageAmount,
             duration: duration,
             policyId: policyId,
             status: PolicyStatus.Created,
             bindPolicyHook: bindPolicyHook
         });
 
-        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, coverageAmount, duration);
+        emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, duration);
 
         // Create committee in core contracts using policyId as committeeId (1:1 mapping).
-        IStakeManager(stakeManager).createCommittee(policyId, coverageAmount, pool, duration);
+        IStakeManager(stakeManager).createCommittee(policyId, pool, duration);
         IStakeManager(stakeManager).addOperatorToCommittee(curator, policyId);
     }
 
@@ -245,27 +243,32 @@ contract PolicyManager is
 
         require(
             request.buyer == draft.buyer && request.beneficiary == draft.beneficiary && request.claimer == draft.claimer
-                && request.payoutToken == draft.payoutToken && request.coverageAmount == draft.coverageAmount,
+                && request.payoutToken == draft.payoutToken,
             RequestDraftMismatch()
         );
 
         ICoverPool.Quote calldata quote = request.quote;
         require(policyId == quote.policyId, InvalidPolicyId());
 
-        require(
-            boundPolicy.maturityTime - boundPolicy.startTime == draft.duration,
-            DurationMismatch(draft.duration, uint32(boundPolicy.maturityTime - boundPolicy.startTime))
-        );
-
         draft.status = PolicyStatus.Bound;
 
-        // Query core contracts using policyId as committeeId (1:1 mapping).
         require(IStakeManager(stakeManager).getCommitteeVaults(policyId).length > 0, NoVaultsBound(policyId));
 
-        uint256 totalStake = IStakeManager(stakeManager).getCommitteeTotalStakeUSD(policyId);
+        // slither-disable-next-line unused-return
+        (, address[] memory tokens, uint256[] memory tokenStakes) =
+            IStakeManager(stakeManager).getCommitteeTokenStakes(policyId);
+
+        uint256 totalStakeUSD = 0;
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (tokenStakes[i] > 0) {
+                // slither-disable-next-line calls-loop
+                totalStakeUSD += IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(tokens[i], tokenStakes[i]);
+            }
+        }
         uint256 coverageLimitUSD =
             IChainlinkPriceFeed(chainlinkPriceFeed).getUSDValue(request.payoutToken, boundPolicy.coverageLimit);
-        require(totalStake >= coverageLimitUSD, InsufficientStake(policyId, coverageLimitUSD, totalStake));
+        require(coverageLimitUSD > 0, ZeroCoverageLimitUSD());
+        require(totalStakeUSD >= coverageLimitUSD, InsufficientStake(policyId, coverageLimitUSD, totalStakeUSD));
 
         bytes32 policyCommit = boundPolicy.policyCommit;
         require(policyCommit != bytes32(0), InvalidPolicyCommit());
@@ -276,10 +279,11 @@ contract PolicyManager is
             policyId: policyId,
             beneficiary: request.beneficiary,
             claimer: request.claimer,
-            startTime: boundPolicy.startTime,
-            maturityTime: boundPolicy.maturityTime,
+            startTime: uint32(block.timestamp),
+            maturityTime: uint32(block.timestamp) + draft.duration,
             payoutToken: request.payoutToken,
             pool: quote.pool,
+            curator: draft.curator,
             coverageLimit: boundPolicy.coverageLimit,
             specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
@@ -360,10 +364,5 @@ contract PolicyManager is
         require(request.quote.pool == msg.sender, UnauthorizedCaller());
         require(request.quote.policyId != 0, InvalidPolicyId());
         require(request.quote.coverageLimit != 0, InvalidCoverageLimit());
-        require(request.coverageAmount != 0, InvalidCoverageAmount());
-        require(
-            request.quote.startTime < request.quote.maturityTime && request.quote.maturityTime > block.timestamp,
-            InvalidCoverageWindow(request.quote.startTime, request.quote.maturityTime)
-        );
     }
 }

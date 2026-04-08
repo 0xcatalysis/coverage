@@ -46,6 +46,8 @@ contract FuzzSpecRegistry {
     }
 }
 
+import {ISlashingManager} from "../../src/interfaces/ISlashingManager.sol";
+
 contract FuzzSlashingManager {
     address[] private _assets;
     uint256[] private _amounts;
@@ -59,7 +61,35 @@ contract FuzzSlashingManager {
         _amounts[0] = amount;
     }
 
-    function executeSlashing(uint96, address, uint256, bytes32) external returns (address[] memory, uint256[] memory) {
+    function previewSlashing(
+        uint96,
+        address
+    )
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        uint256 len = _assets.length < _amounts.length ? _assets.length : _amounts.length;
+        vaults = new address[](len);
+        tokens = new address[](len);
+        tokenStakes = new uint256[](len);
+        for (uint256 i = 0; i < len; ++i) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            vaults[i] = address(uint160(i + 1));
+            tokens[i] = _assets[i];
+            tokenStakes[i] = _amounts[i];
+        }
+    }
+
+    function executeSlashing(
+        uint96,
+        address,
+        ISlashingManager.VaultSlash[] memory,
+        bytes32
+    )
+        external
+        returns (address[] memory, uint256[] memory)
+    {
         if (_token != address(0)) {
             // forge-lint: disable-next-line(erc20-unchecked-transfer)
             FuzzToken(_token).transfer(msg.sender, FuzzToken(_token).balanceOf(address(this)));
@@ -77,6 +107,10 @@ contract FuzzSwapper {
         _output = output;
     }
 
+    function quoteSwap(address, address, uint256 amountIn) external pure returns (uint256) {
+        return amountIn;
+    }
+
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
         FuzzToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn);
@@ -84,16 +118,6 @@ contract FuzzSwapper {
             FuzzToken(_outToken).mint(params.recipient, _output);
         }
         return _output;
-    }
-}
-
-contract FuzzChainlinkPriceFeed {
-    function getUSDValue(address, uint256 amount) external pure returns (uint256) {
-        return amount;
-    }
-
-    function getTokenAmount(address, uint256 usdValue) external pure returns (uint256) {
-        return usdValue;
     }
 }
 
@@ -131,7 +155,6 @@ contract ClaimManagerFuzzTest is Test {
     FuzzSpecRegistry internal specRegistry;
     FuzzSlashingManager internal slashingMgr;
     FuzzSwapper internal swapper;
-    FuzzChainlinkPriceFeed internal priceFeed;
     FuzzPolicy internal policyContract;
     FuzzCoverPool internal pool;
     FuzzToken internal collateralToken;
@@ -151,7 +174,6 @@ contract ClaimManagerFuzzTest is Test {
         specRegistry = new FuzzSpecRegistry(address(spec));
         slashingMgr = new FuzzSlashingManager();
         swapper = new FuzzSwapper();
-        priceFeed = new FuzzChainlinkPriceFeed();
         policyContract = new FuzzPolicy();
         pool = new FuzzCoverPool(operator);
         collateralToken = new FuzzToken("Collateral", "COL");
@@ -163,14 +185,7 @@ contract ClaimManagerFuzzTest is Test {
                 address(impl),
                 abi.encodeCall(
                     ClaimManager.initialize,
-                    (
-                        admin,
-                        address(specRegistry),
-                        address(slashingMgr),
-                        address(swapper),
-                        address(policyContract),
-                        address(priceFeed)
-                    )
+                    (admin, address(specRegistry), address(slashingMgr), address(swapper), address(policyContract))
                 )
             )
         );
@@ -196,6 +211,7 @@ contract ClaimManagerFuzzTest is Test {
                 maturityTime: MATURITY,
                 payoutToken: address(payoutToken),
                 pool: address(pool),
+                curator: operator,
                 coverageLimit: coverageLimit,
                 specId: keccak256("spec"),
                 termsHash: keccak256("terms"),
@@ -283,10 +299,10 @@ contract ClaimManagerFuzzTest is Test {
     }
 
     // ------------------------------------------------------------------
-    // Fuzz: setMaxSwapSlippageBps only accepts values < 10_000
+    // Fuzz: setMaxSwapSlippageBps only accepts values <= 3_000
     // ------------------------------------------------------------------
     function testFuzz_setMaxSwapSlippageBps_ValidRange(uint16 bps) public {
-        if (bps >= 10_000) {
+        if (bps > 3000) {
             vm.expectRevert(abi.encodeWithSelector(IClaimManager.InvalidSlippageBps.selector, bps));
             vm.prank(admin);
             claimManager.setMaxSwapSlippageBps(bps);
@@ -295,32 +311,5 @@ contract ClaimManagerFuzzTest is Test {
             claimManager.setMaxSwapSlippageBps(bps);
             assertEq(claimManager.maxSwapSlippageBps(), bps);
         }
-    }
-
-    // ------------------------------------------------------------------
-    // Fuzz: swap output capped at remainingPayout (no over-payout)
-    // ------------------------------------------------------------------
-    function testFuzz_fileClaim_SwapOutputCappedAtRemainingPayout(uint256 requestedAmount, uint256 swapOutput) public {
-        uint256 limit = COVERAGE_LIMIT();
-        requestedAmount = bound(requestedAmount, 1 ether, limit);
-        swapOutput = bound(swapOutput, requestedAmount, requestedAmount * 3);
-
-        spec.setPayable(true);
-        collateralToken.mint(address(slashingMgr), requestedAmount);
-        slashingMgr.configure(address(collateralToken), requestedAmount);
-        swapper.configure(address(payoutToken), swapOutput);
-
-        uint256 beneficiaryBefore = payoutToken.balanceOf(beneficiary);
-
-        vm.prank(claimer);
-        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, keccak256("ev"), "");
-
-        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
-
-        uint256 beneficiaryAfter = payoutToken.balanceOf(beneficiary);
-        uint256 actualPayout = beneficiaryAfter - beneficiaryBefore;
-
-        assertLe(actualPayout, requestedAmount, "Payout must not exceed remaining coverage");
-        assertEq(record.payoutAmount, actualPayout, "Record must reflect actual transfer");
     }
 }

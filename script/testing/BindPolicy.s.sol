@@ -38,7 +38,6 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  *   - SPEC_ADDRESS: ISpec implementation contract for this policy
  *   - VAULTS: Comma-separated vault addresses to bind (e.g. "0x123...,0x456...")
  *   - COVERAGE_LIMIT: Coverage limit in payout token units
- *   - BASE_PREMIUM: Base premium amount
  *   - SPEC_ID: Spec identifier (bytes32 hex)
  *   - TERMS_HASH: Policy terms hash (bytes32 hex)
  *   - START_TIME: Coverage start timestamp
@@ -56,7 +55,7 @@ import {IStakeManager} from "../../src/interfaces/IStakeManager.sol";
  */
 contract BindPolicy is Script {
     bytes32 private constant _QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 expirationTime)"
     );
 
     /// @notice Curator address (CoverPool admin)
@@ -91,11 +90,8 @@ contract BindPolicy is Script {
 
     /// @notice Quote parameters
     uint256 public coverageLimit;
-    uint256 public basePremium;
     bytes32 public specId;
     bytes32 public termsHash;
-    uint32 public startTime;
-    uint32 public maturityTime;
     uint32 public expirationTime;
 
     /// @notice Contract instances
@@ -126,11 +122,8 @@ contract BindPolicy is Script {
         }
 
         coverageLimit = vm.envUint("COVERAGE_LIMIT");
-        basePremium = vm.envUint("BASE_PREMIUM");
         specId = vm.envBytes32("SPEC_ID");
         termsHash = vm.envBytes32("TERMS_HASH");
-        startTime = uint32(vm.envUint("START_TIME"));
-        maturityTime = uint32(vm.envUint("MATURITY_TIME"));
         expirationTime = uint32(vm.envUint("EXPIRATION_TIME"));
 
         poolContract = ICoverPool(coverPool);
@@ -145,8 +138,6 @@ contract BindPolicy is Script {
         console.log("Policy ID:", policyId);
         console.log("Coverage Limit:", coverageLimit);
         console.log("Number of Vaults:", vaults.length);
-        console.log("Start Time:", startTime);
-        console.log("Maturity Time:", maturityTime);
 
         _verifyPrerequisites();
 
@@ -156,20 +147,14 @@ contract BindPolicy is Script {
             pool: coverPool,
             policyId: policyId,
             coverageLimit: coverageLimit,
-            basePremium: basePremium,
             specId: specId,
             termsHash: termsHash,
             beneficiary: draft.beneficiary,
-            startTime: startTime,
-            maturityTime: maturityTime,
             expirationTime: expirationTime
         });
 
         bytes memory signature = _signQuote(quote);
         console.log("Quote signed by quote signer");
-
-        require(maturityTime - startTime == draft.duration, "Duration mismatch with draft");
-        console.log("Duration matches draft:", draft.duration);
 
         vm.startBroadcast(curatorPrivateKey);
 
@@ -177,10 +162,10 @@ contract BindPolicy is Script {
 
         vm.stopBroadcast();
 
-        _verifyBinding();
+        IPolicyManager.PolicyMetadata memory metadata = _verifyBinding();
 
         console.log("\n=== POLICY BINDING COMPLETED ===");
-        console.log("Policy is now active. Coverage window:", startTime, "-", maturityTime);
+        console.log("Policy is now active. On-chain coverage window:", metadata.startTime, "-", metadata.maturityTime);
         emit PolicyBound(policyId, coverPool, coverageLimit, vaults.length);
     }
 
@@ -197,8 +182,6 @@ contract BindPolicy is Script {
 
         require(draft.pool == coverPool, "Draft pool mismatch");
         console.log("Draft pool matches CoverPool");
-
-        console.log("Required coverage amount:", draft.coverageAmount);
 
         if (specRegistry != address(0)) {
             bool approved = ISpecRegistry(specRegistry).isSpecApproved(specAddress);
@@ -220,12 +203,9 @@ contract BindPolicy is Script {
                 quote.pool,
                 quote.policyId,
                 quote.coverageLimit,
-                quote.basePremium,
                 quote.specId,
                 quote.termsHash,
                 quote.beneficiary,
-                quote.startTime,
-                quote.maturityTime,
                 quote.expirationTime
             )
         );
@@ -236,14 +216,14 @@ contract BindPolicy is Script {
         return abi.encodePacked(r, s, v);
     }
 
-    function _verifyBinding() internal view {
+    function _verifyBinding() internal view returns (IPolicyManager.PolicyMetadata memory metadata) {
         console.log("\n--- Binding Verification ---");
 
         IPolicyManager.PolicyDraft memory draft = policyManagerContract.getPolicyDraft(policyId);
         console.log("Draft status after binding:", uint8(draft.status));
         require(draft.status == IPolicyManager.PolicyStatus.Bound, "Draft not in Bound status");
 
-        IPolicyManager.PolicyMetadata memory metadata = policyManagerContract.policyMetadata(policyId);
+        metadata = policyManagerContract.policyMetadata(policyId);
         console.log("Policy buyer:", metadata.buyer);
         console.log("Policy beneficiary:", metadata.beneficiary);
         console.log("Policy coverageLimit:", metadata.coverageLimit);

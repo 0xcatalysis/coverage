@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
@@ -10,13 +11,13 @@ import {Test} from "forge-std/Test.sol";
 import {ClaimManager} from "../../src/ClaimManager.sol";
 import {IClaimManager} from "../../src/interfaces/IClaimManager.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
+import {ISlashingManager} from "../../src/interfaces/ISlashingManager.sol";
 import {ISpec} from "../../src/interfaces/ISpec.sol";
 import {ISwapper} from "../../src/interfaces/ISwapper.sol";
 
 contract ClaimManagerTest is Test {
     uint96 internal constant POLICY_ID = 1;
     uint256 internal constant COVERAGE_LIMIT = 1000 ether;
-    uint256 internal constant BASE_PREMIUM = 100 ether;
     uint32 internal constant COVERAGE_DURATION = 30 days;
     uint256 internal constant SLASH_AMOUNT = 500 ether;
     address internal constant NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
@@ -28,7 +29,6 @@ contract ClaimManagerTest is Test {
     address internal slashingManager;
     address internal swapper;
     address internal policy;
-    address internal chainlinkPriceFeed;
     address internal buyer;
     address internal beneficiary;
     address internal operator;
@@ -43,7 +43,6 @@ contract ClaimManagerTest is Test {
     MockSlashingManager internal slashingManagerMock;
     MockSwapper internal swapperMock;
     MockPolicy internal policyMock;
-    MockChainlinkPriceFeed internal chainlinkPriceFeedMock;
     MockToken internal collateralTokenMock;
     MockToken internal payoutTokenMock;
     MockCoverPool internal mockPool;
@@ -79,14 +78,21 @@ contract ClaimManagerTest is Test {
     event SlashingManagerSet(address indexed slashingManager);
     event SwapperSet(address indexed swapper);
     event PolicyManagerSet(address indexed policyManager);
-    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed);
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
     event NextClaimApproved(uint96 indexed policyId, address indexed approver);
+    event TokensRecovered(address indexed token, address indexed to, uint256 amount);
+    event VaultExcludedFromSlashing(address indexed vault, address indexed token);
+    event RewardsManagerSet(address indexed rewardsManager);
+    event SwapSurplusDistributed(
+        uint96 indexed policyId, uint256 indexed claimId, address indexed payoutToken, uint256 surplusAmount
+    );
+    event SwapSurplusDistributionFailed(
+        uint96 indexed policyId, uint256 indexed claimId, address indexed token, uint256 surplusAmount
+    );
 
     /*//////////////////////////////////////////////////////////////
-                                 SETUP
+                                  SETUP
     //////////////////////////////////////////////////////////////*/
-
     function setUp() public {
         vm.warp(1_000_000);
 
@@ -117,7 +123,6 @@ contract ClaimManagerTest is Test {
         slashingManagerMock = new MockSlashingManager();
         swapperMock = new MockSwapper();
         policyMock = new MockPolicy();
-        chainlinkPriceFeedMock = new MockChainlinkPriceFeed();
         collateralTokenMock = new MockToken("Collateral", "COL");
         payoutTokenMock = new MockToken("Payout", "PAY");
 
@@ -125,7 +130,6 @@ contract ClaimManagerTest is Test {
         slashingManager = address(slashingManagerMock);
         swapper = address(swapperMock);
         policy = address(policyMock);
-        chainlinkPriceFeed = address(chainlinkPriceFeedMock);
         collateralToken = address(collateralTokenMock);
         payoutToken = address(payoutTokenMock);
 
@@ -133,7 +137,6 @@ contract ClaimManagerTest is Test {
         vm.label(slashingManager, "SlashingManager");
         vm.label(swapper, "Swapper");
         vm.label(policy, "Policy");
-        vm.label(chainlinkPriceFeed, "ChainlinkPriceFeed");
         vm.label(collateralToken, "CollateralToken");
         vm.label(payoutToken, "PayoutToken");
 
@@ -141,9 +144,7 @@ contract ClaimManagerTest is Test {
         deployOpts.unsafeSkipAllChecks = true;
         address proxy = Upgrades.deployUUPSProxy(
             "ClaimManager.sol",
-            abi.encodeCall(
-                ClaimManager.initialize, (admin, specRegistry, slashingManager, swapper, policy, chainlinkPriceFeed)
-            ),
+            abi.encodeCall(ClaimManager.initialize, (admin, specRegistry, slashingManager, swapper, policy)),
             deployOpts
         );
         claimManager = ClaimManager(payable(proxy));
@@ -156,47 +157,39 @@ contract ClaimManagerTest is Test {
     /*//////////////////////////////////////////////////////////////
                                INITIALIZE
     //////////////////////////////////////////////////////////////*/
-
     function test_initialize_WhenAdminZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
         ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(address(0), specRegistry, slashingManager, swapper, policy, chainlinkPriceFeed);
+        newClaimManager.initialize(address(0), specRegistry, slashingManager, swapper, policy);
     }
 
     function test_initialize_WhenSpecRegistryZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
         ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(admin, address(0), slashingManager, swapper, policy, chainlinkPriceFeed);
+        newClaimManager.initialize(admin, address(0), slashingManager, swapper, policy);
     }
 
     function test_initialize_WhenSlashingManagerZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
         ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(admin, specRegistry, address(0), swapper, policy, chainlinkPriceFeed);
+        newClaimManager.initialize(admin, specRegistry, address(0), swapper, policy);
     }
 
     function test_initialize_WhenSwapperZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
         ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(admin, specRegistry, slashingManager, address(0), policy, chainlinkPriceFeed);
+        newClaimManager.initialize(admin, specRegistry, slashingManager, address(0), policy);
     }
 
     function test_initialize_WhenPolicyZero_Reverts() public {
         ClaimManager implementation = new ClaimManager();
         ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(admin, specRegistry, slashingManager, swapper, address(0), chainlinkPriceFeed);
-    }
-
-    function test_initialize_WhenPriceFeedZero_Reverts() public {
-        ClaimManager implementation = new ClaimManager();
-        ClaimManager newClaimManager = ClaimManager(payable(address(new ERC1967Proxy(address(implementation), ""))));
-        vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        newClaimManager.initialize(admin, specRegistry, slashingManager, swapper, policy, address(0));
+        newClaimManager.initialize(admin, specRegistry, slashingManager, swapper, address(0));
     }
 
     function test_initialize_SetsRolesAndConfiguration() public view {
@@ -205,8 +198,6 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.slashingManager(), slashingManager);
         assertEq(claimManager.swapper(), swapper);
         assertEq(claimManager.policyManager(), policy);
-        assertEq(claimManager.chainlinkPriceFeed(), chainlinkPriceFeed);
-        assertFalse(claimManager.paused());
     }
 
     function test_initialize_SetsDefaultMaxSwapSlippageBps() public view {
@@ -215,13 +206,12 @@ contract ClaimManagerTest is Test {
 
     function test_initialize_WhenAlreadyInitialized_Reverts() public {
         vm.expectRevert();
-        claimManager.initialize(admin, specRegistry, slashingManager, swapper, policy, chainlinkPriceFeed);
+        claimManager.initialize(admin, specRegistry, slashingManager, swapper, policy);
     }
 
     /*//////////////////////////////////////////////////////////////
-                                 PAUSE
+                              PAUSE / UNPAUSE
     //////////////////////////////////////////////////////////////*/
-
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -239,10 +229,6 @@ contract ClaimManagerTest is Test {
         claimManager.pause();
         assertTrue(claimManager.paused());
     }
-
-    /*//////////////////////////////////////////////////////////////
-                                UNPAUSE
-    //////////////////////////////////////////////////////////////*/
 
     function test_unpause_WhenCallerNotAdmin_Reverts() public {
         vm.prank(admin);
@@ -269,10 +255,19 @@ contract ClaimManagerTest is Test {
         vm.stopPrank();
     }
 
-    /*//////////////////////////////////////////////////////////////
-                         SET SPEC REGISTRY
-    //////////////////////////////////////////////////////////////*/
+    function test_paused_WhenNotPaused_ReturnsFalse() public view {
+        assertFalse(claimManager.paused());
+    }
 
+    function test_paused_WhenPaused_ReturnsTrue() public {
+        vm.prank(admin);
+        claimManager.pause();
+        assertTrue(claimManager.paused());
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            SET SPEC REGISTRY
+    //////////////////////////////////////////////////////////////*/
     function test_setSpecRegistry_WhenCallerNotAdmin_Reverts() public {
         address newSpecRegistry = makeAddr("newSpecRegistry");
         vm.expectRevert(
@@ -305,9 +300,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         SET SLASHING MANAGER
+                          SET SLASHING MANAGER
     //////////////////////////////////////////////////////////////*/
-
     function test_setSlashingManager_WhenCallerNotAdmin_Reverts() public {
         address newSlashingManager = makeAddr("newSlashingManager");
         vm.expectRevert(
@@ -340,9 +334,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              SET SWAPPER
+                               SET SWAPPER
     //////////////////////////////////////////////////////////////*/
-
     function test_setSwapper_WhenCallerNotAdmin_Reverts() public {
         address newSwapper = makeAddr("newSwapper");
         vm.expectRevert(
@@ -375,9 +368,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                         SET POLICY MANAGER
+                           SET POLICY MANAGER
     //////////////////////////////////////////////////////////////*/
-
     function test_setPolicyManager_WhenCallerNotAdmin_Reverts() public {
         address newPolicyManager = makeAddr("newPolicyManager");
         vm.expectRevert(
@@ -410,44 +402,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                       SET CHAINLINK PRICE FEED
+                        SET MAX SWAP SLIPPAGE BPS
     //////////////////////////////////////////////////////////////*/
-
-    function test_setChainlinkPriceFeed_WhenCallerNotAdmin_Reverts() public {
-        address newChainlinkPriceFeed = makeAddr("newChainlinkPriceFeed");
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                unauthorized,
-                claimManager.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        vm.prank(unauthorized);
-        claimManager.setChainlinkPriceFeed(newChainlinkPriceFeed);
-    }
-
-    function test_setChainlinkPriceFeed_WhenAddressZero_Reverts() public {
-        vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        vm.prank(admin);
-        claimManager.setChainlinkPriceFeed(address(0));
-    }
-
-    function test_setChainlinkPriceFeed_WhenValid_UpdatesState() public {
-        address newChainlinkPriceFeed = makeAddr("newChainlinkPriceFeed");
-
-        vm.expectEmit(true, true, true, true, address(claimManager));
-        emit ChainlinkPriceFeedSet(newChainlinkPriceFeed);
-
-        vm.prank(admin);
-        claimManager.setChainlinkPriceFeed(newChainlinkPriceFeed);
-
-        assertEq(claimManager.chainlinkPriceFeed(), newChainlinkPriceFeed);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                       SET MAX SWAP SLIPPAGE BPS
-    //////////////////////////////////////////////////////////////*/
-
     function test_setMaxSwapSlippageBps_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -472,6 +428,24 @@ contract ClaimManagerTest is Test {
         claimManager.setMaxSwapSlippageBps(10_001);
     }
 
+    function test_setMaxSwapSlippageBps_WhenAboveMaxSettable_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.InvalidSlippageBps.selector, uint16(3001)));
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(3001);
+    }
+
+    function test_setMaxSwapSlippageBps_WhenMaxMinusOne_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.InvalidSlippageBps.selector, uint16(9999)));
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(9999);
+    }
+
+    function test_setMaxSwapSlippageBps_WhenAtMaxBound_Succeeds() public {
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(3000);
+        assertEq(claimManager.maxSwapSlippageBps(), 3000);
+    }
+
     function test_setMaxSwapSlippageBps_WhenValid_UpdatesStateAndEmitsEvent() public {
         uint16 newSlippage = 500;
 
@@ -490,23 +464,49 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.maxSwapSlippageBps(), 0);
     }
 
-    function test_setMaxSwapSlippageBps_WhenMaxMinusOne_Succeeds() public {
-        vm.prank(admin);
-        claimManager.setMaxSwapSlippageBps(9999);
-        assertEq(claimManager.maxSwapSlippageBps(), 9999);
+    /*//////////////////////////////////////////////////////////////
+                         SET REWARDS MANAGER
+    //////////////////////////////////////////////////////////////*/
+    function test_rewardsManager_InitiallyZeroAddress() public view {
+        assertEq(claimManager.rewardsManager(), address(0));
     }
 
-    /*//////////////////////////////////////////////////////////////
-                        CLAIM APPROVAL REQUIRED
-    //////////////////////////////////////////////////////////////*/
+    function test_setRewardsManager_WhenCallerNotAdmin_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                unauthorized,
+                claimManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(unauthorized);
+        claimManager.setRewardsManager(makeAddr("rewardsManager"));
+    }
 
-    function test_claimApprovalRequired_WhenFreshPolicy_ReturnsFalse() public view {
-        assertFalse(claimManager.claimApprovalRequired(POLICY_ID));
+    function test_setRewardsManager_WhenValid_UpdatesStateAndEmitsEvent() public {
+        address newRewardsManager = makeAddr("newRewardsManager");
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit RewardsManagerSet(newRewardsManager);
+
+        vm.prank(admin);
+        claimManager.setRewardsManager(newRewardsManager);
+
+        assertEq(claimManager.rewardsManager(), newRewardsManager);
+    }
+
+    function test_setRewardsManager_WhenAddressZero_Reverts() public {
+        vm.expectRevert(IClaimManager.ZeroAddress.selector);
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(0));
     }
 
     /*//////////////////////////////////////////////////////////////
                            APPROVE NEXT CLAIM
     //////////////////////////////////////////////////////////////*/
+    function test_claimApprovalRequired_WhenFreshPolicy_ReturnsFalse() public view {
+        assertFalse(claimManager.claimApprovalRequired(POLICY_ID));
+    }
 
     function test_approveNextClaim_ByCurator_AllowsNextClaim() public {
         _fileAndApproveClaim();
@@ -562,11 +562,57 @@ contract ClaimManagerTest is Test {
         claimManager.approveNextClaim(nonExistentPolicyId);
     }
 
-    function test_approveNextClaim_WhenNoApprovalRequired_Succeeds() public {
+    function test_approveNextClaim_WhenNoApprovalRequired_Reverts() public {
         assertFalse(claimManager.claimApprovalRequired(POLICY_ID));
 
-        vm.expectEmit(true, true, true, true, address(claimManager));
-        emit NextClaimApproved(POLICY_ID, operator);
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.NoApprovalPending.selector, POLICY_ID));
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
+    }
+
+    function test_approveNextClaim_WhenApprovalPending_ClearsFlag() public {
+        _fileAndApproveClaim();
+        assertTrue(claimManager.claimApprovalRequired(POLICY_ID));
+
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
+
+        assertFalse(claimManager.claimApprovalRequired(POLICY_ID));
+    }
+
+    function test_approveNextClaim_WhenPoolOwnershipTransfers_NewOwnerReverts() public {
+        address newPoolOwner = makeAddr("newPoolOwner");
+        MutableOwnerCoverPool mutablePool = new MutableOwnerCoverPool(operator);
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.pool = address(mutablePool);
+        meta.curator = operator;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        _fileAndApproveClaim();
+        assertTrue(claimManager.claimApprovalRequired(POLICY_ID));
+
+        mutablePool.transferOwnership(newPoolOwner);
+        assertEq(mutablePool.owner(), newPoolOwner);
+
+        vm.expectRevert(IClaimManager.UnauthorizedApprover.selector);
+        vm.prank(newPoolOwner);
+        claimManager.approveNextClaim(POLICY_ID);
+    }
+
+    function test_approveNextClaim_WhenPoolOwnershipTransfers_OriginalCuratorSucceeds() public {
+        address newPoolOwner = makeAddr("newPoolOwner");
+        MutableOwnerCoverPool mutablePool = new MutableOwnerCoverPool(operator);
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.pool = address(mutablePool);
+        meta.curator = operator;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        _fileAndApproveClaim();
+        assertTrue(claimManager.claimApprovalRequired(POLICY_ID));
+
+        mutablePool.transferOwnership(newPoolOwner);
 
         vm.prank(operator);
         claimManager.approveNextClaim(POLICY_ID);
@@ -575,9 +621,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                RECEIVE
+                             RECOVER TOKENS
     //////////////////////////////////////////////////////////////*/
-
     function test_receive_AcceptsNativeETH() public {
         uint256 amount = 1 ether;
         vm.deal(address(this), amount);
@@ -588,12 +633,6 @@ contract ClaimManagerTest is Test {
         assertTrue(sent);
         assertEq(address(claimManager).balance, balanceBefore + amount);
     }
-
-    /*//////////////////////////////////////////////////////////////
-                            RECOVER TOKENS
-    //////////////////////////////////////////////////////////////*/
-
-    event TokensRecovered(address indexed token, address indexed to, uint256 amount);
 
     function test_recoverTokens_ERC20_ByAdmin_Succeeds() public {
         uint256 amount = 100 ether;
@@ -652,9 +691,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              FILE CLAIM
+                               FILE CLAIM
     //////////////////////////////////////////////////////////////*/
-
     function test_fileClaim_WhenPaused_Reverts() public {
         vm.prank(admin);
         claimManager.pause();
@@ -743,6 +781,7 @@ contract ClaimManagerTest is Test {
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, 0);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Rejected), "Claim should be rejected");
 
+        specMock.setEvaluationResult(true, keccak256("approved"));
         vm.expectRevert(abi.encodeWithSelector(IClaimManager.DuplicateEvidenceHash.selector, POLICY_ID, evidenceHash));
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
@@ -767,6 +806,7 @@ contract ClaimManagerTest is Test {
                 maturityTime: 0,
                 payoutToken: address(0),
                 pool: address(0),
+                curator: address(0),
                 coverageLimit: 0,
                 specId: bytes32(0),
                 termsHash: bytes32(0),
@@ -840,17 +880,29 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
 
-    function test_fileClaim_WhenSlashingReturnsMismatchedArrayLengths_Reverts() public {
+    function test_fileClaim_WhenPreviewSlashingReturnsMismatchedArrayLengths_Reverts() public {
         specMock.setEvaluationResult(true, keccak256("approved"));
 
-        address[] memory tokens = new address[](2);
+        address[] memory vaults = new address[](2);
+        vaults[0] = makeAddr("vault0");
+        vaults[1] = makeAddr("vault1");
+        address[] memory tokens = new address[](1);
         tokens[0] = collateralToken;
-        tokens[1] = payoutToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = SLASH_AMOUNT;
-        slashingManagerMock.setSlashResult(tokens, amounts);
+        uint256[] memory stakes = new uint256[](2);
+        stakes[0] = SLASH_AMOUNT;
+        stakes[1] = SLASH_AMOUNT;
 
-        vm.expectRevert(abi.encodeWithSelector(IClaimManager.NoCollateralSlashed.selector, POLICY_ID));
+        vm.mockCall(
+            address(slashingManagerMock),
+            abi.encodeWithSelector(ISlashingManager.previewSlashing.selector),
+            abi.encode(vaults, tokens, stakes)
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimManager.SlashingArrayLengthMismatch.selector, vaults.length, tokens.length, stakes.length
+            )
+        );
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
@@ -864,7 +916,7 @@ contract ClaimManagerTest is Test {
         amounts[0] = 0;
         slashingManagerMock.setSlashResult(tokens, amounts);
 
-        vm.expectRevert(abi.encodeWithSelector(IClaimManager.ZeroPayoutAmount.selector, POLICY_ID));
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.NoCollateralSlashed.selector, POLICY_ID));
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
@@ -978,9 +1030,10 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved));
     }
 
-    function test_fileClaim_WhenSwapOutputExceedsRemainingPayout_CapsTransfer() public {
+    function test_fileClaim_WhenSwapOutputExceedsRemainingPayout_BeneficiaryReceivesCappedAmount() public {
         uint256 requestedAmount = 500 ether;
         uint256 excessiveSwapOutput = 600 ether;
+        uint256 excess = excessiveSwapOutput - requestedAmount;
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -994,6 +1047,7 @@ contract ClaimManagerTest is Test {
         slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
         swapperMock.setSwapOutput(excessiveSwapOutput);
         swapperMock.setPayoutToken(payoutToken);
+        payoutTokenMock.mint(address(swapperMock), excessiveSwapOutput);
 
         uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
 
@@ -1001,10 +1055,13 @@ contract ClaimManagerTest is Test {
         uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
         uint256 balanceAfter = payoutTokenMock.balanceOf(beneficiary);
-        assertEq(balanceAfter - balanceBefore, requestedAmount);
+        assertEq(balanceAfter - balanceBefore, requestedAmount, "Beneficiary receives capped requestedAmount");
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)), excess, "Excess swap proceeds retained in ClaimManager"
+        );
 
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
-        assertEq(record.payoutAmount, requestedAmount);
+        assertEq(record.payoutAmount, requestedAmount, "payoutAmount records capped amount");
     }
 
     function test_fileClaim_WhenDirectTransferExceedsRemainingPayout_CapsTransfer() public {
@@ -1079,6 +1136,134 @@ contract ClaimManagerTest is Test {
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
         assertEq(record.payoutAmount, firstSwapOutput + secondSwapOutput);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved));
+    }
+
+    function test_fileClaim_WhenQuoteSwapFailsForOneVault_EmitsVaultExcludedFromSlashing() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 quotableStake = 300 ether;
+        uint256 unquotableStake = 200 ether;
+
+        MockToken unquotableTokenMock = new MockToken("Unquotable", "UNQ");
+        address unquotableToken = address(unquotableTokenMock);
+
+        MockSwapperWithUnquotable unquotableSwapper = new MockSwapperWithUnquotable();
+        unquotableSwapper.setQuoteReverts(unquotableToken);
+        unquotableSwapper.setPayoutToken(payoutToken);
+        unquotableSwapper.setSwapOutput(requestedAmount);
+        vm.prank(admin);
+        claimManager.setSwapper(address(unquotableSwapper));
+
+        address vault1 = makeAddr("vault1");
+        address vault2 = makeAddr("vault2");
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = vault1;
+        pvaults[1] = vault2;
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = unquotableToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = quotableStake;
+        pstakes[1] = unquotableStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(slashMock), quotableStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, false, false, address(claimManager));
+        emit VaultExcludedFromSlashing(vault2, unquotableToken);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenQuoteSwapReturnsZero_EmitsVaultExcludedFromSlashing() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 quotableStake = 300 ether;
+        uint256 zeroQuoteStake = 200 ether;
+
+        MockToken zeroQuoteTokenMock = new MockToken("ZeroQuote", "ZQ");
+        address zeroQuoteToken = address(zeroQuoteTokenMock);
+
+        MockSwapperWithUnquotable zeroSwapper = new MockSwapperWithUnquotable();
+        zeroSwapper.setQuoteReturnsZero(zeroQuoteToken);
+        zeroSwapper.setPayoutToken(payoutToken);
+        zeroSwapper.setSwapOutput(requestedAmount);
+        vm.prank(admin);
+        claimManager.setSwapper(address(zeroSwapper));
+
+        address vault1 = makeAddr("vault1");
+        address vault2 = makeAddr("vault2");
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = vault1;
+        pvaults[1] = vault2;
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = zeroQuoteToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = quotableStake;
+        pstakes[1] = zeroQuoteStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(slashMock), quotableStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, false, false, address(claimManager));
+        emit VaultExcludedFromSlashing(vault2, zeroQuoteToken);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenQuoteSwapFailsForOneVault_RemainingVaultSlashedCorrectly() public {
+        _setupTwoVaultScenarioWithUnquotable();
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, 100 ether, evidenceHash, "");
+
+        uint256 received = payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore;
+        assertEq(received, 100 ether, "Remaining vault should cover full claim");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved));
+    }
+
+    function _setupTwoVaultScenarioWithUnquotable() private {
+        MockToken unquotableTokenMock = new MockToken("Unquotable2", "UNQ2");
+        address unquotableToken = address(unquotableTokenMock);
+
+        MockSwapperWithUnquotable unquotableSwapper = new MockSwapperWithUnquotable();
+        unquotableSwapper.setQuoteReverts(unquotableToken);
+        unquotableSwapper.setPayoutToken(payoutToken);
+        unquotableSwapper.setSwapOutput(100 ether);
+        vm.prank(admin);
+        claimManager.setSwapper(address(unquotableSwapper));
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("vaultA");
+        pvaults[1] = makeAddr("vaultB");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = unquotableToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = 300 ether;
+        pstakes[1] = 200 ether;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(slashMock), 300 ether);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
     }
 
     function test_fileClaim_WhenMultiplePartialClaims_AllowsMultipleClaims() public {
@@ -1356,31 +1541,22 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    function test_fileClaim_AtMaturityTime_Succeeds() public {
+    function test_fileClaim_AtMaturityTime_Reverts() public {
         IPolicyManager.PolicyMetadata memory metadata = policyMock.policyMetadata(POLICY_ID);
 
         vm.warp(metadata.maturityTime);
 
-        specMock.setEvaluationResult(true, keccak256("approved"));
-
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = SLASH_AMOUNT;
-        slashingManagerMock.setSlashResult(assets, amounts);
-
-        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
-        slashingManagerMock.setTokenToTransfer(collateralToken);
-
-        payoutTokenMock.mint(address(swapperMock), SLASH_AMOUNT);
-        swapperMock.setPayoutToken(payoutToken);
-        swapperMock.setSwapOutput(SLASH_AMOUNT);
-
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimManager.ClaimOutsideCoverageWindow.selector,
+                POLICY_ID,
+                metadata.startTime,
+                metadata.maturityTime,
+                uint32(metadata.maturityTime)
+            )
+        );
         vm.prank(claimer);
-        uint256 claimId = claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
-
-        IClaimManager.ClaimRecord memory claim = claimManager.claimRecord(POLICY_ID, claimId);
-        assertTrue(claim.status == IClaimManager.ClaimStatus.Approved);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
     }
 
     function test_fileClaim_OneSecondBeforeMaturity_Succeeds() public {
@@ -1543,15 +1719,10 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
 
-        assertEq(
-            slashingManagerMock.lastBeneficiary(), operator, "Should pass pool curator/operator to SlashingManager"
-        );
+        assertEq(slashingManagerMock.lastOperator(), operator, "Should pass pool curator/operator to SlashingManager");
     }
 
-    function test_fileClaim_WhenOraclePriceVerySmall_AmountOutMinFlooredToOne() public {
-        chainlinkPriceFeedMock.setPrice(collateralToken, 1);
-        chainlinkPriceFeedMock.setPrice(payoutToken, 1e30);
-
+    function test_fileClaim_WhenQuoteVerySmall_AmountOutMinFlooredToOne() public {
         uint256 slashAmount = 1;
 
         specMock.setEvaluationResult(true, keccak256("approved"));
@@ -1599,7 +1770,7 @@ contract ClaimManagerTest is Test {
         slashingManagerMock.setTokenToTransfer(address(collateralTokenMock));
 
         MockSwapperWithTracking trackingSwapper = new MockSwapperWithTracking();
-        uint256 swapOutput = 460 ether; // above amountOutMin of 450 ether
+        uint256 swapOutput = 460 ether;
         trackingSwapper.setSwapOutput(swapOutput);
         trackingSwapper.setPayoutToken(payoutToken);
         payoutTokenMock.mint(address(trackingSwapper), swapOutput);
@@ -1610,9 +1781,239 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        uint256 expectedAmountOutMin = slashAmount * (10_000 - 1000) / 10_000; // 450 ether
+        uint256 expectedAmountOutMin = slashAmount * (10_000 - 1000) / 10_000;
         assertEq(
             trackingSwapper.lastAmountOutMin(), expectedAmountOutMin, "amountOutMin does not reflect custom slippage"
+        );
+    }
+
+    function test_fileClaim_WhenCrossTokenLargeStake_SlashInflatedToCompensateSlippage() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 stake = 200 ether;
+
+        uint16 slippageBps = claimManager.maxSwapSlippageBps();
+        uint256 inflatedSlash = requestedAmount * 10_000 / (10_000 - slippageBps);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](1);
+        pvaults[0] = makeAddr("vault");
+        address[] memory ptokens = new address[](1);
+        ptokens[0] = collateralToken;
+        uint256[] memory pstakes = new uint256[](1);
+        pstakes[0] = stake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(slashMock), inflatedSlash);
+
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        uint256 worstCaseSwapOutput = inflatedSlash * (10_000 - slippageBps) / 10_000;
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(worstCaseSwapOutput);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        uint256 received = payoutTokenMock.balanceOf(beneficiary) - balanceBefore;
+        assertApproxEqAbs(received, requestedAmount, 1, "Beneficiary should receive full requestedAmount within 1 wei");
+        assertGt(
+            inflatedSlash, requestedAmount, "Slash must be inflated beyond requestedAmount when stake is sufficient"
+        );
+    }
+
+    function test_fileClaim_WhenSwapProducesMoreThanRemainingPayout_SurplusDistributedAsRewards() public {
+        uint256 requestedAmount = 100 ether;
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        {
+            address[] memory pvaults = new address[](1);
+            pvaults[0] = makeAddr("vault");
+            address[] memory ptokens = new address[](1);
+            ptokens[0] = collateralToken;
+            uint256[] memory pstakes = new uint256[](1);
+            pstakes[0] = 200 ether;
+            slashMock.setupPreview(pvaults, ptokens, pstakes);
+            collateralTokenMock.mint(
+                address(slashMock), requestedAmount * 10_000 / (10_000 - claimManager.maxSwapSlippageBps())
+            );
+        }
+
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        uint256 favorableSwapOutput = requestedAmount + 5 ether;
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(favorableSwapOutput);
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+        uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must receive exactly the claim amount"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
+            0,
+            "No payout tokens should remain stranded in ClaimManager"
+        );
+        assertEq(rewardsMock.totalReceived(), 5 ether, "Surplus must be forwarded to RewardsManager");
+        assertEq(rewardsMock.lastPolicyId(), POLICY_ID, "RewardsManager must be called with the correct policyId");
+        assertEq(rewardsMock.lastOperator(), operator, "RewardsManager must be called with the pool curator");
+        assertEq(
+            claimManager.claimRecord(POLICY_ID, 0).payoutAmount,
+            requestedAmount,
+            "Claim payout accounting must be capped at requestedAmount"
+        );
+    }
+
+    function test_fileClaim_WhenSwapProducesMoreThanRemainingPayout_NoRewardsManager_SurplusStranded() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 stake = 200 ether;
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](1);
+        pvaults[0] = makeAddr("vault");
+        address[] memory ptokens = new address[](1);
+        ptokens[0] = collateralToken;
+        uint256[] memory pstakes = new uint256[](1);
+        pstakes[0] = stake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        uint16 slippageBps = claimManager.maxSwapSlippageBps();
+        uint256 inflatedSlash = requestedAmount * 10_000 / (10_000 - slippageBps);
+        collateralTokenMock.mint(address(slashMock), inflatedSlash);
+
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+        // rewardsManager is address(0) by default — surplus distribution is disabled
+
+        uint256 favorableSwapOutput = requestedAmount + 5 ether;
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(favorableSwapOutput);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        uint256 claimManagerGained = payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore;
+        assertEq(claimManagerGained, 5 ether, "Surplus stays in ClaimManager when rewardsManager is not configured");
+    }
+
+    function test_fileClaim_WhenSwapProducesSurplus_EmitsSwapSurplusDistributedEvent() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 stake = 200 ether;
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](1);
+        pvaults[0] = makeAddr("vault");
+        address[] memory ptokens = new address[](1);
+        ptokens[0] = collateralToken;
+        uint256[] memory pstakes = new uint256[](1);
+        pstakes[0] = stake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        uint16 slippageBps = claimManager.maxSwapSlippageBps();
+        uint256 inflatedSlash = requestedAmount * 10_000 / (10_000 - slippageBps);
+        collateralTokenMock.mint(address(slashMock), inflatedSlash);
+
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        uint256 favorableSwapOutput = requestedAmount + 5 ether;
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(favorableSwapOutput);
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit SwapSurplusDistributed(POLICY_ID, 0, payoutToken, 5 ether);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenSwapExactlyMatchesRemainingPayout_RewardsManagerNotCalled() public {
+        uint256 requestedAmount = 100 ether;
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), requestedAmount);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount); // exactly matches — no surplus
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(rewardsMock.totalReceived(), 0, "RewardsManager must not be called when there is no surplus");
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
+    }
+
+    function test_fileClaim_WhenSwapProducesSurplusAndNativeETHPayoutToken_SurplusStaysInContract() public {
+        uint256 requestedAmount = 10 ether;
+        uint256 favorableSwapOutput = 12 ether; // 2 ETH surplus
+
+        IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
+        metadata.payoutToken = NATIVE_ETH;
+        policyMock.setPolicyMetadata(POLICY_ID, metadata);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), requestedAmount);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+
+        swapperMock.setSwapOutput(favorableSwapOutput);
+        swapperMock.setPayoutToken(NATIVE_ETH);
+        vm.deal(address(swapperMock), favorableSwapOutput);
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        uint256 beneficiaryBefore = beneficiary.balance;
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            beneficiary.balance - beneficiaryBefore, requestedAmount, "Beneficiary receives exactly requestedAmount"
+        );
+        assertEq(rewardsMock.totalReceived(), 0, "RewardsManager must not be called for native ETH surplus");
+        assertEq(
+            address(claimManager).balance,
+            favorableSwapOutput - requestedAmount,
+            "Native ETH surplus stays in ClaimManager (recoverable via recoverTokens)"
         );
     }
 
@@ -1762,39 +2163,6 @@ contract ClaimManagerTest is Test {
         assertEq(record.payoutAmount, swapOutput);
     }
 
-    function test_fileClaim_WhenNativeETHCollateralSwap_CapsOutputAtRemainingPayout() public {
-        uint256 requestedAmount = 400 ether;
-        uint256 excessiveSwapOutput = 600 ether;
-
-        specMock.setEvaluationResult(true, keccak256("approved"));
-
-        address[] memory assets = new address[](1);
-        assets[0] = NATIVE_ETH;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        slashingManagerMock.setSlashResult(assets, amounts);
-
-        vm.deal(address(slashingManagerMock), requestedAmount);
-        slashingManagerMock.setTokenToTransfer(NATIVE_ETH);
-
-        swapperMock.setSwapOutput(excessiveSwapOutput);
-        swapperMock.setPayoutToken(payoutToken);
-
-        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
-
-        vm.prank(claimer);
-        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
-
-        assertEq(
-            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
-            requestedAmount,
-            "Beneficiary should receive capped ERC20 amount"
-        );
-
-        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
-        assertEq(record.payoutAmount, requestedAmount);
-    }
-
     function test_fileClaim_WhenERC20Collateral_SwapsToNativeETHPayout() public {
         uint256 claimAmount = 500 ether;
         uint256 swapOutput = 490 ether;
@@ -1827,39 +2195,6 @@ contract ClaimManagerTest is Test {
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved));
         assertEq(record.payoutAmount, swapOutput);
-    }
-
-    function test_fileClaim_WhenERC20CollateralSwapToNativeETH_CapsOutputAtRemainingPayout() public {
-        uint256 requestedAmount = 400 ether;
-        uint256 excessiveSwapOutput = 600 ether;
-
-        IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
-        metadata.payoutToken = NATIVE_ETH;
-        policyMock.setPolicyMetadata(POLICY_ID, metadata);
-
-        specMock.setEvaluationResult(true, keccak256("approved"));
-
-        address[] memory assets = new address[](1);
-        assets[0] = collateralToken;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = requestedAmount;
-        slashingManagerMock.setSlashResult(assets, amounts);
-        collateralTokenMock.mint(address(slashingManagerMock), requestedAmount);
-        slashingManagerMock.setTokenToTransfer(collateralToken);
-
-        swapperMock.setSwapOutput(excessiveSwapOutput);
-        swapperMock.setPayoutToken(NATIVE_ETH);
-        vm.deal(address(swapperMock), excessiveSwapOutput);
-
-        uint256 balanceBefore = beneficiary.balance;
-
-        vm.prank(claimer);
-        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
-
-        assertEq(beneficiary.balance - balanceBefore, requestedAmount);
-
-        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
-        assertEq(record.payoutAmount, requestedAmount);
     }
 
     function test_fileClaim_WhenMixedNativeETHAndERC20Collateral_ProcessesBoth() public {
@@ -1971,10 +2306,877 @@ contract ClaimManagerTest is Test {
         assertGt(actualPayout, 0);
     }
 
-    /*//////////////////////////////////////////////////////////////
-                             CLAIM RECORD
-    //////////////////////////////////////////////////////////////*/
+    function test_fileClaim_WhenOneVaultUnquotable_SkipsUnquotableAndPaysFromQuotableVault() public {
+        uint256 requestedAmount = 400 ether;
+        uint256 quotableStake = 500 ether;
+        uint256 unquotableStake = 500 ether;
 
+        MockToken unquotableTokenMock = new MockToken("Unquotable", "UNQ");
+        address unquotableToken = address(unquotableTokenMock);
+
+        MockSwapperWithUnquotable unquotableSwapper = new MockSwapperWithUnquotable();
+        unquotableSwapper.setQuoteReverts(unquotableToken);
+        unquotableSwapper.setPayoutToken(payoutToken);
+        unquotableSwapper.setSwapOutput(requestedAmount);
+        vm.prank(admin);
+        claimManager.setSwapper(address(unquotableSwapper));
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("vault1");
+        pvaults[1] = makeAddr("vault2");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = unquotableToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = quotableStake;
+        pstakes[1] = unquotableStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(slashMock), quotableStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
+            requestedAmount,
+            "Beneficiary should receive full requested payout from quotable vault"
+        );
+        assertEq(
+            unquotableTokenMock.balanceOf(address(slashMock)),
+            0,
+            "Unquotable token should not have been minted to slash mock"
+        );
+    }
+
+    function test_fileClaim_WhenVaultQuoteReturnsZero_SkipsVaultAndSucceeds() public {
+        uint256 requestedAmount = 300 ether;
+        uint256 quotableStake = 400 ether;
+        uint256 zeroQuoteStake = 400 ether;
+
+        MockToken zeroQuoteTokenMock = new MockToken("ZeroQuote", "ZQT");
+        address zeroQuoteToken = address(zeroQuoteTokenMock);
+
+        MockSwapperWithUnquotable partialSwapper = new MockSwapperWithUnquotable();
+        partialSwapper.setQuoteReturnsZero(zeroQuoteToken);
+        partialSwapper.setPayoutToken(payoutToken);
+        partialSwapper.setSwapOutput(requestedAmount);
+        vm.prank(admin);
+        claimManager.setSwapper(address(partialSwapper));
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("vaultA");
+        pvaults[1] = makeAddr("vaultB");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = zeroQuoteToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = quotableStake;
+        pstakes[1] = zeroQuoteStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(slashMock), quotableStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertGt(payoutTokenMock.balanceOf(beneficiary) - balanceBefore, 0, "Beneficiary should receive payout");
+    }
+
+    function test_fileClaim_WhenAllVaultsUnquotable_Reverts() public {
+        MockToken unquotableTokenMock = new MockToken("Unquotable2", "UNQ2");
+        address unquotableToken = address(unquotableTokenMock);
+
+        MockSwapperWithUnquotable revertSwapper = new MockSwapperWithUnquotable();
+        revertSwapper.setQuoteReverts(unquotableToken);
+        vm.prank(admin);
+        claimManager.setSwapper(address(revertSwapper));
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](1);
+        pvaults[0] = makeAddr("vaultOnly");
+        address[] memory ptokens = new address[](1);
+        ptokens[0] = unquotableToken;
+        uint256[] memory pstakes = new uint256[](1);
+        pstakes[0] = 500 ether;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.NoCollateralSlashed.selector, POLICY_ID));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenOneVaultUnquotable_ExecuteSlashingReceivesNoZeroAmountEntries() public {
+        uint256 requestedAmount = 300 ether;
+        uint256 quotableStake = 400 ether;
+
+        MockToken unquotableTokenMock = new MockToken("Unquotable3", "UNQ3");
+        address unquotableToken = address(unquotableTokenMock);
+
+        MockSwapperWithUnquotable sw = new MockSwapperWithUnquotable();
+        sw.setQuoteReverts(unquotableToken);
+        sw.setPayoutToken(payoutToken);
+        sw.setSwapOutput(requestedAmount);
+        vm.prank(admin);
+        claimManager.setSwapper(address(sw));
+
+        MockSlashingManagerAssertingNoZeroAmounts assertingMock = new MockSlashingManagerAssertingNoZeroAmounts();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("quotableVault");
+        pvaults[1] = makeAddr("unquotableVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = unquotableToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = quotableStake;
+        pstakes[1] = 500 ether;
+        assertingMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(assertingMock), quotableStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(assertingMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(assertingMock.lastReceivedSlashCount(), 1, "Only one vault should reach executeSlashing");
+        assertEq(assertingMock.lastReceivedSlash(0).token, collateralToken, "Only quotable vault should be slashed");
+    }
+
+    function test_fileClaim_WhenTinyVaultBaseSlashRoundsToZero_ExcludesCrossTokenVaultAndSucceeds() public {
+        uint256 tinyStake = 1;
+        uint256 largeStake = 1000 ether;
+        uint256 requestedAmount = 1 ether;
+
+        MockToken tinyTokenMock = new MockToken("TinyToken", "TINY");
+        address tinyToken = address(tinyTokenMock);
+        address tinyVaultAddr = makeAddr("tinyVault");
+
+        vm.prank(admin);
+        claimManager.setSwapper(address(swapperMock));
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = tinyVaultAddr;
+        pvaults[1] = makeAddr("largeVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = tinyToken;
+        ptokens[1] = collateralToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = tinyStake;
+        pstakes[1] = largeStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        uint256 baseSlash = (largeStake * requestedAmount) / (tinyStake + largeStake);
+        uint256 expectedLargeSlash = (baseSlash * 10_000) / (10_000 - claimManager.maxSwapSlippageBps());
+        collateralTokenMock.mint(address(slashMock), expectedLargeSlash);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, false, false, address(claimManager));
+        emit VaultExcludedFromSlashing(tinyVaultAddr, tinyToken);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+    }
+
+    function test_fileClaim_WhenTinyBaseSlashRoundsToZeroAndQuoterReturnsZeroForOneWei_SkipsVaultInsteadOfReverting()
+        public
+    {
+        (address tinyVaultAddr, address tinyToken) = _setupTinyBaseSlashWithRealisticQuoter();
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, false, false, address(claimManager));
+        emit VaultExcludedFromSlashing(tinyVaultAddr, tinyToken);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, 1 ether, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(
+            uint8(record.status),
+            uint8(IClaimManager.ClaimStatus.Approved),
+            "Claim should be approved despite tiny vault exclusion"
+        );
+    }
+
+    function _setupTinyBaseSlashWithRealisticQuoter() private returns (address tinyVaultAddr, address tinyToken) {
+        uint256 DIVISOR = 1001;
+        uint256 tinyStake = 1001;
+        uint256 largeStake = 2002 ether;
+        uint256 requestedAmount = 1 ether;
+
+        MockToken tinyTokenMock = new MockToken("TinyToken2", "TINY2");
+        tinyToken = address(tinyTokenMock);
+        tinyVaultAddr = makeAddr("tinyVault2");
+
+        MockSwapperWithPerTokenDivisor divSwapper = new MockSwapperWithPerTokenDivisor();
+        divSwapper.setDivisor(tinyToken, DIVISOR);
+        divSwapper.setPayoutToken(payoutToken);
+        divSwapper.setSwapOutput(requestedAmount);
+        vm.prank(admin);
+        claimManager.setSwapper(address(divSwapper));
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = tinyVaultAddr;
+        pvaults[1] = makeAddr("largeVault2");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = tinyToken;
+        ptokens[1] = collateralToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = tinyStake;
+        pstakes[1] = largeStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        uint256 totalEquiv = tinyStake / DIVISOR + largeStake;
+        uint256 largeBaseSlash = (largeStake * requestedAmount) / totalEquiv;
+        uint256 expectedLargeSlash = (largeBaseSlash * 10_000) / (10_000 - claimManager.maxSwapSlippageBps());
+        collateralTokenMock.mint(address(slashMock), expectedLargeSlash);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+    }
+
+    function test_fileClaim_WhenSameTokenVaultUnderwater_CapsSlashAtVaultStake() public {
+        uint256 vaultStake = 300 ether;
+        uint256 requestedAmount = 500 ether;
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.payoutToken = payoutToken;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](1);
+        pvaults[0] = makeAddr("sameTokenVault");
+        address[] memory ptokens = new address[](1);
+        ptokens[0] = payoutToken;
+        uint256[] memory pstakes = new uint256[](1);
+        pstakes[0] = vaultStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        payoutTokenMock.mint(address(slashMock), vaultStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
+            vaultStake,
+            "Payout must be capped at vault stake, not requested amount"
+        );
+    }
+
+    function test_fileClaim_WhenMixedVaultsUnderwater_CapsEachVaultAtItsStake() public {
+        uint256 sameTokenStake = 200 ether;
+        uint256 crossTokenStake = 200 ether;
+        uint256 requestedAmount = 600 ether;
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("sameTokenVault");
+        pvaults[1] = makeAddr("crossTokenVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = payoutToken;
+        ptokens[1] = collateralToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = sameTokenStake;
+        pstakes[1] = crossTokenStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        payoutTokenMock.mint(address(slashMock), sameTokenStake);
+        collateralTokenMock.mint(address(slashMock), crossTokenStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(crossTokenStake);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
+            sameTokenStake + crossTokenStake,
+            "Payout must equal total available stake across both vaults, not requested amount"
+        );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          SURPLUS DISTRIBUTION
+    //////////////////////////////////////////////////////////////*/
+    function test_fileClaim_WhenSameTokenVaultProducesSurplus_EmitsSwapSurplusDistributedEvent() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 slashedAmount = 105 ether;
+        uint256 expectedSurplus = slashedAmount - requestedAmount;
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = slashedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), slashedAmount);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit SwapSurplusDistributed(POLICY_ID, 0, payoutToken, expectedSurplus);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(rewardsMock.totalReceived(), expectedSurplus, "Surplus must be forwarded to RewardsManager");
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
+        );
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
+    }
+
+    function test_fileClaim_WhenSameTokenVaultProducesNoSurplus_RewardsManagerNotCalled() public {
+        uint256 requestedAmount = 100 ether;
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = requestedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), requestedAmount);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            rewardsMock.totalReceived(), 0, "RewardsManager must not be called when there is no same-token surplus"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
+        );
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
+    }
+
+    function test_fileClaim_WhenSameTokenVaultProducesSurplusAndNoRewardsManager_SurplusStranded() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 slashedAmount = 105 ether;
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = slashedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), slashedAmount);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
+            slashedAmount - requestedAmount,
+            "Surplus stays in ClaimManager when rewardsManager is not configured"
+        );
+    }
+
+    function test_fileClaim_WhenMultiVaultCrossTokenFavorableSwapLeavesSameTokenSurplus_DistributesSurplus() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 crossTokenStake = 100 ether;
+        uint256 sameTokenStake = 100 ether;
+        uint256 crossSlash = 50 ether;
+        uint256 sameSlash = 50 ether;
+        uint256 crossSwapOutput = 70 ether;
+        uint256 expectedSameTokenSurplus = sameSlash - (requestedAmount - crossSwapOutput); // 50 - 30 = 20
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("crossVault");
+        pvaults[1] = makeAddr("sameVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = payoutToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = crossTokenStake;
+        pstakes[1] = sameTokenStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(0);
+
+        collateralTokenMock.mint(address(slashMock), crossSlash);
+        payoutTokenMock.mint(address(slashMock), sameSlash);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(crossSwapOutput);
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit SwapSurplusDistributed(POLICY_ID, 0, payoutToken, expectedSameTokenSurplus);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            rewardsMock.totalReceived(), expectedSameTokenSurplus, "Same-token surplus forwarded to RewardsManager"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
+        );
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
+    }
+
+    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultSameTokenSkippedAndStranded() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 stake = 100 ether;
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(0);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("crossVault");
+        pvaults[1] = makeAddr("sameVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = payoutToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = stake;
+        pstakes[1] = stake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        collateralTokenMock.mint(address(slashMock), 50 ether);
+        payoutTokenMock.mint(address(slashMock), 50 ether);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount);
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must receive exactly requestedAmount"
+        );
+        assertEq(
+            rewardsMock.totalReceived(), 0, "RewardsManager must not receive anything: loop exited before vault[1]"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)),
+            50 ether,
+            "Second vault same-token collateral stays in ClaimManager (recoverable via recoverTokens)"
+        );
+    }
+
+    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultCrossTokenSkippedAndStranded() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 stake = 100 ether;
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(0);
+
+        MockToken collateralToken2Mock = new MockToken("Collateral2", "COL2");
+        address collateralToken2 = address(collateralToken2Mock);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("vault1");
+        pvaults[1] = makeAddr("vault2");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = collateralToken2;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = stake;
+        pstakes[1] = stake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        collateralTokenMock.mint(address(slashMock), 50 ether);
+        collateralToken2Mock.mint(address(slashMock), 50 ether);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        MockMultiSwapper multiSwapper = new MockMultiSwapper();
+        multiSwapper.setSwapOutput(collateralToken, requestedAmount);
+        multiSwapper.setSwapOutput(collateralToken2, requestedAmount);
+        multiSwapper.setPayoutToken(payoutToken);
+        vm.prank(admin);
+        claimManager.setSwapper(address(multiSwapper));
+
+        MockRewardsManager rewardsMock = new MockRewardsManager();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(rewardsMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must receive exactly requestedAmount"
+        );
+        assertEq(
+            rewardsMock.totalReceived(), 0, "RewardsManager must not receive anything: loop exited before vault[1]"
+        );
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No payout tokens must remain stranded");
+        assertEq(
+            collateralToken2Mock.balanceOf(address(claimManager)),
+            50 ether,
+            "Second vault cross-token collateral stays in ClaimManager"
+        );
+    }
+
+    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultSurplusStrandedWithoutRewardsManager()
+        public
+    {
+        uint256 requestedAmount = 100 ether;
+        uint256 stake = 100 ether;
+        vm.prank(admin);
+        claimManager.setMaxSwapSlippageBps(0);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("crossVault");
+        pvaults[1] = makeAddr("sameVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = collateralToken;
+        ptokens[1] = payoutToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = stake;
+        pstakes[1] = stake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        collateralTokenMock.mint(address(slashMock), 50 ether);
+        payoutTokenMock.mint(address(slashMock), 50 ether);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+        uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must receive exactly requestedAmount"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
+            50 ether,
+            "Second vault surplus stays in ClaimManager when no RewardsManager is configured"
+        );
+    }
+
+    function test_fileClaim_WhenDistributeRewardsRevertsOnCrossTokenPath_ClaimCompletesAndEmitsFailureEvent() public {
+        uint256 requestedAmount = 100 ether;
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        {
+            address[] memory pvaults = new address[](1);
+            pvaults[0] = makeAddr("vault");
+            address[] memory ptokens = new address[](1);
+            ptokens[0] = collateralToken;
+            uint256[] memory pstakes = new uint256[](1);
+            pstakes[0] = 200 ether;
+            slashMock.setupPreview(pvaults, ptokens, pstakes);
+            collateralTokenMock.mint(
+                address(slashMock), requestedAmount * 10_000 / (10_000 - claimManager.maxSwapSlippageBps())
+            );
+        }
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        // RewardsManager that always reverts — simulates duplicate taskId, upgrade regression, etc.
+        MockRewardsManagerReverting revertingMock = new MockRewardsManagerReverting();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(revertingMock));
+
+        uint256 surplus = 5 ether;
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(requestedAmount + surplus);
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit SwapSurplusDistributionFailed(POLICY_ID, 0, payoutToken, surplus);
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+        uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must still receive the full payout despite distributeRewards reverting"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
+            surplus,
+            "Surplus must stay in ClaimManager when distributeRewards reverts (recoverable via recoverTokens)"
+        );
+    }
+
+    function test_fileClaim_WhenDistributeRewardsRevertsOnSameTokenPath_ClaimCompletesAndEmitsFailureEvent() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 slashedAmount = 105 ether;
+        uint256 surplus = slashedAmount - requestedAmount;
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = slashedAmount;
+        slashingManagerMock.setSlashResult(tokens, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), slashedAmount);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        MockRewardsManagerReverting revertingMock = new MockRewardsManagerReverting();
+        vm.prank(admin);
+        claimManager.setRewardsManager(address(revertingMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit SwapSurplusDistributionFailed(POLICY_ID, 0, payoutToken, surplus);
+
+        uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
+        uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - beneficiaryBefore,
+            requestedAmount,
+            "Beneficiary must still receive the full payout despite distributeRewards reverting"
+        );
+        assertEq(
+            payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
+            surplus,
+            "Surplus must stay in ClaimManager when distributeRewards reverts (recoverable via recoverTokens)"
+        );
+    }
+
+    function test_fileClaim_WhenRequestedAmountTiny_DoesNotRevertWithNoCollateralSlashed() public {
+        uint256 smallStake = 1;
+        uint256 largeStake = 1_000_000;
+        uint256 requestedAmount = 1;
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.payoutToken = payoutToken;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](2);
+        pvaults[0] = makeAddr("smallVault");
+        pvaults[1] = makeAddr("largeVault");
+        address[] memory ptokens = new address[](2);
+        ptokens[0] = payoutToken;
+        ptokens[1] = payoutToken;
+        uint256[] memory pstakes = new uint256[](2);
+        pstakes[0] = smallStake;
+        pstakes[1] = largeStake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+
+        payoutTokenMock.mint(address(slashMock), smallStake + largeStake);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, claimId);
+        assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
+        assertGt(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
+            0,
+            "Beneficiary should receive a non-zero payout for a tiny but valid claim"
+        );
+    }
+
+    function test_fileClaim_UsesMetadataCuratorNotLivePoolOwner() public {
+        address snapshotCurator = makeAddr("snapshotCurator");
+        address livePoolOwner = operator;
+        assertNotEq(snapshotCurator, livePoolOwner, "precondition: curator must differ from live owner");
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.curator = snapshotCurator;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = COVERAGE_LIMIT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), COVERAGE_LIMIT);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+
+        assertEq(
+            slashingManagerMock.lastOperator(),
+            snapshotCurator,
+            "executeSlashing must receive the snapshotted curator, not the live pool owner"
+        );
+        assertNotEq(
+            slashingManagerMock.lastOperator(), livePoolOwner, "executeSlashing must not receive the live pool owner"
+        );
+    }
+
+    function test_fileClaim_WhenPoolOwnershipTransfers_StillUsesOriginalCurator() public {
+        address originalCurator = makeAddr("originalCurator");
+        address newPoolOwner = makeAddr("newPoolOwner");
+        MutableOwnerCoverPool mutablePool = new MutableOwnerCoverPool(originalCurator);
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.pool = address(mutablePool);
+        meta.curator = originalCurator;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        mutablePool.transferOwnership(newPoolOwner);
+        assertEq(mutablePool.owner(), newPoolOwner, "precondition: live owner must now be newPoolOwner");
+        assertNotEq(newPoolOwner, originalCurator, "precondition: new owner must differ from original curator");
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = payoutToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = COVERAGE_LIMIT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        payoutTokenMock.mint(address(slashingManagerMock), COVERAGE_LIMIT);
+        slashingManagerMock.setTokenToTransfer(payoutToken);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, COVERAGE_LIMIT, evidenceHash, "");
+
+        assertEq(
+            slashingManagerMock.lastOperator(),
+            originalCurator,
+            "executeSlashing must use the original curator despite pool ownership transfer"
+        );
+        assertNotEq(slashingManagerMock.lastOperator(), newPoolOwner, "executeSlashing must not use the new pool owner");
+    }
+
+    function test_fileClaim_WhenApprovedClaimEvidenceReused_Reverts() public {
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), SLASH_AMOUNT);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+        payoutTokenMock.mint(address(swapperMock), SLASH_AMOUNT);
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(SLASH_AMOUNT);
+
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
+
+        vm.prank(operator);
+        claimManager.approveNextClaim(POLICY_ID);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.DuplicateEvidenceHash.selector, POLICY_ID, evidenceHash));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              CLAIM RECORD
+    //////////////////////////////////////////////////////////////*/
     function test_claimRecord_WhenClaimNotFiled_ReturnsDefault() public view {
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, 0);
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.None));
@@ -2034,9 +3236,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                             POLICY CLAIM
+                              POLICY CLAIM
     //////////////////////////////////////////////////////////////*/
-
     function test_policyClaim_WhenNoClaims_ReturnsDefaults() public view {
         IClaimManager.PolicyClaim memory state = claimManager.policyClaim(POLICY_ID);
         assertEq(state.claimCount, 0);
@@ -2079,9 +3280,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          REMAINING COVERAGE
+                           REMAINING COVERAGE
     //////////////////////////////////////////////////////////////*/
-
     function test_remainingCoverage_WhenNoClaims_ReturnsFullCoverage() public view {
         uint256 remaining = claimManager.remainingCoverage(POLICY_ID);
         assertEq(remaining, COVERAGE_LIMIT);
@@ -2222,23 +3422,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                PAUSED
+                           AUTHORIZE UPGRADE
     //////////////////////////////////////////////////////////////*/
-
-    function test_paused_WhenNotPaused_ReturnsFalse() public view {
-        assertFalse(claimManager.paused());
-    }
-
-    function test_paused_WhenPaused_ReturnsTrue() public {
-        vm.prank(admin);
-        claimManager.pause();
-        assertTrue(claimManager.paused());
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                          AUTHORIZE UPGRADE
-    //////////////////////////////////////////////////////////////*/
-
     function test_authorizeUpgrade_WhenCallerNotAdmin_Reverts() public {
         address newImplementation = address(new ClaimManager());
 
@@ -2263,13 +3448,11 @@ contract ClaimManagerTest is Test {
         assertEq(claimManager.slashingManager(), slashingManager);
         assertEq(claimManager.swapper(), swapper);
         assertEq(claimManager.policyManager(), policy);
-        assertEq(claimManager.chainlinkPriceFeed(), chainlinkPriceFeed);
     }
 
     /*//////////////////////////////////////////////////////////////
-                               HELPERS
+                                 HELPERS
     //////////////////////////////////////////////////////////////*/
-
     function _setupDefaultPolicy() private {
         IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
         policyMock.setPolicyMetadata(POLICY_ID, metadata);
@@ -2285,6 +3468,7 @@ contract ClaimManagerTest is Test {
             maturityTime: uint32(block.timestamp + COVERAGE_DURATION),
             payoutToken: payoutToken,
             pool: pool,
+            curator: operator,
             coverageLimit: COVERAGE_LIMIT,
             specId: keccak256("MorphoSpec"),
             termsHash: keccak256("terms-hash"),
@@ -2358,11 +3542,12 @@ contract MockSlashingManager {
     address private _tokenToTransfer;
     address private _token2ToTransfer;
     uint96 public lastSlashedCommitteeId;
-    address public lastBeneficiary;
+    address public lastOperator;
     uint256 public lastSlashAmount;
 
     receive() external payable {}
 
+    /// @dev Also configures preview data from the same arrays (min-length safe).
     function setSlashResult(address[] memory assets, uint256[] memory amounts) external {
         _assets = assets;
         _amounts = amounts;
@@ -2376,18 +3561,40 @@ contract MockSlashingManager {
         _token2ToTransfer = token;
     }
 
+    /// @dev Returns preview using the same assets/amounts set via setSlashResult.
+    ///      Uses min(assets.length, amounts.length) to stay safe with mismatched test data.
+    function previewSlashing(
+        uint96,
+        address
+    )
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        uint256 len = _assets.length < _amounts.length ? _assets.length : _amounts.length;
+        vaults = new address[](len);
+        tokens = new address[](len);
+        tokenStakes = new uint256[](len);
+        for (uint256 i = 0; i < len; ++i) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            vaults[i] = address(uint160(i + 1));
+            tokens[i] = _assets[i];
+            tokenStakes[i] = _amounts[i];
+        }
+    }
+
     function executeSlashing(
         uint96 committeeId,
-        address beneficiary,
-        uint256 slashAmount,
+        address operator,
+        ISlashingManager.VaultSlash[] memory vaultSlashes,
         bytes32 /*taskId*/
     )
         external
         returns (address[] memory, uint256[] memory)
     {
         lastSlashedCommitteeId = committeeId;
-        lastBeneficiary = beneficiary;
-        lastSlashAmount = slashAmount;
+        lastOperator = operator;
+        if (vaultSlashes.length > 0) lastSlashAmount = vaultSlashes[0].amount;
 
         if (_tokenToTransfer != address(0)) {
             if (_tokenToTransfer == _NATIVE_ETH) {
@@ -2431,6 +3638,11 @@ contract MockSwapper {
 
     function setPayoutToken(address token) external {
         _payoutToken = token;
+    }
+
+    /// @dev Returns amountIn (1:1 ratio) so _computeVaultSlashes proportional math works in tests.
+    function quoteSwap(address, address, uint256 amountIn) external pure returns (uint256) {
+        return amountIn;
     }
 
     function executeSwap(ISwapper.SwapParams calldata params) external payable returns (uint256) {
@@ -2498,6 +3710,11 @@ contract MockMultiSwapper {
         _payoutToken = token;
     }
 
+    function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
+        uint256 out = _swapOutputs[tokenIn];
+        return out > 0 ? out : amountIn;
+    }
+
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
         require(
             MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn), "TransferFrom failed"
@@ -2522,6 +3739,121 @@ contract MockCoverPool {
     }
 }
 
+/// @dev CoverPool mock whose owner can be changed after deployment, simulating a pool ownership transfer.
+contract MutableOwnerCoverPool {
+    address private _owner;
+
+    constructor(address owner_) {
+        _owner = owner_;
+    }
+
+    function owner() external view returns (address) {
+        return _owner;
+    }
+
+    function transferOwnership(address newOwner) external {
+        _owner = newOwner;
+    }
+}
+
+/**
+ * @dev Swapper mock that makes quoteSwap revert or return 0 for configured tokens, simulating
+ *      collateral tokens with no quote route.  executeSwap also reverts for those tokens so that
+ *      any attempt to actually swap them (which should never happen after the fix) is caught.
+ */
+contract MockSwapperWithUnquotable {
+    mapping(address => bool) private _revertOnQuote;
+    mapping(address => bool) private _zeroOnQuote;
+    address private _payoutToken;
+    uint256 private _swapOutput;
+
+    function setQuoteReverts(address token) external {
+        _revertOnQuote[token] = true;
+    }
+
+    function setQuoteReturnsZero(address token) external {
+        _zeroOnQuote[token] = true;
+    }
+
+    function setPayoutToken(address token) external {
+        _payoutToken = token;
+    }
+
+    function setSwapOutput(uint256 output) external {
+        _swapOutput = output;
+    }
+
+    function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
+        require(!_revertOnQuote[tokenIn], "MockSwapperWithUnquotable: quoteSwap reverts for this token");
+        if (_zeroOnQuote[tokenIn]) return 0;
+        return amountIn;
+    }
+
+    function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
+        require(
+            !_revertOnQuote[params.tokenIn] && !_zeroOnQuote[params.tokenIn],
+            "MockSwapperWithUnquotable: executeSwap reverts for unquotable token"
+        );
+        require(
+            MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn), "TransferFrom failed"
+        );
+        if (_payoutToken != address(0)) {
+            MockToken(_payoutToken).mint(params.recipient, _swapOutput);
+        }
+        return _swapOutput;
+    }
+}
+
+/**
+ * @dev SlashingManager mock where executeSlashing honours the VaultSlash.amount values passed
+ *      to it (rather than returning a pre-set constant).  This lets tests verify that unquotable
+ *      vaults receive amount=0 and are therefore not transferred.
+ */
+contract MockSlashingManagerRespectingSlash {
+    address[] private _previewVaults;
+    address[] private _previewTokens;
+    uint256[] private _previewStakes;
+
+    function setupPreview(address[] memory vaults, address[] memory tokens, uint256[] memory stakes) external {
+        _previewVaults = vaults;
+        _previewTokens = tokens;
+        _previewStakes = stakes;
+    }
+
+    function previewSlashing(
+        uint96,
+        address
+    )
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        return (_previewVaults, _previewTokens, _previewStakes);
+    }
+
+    function executeSlashing(
+        uint96,
+        address,
+        ISlashingManager.VaultSlash[] memory vaultSlashes,
+        bytes32
+    )
+        external
+        returns (address[] memory collateralTokens, uint256[] memory collateralAmounts)
+    {
+        uint256 len = vaultSlashes.length;
+        collateralTokens = new address[](len);
+        collateralAmounts = new uint256[](len);
+        for (uint256 i = 0; i < len; ++i) {
+            collateralTokens[i] = vaultSlashes[i].token;
+            collateralAmounts[i] = vaultSlashes[i].amount;
+            if (vaultSlashes[i].amount > 0) {
+                // forge-lint: disable-next-line(erc20-unchecked-transfer)
+                ERC20(vaultSlashes[i].token).transfer(msg.sender, vaultSlashes[i].amount);
+            }
+        }
+    }
+}
+
 contract MockSwapperWithTracking {
     uint256 private _swapOutput;
     address private _payoutToken;
@@ -2533,6 +3865,10 @@ contract MockSwapperWithTracking {
 
     function setPayoutToken(address token) external {
         _payoutToken = token;
+    }
+
+    function quoteSwap(address, address, uint256 amountIn) external pure returns (uint256) {
+        return amountIn;
     }
 
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
@@ -2563,6 +3899,11 @@ contract MockNativeMultiSwapper {
         _payoutToken = token;
     }
 
+    function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
+        uint256 out = _swapOutputs[tokenIn];
+        return out > 0 ? out : amountIn;
+    }
+
     function executeSwap(ISwapper.SwapParams calldata params) external payable returns (uint256) {
         if (params.tokenIn != _NATIVE_ETH) {
             require(
@@ -2575,5 +3916,147 @@ contract MockNativeMultiSwapper {
             MockToken(_payoutToken).mint(params.recipient, output);
         }
         return output;
+    }
+}
+
+/**
+ * @dev SlashingManager mock that records the VaultSlash array and reverts if any entry has amount == 0.
+ *      Used to assert that _computeVaultSlashes compacts zero-amount entries before calling executeSlashing.
+ */
+contract MockSlashingManagerAssertingNoZeroAmounts {
+    address[] private _previewVaults;
+    address[] private _previewTokens;
+    uint256[] private _previewStakes;
+
+    ISlashingManager.VaultSlash[] private _lastReceivedSlashes;
+
+    function lastReceivedSlash(uint256 i) external view returns (ISlashingManager.VaultSlash memory) {
+        return _lastReceivedSlashes[i];
+    }
+
+    function lastReceivedSlashCount() external view returns (uint256) {
+        return _lastReceivedSlashes.length;
+    }
+
+    function setupPreview(address[] memory vaults, address[] memory tokens, uint256[] memory stakes) external {
+        _previewVaults = vaults;
+        _previewTokens = tokens;
+        _previewStakes = stakes;
+    }
+
+    function previewSlashing(
+        uint96,
+        address
+    )
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes)
+    {
+        return (_previewVaults, _previewTokens, _previewStakes);
+    }
+
+    function executeSlashing(
+        uint96,
+        address,
+        ISlashingManager.VaultSlash[] memory vaultSlashes,
+        bytes32
+    )
+        external
+        returns (address[] memory collateralTokens, uint256[] memory collateralAmounts)
+    {
+        delete _lastReceivedSlashes;
+        for (uint256 i = 0; i < vaultSlashes.length; ++i) {
+            require(vaultSlashes[i].amount > 0, "MockSlashingManagerAssertingNoZeroAmounts: zero-amount entry received");
+            _lastReceivedSlashes.push(vaultSlashes[i]);
+        }
+
+        uint256 len = vaultSlashes.length;
+        collateralTokens = new address[](len);
+        collateralAmounts = new uint256[](len);
+        for (uint256 i = 0; i < len; ++i) {
+            collateralTokens[i] = vaultSlashes[i].token;
+            collateralAmounts[i] = vaultSlashes[i].amount;
+            require(ERC20(vaultSlashes[i].token).transfer(msg.sender, vaultSlashes[i].amount));
+        }
+    }
+}
+
+/**
+ * @dev Minimal RewardsManager mock that records the last call parameters and accumulates received tokens.
+ */
+contract MockRewardsManager {
+    uint96 public lastPolicyId;
+    address public lastOperator;
+    uint256 public totalReceived;
+
+    function distributeRewards(
+        uint96 policyId,
+        address operator,
+        uint256 rewardAmount,
+        IERC20 rewardToken,
+        bytes32
+    )
+        external
+    {
+        lastPolicyId = policyId;
+        lastOperator = operator;
+        require(rewardToken.transferFrom(msg.sender, address(this), rewardAmount));
+        totalReceived += rewardAmount;
+    }
+}
+
+/**
+ * @dev RewardsManager mock that always reverts, simulating a Core-side failure
+ *      (e.g. duplicate taskId, unsupported token, or an upgrade regression).
+ *      Used to verify that _distributeSurplus's try/catch allows the claim to complete.
+ */
+contract MockRewardsManagerReverting {
+    function distributeRewards(uint96, address, uint256, IERC20, bytes32) external pure {
+        revert("MockRewardsManagerReverting: always reverts");
+    }
+}
+
+/**
+ * @dev Swapper mock where quoteSwap applies a per-token integer divisor, simulating realistic
+ *      DEX price ratios.  Tokens without an explicit divisor default to 1:1.
+ *
+ *      Purpose: reproduce the QuoteUnavailable-blocking-claim bug where a cross-token vault
+ *      passes the first-pass inclusion check (quoteSwap(token, payout, fullStake) > 0) but
+ *      its computed proportional baseSlash rounds to 0, which under the old code was forced
+ *      to 1, causing quoteSwap(token, payout, 1) to return 0 and revert.
+ */
+contract MockSwapperWithPerTokenDivisor {
+    address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+
+    mapping(address => uint256) private _divisors;
+    address private _payoutToken;
+    uint256 private _swapOutput;
+
+    function setDivisor(address token, uint256 divisor) external {
+        _divisors[token] = divisor;
+    }
+
+    function setPayoutToken(address token) external {
+        _payoutToken = token;
+    }
+
+    function setSwapOutput(uint256 output) external {
+        _swapOutput = output;
+    }
+
+    /// @dev Returns amountIn / divisor (flooring), or amountIn when no divisor is set (1:1).
+    function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
+        uint256 d = _divisors[tokenIn];
+        return d > 0 ? amountIn / d : amountIn;
+    }
+
+    function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
+        require(
+            MockToken(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn), "TransferFrom failed"
+        );
+        if (_payoutToken != address(0)) {
+            MockToken(_payoutToken).mint(params.recipient, _swapOutput);
+        }
+        return _swapOutput;
     }
 }

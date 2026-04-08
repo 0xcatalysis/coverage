@@ -138,16 +138,42 @@ interface IClaimManager is IAccessControl {
     event PolicyManagerSet(address indexed policyManager);
 
     /**
-     * @notice Emitted when the ChainlinkPriceFeed address is updated.
-     * @param chainlinkPriceFeed New ChainlinkPriceFeed address.
-     */
-    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed);
-
-    /**
      * @notice Emitted when the maximum swap slippage tolerance is updated.
      * @param maxSwapSlippageBps New slippage tolerance in basis points.
      */
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
+
+    /**
+     * @notice Emitted when the RewardsManager address is updated.
+     * @param rewardsManager New RewardsManager address.
+     */
+    event RewardsManagerSet(address indexed rewardsManager);
+
+    /**
+     * @notice Emitted when surplus collateral or payout tokens are distributed as restaker rewards.
+     * @dev Surplus arises in two cases: (1) cross-token path — swap output exceeds remainingPayout;
+     *      (2) same-token path — slashed collateral exceeds remainingPayout (no swap involved).
+     *      In both cases the surplus ERC-20 is forwarded to RewardsManager for restaker distribution.
+     * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
+     * @param token Address of the ERC-20 token distributed as reward.
+     * @param surplusAmount Amount distributed beyond the beneficiary payout.
+     */
+    event SwapSurplusDistributed(
+        uint96 indexed policyId, uint256 indexed claimId, address indexed token, uint256 surplusAmount
+    );
+
+    /**
+     * @notice Emitted when surplus distribution to RewardsManager fails so the claim is not blocked.
+     * @dev The surplus amount remains in this contract and can be recovered via `recoverTokens`.
+     * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
+     * @param token Address of the ERC-20 token that could not be distributed.
+     * @param surplusAmount Amount that failed to distribute.
+     */
+    event SwapSurplusDistributionFailed(
+        uint96 indexed policyId, uint256 indexed claimId, address indexed token, uint256 surplusAmount
+    );
 
     /**
      * @notice Emitted when the pool curator approves the next claim for a policy.
@@ -163,6 +189,16 @@ interface IClaimManager is IAccessControl {
      * @param amount Amount recovered.
      */
     event TokensRecovered(address indexed token, address indexed to, uint256 amount);
+
+    /**
+     * @notice Emitted when a vault is excluded from slashing because its collateral token
+     *         has no configured or functioning swap route (quoteSwap reverted).
+     * @dev Partial exclusion is not reverted; remaining vaults absorb the full claim pro-rata.
+     *      Monitor this event to detect misconfigured swap routes before a loss event.
+     * @param vault Address of the excluded vault.
+     * @param token Collateral token for which the quote failed.
+     */
+    event VaultExcludedFromSlashing(address indexed vault, address indexed token);
 
     /**
      * @notice Reverts when a required address argument is zero.
@@ -181,13 +217,6 @@ interface IClaimManager is IAccessControl {
     error PolicyNotFound(uint96 policyId);
 
     /**
-     * @notice Reverts when attempting to resolve a claim that has already been resolved.
-     * @param policyId Identifier of the policy.
-     * @param claimId Identifier of the claim.
-     */
-    error ClaimAlreadyResolved(uint96 policyId, uint256 claimId);
-
-    /**
      * @notice Reverts when attempting to file a claim outside the coverage window.
      * @param policyId Identifier of the policy.
      * @param startTime Coverage start timestamp.
@@ -202,13 +231,6 @@ interface IClaimManager is IAccessControl {
      * @param expectedClaimer Address authorized to file claims for this policy.
      */
     error UnauthorizedClaimer(address caller, address expectedClaimer);
-
-    /**
-     * @notice Reverts when spec evaluation returns non-payable result.
-     * @param policyId Identifier of the policy.
-     * @param notesHash Hash of evaluation notes.
-     */
-    error ClaimNotPayable(uint96 policyId, bytes32 notesHash);
 
     /**
      * @notice Reverts when slashing returns no collateral.
@@ -243,7 +265,7 @@ interface IClaimManager is IAccessControl {
     error RequestedAmountExceedsRemainingCoverage(uint96 policyId, uint256 requestedAmount, uint256 remainingCoverage);
 
     /**
-     * @notice Reverts when the slippage tolerance exceeds the maximum allowed (10000 bps).
+     * @notice Reverts when the slippage tolerance exceeds the maximum settable bound (3000 bps).
      * @param slippageBps The invalid slippage value provided.
      */
     error InvalidSlippageBps(uint16 slippageBps);
@@ -264,6 +286,27 @@ interface IClaimManager is IAccessControl {
      * @param policyId Identifier of the policy in premium default.
      */
     error PremiumDefaulted(uint96 policyId);
+
+    /**
+     * @notice Reverts when no valid swap quote is available for the collateral-to-payout route.
+     * @param collateralToken Address of the collateral token.
+     * @param payoutToken Address of the payout token.
+     */
+    error QuoteUnavailable(address collateralToken, address payoutToken);
+
+    /**
+     * @notice Reverts when previewSlashing returns arrays of different lengths.
+     * @param vaultsLength Length of the vaults array.
+     * @param tokensLength Length of the tokens array.
+     * @param tokenStakesLength Length of the tokenStakes array.
+     */
+    error SlashingArrayLengthMismatch(uint256 vaultsLength, uint256 tokensLength, uint256 tokenStakesLength);
+
+    /**
+     * @notice Reverts when approveNextClaim is called but no approval gate is active.
+     * @param policyId Identifier of the policy.
+     */
+    error NoApprovalPending(uint96 policyId);
 
     /**
      * @notice Pauses claim operations.
@@ -306,18 +349,18 @@ interface IClaimManager is IAccessControl {
     function setPolicyManager(address policyManager_) external;
 
     /**
-     * @notice Sets the ChainlinkPriceFeed address.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
-     */
-    function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
-
-    /**
      * @notice Sets the maximum allowed slippage for collateral-to-payout swaps.
      * @dev Requires DEFAULT_ADMIN_ROLE. Must be less than 10000 bps (100%).
      * @param maxSwapSlippageBps_ Slippage tolerance in basis points (e.g., 200 = 2%).
      */
     function setMaxSwapSlippageBps(uint16 maxSwapSlippageBps_) external;
+
+    /**
+     * @notice Sets the RewardsManager address used to distribute swap surplus as restaker rewards.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param rewardsManager_ Address of the RewardsManager contract. Must be non-zero.
+     */
+    function setRewardsManager(address rewardsManager_) external;
 
     /**
      * @notice Files and resolves a claim atomically in a single transaction.
@@ -391,20 +434,18 @@ interface IClaimManager is IAccessControl {
     function policyManager() external view returns (address);
 
     /**
-     * @notice Returns the ChainlinkPriceFeed address.
-     */
-    function chainlinkPriceFeed() external view returns (address);
-
-    /**
      * @notice Returns the maximum swap slippage tolerance in basis points.
      */
     function maxSwapSlippageBps() external view returns (uint16);
 
     /**
+     * @notice Returns the RewardsManager address.
+     */
+    function rewardsManager() external view returns (address);
+
+    /**
      * @notice Clears the claim approval gate for a policy, allowing the next claim to be filed freely.
-     * @dev Callable only by the pool curator (ICoverPool.owner()). Idempotent: calling when the gate
-     *      is already open is a no-op (does not revert). Reverts if the policy does not exist or the
-     *      caller is not the curator.
+     * @dev Callable only by the pool curator.
      * @param policyId Identifier of the policy to clear the approval gate for.
      */
     function approveNextClaim(uint96 policyId) external;

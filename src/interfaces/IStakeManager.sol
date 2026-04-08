@@ -8,38 +8,11 @@ pragma solidity 0.8.28;
  *      Admin functions (setRouter, setCoverPoolFactory, etc.) are not called by coverage contracts.
  */
 interface IStakeManager {
-    /// @notice Thrown when committee ID 0 is used (reserved as sentinel value)
-    error InvalidCommitteeId();
-
-    /// @notice Thrown when attempting to create a committee that already exists
-    error CommitteeAlreadyExists();
-
-    /// @notice Thrown when an invalid amount is provided (zero)
-    error InvalidAmount();
-
-    /// @notice Thrown when an invalid duration is provided (zero)
-    error InvalidDuration();
-
-    /// @notice Thrown when attempting to add an operator that is already in a committee
-    error OperatorAlreadyInCommittee();
-
-    /// @notice Thrown when attempting to add an operator to a committee that already has an operator
-    error CommitteeAlreadyHasOperator();
-
-    /// @notice Thrown when attempting to interact with a committee that has no operator assigned
-    error OperatorNotInCommittee();
-
     /// @notice Creates a committee by setting up operator sets and network limits across protocols.
     /// @param committeeId The committee ID (1:1 with policyId).
-    /// @param maxStakeForCommitteeUSD The maximum stake limit in USD (8 decimals).
+    /// @param coverPool The address of the cover pool authorized for this committee.
     /// @param duration The duration in seconds for the vault lock period.
-    function createCommittee(
-        uint96 committeeId,
-        uint256 maxStakeForCommitteeUSD,
-        address coverPool,
-        uint32 duration
-    )
-        external;
+    function createCommittee(uint96 committeeId, address coverPool, uint32 duration) external;
 
     /// @notice Adds an operator to a committee (one operator per committee).
     /// @dev Requires POLICY_MANAGER_ROLE. The curator (CoverPool owner) is used as the committee operator.
@@ -56,13 +29,19 @@ interface IStakeManager {
     /// @notice Associates vaults with a committee and configures them in the appropriate adapters.
     /// @param committeeId The ID of the committee.
     /// @param vaults The array of vault addresses to associate.
-    function addCommitteeVaults(uint96 committeeId, address[] calldata vaults) external;
+    /// @param coverageLimit The coverage limit for the committee (in payout token units).
+    function setCommitteeVaults(uint96 committeeId, address[] calldata vaults, uint256 coverageLimit) external;
 
-    /// @notice Returns the total stake for a committee across all registered vaults (USD, 8 decimals).
-    /// @dev Called by PolicyManager.bindPolicy to enforce stake sufficiency before policy activation.
+    /// @notice Returns per-vault stake breakdown for a committee in token-native units.
+    /// @dev Called by PolicyManager.bindPolicy for the bind-time sufficiency check (oracle-converted to USD).
     /// @param committeeId The ID of the committee.
-    /// @return totalStakeUSD The total stake for the committee in USD (8 decimals).
-    function getCommitteeTotalStakeUSD(uint96 committeeId) external view returns (uint256 totalStakeUSD);
+    /// @return vaults Array of vault addresses in the committee.
+    /// @return tokens Array of underlying collateral token addresses per vault.
+    /// @return tokenStakes Array of token-native stake amounts per vault.
+    function getCommitteeTokenStakes(uint96 committeeId)
+        external
+        view
+        returns (address[] memory vaults, address[] memory tokens, uint256[] memory tokenStakes);
 
     /// @notice Returns all vault addresses associated with a committee.
     /// @param committeeId The ID of the committee to check.

@@ -9,11 +9,11 @@ import {MockPolicyManager} from "./Mocks.sol";
 /// @title ForkClaimManager
 /// @notice Claim manager for fork tests that pays insurance from pre-funded USDC balance
 ///         rather than minting a MockERC20. This lets us test with real USDC as payout token.
-///         Does NOT inherit IClaimManager (which extends IAccessControl) — only implements
+///         Does NOT inherit IClaimManager (which extends IAccessControl) -- only implements
 ///         the two methods the adapter actually calls: fileClaim() and policyClaim().
 contract ForkClaimManager {
     address public policyManager;
-    IERC20 public immutable usdc;
+    IERC20 public immutable USDC;
 
     struct PolicyClaim {
         uint256 totalPaidOut;
@@ -24,7 +24,7 @@ contract ForkClaimManager {
 
     constructor(address policyManager_, address usdc_) {
         policyManager = policyManager_;
-        usdc = IERC20(usdc_);
+        USDC = IERC20(usdc_);
     }
 
     function policyClaim(uint96 policyId) external view returns (PolicyClaim memory) {
@@ -37,7 +37,7 @@ contract ForkClaimManager {
 
     function fileClaim(
         uint96 policyId,
-        uint256 claimAmount,
+        uint256, /* claimAmount */
         bytes32 evidenceHash,
         bytes memory additionalData
     )
@@ -63,7 +63,7 @@ contract ForkClaimManager {
         if (result.isPayable) {
             (, uint256 claimedAmount) = abi.decode(additionalData, (address, uint256));
             // Transfer pre-funded USDC to the adapter (beneficiary) as insurance payout
-            usdc.transfer(meta.beneficiary, claimedAmount);
+            require(USDC.transfer(meta.beneficiary, claimedAmount));
             _policyClaims[policyId].totalPaidOut += claimedAmount;
             _policyClaims[policyId].claimCount++;
         }

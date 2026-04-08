@@ -42,8 +42,6 @@ interface ISwapper is IAccessControl {
         uint256 amountOutMin;
         /// @notice Recipient address for the swapped tokens.
         address recipient;
-        /// @notice Calldata to execute on the swap target.
-        bytes swapCalldata;
         /// @notice Latest timestamp at which the swap may be executed.
         uint256 deadline;
     }
@@ -203,9 +201,8 @@ interface ISwapper is IAccessControl {
     /**
      * @notice Sets a swap route between two tokens.
      * @dev Requires SWAP_MANAGER_ROLE.
-     *      The swapCalldata is stored and used as the default when executeSwap is called
-     *      without explicit calldata. This allows ClaimManager to execute swaps without
-     *      needing to know DEX-specific details.
+     *      The swapCalldata is stored and used by executeSwap.
+     *      This allows ClaimManager to execute swaps without needing to know DEX-specific details.
      * @param tokenIn Source token address.
      * @param tokenOut Destination token address.
      * @param swapTarget External protocol address to use for swaps.
@@ -222,6 +219,17 @@ interface ISwapper is IAccessControl {
         external;
 
     /**
+     * @notice Quotes the expected output for a token swap without executing it.
+     * @dev Uses the configured swap route's quoter (e.g., Uniswap V3 QuoterV2). Not a view function because
+     *      QuoterV2's quoteExactInputSingle uses swap simulation with revert, which is not staticcall-safe.
+     * @param tokenIn Source token address.
+     * @param tokenOut Destination token address.
+     * @param amountIn Amount of tokenIn to quote for.
+     * @return amountOut Expected amount of tokenOut that would be received.
+     */
+    function quoteSwap(address tokenIn, address tokenOut, uint256 amountIn) external returns (uint256 amountOut);
+
+    /**
      * @notice Executes a token swap using a configured route.
      * @dev Requires SWAP_EXECUTOR_ROLE (typically granted to ClaimManager).
      *
@@ -235,7 +243,7 @@ interface ISwapper is IAccessControl {
      *      1. Validates route configuration and whitelist status
      *      2. If tokenIn is NATIVE_ETH, wraps msg.value to WETH; else pulls ERC20 via transferFrom
      *      3. Approves swapTarget for the input amount
-     *      4. Executes swap via external call with provided swapCalldata
+     *      4. Executes swap via external call with stored route calldata
      *      5. Verifies output amount via balance diff (trustless verification)
      *      6. Clears approval to minimize attack surface
      *      7. If tokenOut is NATIVE_ETH, unwraps WETH and sends ETH; else transfers ERC20

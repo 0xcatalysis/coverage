@@ -95,7 +95,7 @@ interface ICoverPoolFactory is IAccessControl {
 
     /**
      * @notice Updates the CoverPool implementation used for future clones.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires CREATOR_ROLE.
      * @param implementation_ Address of the new CoverPool implementation contract.
      */
     function setCoverPoolImplementation(address implementation_) external;

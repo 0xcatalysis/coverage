@@ -8,6 +8,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {IQuotableAdapter} from "./interfaces/IQuotableAdapter.sol";
 import {ISwapper} from "./interfaces/ISwapper.sol";
 import {IWETH} from "./interfaces/IWETH.sol";
 
@@ -198,14 +199,36 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
 
         _handleTokenInput(params.tokenIn, actualTokenIn, params.amountIn);
 
-        bytes memory effectiveCalldata = params.swapCalldata.length > 0 ? params.swapCalldata : routeCalldata;
-        amountOut = _performSwap(actualTokenIn, actualTokenOut, swapTarget, params.amountIn, effectiveCalldata);
+        amountOut = _performSwap(actualTokenIn, actualTokenOut, swapTarget, params.amountIn, routeCalldata);
 
         require(amountOut >= params.amountOutMin, InsufficientOutputAmount(amountOut, params.amountOutMin));
 
         _handleTokenOutput(params.tokenOut, amountOut, params.recipient);
 
         emit SwapExecuted(params.tokenIn, params.tokenOut, params.amountIn, amountOut, params.recipient);
+    }
+
+    /**
+     * @inheritdoc ISwapper
+     */
+    function quoteSwap(address tokenIn, address tokenOut, uint256 amountIn) external override returns (uint256) {
+        if (amountIn == 0) return 0;
+
+        address actualTokenIn = tokenIn == NATIVE_ETH ? nativeWrapper : tokenIn;
+        address actualTokenOut = tokenOut == NATIVE_ETH ? nativeWrapper : tokenOut;
+
+        if (actualTokenIn == actualTokenOut) return amountIn;
+
+        bytes32 routeKey = _getRouteKey(actualTokenIn, actualTokenOut);
+        SwapRoute storage route = _swapRoutes[routeKey];
+
+        if (!route.enabled || route.swapTarget == address(0)) return 0;
+
+        try IQuotableAdapter(route.swapTarget).quote(amountIn, route.swapCalldata) returns (uint256 quoted) {
+            return quoted;
+        } catch {
+            return 0;
+        }
     }
 
     /**

@@ -14,7 +14,7 @@ import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
 
 contract CoverPoolTest is Test {
     bytes32 internal constant QUOTE_TYPEHASH = keccak256(
-        "Quote(address pool,uint96 policyId,uint256 coverageLimit,uint256 basePremium,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 startTime,uint32 maturityTime,uint32 expirationTime)"
+        "Quote(address pool,uint96 policyId,uint256 coverageLimit,bytes32 specId,bytes32 termsHash,address beneficiary,uint32 expirationTime)"
     );
     string internal constant NAME = "Catalysis Cover Pool";
     string internal constant VERSION = "1";
@@ -202,16 +202,181 @@ contract CoverPoolTest is Test {
         coverPool.setPoolFeeBps(2500);
     }
 
-    function test_setPoolFeeBps_WhenValid_UpdatesState() public {
+    function test_setPoolFeeBps_WhenValid_EmitsProposed() public {
         uint16 newFee = 250;
+        uint256 expectedEffectiveAt = block.timestamp + coverPool.POOL_FEE_TIMELOCK();
 
         vm.expectEmit(true, true, true, true, address(coverPool));
-        emit ICoverPool.PoolFeeBpsSet(poolFeeBps, newFee);
+        emit ICoverPool.PoolFeeBpsProposed(newFee, expectedEffectiveAt);
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(newFee);
+    }
+
+    function test_setPoolFeeBps_WhenCooldownNotElapsed_OldFeeActive() public {
+        uint16 originalFee = coverPool.poolFeeBps();
+        uint16 newFee = 500;
 
         vm.prank(curator);
         coverPool.setPoolFeeBps(newFee);
 
-        assertEq(coverPool.poolFeeBps(), newFee, "Pool fee not updated");
+        assertEq(coverPool.poolFeeBps(), originalFee, "Old fee still active during cooldown");
+    }
+
+    function test_setPoolFeeBps_WhenCooldownElapsed_NewFeeAutoApplied() public {
+        uint16 newFee = 500;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(newFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+
+        assertEq(coverPool.poolFeeBps(), newFee, "New fee active after cooldown");
+    }
+
+    function test_setPoolFeeBps_WhenCalledAgainAfterCooldown_CommitsPreviousPendingAndEmitsSet() public {
+        uint16 initialFee = poolFeeBps;
+        uint16 firstFee = 300;
+        uint16 secondFee = 600;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(firstFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.PoolFeeBpsSet(initialFee, firstFee);
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(secondFee);
+
+        assertEq(coverPool.poolFeeBps(), firstFee, "First fee committed; second still in cooldown");
+    }
+
+    function test_setPoolFeeBps_WhenPendingNotExpired_EmitsCancellationAndReplacesProposal() public {
+        uint16 firstFee = 300;
+        uint16 secondFee = 600;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(firstFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK() - 1);
+
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.PoolFeeBpsProposalCancelled(firstFee);
+
+        uint256 expectedEffectiveAt = block.timestamp + coverPool.POOL_FEE_TIMELOCK();
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.PoolFeeBpsProposed(secondFee, expectedEffectiveAt);
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(secondFee);
+    }
+
+    function test_setPoolFeeBps_WhenPendingNotExpired_NewTimelockStartsFromReplacement() public {
+        uint16 firstFee = 300;
+        uint16 secondFee = 600;
+        uint16 originalFee = coverPool.poolFeeBps();
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(firstFee);
+
+        uint256 firstProposalTimestamp = block.timestamp;
+        vm.warp(firstProposalTimestamp + coverPool.POOL_FEE_TIMELOCK() - 1);
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(secondFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK() - 1);
+        assertEq(coverPool.poolFeeBps(), originalFee, "Original fee active while second proposal still pending");
+
+        vm.warp(block.timestamp + 1);
+        assertEq(coverPool.poolFeeBps(), secondFee, "Second fee active after its timelock");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        FINALIZE POOL FEE BPS
+    //////////////////////////////////////////////////////////////*/
+    function test_finalizePoolFeeBps_WhenNoPending_Reverts() public {
+        vm.expectRevert(ICoverPool.NoPendingFeeProposal.selector);
+        coverPool.finalizePoolFeeBps();
+    }
+
+    function test_finalizePoolFeeBps_WhenCooldownNotElapsed_Reverts() public {
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(500);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK() - 1);
+
+        vm.expectRevert(ICoverPool.NoPendingFeeProposal.selector);
+        coverPool.finalizePoolFeeBps();
+    }
+
+    function test_finalizePoolFeeBps_WhenCooldownElapsed_CommitsFeeAndEmitsSet() public {
+        uint16 initialFee = coverPool.poolFeeBps();
+        uint16 newFee = 500;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(newFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+
+        vm.expectEmit(true, true, true, true, address(coverPool));
+        emit ICoverPool.PoolFeeBpsSet(initialFee, newFee);
+
+        coverPool.finalizePoolFeeBps();
+
+        assertEq(coverPool.poolFeeBps(), newFee, "Fee reflects finalized value");
+    }
+
+    function test_finalizePoolFeeBps_WhenCooldownElapsed_StorageConsistentWithGetter() public {
+        uint16 newFee = 500;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(newFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+
+        coverPool.finalizePoolFeeBps();
+
+        vm.expectRevert(ICoverPool.NoPendingFeeProposal.selector);
+        coverPool.finalizePoolFeeBps();
+    }
+
+    function test_finalizePoolFeeBps_IsPermissionless() public {
+        address stranger = makeAddr("stranger");
+        uint16 newFee = 700;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(newFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+
+        vm.prank(stranger);
+        coverPool.finalizePoolFeeBps();
+
+        assertEq(coverPool.poolFeeBps(), newFee, "Stranger can finalize matured proposal");
+    }
+
+    function test_finalizePoolFeeBps_AfterFinalize_NewProposalStartsFreshTimelock() public {
+        uint16 firstFee = 300;
+        uint16 secondFee = 600;
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(firstFee);
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+        coverPool.finalizePoolFeeBps();
+
+        assertEq(coverPool.poolFeeBps(), firstFee, "First fee active after finalize");
+
+        vm.prank(curator);
+        coverPool.setPoolFeeBps(secondFee);
+
+        assertEq(coverPool.poolFeeBps(), firstFee, "First fee still active during second timelock");
+
+        vm.warp(block.timestamp + coverPool.POOL_FEE_TIMELOCK());
+        assertEq(coverPool.poolFeeBps(), secondFee, "Second fee active after its timelock");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -468,23 +633,6 @@ contract CoverPoolTest is Test {
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
     }
 
-    function test_bindPolicyForRequest_WhenQuoteStartTimeAfterMaturity_Reverts() public {
-        uint96 policyId = _createDraft();
-        ICoverPool.Quote memory quote = _defaultQuote();
-        quote.policyId = policyId;
-        quote.beneficiary = beneficiary;
-        quote.startTime = uint32(block.timestamp + 25 hours);
-        quote.maturityTime = uint32(block.timestamp + 1 hours);
-        bytes memory signature = _signQuote(quote);
-        address[] memory vaults = new address[](1);
-        vaults[0] = makeAddr("vault1");
-        address spec = makeAddr("spec");
-
-        vm.expectRevert(ICoverPool.InvalidCoverageWindow.selector);
-        vm.prank(curator);
-        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
-    }
-
     function test_bindPolicyForRequest_WhenQuoteExpired_Reverts() public {
         uint96 policyId = _createDraft();
         ICoverPool.Quote memory quote = _defaultQuote();
@@ -498,25 +646,6 @@ contract CoverPoolTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(ICoverPool.QuoteExpired.selector, uint32(block.timestamp - 1), block.timestamp)
-        );
-        vm.prank(curator);
-        coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
-    }
-
-    function test_bindPolicyForRequest_WhenStartTimeInPast_Reverts() public {
-        uint96 policyId = _createDraft();
-        ICoverPool.Quote memory quote = _defaultQuote();
-        quote.policyId = policyId;
-        quote.beneficiary = beneficiary;
-        quote.startTime = uint32(block.timestamp) - 1;
-        quote.maturityTime = uint32(block.timestamp + 25 hours);
-        bytes memory signature = _signQuote(quote);
-        address[] memory vaults = new address[](1);
-        vaults[0] = makeAddr("vault1");
-        address spec = makeAddr("spec");
-
-        vm.expectRevert(
-            abi.encodeWithSelector(ICoverPool.InvalidStartTime.selector, uint32(block.timestamp) - 1, block.timestamp)
         );
         vm.prank(curator);
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
@@ -555,11 +684,14 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
-        vm.expectCall(stakeManager, abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults));
+        vm.expectCall(
+            stakeManager,
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether)
+        );
 
         vm.prank(curator);
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
@@ -600,7 +732,7 @@ contract CoverPoolTest is Test {
 
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -616,8 +748,6 @@ contract CoverPoolTest is Test {
         assertEq(boundPolicy.termsHash, quote.termsHash, "Terms hash mismatch");
         assertEq(boundPolicy.coverageLimit, quote.coverageLimit, "Coverage limit mismatch");
         assertEq(boundPolicy.beneficiary, quote.beneficiary, "Beneficiary mismatch");
-        assertEq(boundPolicy.startTime, quote.startTime, "Start time mismatch");
-        assertEq(boundPolicy.maturityTime, quote.maturityTime, "Maturity time mismatch");
 
         assertEq(mockPolicyManager.bindPolicyCallCount(), 1, "bindPolicy not called");
         IPolicyManager.BindPolicyRequest memory request = mockPolicyManager.lastBindRequest();
@@ -641,7 +771,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -672,7 +802,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -701,7 +831,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -711,7 +841,7 @@ contract CoverPoolTest is Test {
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
     }
 
-    function test_bindPolicyForRequest_CallsStakeManagerAddCommitteeVaults() public {
+    function test_bindPolicyForRequest_CallsStakeManagerSetCommitteeVaults() public {
         uint96 policyId = _createDraft();
         ICoverPool.Quote memory quote = _defaultQuote();
         quote.policyId = policyId;
@@ -726,7 +856,10 @@ contract CoverPoolTest is Test {
             specRegistry, abi.encodeWithSignature("registerSpec(bytes32,address)", quote.specId, spec), abi.encode()
         );
 
-        vm.expectCall(stakeManager, abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults));
+        vm.expectCall(
+            stakeManager,
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether)
+        );
 
         vm.prank(curator);
         coverPool.bindPolicyForRequest(policyId, quote, spec, vaults, signature);
@@ -775,7 +908,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -802,7 +935,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -1089,7 +1222,7 @@ contract CoverPoolTest is Test {
         );
         vm.mockCall(
             stakeManager,
-            abi.encodeWithSignature("addCommitteeVaults(uint96,address[])", policyId, vaults),
+            abi.encodeWithSignature("setCommitteeVaults(uint96,address[],uint256)", policyId, vaults, 1000 ether),
             abi.encode()
         );
 
@@ -1098,7 +1231,7 @@ contract CoverPoolTest is Test {
     }
 
     function _createDraft() private returns (uint96 policyId) {
-        vm.mockCall(stakeManager, abi.encodeWithSignature("createCommittee(uint96,uint256,address,uint32)"), "");
+        vm.mockCall(stakeManager, abi.encodeWithSignature("createCommittee(uint96,address,uint32)"), "");
 
         vm.mockCall(
             address(mockPolicyManager),
@@ -1116,12 +1249,9 @@ contract CoverPoolTest is Test {
             pool: address(coverPool),
             policyId: uint96(123),
             coverageLimit: 1000 ether,
-            basePremium: 100 ether,
             specId: specId,
             termsHash: termsHash,
             beneficiary: beneficiary,
-            startTime: uint32(block.timestamp + 1 hours),
-            maturityTime: uint32(block.timestamp + 25 hours),
             expirationTime: uint32(block.timestamp + 2 days)
         });
     }
@@ -1143,12 +1273,9 @@ contract CoverPoolTest is Test {
             uint256(uint160(quote.pool)),
             uint256(quote.policyId),
             quote.coverageLimit,
-            quote.basePremium,
             uint256(quote.specId),
             uint256(quote.termsHash),
             uint256(uint160(quote.beneficiary)),
-            uint256(quote.startTime),
-            uint256(quote.maturityTime),
             uint256(quote.expirationTime)
         );
     }
@@ -1192,7 +1319,6 @@ contract MockPolicyManager {
             claimer: address(0),
             payoutToken: address(0),
             curator: address(0),
-            coverageAmount: 1_000_000e8,
             duration: 30 days,
             policyId: policyId,
             status: IPolicyManager.PolicyStatus.Created,

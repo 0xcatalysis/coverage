@@ -56,10 +56,48 @@ contract MockSwapRouter {
 
         require(_outputAmount >= params.amountOutMinimum, "MockSwapRouter: insufficient output");
 
-        IERC20(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn);
-        MockERC20(params.tokenOut).transfer(params.recipient, _outputAmount);
+        require(IERC20(params.tokenIn).transferFrom(msg.sender, address(this), params.amountIn));
+        require(MockERC20(params.tokenOut).transfer(params.recipient, _outputAmount));
 
         return _outputAmount;
+    }
+}
+
+contract MockQuoterV2 {
+    struct QuoteExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint256 amountIn;
+        uint24 fee;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    uint256 private _output;
+    bool private _shouldRevert;
+
+    address public lastTokenIn;
+    address public lastTokenOut;
+    uint24 public lastFee;
+    uint256 public lastAmountIn;
+
+    function setOutput(uint256 output) external {
+        _output = output;
+    }
+
+    function setShouldRevert(bool shouldRevert_) external {
+        _shouldRevert = shouldRevert_;
+    }
+
+    function quoteExactInputSingle(QuoteExactInputSingleParams memory params)
+        external
+        returns (uint256 amountOut, uint160, uint32, uint256)
+    {
+        require(!_shouldRevert, "MockQuoterV2: forced revert");
+        lastTokenIn = params.tokenIn;
+        lastTokenOut = params.tokenOut;
+        lastFee = params.fee;
+        lastAmountIn = params.amountIn;
+        return (_output > 0 ? _output : params.amountIn, 0, 0, 0);
     }
 }
 
@@ -70,6 +108,7 @@ contract MockSwapRouter {
 contract UniswapV3AdapterTest is Test {
     UniswapV3Adapter internal adapter;
     MockSwapRouter internal router;
+    MockQuoterV2 internal quoter;
     MockERC20 internal tokenIn;
     MockERC20 internal tokenOut;
 
@@ -84,10 +123,11 @@ contract UniswapV3AdapterTest is Test {
         swapper = makeAddr("swapper");
 
         router = new MockSwapRouter();
+        quoter = new MockQuoterV2();
         tokenIn = new MockERC20("Token In", "TIN");
         tokenOut = new MockERC20("Token Out", "TOUT");
 
-        adapter = new UniswapV3Adapter(address(router), swapper);
+        adapter = new UniswapV3Adapter(address(router), address(quoter), swapper);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -96,16 +136,25 @@ contract UniswapV3AdapterTest is Test {
 
     function test_constructor_WhenRouterZero_Reverts() public {
         vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
-        new UniswapV3Adapter(address(0), swapper);
+        new UniswapV3Adapter(address(0), address(quoter), swapper);
+    }
+
+    function test_constructor_WhenQuoterZero_Reverts() public {
+        vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
+        new UniswapV3Adapter(address(router), address(0), swapper);
     }
 
     function test_constructor_WhenSwapperZero_Reverts() public {
         vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
-        new UniswapV3Adapter(address(router), address(0));
+        new UniswapV3Adapter(address(router), address(quoter), address(0));
     }
 
     function test_constructor_SetsSwapRouter() public view {
         assertEq(address(adapter.SWAP_ROUTER()), address(router), "SWAP_ROUTER mismatch");
+    }
+
+    function test_constructor_SetsQuoter() public view {
+        assertEq(address(adapter.QUOTER()), address(quoter), "QUOTER mismatch");
     }
 
     function test_constructor_SetsSwapper() public view {
@@ -113,7 +162,7 @@ contract UniswapV3AdapterTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           SWAP - REVERTS
+                                SWAP
     //////////////////////////////////////////////////////////////*/
 
     function test_swap_WhenCallerIsNotSwapper_Reverts() public {
@@ -146,9 +195,6 @@ contract UniswapV3AdapterTest is Test {
         adapter.swap(address(tokenIn), address(tokenOut), FEE, minimumRequired);
     }
 
-    /*//////////////////////////////////////////////////////////////
-                         SWAP - HAPPY PATH
-    //////////////////////////////////////////////////////////////*/
     function test_swap_WhenZeroAmountOutMinimum_ForwardsToRouter() public {
         uint256 amountIn = 100 ether;
         uint256 routerOutput = 95 ether;
@@ -296,5 +342,90 @@ contract UniswapV3AdapterTest is Test {
 
         vm.prank(swapper);
         adapter.swap(address(tokenIn), address(tokenOut), FEE, 0);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                QUOTE
+    //////////////////////////////////////////////////////////////*/
+
+    function _buildSwapCalldata(
+        address tokenIn_,
+        address tokenOut_,
+        uint24 fee_,
+        uint256 amountOutMinimum_
+    )
+        internal
+        view
+        returns (bytes memory)
+    {
+        return abi.encodeWithSelector(adapter.swap.selector, tokenIn_, tokenOut_, fee_, amountOutMinimum_);
+    }
+
+    function test_quote_WhenCalldataEmpty_ReturnsZero() public {
+        uint256 out = adapter.quote(1 ether, new bytes(0));
+        assertEq(out, 0, "empty calldata must return 0");
+    }
+
+    function test_quote_WhenCalldataLength100_ReturnsZero() public {
+        uint256 out = adapter.quote(1 ether, new bytes(100));
+        assertEq(out, 0, "100-byte calldata must return 0 (below 132 minimum)");
+    }
+
+    function test_quote_WhenCalldataLength131_ReturnsZero() public {
+        bytes memory cd = _buildSwapCalldata(address(tokenIn), address(tokenOut), FEE, 0);
+        assertEq(cd.length, 132, "fixture must be 132 bytes");
+        bytes memory truncated = new bytes(131);
+        for (uint256 i = 0; i < 131; ++i) {
+            truncated[i] = cd[i];
+        }
+        uint256 out = adapter.quote(1 ether, truncated);
+        assertEq(out, 0, "131-byte calldata must return 0");
+    }
+
+    function test_quote_WhenCalldataLength132_Succeeds() public {
+        quoter.setOutput(42 ether);
+        bytes memory cd = _buildSwapCalldata(address(tokenIn), address(tokenOut), FEE, 0);
+        assertEq(cd.length, 132, "fixture must be 132 bytes");
+        uint256 out = adapter.quote(1 ether, cd);
+        assertEq(out, 42 ether, "132-byte calldata must succeed and return quoter output");
+    }
+
+    function test_quote_ReturnsQuoterOutput() public {
+        uint256 expected = 99 ether;
+        quoter.setOutput(expected);
+        bytes memory cd = _buildSwapCalldata(address(tokenIn), address(tokenOut), FEE, 0);
+        uint256 out = adapter.quote(1 ether, cd);
+        assertEq(out, expected, "must return the value from QuoterV2");
+    }
+
+    function test_quote_PassesAmountInToQuoter() public {
+        uint256 amountIn = 77 ether;
+        bytes memory cd = _buildSwapCalldata(address(tokenIn), address(tokenOut), FEE, 0);
+        uint256 out = adapter.quote(amountIn, cd);
+        assertEq(out, amountIn, "amountIn must be forwarded to QuoterV2 unchanged");
+        assertEq(quoter.lastAmountIn(), amountIn, "quoter must have received the correct amountIn");
+    }
+
+    function test_quote_DecodesTokenInTokenOutFeeFromCalldata() public {
+        uint24 fee = 500;
+        bytes memory cd = _buildSwapCalldata(address(tokenIn), address(tokenOut), fee, 0);
+        adapter.quote(1 ether, cd);
+        assertEq(quoter.lastTokenIn(), address(tokenIn), "tokenIn mismatch");
+        assertEq(quoter.lastTokenOut(), address(tokenOut), "tokenOut mismatch");
+        assertEq(quoter.lastFee(), fee, "fee mismatch");
+    }
+
+    function test_quote_IgnoresAmountOutMinimumFieldInCalldata() public {
+        quoter.setOutput(50 ether);
+        bytes memory cd = _buildSwapCalldata(address(tokenIn), address(tokenOut), FEE, 999 ether);
+        uint256 out = adapter.quote(1 ether, cd);
+        assertEq(out, 50 ether, "amountOutMinimum field must be ignored by quote");
+    }
+
+    function test_quote_WhenQuoterReverts_ReturnsZero() public {
+        quoter.setShouldRevert(true);
+        bytes memory cd = _buildSwapCalldata(address(tokenIn), address(tokenOut), FEE, 0);
+        uint256 out = adapter.quote(1 ether, cd);
+        assertEq(out, 0, "must return 0 when QuoterV2 reverts");
     }
 }

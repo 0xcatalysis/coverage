@@ -33,9 +33,6 @@ interface IPolicyManager is IAccessControl {
         address claimer;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
-        /// @notice Coverage amount requested as stake requirement, denominated in USD with 8 decimals (Chainlink
-        /// standard).
-        uint256 coverageAmount;
         /// @notice Coverage duration requested (in seconds).
         uint32 duration;
         /// @notice Policy identifier (1:1 with committee).
@@ -70,6 +67,8 @@ interface IPolicyManager is IAccessControl {
         address payoutToken;
         /// @notice Address of the pool providing coverage.
         address pool;
+        /// @notice Pool curator snapshotted at request time and registered as committee operator.
+        address curator;
         /// @notice Coverage notional allocated from the pool.
         uint256 coverageLimit;
         /// @notice Spec identifier for parametric claim evaluation (e.g., MorphoSpec, MapleSpec).
@@ -97,9 +96,6 @@ interface IPolicyManager is IAccessControl {
         address claimer;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
-        /// @notice Coverage amount as the stake requirement for committee creation, denominated in USD with 8 decimals
-        /// (Chainlink standard).
-        uint256 coverageAmount;
         /// @notice Coverage quote from a single CoverPool.
         ICoverPool.Quote quote;
         /// @notice EIP-712 signature from the pool's authorized quote signer.
@@ -113,7 +109,6 @@ interface IPolicyManager is IAccessControl {
      * @param buyer Buyer address requesting coverage.
      * @param beneficiary Beneficiary address for claims.
      * @param claimer Account authorized to trigger claims.
-     * @param coverageAmount Requested coverage amount as stake requirement, denominated in USD with 8 decimals.
      * @param duration Requested coverage duration (in seconds).
      */
     event CoverageRequested(
@@ -122,7 +117,6 @@ interface IPolicyManager is IAccessControl {
         address indexed buyer,
         address beneficiary,
         address claimer,
-        uint256 coverageAmount,
         uint32 duration
     );
 
@@ -197,21 +191,9 @@ interface IPolicyManager is IAccessControl {
     error ZeroAddress();
 
     /**
-     * @notice Reverts when supplied coverage timestamps are invalid.
-     * @param startTime Coverage start timestamp.
-     * @param maturityTime Coverage maturity timestamp.
-     */
-    error InvalidCoverageWindow(uint32 startTime, uint32 maturityTime);
-
-    /**
      * @notice Reverts when coverage limit is zero.
      */
     error InvalidCoverageLimit();
-
-    /**
-     * @notice Reverts when coverage amount is zero.
-     */
-    error InvalidCoverageAmount();
 
     /**
      * @notice Reverts when coverage duration is zero.
@@ -246,6 +228,11 @@ interface IPolicyManager is IAccessControl {
      * @param actual Actual stake amount.
      */
     error InsufficientStake(uint96 policyId, uint256 required, uint256 actual);
+
+    /**
+     * @notice Thrown when the oracle returns zero for the coverage limit USD value.
+     */
+    error ZeroCoverageLimitUSD();
 
     /**
      * @notice Reverts when no vaults are bound to a policy.
@@ -310,13 +297,6 @@ interface IPolicyManager is IAccessControl {
     error UnauthorizedPool();
 
     /**
-     * @notice Reverts when the bound policy duration doesn't match the requested duration.
-     * @param requested Requested duration from the policy draft.
-     * @param actual Actual duration from the bound policy (maturityTime - startTime).
-     */
-    error DurationMismatch(uint32 requested, uint32 actual);
-
-    /**
      * @notice Pauses policy binding operations.
      * @dev Requires DEFAULT_ADMIN_ROLE.
      */
@@ -365,8 +345,6 @@ interface IPolicyManager is IAccessControl {
      * @param beneficiary Address receiving payouts upon approved claims.
      * @param claimer Account authorized to trigger claims for the policy.
      * @param payoutToken ERC20 token used for claim payouts.
-     * @param coverageAmount Requested coverage amount as stake requirement, denominated in USD with 8 decimals
-     * (Chainlink standard).
      * @param duration Requested coverage duration (in seconds).
      * @param bindPolicyHook Callback target invoked when policy is bound.
      * @return policyId Identifier reserved for binding and minting.
@@ -376,7 +354,6 @@ interface IPolicyManager is IAccessControl {
         address beneficiary,
         address claimer,
         address payoutToken,
-        uint256 coverageAmount,
         uint32 duration,
         address bindPolicyHook
     )
