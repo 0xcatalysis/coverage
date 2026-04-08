@@ -125,9 +125,9 @@ abstract contract CoveredVaultStorage is
     // --- Timelock pending state for insurance parameter changes ---
 
     /// @notice Pending deductibleBps value awaiting timelock execution
-    uint16 public pendingDeductibleBps;
+    uint16 internal pendingDeductibleBps;
     /// @notice Timestamp after which pendingDeductibleBps may be executed (0 = no pending change)
-    uint64 public pendingDeductibleTimestamp;
+    uint64 internal pendingDeductibleTimestamp;
 
     /// @notice Cached Morpho vault value used as fallback when convertToAssets() reverts
     uint256 public override lastKnownMorphoValue;
@@ -146,14 +146,14 @@ abstract contract CoveredVaultStorage is
     uint64 public override pendingPremiumRateTimestamp;
 
     /// @notice Pending premium recipient awaiting timelock execution
-    address public pendingPremiumRecipient;
+    address internal pendingPremiumRecipient;
     /// @notice Timestamp after which pendingPremiumRecipient may be executed (0 = no pending change)
-    uint64 public pendingPremiumRecipientTimestamp;
+    uint64 internal pendingPremiumRecipientTimestamp;
 
     /// @notice Pending depositCap value awaiting timelock execution
-    uint256 public pendingDepositCap;
+    uint256 internal pendingDepositCap;
     /// @notice Timestamp after which pendingDepositCap may be executed (0 = no pending change)
-    uint64 public pendingDepositCapTimestamp;
+    uint64 internal pendingDepositCapTimestamp;
 
     /// @notice Timestamp at which the policy was bound (i.e. onPolicyBound block.timestamp).
     ///         Used as the premium accrual start anchor instead of PolicyMetadata.startTime,
@@ -180,7 +180,8 @@ abstract contract CoveredVaultStorage is
     /// @dev Prevents the timelock-to-zero then immediate-increase exploit: after the first rate is
     ///      applied this flag is set, so subsequent zero-rate states produced via the normal timelock
     ///      do NOT re-enable the bypass.
-    bool public premiumRateInitialized;
+    ///      Internal: this is an implementation detail not needed in the external ABI.
+    bool internal premiumRateInitialized;
 
     /*//////////////////////////////////////////////////////////////
                             ERRORS

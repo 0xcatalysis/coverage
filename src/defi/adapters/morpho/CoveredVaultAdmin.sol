@@ -24,7 +24,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Proposes a new premium rate. Call executePremiumRate() after the delay to apply.
-    ///         Exception: if the policy is bound but no rate has ever been applied (premiumRatePerSecond == 0),
+    ///         Exception: if the policy is bound but no rate has ever been applied this period,
     ///         the first call applies the rate immediately without a timelock.
     // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function setPremiumRate(uint256 newRate) external override onlyOwner {
@@ -35,13 +35,8 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         // once any rate has been applied the flag is set and subsequent zero states must use the
         // normal propose/execute path.
         if (policyBoundExecuted && !premiumRateInitialized) {
-            _accruePremium();
             if (pendingPremiumRateTimestamp != 0) emit IE.ProposalSuperseded("premiumRate");
-            pendingPremiumRate = 0;
-            pendingPremiumRateTimestamp = 0;
-            premiumRatePerSecond = newRate;
-            premiumRateInitialized = true;
-            emit IE.PremiumRateExecuted(0, newRate);
+            _applyPremiumRate(newRate);
             return;
         }
 
@@ -53,10 +48,15 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     /// @notice Applies a pending premium rate change after the operational timelock elapses.
     function executePremiumRate() external override onlyOwner {
         _requireTimelockReady(pendingPremiumRateTimestamp);
-        // Settle any premium accrued at the old rate before switching.
+        _applyPremiumRate(pendingPremiumRate);
+    }
+
+    /// @dev Settles accrued premium at the current rate, then atomically switches to newRate.
+    ///      Shared by the first-rate fast-path and the normal timelock execute path.
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-events
+    function _applyPremiumRate(uint256 newRate) private {
         _accruePremium();
         uint256 oldRate = premiumRatePerSecond;
-        uint256 newRate = pendingPremiumRate;
         premiumRatePerSecond = newRate;
         premiumRateInitialized = true;
         pendingPremiumRate = 0;
@@ -81,8 +81,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     ///         vault is at elevated risk without changing maxCoverableLossBps for existing users.
     function setDepositCap(uint256 newCap) external override onlyOwner {
         require(policyBoundExecuted, IA.InvalidParameters());
-        uint256 ceiling = (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
-        require(newCap <= ceiling, IA.InvalidParameters());
+        require(newCap <= _calculateDepositCeiling(), IA.InvalidParameters());
         pendingDepositCapTimestamp = _propose(pendingDepositCapTimestamp, "depositCap", STANDARD_DELAY);
         pendingDepositCap = newCap;
         emit IE.DepositCapProposed(newCap, pendingDepositCapTimestamp);
@@ -94,8 +93,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         uint256 oldCap = depositCap;
         uint256 newCap = pendingDepositCap;
         // Re-validate ceiling at execution time in case maxCoverableLossBps changed since proposal.
-        uint256 ceiling = (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
-        require(newCap <= ceiling, IA.InvalidParameters());
+        require(newCap <= _calculateDepositCeiling(), IA.InvalidParameters());
         depositCap = newCap;
         pendingDepositCap = 0;
         pendingDepositCapTimestamp = 0;
@@ -310,6 +308,11 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     /*//////////////////////////////////////////////////////////////
                     PRIVATE HELPERS
     //////////////////////////////////////////////////////////////*/
+
+    /// @dev Maximum TVL allowed given the current coverageLimit and maxCoverableLossBps.
+    function _calculateDepositCeiling() private view returns (uint256) {
+        return (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
+    }
 
     /// @dev Validates that a timelocked proposal is ready to execute.
     function _requireTimelockReady(uint64 timestamp) private view {
