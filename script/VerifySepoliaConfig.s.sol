@@ -106,7 +106,7 @@ contract VerifySepoliaConfig is Script {
     address internal constant CHAINLINK_PRICE_FEED = 0x2b48F18f73C66075168b727524c99aFE12814417;
 
     // ── Known E2E vault (EigenLayer wstETH DurationVaultStrategy, deployed by SSPRouter) ──
-    address internal constant WETH_EL_STRATEGY = 0x7db0C347645bE3E19Af87d72E6220361cdD2428D;
+    address internal constant WSTETH_EL_STRATEGY = 0x7db0C347645bE3E19Af87d72E6220361cdD2428D;
 
     // ── Reference token
     // ─────────────────────────────────────────────────────
@@ -216,15 +216,15 @@ contract VerifySepoliaConfig is Script {
         );
 
         // addCommitteeVaults checks getVaultModule != NONE for each vault
-        uint8 module = ISSPRouterView(SSP_ROUTER).getVaultModule(WETH_EL_STRATEGY);
+        uint8 module = ISSPRouterView(SSP_ROUTER).getVaultModule(WSTETH_EL_STRATEGY);
         if (module == MODULE_EIGENLAYER) {
-            console2.log("[OK] SSPRouter.getVaultModule(WETH_EL_STRATEGY): EIGENLAYER (2)");
+            console2.log("[OK] SSPRouter.getVaultModule(WSTETH_EL_STRATEGY): EIGENLAYER (2)");
         } else if (module == 0) {
-            console2.log("[FAIL] SSPRouter.getVaultModule(WETH_EL_STRATEGY): NONE -- vault not registered");
-            console2.log("  Fix: SSPRouter.registerVaultModule(WETH_EL_STRATEGY, EIGENLAYER=2)");
+            console2.log("[FAIL] SSPRouter.getVaultModule(WSTETH_EL_STRATEGY): NONE -- vault not registered");
+            console2.log("  Fix: SSPRouter.registerVaultModule(WSTETH_EL_STRATEGY, EIGENLAYER=2)");
             _failures++;
         } else {
-            console2.log("[FAIL] SSPRouter.getVaultModule(WETH_EL_STRATEGY): unexpected module type:", module);
+            console2.log("[FAIL] SSPRouter.getVaultModule(WSTETH_EL_STRATEGY): unexpected module type:", module);
             _failures++;
         }
 
