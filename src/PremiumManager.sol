@@ -212,7 +212,9 @@ contract PremiumManager is
 
         if (restakerSplit > 0) {
             bytes32 taskId = keccak256(abi.encodePacked(policyId, ++_distributionNonce));
+            token.forceApprove(rewardsManager, restakerSplit);
             IRewardsManager(rewardsManager).distributeRewards(policyId, curator, restakerSplit, token, taskId);
+            token.forceApprove(rewardsManager, 0);
         }
 
         emit PremiumDistributed(pool, policyId, amount);
