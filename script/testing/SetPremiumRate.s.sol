@@ -33,6 +33,15 @@ interface ICoveredVaultWrapperRate {
  *        • Timelock elapsed:  broadcasts executePremiumRate() and verifies the new rate
  *        • Timelock pending:  logs the remaining wait time and exits without broadcasting
  *
+ * @dev Rate is WAD-scaled per second. Common values:
+ *        0.25% / year ≈ 79_274_479
+ *        0.3%  / year ≈ 95_129_375
+ *        0.5%  / year ≈ 158_548_959
+ *        1%    / year ≈ 317_097_919    (1e18 / 31_536_000 / 100)
+ *        5%    / year ≈ 1_585_489_599
+ *        10%   / year ≈ 3_170_979_198
+ *        50%   / year ≈ 15_854_895_991  (maximum allowed)
+ *
  * Usage (Step 1 — propose):
  *   PREMIUM_RATE=<rate> forge script script/testing/SetPremiumRate.s.sol:SetPremiumRate \
  *     --rpc-url $RPC_URL --broadcast --slow -vvvv
