@@ -30,12 +30,17 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     function setPremiumRate(uint256 newRate) external override onlyOwner {
         require(newRate <= MAX_PREMIUM_RATE_PER_SECOND, IA.InvalidParameters());
 
-        // Fast-path: policy is bound but no rate has been applied yet — apply immediately.
-        if (policyBoundExecuted && premiumRatePerSecond == 0) {
+        // Fast-path: policy is bound but no rate has ever been applied this period — apply immediately.
+        // premiumRateInitialized guards against the timelock-to-zero-then-instant-increase exploit:
+        // once any rate has been applied the flag is set and subsequent zero states must use the
+        // normal propose/execute path.
+        if (policyBoundExecuted && !premiumRateInitialized) {
             _accruePremium();
+            if (pendingPremiumRateTimestamp != 0) emit IE.ProposalSuperseded("premiumRate");
             pendingPremiumRate = 0;
             pendingPremiumRateTimestamp = 0;
             premiumRatePerSecond = newRate;
+            premiumRateInitialized = true;
             emit IE.PremiumRateExecuted(0, newRate);
             return;
         }
@@ -53,6 +58,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         uint256 oldRate = premiumRatePerSecond;
         uint256 newRate = pendingPremiumRate;
         premiumRatePerSecond = newRate;
+        premiumRateInitialized = true;
         pendingPremiumRate = 0;
         pendingPremiumRateTimestamp = 0;
         emit IE.PremiumRateExecuted(oldRate, newRate);
@@ -244,6 +250,8 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         pendingPremiumRecipientTimestamp = 0;
         // Clear any sub-unit WAD remainder so it does not leak into the next policy's accrual epoch.
         premiumAccrualRemainder = 0;
+        // Re-enable the first-rate fast-path for the next policy period.
+        premiumRateInitialized = false;
         emit IE.PolicyBindingReset(prevPolicyId);
     }
 

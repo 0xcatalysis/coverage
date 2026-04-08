@@ -174,6 +174,14 @@ abstract contract CoveredVaultStorage is
     ///         same-block collisions when a user files two claims with identical parameters.
     uint256 internal _claimNonce;
 
+    /// @notice True once a premium rate has been applied (via fast-path or executePremiumRate) since
+    ///         the current policy was bound. Cleared in resetPolicyBinding so the fast-path is
+    ///         available again for the next policy period.
+    /// @dev Prevents the timelock-to-zero then immediate-increase exploit: after the first rate is
+    ///      applied this flag is set, so subsequent zero-rate states produced via the normal timelock
+    ///      do NOT re-enable the bypass.
+    bool public premiumRateInitialized;
+
     /*//////////////////////////////////////////////////////////////
                             ERRORS
     //////////////////////////////////////////////////////////////*/
