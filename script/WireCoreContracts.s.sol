@@ -57,7 +57,6 @@ interface IPremiumManagerWire {
  *   - STAKE_MANAGER: StakeManager proxy address
  *   - SLASHING_MANAGER: SlashingManager proxy address
  *   - REWARDS_MANAGER: RewardsManager proxy address
- *   - SSP_ROUTER: SSPRouter proxy address
  *
  *   Coverage (from script/DeploySepolia.s.sol outputs):
  *   - POLICY_MANAGER: PolicyManager proxy address
@@ -88,7 +87,6 @@ contract WireCoreContracts is Script {
     address public stakeManager;
     address public slashingManager;
     address public rewardsManager;
-    address public sspRouter;
     address public policyManager;
     address public claimManager;
     address public premiumManager;
@@ -111,7 +109,6 @@ contract WireCoreContracts is Script {
         stakeManager = vm.envAddress("STAKE_MANAGER");
         slashingManager = vm.envAddress("SLASHING_MANAGER");
         rewardsManager = vm.envAddress("REWARDS_MANAGER");
-        sspRouter = vm.envAddress("SSP_ROUTER");
         policyManager = vm.envAddress("POLICY_MANAGER");
         claimManager = vm.envAddress("CLAIM_MANAGER");
         premiumManager = vm.envAddress("PREMIUM_MANAGER");
@@ -127,7 +124,6 @@ contract WireCoreContracts is Script {
         console.log("  StakeManager:    ", stakeManager);
         console.log("  SlashingManager: ", slashingManager);
         console.log("  RewardsManager:  ", rewardsManager);
-        console.log("  SSPRouter:       ", sspRouter);
         console.log("Coverage contracts:");
         console.log("  PolicyManager:   ", policyManager);
         console.log("  ClaimManager:    ", claimManager);

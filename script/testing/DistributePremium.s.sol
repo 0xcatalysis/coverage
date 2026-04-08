@@ -32,7 +32,7 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  *
  * Prerequisites:
  *   - Policy must be bound (CoveredVaultWrapper.onPolicyBound called)
- *   - PremiumManager must have approved SSPRouter for the premium token (via approveSpender)
+ *   - PremiumManager must have approved RewardsManager for the premium token (via approveSpender)
  */
 contract DistributePremium is Script {
     /// @notice Deployer/caller address

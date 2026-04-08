@@ -12,7 +12,7 @@ import {UpgradePremiumManager} from "./UpgradePremiumManager.s.sol";
  *
  *      After the upgrade, run:
  *        cast send $PREMIUM_MANAGER_PROXY "approveSpender(address,address,uint256)" \
- *          $WETH $SSP_ROUTER $(cast max-uint) --private-key $PRIVATE_KEY --rpc-url $SEPOLIA_RPC_URL
+ *          $WETH $REWARDS_MANAGER $(cast max-uint) --private-key $PRIVATE_KEY --rpc-url $SEPOLIA_RPC_URL
  *
  *      Usage:
  *        PREMIUM_MANAGER_PROXY=0x746DAa7Eb8D2a4407C19b4D9Cc2Cd6B839dbB720 \
