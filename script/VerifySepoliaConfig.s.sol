@@ -234,7 +234,7 @@ contract VerifySepoliaConfig is Script {
     // ─────────────────────────────────────────────────────────────────────────
     //  Flows 6-7 – DistributePremium
     //  Requires: PremiumManager → RewardsManager address + PREMIUM_MANAGER_ROLE
-    //  Requires: PremiumManager has approved SSPRouter for WETH (via approveSpender)
+    //  Requires: PremiumManager has approved RewardsManager for WETH (via approveSpender)
     // ─────────────────────────────────────────────────────────────────────────
 
     function _checkFlow6_7_distributePremium() internal {
@@ -242,14 +242,14 @@ contract VerifySepoliaConfig is Script {
 
         _check("PremiumManager.rewardsManager", IPremiumManagerView(PREMIUM_MANAGER).rewardsManager(), REWARDS_MANAGER);
 
-        uint256 allowance = IERC20Allowance(WETH).allowance(PREMIUM_MANAGER, SSP_ROUTER);
+        uint256 allowance = IERC20Allowance(WETH).allowance(PREMIUM_MANAGER, REWARDS_MANAGER);
         if (allowance == type(uint256).max) {
-            console2.log("[OK] PremiumManager.allowance(WETH, SSPRouter): unlimited");
+            console2.log("[OK] PremiumManager.allowance(WETH, RewardsManager): unlimited");
         } else if (allowance > 0) {
-            console2.log("[OK] PremiumManager.allowance(WETH, SSPRouter):", allowance);
+            console2.log("[OK] PremiumManager.allowance(WETH, RewardsManager):", allowance);
         } else {
-            console2.log("[FAIL] PremiumManager has not approved SSPRouter for WETH");
-            console2.log("  Fix: PremiumManager.approveSpender(WETH, SSPRouter, type(uint256).max)");
+            console2.log("[FAIL] PremiumManager has not approved RewardsManager for WETH");
+            console2.log("  Fix: PremiumManager.approveSpender(WETH, RewardsManager, type(uint256).max)");
             _failures++;
         }
         _checkRole(

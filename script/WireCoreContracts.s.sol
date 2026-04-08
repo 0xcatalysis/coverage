@@ -37,9 +37,9 @@ interface IPremiumManagerWire {
  *      2. StakeManager.grantRole(POLICY_MANAGER_ROLE, policyManager) — unblocks requestCoverage()
  *      3. SlashingManager.setClaimManager     — grants CLAIM_MANAGER_ROLE, unblocks executeSlashing()
  *      4. RewardsManager.setPremiumManager    — grants PREMIUM_MANAGER_ROLE, unblocks distributeRewards()
- *      5. PremiumManager.approveSpender       — allows SSPRouter to pull tokens from PremiumManager
- *                                               for reward distribution; required for collectPremium()
- *                                               to route restaker share correctly end-to-end
+ *      5. PremiumManager.approveSpender       — allows RewardsManager to pull the restaker share
+ *                                               from PremiumManager via safeTransferFrom; required
+ *                                               for distributeRewards() to route rewards correctly
  *
  *      Role requirements (all held by the deployer after Core and Coverage deploys):
  *        - STAKE_MANAGER_CONFIG_ROLE on StakeManager
@@ -149,8 +149,8 @@ contract WireCoreContracts is Script {
         console.log("[4/5] RewardsManager.setPremiumManager...");
         IRewardsManagerWire(rewardsManager).setPremiumManager(premiumManager);
 
-        console.log("[5/5] PremiumManager.approveSpender(payoutToken, sspRouter, max)...");
-        IPremiumManagerWire(premiumManager).approveSpender(payoutToken, sspRouter, type(uint256).max);
+        console.log("[5/5] PremiumManager.approveSpender(payoutToken, rewardsManager, max)...");
+        IPremiumManagerWire(premiumManager).approveSpender(payoutToken, rewardsManager, type(uint256).max);
 
         vm.stopBroadcast();
 
@@ -181,8 +181,8 @@ contract WireCoreContracts is Script {
         console.log("RewardsManager.premiumManager:", gotPremiumMgr);
         require(gotPremiumMgr == premiumManager, "RewardsManager.premiumManager mismatch");
 
-        uint256 allowance = IERC20(payoutToken).allowance(premiumManager, sspRouter);
-        console.log("PremiumManager allowance for SSPRouter:", allowance);
+        uint256 allowance = IERC20(payoutToken).allowance(premiumManager, rewardsManager);
+        console.log("PremiumManager allowance for RewardsManager:", allowance);
         require(allowance == type(uint256).max, "PremiumManager.approveSpender not set");
 
         console.log("[SUCCESS] All 5 wiring calls verified");
