@@ -548,17 +548,17 @@ contract CoveredVaultWrapperFuzzTest is RealCoverageSetup {
     }
 
     function _setupMorphoTrackingTest(MorphoTrackingParams memory p) internal {
-        // Propose both timelocked changes
+        // setPremiumRate takes the fast-path (policy bound, rate == 0) — applied immediately, no timelock.
+        // setDeductibleBps still requires the standard 2-day timelock.
         vm.startPrank(curator);
         wrapper.setDeductibleBps(0);
         wrapper.setPremiumRate(p.premiumRate);
         vm.stopPrank();
 
-        // Execute after timelock
+        // Execute deductible after timelock (premium rate already applied above).
         vm.warp(block.timestamp + 2 days + 1);
         vm.startPrank(curator);
         wrapper.executeDeductibleBps();
-        wrapper.executePremiumRate();
         vm.stopPrank();
 
         _mintAndApprove(address(0xAA11), p.deposit1A + p.deposit1B);

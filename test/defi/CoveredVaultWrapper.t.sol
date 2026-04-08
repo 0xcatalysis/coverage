@@ -405,14 +405,15 @@ contract CoveredVaultWrapperTest is RealCoverageSetup {
     //////////////////////////////////////////////////////////////*/
 
     function test_setPremiumRate_updatesRate() public {
+        // Fast-path: policy is bound and premiumRatePerSecond == 0, so the rate is applied immediately.
         uint256 newRate = uint256(1e17) / 31_536_000;
-        uint64 expectedExecuteAfter = uint64(block.timestamp + 2 hours);
         vm.prank(curator);
         vm.expectEmit(false, false, false, true);
-        emit IE.PremiumRateProposed(newRate, expectedExecuteAfter);
+        emit IE.PremiumRateExecuted(0, newRate);
         wrapper.setPremiumRate(newRate);
-        // Rate is not yet active (only proposed)
-        assertEq(wrapper.premiumRatePerSecond(), 0, "Rate must not change until executed");
+        assertEq(wrapper.premiumRatePerSecond(), newRate, "Rate must be applied immediately on first set");
+        assertEq(wrapper.pendingPremiumRate(), 0, "No pending proposal after fast-path");
+        assertEq(wrapper.pendingPremiumRateTimestamp(), 0, "No pending timestamp after fast-path");
     }
 
     function test_setPremiumRate_revertsIfNotOwner() public {

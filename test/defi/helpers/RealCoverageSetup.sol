@@ -244,8 +244,15 @@ abstract contract RealCoverageSetup is Test {
     {
         // Settle any pending premium at the old rate (mirrors old setPremiumRate behavior)
         w.collectPremium();
-        // Directly write the new rate and advance lastPremiumAccrualTime
+        // Directly write the new rate and advance lastPremiumAccrualTime.
+        // Storage slots verified via `forge inspect CoveredVaultWrapper storageLayout`:
+        //   premiumRatePerSecond   = slot 57
+        //   lastPremiumAccrualTime = slot 58
+        //   premiumRateInitialized = slot 79
         vm.store(address(w), bytes32(uint256(57)), bytes32(newRate));
         vm.store(address(w), bytes32(uint256(58)), bytes32(block.timestamp));
+        // Mark as initialized so the first-rate fast-path in setPremiumRate is not re-triggered
+        // by a subsequent call that finds premiumRatePerSecond == 0.
+        vm.store(address(w), bytes32(uint256(79)), bytes32(uint256(1)));
     }
 }

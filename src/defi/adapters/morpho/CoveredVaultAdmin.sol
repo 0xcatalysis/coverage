@@ -24,9 +24,24 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Proposes a new premium rate. Call executePremiumRate() after the delay to apply.
+    ///         Exception: if the policy is bound and no rate has been applied yet this period
+    ///         (premiumRateInitialized == false, which also guarantees premiumRatePerSecond == 0
+    ///         because resetPolicyBinding clears both together), the call applies the rate
+    ///         immediately and emits PremiumRateExecuted(0, newRate) with no timelock.
     // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function setPremiumRate(uint256 newRate) external override onlyOwner {
         require(newRate <= MAX_PREMIUM_RATE_PER_SECOND, IA.InvalidParameters());
+
+        // Fast-path: policy is bound but no rate has ever been applied this period — apply immediately.
+        // premiumRateInitialized guards against the timelock-to-zero-then-instant-increase exploit:
+        // once any rate has been applied the flag is set and subsequent zero states must use the
+        // normal propose/execute path.
+        if (policyBoundExecuted && !premiumRateInitialized) {
+            if (pendingPremiumRateTimestamp != 0) emit IE.ProposalSuperseded("premiumRate");
+            _applyPremiumRate(newRate);
+            return;
+        }
+
         pendingPremiumRateTimestamp = _propose(pendingPremiumRateTimestamp, "premiumRate", OPERATIONAL_DELAY);
         pendingPremiumRate = newRate;
         emit IE.PremiumRateProposed(newRate, pendingPremiumRateTimestamp);
@@ -35,11 +50,17 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     /// @notice Applies a pending premium rate change after the operational timelock elapses.
     function executePremiumRate() external override onlyOwner {
         _requireTimelockReady(pendingPremiumRateTimestamp);
-        // Settle any premium accrued at the old rate before switching.
+        _applyPremiumRate(pendingPremiumRate);
+    }
+
+    /// @dev Settles accrued premium at the current rate, then atomically switches to newRate.
+    ///      Shared by the first-rate fast-path and the normal timelock execute path.
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-events
+    function _applyPremiumRate(uint256 newRate) private {
         _accruePremium();
         uint256 oldRate = premiumRatePerSecond;
-        uint256 newRate = pendingPremiumRate;
         premiumRatePerSecond = newRate;
+        premiumRateInitialized = true;
         pendingPremiumRate = 0;
         pendingPremiumRateTimestamp = 0;
         emit IE.PremiumRateExecuted(oldRate, newRate);
@@ -62,8 +83,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     ///         vault is at elevated risk without changing maxCoverableLossBps for existing users.
     function setDepositCap(uint256 newCap) external override onlyOwner {
         require(policyBoundExecuted, IA.InvalidParameters());
-        uint256 ceiling = (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
-        require(newCap <= ceiling, IA.InvalidParameters());
+        require(newCap <= _calculateDepositCeiling(), IA.InvalidParameters());
         pendingDepositCapTimestamp = _propose(pendingDepositCapTimestamp, "depositCap", STANDARD_DELAY);
         pendingDepositCap = newCap;
         emit IE.DepositCapProposed(newCap, pendingDepositCapTimestamp);
@@ -75,8 +95,7 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         uint256 oldCap = depositCap;
         uint256 newCap = pendingDepositCap;
         // Re-validate ceiling at execution time in case maxCoverableLossBps changed since proposal.
-        uint256 ceiling = (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
-        require(newCap <= ceiling, IA.InvalidParameters());
+        require(newCap <= _calculateDepositCeiling(), IA.InvalidParameters());
         depositCap = newCap;
         pendingDepositCap = 0;
         pendingDepositCapTimestamp = 0;
@@ -198,8 +217,10 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
 
     /// @notice Resets the policy binding flag so a new policy can be bound after the current one expires.
     /// @dev Only callable after the current policy's raw maturity has passed (no grace period extension).
-    ///      Clears policyId, policyBoundExecuted, depositCap, and policyStartTime so that onPolicyBound
-    ///      can be called again by PolicyManager for a successive coverage period.
+    ///      Clears policyId, policyBoundExecuted, depositCap, policyStartTime, and premiumRatePerSecond
+    ///      so that onPolicyBound can be called again by PolicyManager for a successive coverage period.
+    ///      premiumRatePerSecond is cleared alongside premiumRateInitialized so that the fast-path in
+    ///      setPremiumRate always fires with a zero old rate, keeping PremiumRateExecuted accurate.
     ///      Existing depositors retain their shares and principal during the transition; the new policy
     ///      binding will set a fresh accrual start anchor.
     //slither-disable-start reentrancy-no-eth,reentrancy-benign
@@ -231,6 +252,13 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
         pendingPremiumRecipientTimestamp = 0;
         // Clear any sub-unit WAD remainder so it does not leak into the next policy's accrual epoch.
         premiumAccrualRemainder = 0;
+        // Clear the active rate and re-enable the first-rate fast-path for the next policy period.
+        // premiumRatePerSecond must be zeroed together with premiumRateInitialized so that the
+        // invariant (!premiumRateInitialized → premiumRatePerSecond == 0) holds. Without this,
+        // _applyPremiumRate would read the stale previous-period rate as oldRate and emit it in
+        // PremiumRateExecuted, incorrectly suggesting a rate change rather than a fresh-period init.
+        premiumRatePerSecond = 0;
+        premiumRateInitialized = false;
         emit IE.PolicyBindingReset(prevPolicyId);
     }
 
@@ -289,6 +317,11 @@ abstract contract CoveredVaultAdmin is CoveredVaultAccrual {
     /*//////////////////////////////////////////////////////////////
                     PRIVATE HELPERS
     //////////////////////////////////////////////////////////////*/
+
+    /// @dev Maximum TVL allowed given the current coverageLimit and maxCoverableLossBps.
+    function _calculateDepositCeiling() private view returns (uint256) {
+        return (coverageLimit * BPS_DENOMINATOR) / uint256(maxCoverableLossBps);
+    }
 
     /// @dev Validates that a timelocked proposal is ready to execute.
     function _requireTimelockReady(uint64 timestamp) private view {
