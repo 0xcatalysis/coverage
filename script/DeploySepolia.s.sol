@@ -27,21 +27,29 @@ contract DeploySepolia is Deploy {
 
     /**
      * @inheritdoc Deploy
-     * @return initialPayoutTokens Array containing Circle USDC for Sepolia.
+     * @dev Reads PAYOUT_TOKEN from the environment. The token must match the underlying asset of
+     *      the CoveredVaultWrapper's morpho vault — CoveredVaultWrapper enforces
+     *      pol.payoutToken == asset() at policy binding time.
+     *      Set PAYOUT_TOKEN to the same ERC-20 address used as ASSET_ADDRESS when deploying
+     *      ControllableVault (e.g. WETH for a WETH-backed vault).
      */
-    function getInitialPayoutTokens() internal pure override returns (address[] memory) {
+    function getInitialPayoutTokens() internal view override returns (address[] memory) {
         address[] memory tokens = new address[](1);
-        tokens[0] = USDC_SEPOLIA;
+        tokens[0] = vm.envAddress("PAYOUT_TOKEN");
         return tokens;
     }
 
     /**
      * @inheritdoc Deploy
-     * @return initialPremiumTokens Array containing Circle USDC for Sepolia.
+     * @dev Reads PREMIUM_TOKEN from the environment. Must equal the underlying asset of the
+     *      CoveredVaultWrapper's morpho vault because the vault calls
+     *      distributePremium(..., asset(), amount). If the token is not in the approved set
+     *      PremiumManager reverts with TokenNotApproved on every collectPremium() call.
+     *      Typically set to the same address as PAYOUT_TOKEN.
      */
-    function getInitialPremiumTokens() internal pure override returns (address[] memory) {
+    function getInitialPremiumTokens() internal view override returns (address[] memory) {
         address[] memory tokens = new address[](1);
-        tokens[0] = USDC_SEPOLIA;
+        tokens[0] = vm.envAddress("PREMIUM_TOKEN");
         return tokens;
     }
 

@@ -8,19 +8,18 @@ import {ISwapper} from "../src/interfaces/ISwapper.sol";
 
 /**
  * @title DeployUniswapV3Adapter
- * @notice Deploys UniswapV3Adapter and configures the Swapper for a WETH -> USDC swap route.
- * @dev Run on Sepolia:
- *      forge script script/DeployUniswapV3Adapter.s.sol --rpc-url $SEPOLIA_RPC_URL \
- *        --private-key $PRIVATE_KEY --broadcast --slow -vvvv
+ * @notice Deploys UniswapV3Adapter and configures the Swapper for a TOKEN_IN -> TOKEN_OUT swap route.
+ * @dev forge script script/DeployUniswapV3Adapter.s.sol --rpc-url $RPC_URL \
+ *        --private-key $PRIVATE_KEY --broadcast --verify --slow -vvvv
  *
  * Required Environment Variables:
- *   - PRIVATE_KEY: Deployer/admin private key (must hold DEFAULT_ADMIN_ROLE and SWAP_MANAGER_ROLE on Swapper)
- *   - SWAPPER: Swapper proxy address (read from ClaimManager.swapper() if unknown)
- *   - SWAP_ROUTER: Uniswap V3 SwapRouter02 address (Sepolia default: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E)
- *   - QUOTER_V2: Uniswap V3 QuoterV2 address (Sepolia default: 0xEd1f6473345F45b75833fd55D191EBE6d13fB0cB)
- *   - TOKEN_IN: Collateral token address
- *   - TOKEN_OUT: Payout token address
- *   - POOL_FEE: Uniswap V3 pool fee tier (e.g. 3000 for 0.3%, 500 for 0.05%)
+ *   - PRIVATE_KEY:  Deployer/admin private key (must hold DEFAULT_ADMIN_ROLE and SWAP_MANAGER_ROLE on Swapper)
+ *   - SWAPPER:      Swapper proxy address
+ *   - SWAP_ROUTER:  Uniswap V3 SwapRouter02 address for the target network
+ *   - QUOTER_V2:    Uniswap V3 QuoterV2 address for the target network
+ *   - TOKEN_IN:     Collateral token address
+ *   - TOKEN_OUT:    Payout token address
+ *   - POOL_FEE:     Uniswap V3 pool fee tier (e.g. 3000 for 0.3%, 500 for 0.05%)
  */
 contract DeployUniswapV3Adapter is Script {
     function run() external {
@@ -28,8 +27,8 @@ contract DeployUniswapV3Adapter is Script {
         address deployer = vm.addr(deployerKey);
 
         address swapper = vm.envAddress("SWAPPER");
-        address swapRouter = vm.envOr("SWAP_ROUTER", address(0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E));
-        address quoter = vm.envOr("QUOTER_V2", address(0xED1f6473345f45B75833Fd55D191eBe6d13FB0cB));
+        address swapRouter = vm.envAddress("SWAP_ROUTER");
+        address quoter = vm.envAddress("QUOTER_V2");
         address tokenIn = vm.envAddress("TOKEN_IN");
         address tokenOut = vm.envAddress("TOKEN_OUT");
         uint24 poolFee = uint24(vm.envUint("POOL_FEE"));
