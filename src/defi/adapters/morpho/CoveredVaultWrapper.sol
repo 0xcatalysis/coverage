@@ -390,18 +390,11 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
         bytes32 evidenceHash = keccak256(abi.encodePacked(user, policyId, cappedClaim, block.timestamp, _claimNonce++));
         bytes memory additionalData = abi.encode(address(this), cappedClaim);
 
-        // Wrap fileClaim in try/catch so ClaimManager pause doesn't block withdrawals.
-        // On failure, emit ClaimManagerUnavailable event and return 0 payout.
+        // File claim directly. Revert on failure to preserve user entitlement and shares.
+        // On revert, user can retry when ClaimManager recovers, or use emergencyRedeem to exit without insurance.
         // aderyn-fp-next-line(unchecked-return) ClaimId not needed — success determined via balance change
         // slither-disable-next-line unused-return
-        try claimManager.fileClaim(policyId, cappedClaim, evidenceHash, additionalData) {
-        // success — fall through to balance check below
-        }
-        catch {
-            _tstore(PENDING_CLAIM_AMOUNT_SLOT, 0);
-            emit IE.ClaimManagerUnavailable(policyId);
-            return 0;
-        }
+        claimManager.fileClaim(policyId, cappedClaim, evidenceHash, additionalData);
 
         _tstore(PENDING_CLAIM_AMOUNT_SLOT, 0);
 
