@@ -58,7 +58,7 @@ interface IPremiumManager is IAccessControl {
 
     /**
      * @notice Emitted when claim surplus is successfully forwarded to RewardsManager.
-     * @dev Emitted by forwardRewards() on successful distribution.
+     * @dev Emitted by distributeSurplusAsRewards() on successful distribution.
      * @param policyId Policy identifier for which surplus is being forwarded.
      * @param curator Operator address receiving the restaker reward credit.
      * @param token ERC20 token forwarded as rewards.
@@ -184,7 +184,7 @@ interface IPremiumManager is IAccessControl {
     function distributePremium(address pool, uint96 policyId, address premiumToken, uint256 amount) external;
 
     /**
-     * @notice Forwards claim surplus tokens to RewardsManager on behalf of ClaimManager.
+     * @notice Distributes claim surplus tokens to RewardsManager on behalf of ClaimManager.
      * @dev Requires CLAIM_MANAGER_ROLE.
      * @param policyId Policy identifier for replay-protection key derivation.
      * @param curator Operator address receiving the restaker reward credit.

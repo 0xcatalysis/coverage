@@ -164,8 +164,8 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 2. `_computeVaultSlashes` quotes each cross-token stake via `Swapper.quoteSwap` to determine payout-equivalent values, then computes proportional token-native slash amounts per vault; cross-token amounts are inflated by `1 / (1 - maxSwapSlippageBps)` to absorb worst-case swap slippage.
 3. `SlashingManager.executeSlashing(committeeId, operator, VaultSlash[], taskId)` executes slashing and returns seized collateral.
 4. For each collateral token:
-   - if it already equals `payoutToken`: transfer directly to beneficiary (surplus forwarded via `PremiumManager.forwardRewards` to `RewardsManager`),
-   - otherwise: swap through `Swapper` using `quoteSwap`-derived `amountOutMin`; surplus forwarded via `PremiumManager.forwardRewards` to `RewardsManager`.
+   - if it already equals `payoutToken`: transfer directly to beneficiary (surplus forwarded via `PremiumManager.distributeSurplusAsRewards` to `RewardsManager`),
+   - otherwise: swap through `Swapper` using `quoteSwap`-derived `amountOutMin`; surplus forwarded via `PremiumManager.distributeSurplusAsRewards` to `RewardsManager`.
 
 No USD conversion or `ChainlinkPriceFeed` is used in the claim execution path.
 

@@ -137,13 +137,13 @@ sequenceDiagram
         loop each collateral token
             alt token == payoutToken
                 CM->>Beneficiary: transfer payout token (up to remainingPayout)
-                CM->>PM: forwardRewards(surplus, if any)
+                CM->>PM: distributeSurplusAsRewards(surplus, if any)
                 PM->>RM: distributeRewards(surplus, if any)
             else token != payoutToken
                 CM->>SW: executeSwap(tokenIn -> payoutToken, amountOutMin=quoteSwap×slippage)
                 SW-->>CM: payoutToken amountOut
                 CM->>Beneficiary: transfer payout token (up to remainingPayout)
-                CM->>PM: forwardRewards(surplus, if any)
+                CM->>PM: distributeSurplusAsRewards(surplus, if any)
                 PM->>RM: distributeRewards(surplus, if any)
             end
         end
@@ -234,12 +234,12 @@ digest (`keccak256` of the CID multihash bytes), to enable off-chain verificatio
 In `_processCollateral(...)`:
 
 - If collateral already equals payout token:
-  - transfer directly up to `remainingPayout`; any surplus is forwarded to `RewardsManager` via `PremiumManager.forwardRewards`.
+  - transfer directly up to `remainingPayout`; any surplus is forwarded to `RewardsManager` via `PremiumManager.distributeSurplusAsRewards`.
 - Else (cross-token):
   - `_computeAmountOutMin` calls `Swapper.quoteSwap(tokenIn, tokenOut, amountIn)` and applies `maxSwapSlippageBps` to get a slippage-adjusted minimum output,
   - approve `Swapper` for `collateralAmount`,
   - call `Swapper.executeSwap(params)` with the computed `amountOutMin`,
-  - cap delivered amount to `remainingPayout`; any surplus swap output is forwarded to `RewardsManager` via `PremiumManager.forwardRewards`,
+  - cap delivered amount to `remainingPayout`; any surplus swap output is forwarded to `RewardsManager` via `PremiumManager.distributeSurplusAsRewards`,
   - clear residual approval.
 
 Vault slashes are pre-inflated in `_computeVaultSlashes` (by `1 / (1 - maxSwapSlippageBps)` for cross-token vaults) so that worst-case slippage still yields the full `requestedAmount` to the beneficiary.

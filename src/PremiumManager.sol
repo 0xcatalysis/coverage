@@ -225,7 +225,7 @@ contract PremiumManager is
     /**
      * @inheritdoc IPremiumManager
      */
-    function forwardRewards(
+    function distributeSurplusAsRewards(
         uint96 policyId,
         address curator,
         uint256 amount,

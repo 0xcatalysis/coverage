@@ -2948,7 +2948,9 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    function test_fileClaim_WhenForwardRewardsRevertsOnCrossTokenPath_ClaimCompletesAndEmitsFailureEvent() public {
+    function test_fileClaim_WhenDistributeSurplusAsRewardsRevertsOnCrossTokenPath_ClaimCompletesAndEmitsFailureEvent()
+        public
+    {
         uint256 requestedAmount = 100 ether;
 
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
@@ -2997,7 +2999,9 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    function test_fileClaim_WhenForwardRewardsRevertsOnSameTokenPath_ClaimCompletesAndEmitsFailureEvent() public {
+    function test_fileClaim_WhenDistributeSurplusAsRewardsRevertsOnSameTokenPath_ClaimCompletesAndEmitsFailureEvent()
+        public
+    {
         uint256 requestedAmount = 100 ether;
         uint256 slashedAmount = 105 ether;
         uint256 surplus = slashedAmount - requestedAmount;
@@ -3978,7 +3982,7 @@ contract MockSlashingManagerAssertingNoZeroAmounts {
 }
 
 /**
- * @dev Minimal PremiumManager mock that implements forwardRewards() by pulling tokens from the
+ * @dev Minimal PremiumManager mock that implements distributeSurplusAsRewards() by pulling tokens from the
  *      caller via safeTransferFrom, mirroring the real PremiumManager behaviour. Tracks the
  *      last call parameters and accumulates received tokens for assertion.
  */
@@ -3989,7 +3993,15 @@ contract MockPremiumManagerForClaims {
     address public lastCurator;
     uint256 public totalReceived;
 
-    function forwardRewards(uint96 policyId, address curator, uint256 amount, IERC20 token, bytes32) external {
+    function distributeSurplusAsRewards(
+        uint96 policyId,
+        address curator,
+        uint256 amount,
+        IERC20 token,
+        bytes32
+    )
+        external
+    {
         lastPolicyId = policyId;
         lastCurator = curator;
         token.safeTransferFrom(msg.sender, address(this), amount);
@@ -3998,12 +4010,12 @@ contract MockPremiumManagerForClaims {
 }
 
 /**
- * @dev PremiumManager mock that always reverts on forwardRewards(), simulating a Core-side
+ * @dev PremiumManager mock that always reverts on distributeSurplusAsRewards(), simulating a Core-side
  *      failure (e.g. duplicate taskId, paused state, or an upgrade regression).
  *      Used to verify that _distributeSurplus's try/catch allows the claim to complete.
  */
 contract MockPremiumManagerReverting {
-    function forwardRewards(uint96, address, uint256, IERC20, bytes32) external pure {
+    function distributeSurplusAsRewards(uint96, address, uint256, IERC20, bytes32) external pure {
         revert("MockPremiumManagerReverting: always reverts");
     }
 }

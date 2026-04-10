@@ -974,7 +974,7 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            FORWARD REWARDS
+                            DISTRIBUTE SURPLUS AS REWARDS
     //////////////////////////////////////////////////////////////*/
 
     event RewardsForwarded(uint96 indexed policyId, address indexed curator, address indexed token, uint256 amount);
@@ -985,7 +985,7 @@ contract PremiumManagerTest is Test {
         premiumManager.grantRole(role, caller);
     }
 
-    function test_forwardRewards_WhenCallerLacksCLAIM_MANAGER_ROLE_Reverts() public {
+    function test_distributeSurplusAsRewards_WhenCallerLacksCLAIM_MANAGER_ROLE_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector,
@@ -994,10 +994,12 @@ contract PremiumManagerTest is Test {
             )
         );
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0));
+        premiumManager.distributeSurplusAsRewards(
+            POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0)
+        );
     }
 
-    function test_forwardRewards_WhenPaused_Reverts() public {
+    function test_distributeSurplusAsRewards_WhenPaused_Reverts() public {
         _grantClaimManagerRole(premiumCollector);
 
         vm.prank(admin);
@@ -1005,52 +1007,58 @@ contract PremiumManagerTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(PausableUpgradeable.EnforcedPause.selector));
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0));
+        premiumManager.distributeSurplusAsRewards(
+            POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0)
+        );
     }
 
-    function test_forwardRewards_WhenAmountZero_Reverts() public {
+    function test_distributeSurplusAsRewards_WhenAmountZero_Reverts() public {
         _grantClaimManagerRole(premiumCollector);
 
         vm.expectRevert(IPremiumManager.ZeroAmount.selector);
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(POLICY_ID, curator, 0, IERC20(address(premiumToken)), bytes32(0));
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, 0, IERC20(address(premiumToken)), bytes32(0));
     }
 
-    function test_forwardRewards_WhenPolicyIdZero_Reverts() public {
+    function test_distributeSurplusAsRewards_WhenPolicyIdZero_Reverts() public {
         _grantClaimManagerRole(premiumCollector);
 
         vm.expectRevert(IPremiumManager.InvalidPolicyId.selector);
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(0, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0));
+        premiumManager.distributeSurplusAsRewards(0, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0));
     }
 
-    function test_forwardRewards_WhenTokenZeroAddress_Reverts() public {
+    function test_distributeSurplusAsRewards_WhenTokenZeroAddress_Reverts() public {
         _grantClaimManagerRole(premiumCollector);
 
         vm.expectRevert(IPremiumManager.ZeroAddress.selector);
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(POLICY_ID, curator, 1 ether, IERC20(address(0)), bytes32(0));
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, 1 ether, IERC20(address(0)), bytes32(0));
     }
 
-    function test_forwardRewards_WhenCallerHasInsufficientBalance_Reverts() public {
+    function test_distributeSurplusAsRewards_WhenCallerHasInsufficientBalance_Reverts() public {
         _grantClaimManagerRole(premiumCollector);
 
         vm.expectRevert();
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0));
+        premiumManager.distributeSurplusAsRewards(
+            POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0)
+        );
     }
 
-    function test_forwardRewards_WhenCallerHasInsufficientAllowance_Reverts() public {
+    function test_distributeSurplusAsRewards_WhenCallerHasInsufficientAllowance_Reverts() public {
         _grantClaimManagerRole(premiumCollector);
 
         premiumToken.mint(premiumCollector, 1 ether);
 
         vm.expectRevert();
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0));
+        premiumManager.distributeSurplusAsRewards(
+            POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0)
+        );
     }
 
-    function test_forwardRewards_WhenValid_PullsTokensAndCallsDistributeRewards() public {
+    function test_distributeSurplusAsRewards_WhenValid_PullsTokensAndCallsDistributeRewards() public {
         uint256 amount = 100 ether;
         bytes32 taskId = keccak256("taskId");
         _grantClaimManagerRole(premiumCollector);
@@ -1062,7 +1070,7 @@ contract PremiumManagerTest is Test {
         uint256 callerBefore = premiumToken.balanceOf(premiumCollector);
 
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), taskId);
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), taskId);
 
         assertEq(premiumToken.balanceOf(premiumCollector), callerBefore - amount, "Tokens pulled from caller");
         assertEq(rewardsManager.distributeRewardsCallCount(), 1, "distributeRewards must be called once");
@@ -1074,7 +1082,7 @@ contract PremiumManagerTest is Test {
         assertEq(address(call.rewardToken), address(premiumToken), "token forwarded correctly");
     }
 
-    function test_forwardRewards_WhenValid_EmitsRewardsForwardedEvent() public {
+    function test_distributeSurplusAsRewards_WhenValid_EmitsRewardsForwardedEvent() public {
         uint256 amount = 50 ether;
         bytes32 taskId = keccak256("taskId-event");
         _grantClaimManagerRole(premiumCollector);
@@ -1087,10 +1095,10 @@ contract PremiumManagerTest is Test {
         emit RewardsForwarded(POLICY_ID, curator, address(premiumToken), amount);
 
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), taskId);
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), taskId);
     }
 
-    function test_forwardRewards_WhenValid_ClearsAllowanceAfterDistribution() public {
+    function test_distributeSurplusAsRewards_WhenValid_ClearsAllowanceAfterDistribution() public {
         uint256 amount = 10 ether;
         _grantClaimManagerRole(premiumCollector);
 
@@ -1099,7 +1107,7 @@ contract PremiumManagerTest is Test {
         premiumToken.approve(address(premiumManager), amount);
 
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), bytes32(0));
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), bytes32(0));
 
         assertEq(
             premiumToken.allowance(address(premiumManager), address(rewardsManager)),
@@ -1108,7 +1116,7 @@ contract PremiumManagerTest is Test {
         );
     }
 
-    function test_forwardRewards_WhenCalledAfterDistributePremium_StillWorks() public {
+    function test_distributeSurplusAsRewards_WhenCalledAfterDistributePremium_StillWorks() public {
         uint256 premiumAmount = 1000 ether;
         uint256 surplusAmount = 50 ether;
         bytes32 taskId = keccak256("after-distribute");
@@ -1127,21 +1135,23 @@ contract PremiumManagerTest is Test {
         premiumToken.approve(address(premiumManager), surplusAmount);
 
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(POLICY_ID, curator, surplusAmount, IERC20(address(premiumToken)), taskId);
+        premiumManager.distributeSurplusAsRewards(
+            POLICY_ID, curator, surplusAmount, IERC20(address(premiumToken)), taskId
+        );
 
         assertEq(
             rewardsManager.distributeRewardsCallCount(),
             2,
-            "distributeRewards called for both distributePremium and forwardRewards"
+            "distributeRewards called for both distributePremium and distributeSurplusAsRewards"
         );
         assertEq(
             premiumToken.allowance(address(premiumManager), address(rewardsManager)),
             0,
-            "Allowance cleared after forwardRewards"
+            "Allowance cleared after distributeSurplusAsRewards"
         );
     }
 
-    function test_forwardRewards_WhenDistributeRewardsReverts_BubblesUp() public {
+    function test_distributeSurplusAsRewards_WhenDistributeRewardsReverts_BubblesUp() public {
         uint256 amount = 1 ether;
         _grantClaimManagerRole(premiumCollector);
 
@@ -1155,7 +1165,7 @@ contract PremiumManagerTest is Test {
 
         vm.expectRevert();
         vm.prank(premiumCollector);
-        premiumManager.forwardRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), bytes32(0));
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), bytes32(0));
 
         assertEq(premiumToken.balanceOf(premiumCollector), amount, "Caller balance unchanged after revert");
     }

@@ -541,7 +541,7 @@ contract ClaimManager is
     /**
      * @notice Processes collateral by swapping or transferring directly, capped at remainingPayout.
      * @dev Uses quoteSwap for amountOutMin instead of oracle-based pricing.
-     *      Surplus beyond remainingPayout is forwarded via PremiumManager.forwardRewards() if configured.
+     *      Surplus beyond remainingPayout is forwarded via PremiumManager.distributeSurplusAsRewards() if configured.
      *      vaultIndex is included in the taskId to prevent replay collisions when two vault legs
      *      share the same collateral token.
      * @param policyId Identifier of the policy.
@@ -550,7 +550,7 @@ contract ClaimManager is
      * @param collateralAmount Amount of collateral to process.
      * @param payoutToken Desired payout token address.
      * @param beneficiary Address to receive the payout.
-     * @param curator Operator address used as reward recipient context in PremiumManager.forwardRewards().
+     * @param curator Operator address used as reward recipient context in PremiumManager.distributeSurplusAsRewards().
      * @param remainingPayout Maximum payout amount still needed.
      * @param vaultIndex Position of this vault leg in the collateralTokens array (used in taskId).
      * @return amountOut Amount of payout token delivered to beneficiary (capped at remainingPayout).
@@ -639,14 +639,15 @@ contract ClaimManager is
     // slither-disable-end calls-loop
 
     /**
-     * @notice Distributes surplus tokens to restakers via PremiumManager.forwardRewards().
+     * @notice Distributes surplus tokens to restakers via PremiumManager.distributeSurplusAsRewards().
      * @dev Guards (premiumManager set, not native ETH) are checked by the caller.
      *      Wrapped in try/catch so a Core revert cannot block beneficiary payout; on failure
      *      the surplus remains in this contract and is recoverable via `recoverTokens`.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param token ERC-20 token to distribute.
-     * @param curator Operator address passed to PremiumManager.forwardRewards() as the reward recipient context.
+     * @param curator Operator address passed to PremiumManager.distributeSurplusAsRewards() as the reward recipient
+     * context.
      * @param surplus Amount to distribute.
      * @param taskId Unique task identifier for Core replay protection.
      */
@@ -662,7 +663,8 @@ contract ClaimManager is
     {
         IERC20(token).forceApprove(premiumManager, surplus);
         // slither-disable-next-line calls-loop
-        try IPremiumManager(premiumManager).forwardRewards(policyId, curator, surplus, IERC20(token), taskId) {
+        try IPremiumManager(premiumManager)
+            .distributeSurplusAsRewards(policyId, curator, surplus, IERC20(token), taskId) {
             IERC20(token).forceApprove(premiumManager, 0);
             emit SwapSurplusDistributed(policyId, claimId, token, surplus);
         } catch {

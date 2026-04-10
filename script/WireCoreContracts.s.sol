@@ -30,13 +30,27 @@ interface IRewardsManagerWire {
 
 interface IPremiumManagerWire {
     function approveSpender(address token, address spender, uint256 amount) external;
+    function CLAIM_MANAGER_ROLE() external view returns (bytes32);
+}
+
+interface IClaimManagerWire {
+    function setPremiumManager(address premiumManager_) external;
+}
+
+interface IAccessControlGrant {
+    function grantRole(bytes32 role, address account) external;
+    function hasRole(bytes32 role, address account) external view returns (bool);
+}
+
+interface IClaimManagerPremiumView {
+    function premiumManager() external view returns (address);
 }
 
 /**
  * @title WireCoreContracts
  * @notice Performs all cross-system wiring between Catalysis Core and Coverage contracts.
  * @dev Must be run after both Core and Coverage contracts are deployed.
- *      Executes six calls that bridge the two systems:
+ *      Executes eight calls that bridge the two systems:
  *
  *      1. StakeManager.setCoverPoolFactory    — unblocks createCommittee() during requestCoverage()
  *      2. StakeManager.grantRole(POLICY_MANAGER_ROLE, policyManager) — unblocks requestCoverage()
@@ -45,7 +59,10 @@ interface IPremiumManagerWire {
  *      5. PremiumManager.approveSpender       — allows RewardsManager to pull the restaker share
  *                                               from PremiumManager via safeTransferFrom; required
  *                                               for distributeRewards() to route rewards correctly
- *      6. SSPRouter.setStakeRecipient         — sets the EigenLayer redistribution recipient so
+ *      6. ClaimManager.setPremiumManager      — routes claim surplus through PremiumManager.
+ *      7. PremiumManager.grantRole(CLAIM_MANAGER_ROLE, claimManager)
+ *                                            — allows ClaimManager to call distributeSurplusAsRewards().
+ *      8. SSPRouter.setStakeRecipient         — sets the EigenLayer redistribution recipient so
  *                                               slashed collateral flows to ClaimManager, not the
  *                                               deployer; must run before any committee is created
  *
@@ -54,7 +71,7 @@ interface IPremiumManagerWire {
  *        - DEFAULT_ADMIN_ROLE on StakeManager
  *        - DEFAULT_ADMIN_ROLE on SlashingManager
  *        - REWARDS_MANAGER_CONFIG_ROLE on RewardsManager
- *        - DEFAULT_ADMIN_ROLE on PremiumManager / Coverage
+ *        - DEFAULT_ADMIN_ROLE on PremiumManager, ClaimManager, and other Coverage proxies
  *        - DEFAULT_ADMIN_ROLE on SSPRouter
  *
  * Usage:
@@ -83,8 +100,8 @@ interface IPremiumManagerWire {
  *   - Core contracts deployed (DeploySepolia/DeployEthereum in catalysis/core)
  *   - Coverage contracts deployed (script/DeploySepolia.s.sol)
  *   - Caller holds STAKE_MANAGER_CONFIG_ROLE, DEFAULT_ADMIN_ROLE on Core contracts,
- *     REWARDS_MANAGER_CONFIG_ROLE on RewardsManager, DEFAULT_ADMIN_ROLE on PremiumManager,
- *     and DEFAULT_ADMIN_ROLE on SSPRouter
+ *     REWARDS_MANAGER_CONFIG_ROLE on RewardsManager, DEFAULT_ADMIN_ROLE on PremiumManager
+ *     and ClaimManager, and DEFAULT_ADMIN_ROLE on SSPRouter
  *
  * Verify after running:
  *   cast call $STAKE_MANAGER "coverPoolFactory()(address)" --rpc-url $RPC_URL
@@ -149,22 +166,29 @@ contract WireCoreContracts is Script {
 
         vm.startBroadcast(deployerKey);
 
-        console.log("\n[1/6] StakeManager.setCoverPoolFactory...");
+        console.log("\n[1/8] StakeManager.setCoverPoolFactory...");
         IStakeManagerWire(stakeManager).setCoverPoolFactory(coverPoolFactory);
 
-        console.log("[2/6] StakeManager.grantRole(POLICY_MANAGER_ROLE, policyManager)...");
+        console.log("[2/8] StakeManager.grantRole(POLICY_MANAGER_ROLE, policyManager)...");
         IStakeManagerWire(stakeManager).grantRole(POLICY_MANAGER_ROLE, policyManager);
 
-        console.log("[3/6] SlashingManager.setClaimManager...");
+        console.log("[3/8] SlashingManager.setClaimManager...");
         ISlashingManagerWire(slashingManager).setClaimManager(claimManager);
 
-        console.log("[4/6] RewardsManager.setPremiumManager...");
+        console.log("[4/8] RewardsManager.setPremiumManager...");
         IRewardsManagerWire(rewardsManager).setPremiumManager(premiumManager);
 
-        console.log("[5/6] PremiumManager.approveSpender(payoutToken, rewardsManager, max)...");
+        console.log("[5/8] PremiumManager.approveSpender(payoutToken, rewardsManager, max)...");
         IPremiumManagerWire(premiumManager).approveSpender(payoutToken, rewardsManager, type(uint256).max);
 
-        console.log("[6/6] SSPRouter.setStakeRecipient(claimManager)...");
+        console.log("[6/8] ClaimManager.setPremiumManager...");
+        IClaimManagerWire(claimManager).setPremiumManager(premiumManager);
+
+        bytes32 claimManagerRoleOnPremium = IPremiumManagerWire(premiumManager).CLAIM_MANAGER_ROLE();
+        console.log("[7/8] PremiumManager.grantRole(CLAIM_MANAGER_ROLE, claimManager)...");
+        IAccessControlGrant(premiumManager).grantRole(claimManagerRoleOnPremium, claimManager);
+
+        console.log("[8/8] SSPRouter.setStakeRecipient(claimManager)...");
         ISSPRouterWire(sspRouter).setStakeRecipient(claimManager);
 
         vm.stopBroadcast();
@@ -207,10 +231,19 @@ contract WireCoreContracts is Script {
         console.log("PremiumManager allowance for RewardsManager:", allowance);
         require(allowance == type(uint256).max, "PremiumManager.approveSpender not set");
 
+        address gotCmPremium = IClaimManagerPremiumView(claimManager).premiumManager();
+        console.log("ClaimManager.premiumManager:", gotCmPremium);
+        require(gotCmPremium == premiumManager, "ClaimManager.premiumManager mismatch");
+
+        bytes32 cmRole = IPremiumManagerWire(premiumManager).CLAIM_MANAGER_ROLE();
+        bool claimMgrHasRole = IAccessControlGrant(premiumManager).hasRole(cmRole, claimManager);
+        console.log("PremiumManager.hasRole(CLAIM_MANAGER_ROLE, claimManager):", claimMgrHasRole);
+        require(claimMgrHasRole, "CLAIM_MANAGER_ROLE not granted on PremiumManager");
+
         address gotStakeRecipient = ISSPRouterWire(sspRouter).stakeRecipient();
         console.log("SSPRouter.stakeRecipient:", gotStakeRecipient);
         require(gotStakeRecipient == claimManager, "SSPRouter.stakeRecipient mismatch");
 
-        console.log("[SUCCESS] All 6 wiring calls verified");
+        console.log("[SUCCESS] All 8 wiring calls verified");
     }
 }
