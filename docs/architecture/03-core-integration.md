@@ -112,7 +112,7 @@ Sequence:
 3. `ClaimManager._computeVaultSlashes` quotes each cross-token stake via `Swapper.quoteSwap`, then computes proportional token-native `VaultSlash[]` amounts, inflating cross-token amounts by `1 / (1 - maxSwapSlippageBps)` for slippage coverage.
 4. `ClaimManager` calls `SlashingManager.executeSlashing(policyId, operator, VaultSlash[], taskId)`.
 5. Core returns seized collateral token arrays.
-6. Coverage swaps or directly transfers to beneficiary; surplus collateral is routed to `RewardsManager`.
+6. Coverage swaps or directly transfers to beneficiary; surplus collateral is routed to `RewardsManager` via `PremiumManager.forwardRewards`.
 
 No USD conversion or price feed is involved in the claim execution path. The only price-feed use in Coverage is at **bind time** inside `PolicyManager._validateStakeSufficiency`, which converts the committee's token-native stake to USD and compares it against `coverageLimit`.
 
