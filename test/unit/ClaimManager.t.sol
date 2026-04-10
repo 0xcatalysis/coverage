@@ -83,7 +83,6 @@ contract ClaimManagerTest is Test {
     event NextClaimApproved(uint96 indexed policyId, address indexed approver);
     event TokensRecovered(address indexed token, address indexed to, uint256 amount);
     event VaultExcludedFromSlashing(address indexed vault, address indexed token);
-    event RewardsManagerSet(address indexed rewardsManager);
     event PremiumManagerSet(address indexed premiumManager);
     event SwapSurplusDistributed(
         uint96 indexed policyId, uint256 indexed claimId, address indexed payoutToken, uint256 surplusAmount
@@ -464,43 +463,6 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.setMaxSwapSlippageBps(0);
         assertEq(claimManager.maxSwapSlippageBps(), 0);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                         SET REWARDS MANAGER
-    //////////////////////////////////////////////////////////////*/
-    function test_rewardsManager_InitiallyZeroAddress() public view {
-        assertEq(claimManager.rewardsManager(), address(0));
-    }
-
-    function test_setRewardsManager_WhenCallerNotAdmin_Reverts() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                unauthorized,
-                claimManager.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        vm.prank(unauthorized);
-        claimManager.setRewardsManager(makeAddr("rewardsManager"));
-    }
-
-    function test_setRewardsManager_WhenValid_UpdatesStateAndEmitsEvent() public {
-        address newRewardsManager = makeAddr("newRewardsManager");
-
-        vm.expectEmit(true, true, true, true, address(claimManager));
-        emit RewardsManagerSet(newRewardsManager);
-
-        vm.prank(admin);
-        claimManager.setRewardsManager(newRewardsManager);
-
-        assertEq(claimManager.rewardsManager(), newRewardsManager);
-    }
-
-    function test_setRewardsManager_WhenAddressZero_Reverts() public {
-        vm.expectRevert(IClaimManager.ZeroAddress.selector);
-        vm.prank(admin);
-        claimManager.setRewardsManager(address(0));
     }
 
     function test_premiumManager_InitiallyZeroAddress() public view {
@@ -1914,7 +1876,7 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    function test_fileClaim_WhenSwapProducesMoreThanRemainingPayout_NoRewardsManager_SurplusStranded() public {
+    function test_fileClaim_WhenSwapProducesMoreThanRemainingPayout_NoPremiumManager_SurplusStranded() public {
         uint256 requestedAmount = 100 ether;
         uint256 stake = 200 ether;
 
@@ -2716,7 +2678,7 @@ contract ClaimManagerTest is Test {
         assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
     }
 
-    function test_fileClaim_WhenSameTokenVaultProducesNoSurplus_RewardsManagerNotCalled() public {
+    function test_fileClaim_WhenSameTokenVaultProducesNoSurplus_PremiumManagerNotCalled() public {
         uint256 requestedAmount = 100 ether;
 
         address[] memory tokens = new address[](1);
@@ -2938,7 +2900,7 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultSurplusStrandedWithoutRewardsManager()
+    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultSurplusStrandedWithoutPremiumManager()
         public
     {
         uint256 requestedAmount = 100 ether;
@@ -2982,7 +2944,7 @@ contract ClaimManagerTest is Test {
         assertEq(
             payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
             50 ether,
-            "Second vault surplus stays in ClaimManager when no RewardsManager is configured"
+            "Second vault surplus stays in ClaimManager when no PremiumManager is configured"
         );
     }
 
@@ -4012,41 +3974,6 @@ contract MockSlashingManagerAssertingNoZeroAmounts {
             collateralAmounts[i] = vaultSlashes[i].amount;
             require(ERC20(vaultSlashes[i].token).transfer(msg.sender, vaultSlashes[i].amount));
         }
-    }
-}
-
-/**
- * @dev Minimal RewardsManager mock that records the last call parameters and accumulates received tokens.
- */
-contract MockRewardsManager {
-    uint96 public lastPolicyId;
-    address public lastOperator;
-    uint256 public totalReceived;
-
-    function distributeRewards(
-        uint96 policyId,
-        address operator,
-        uint256 rewardAmount,
-        IERC20 rewardToken,
-        bytes32
-    )
-        external
-    {
-        lastPolicyId = policyId;
-        lastOperator = operator;
-        require(rewardToken.transferFrom(msg.sender, address(this), rewardAmount));
-        totalReceived += rewardAmount;
-    }
-}
-
-/**
- * @dev RewardsManager mock that always reverts, simulating a Core-side failure
- *      (e.g. duplicate taskId, unsupported token, or an upgrade regression).
- *      Used to verify that _distributeSurplus's try/catch allows the claim to complete.
- */
-contract MockRewardsManagerReverting {
-    function distributeRewards(uint96, address, uint256, IERC20, bytes32) external pure {
-        revert("MockRewardsManagerReverting: always reverts");
     }
 }
 

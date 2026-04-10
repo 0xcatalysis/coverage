@@ -54,14 +54,13 @@ contract ClaimManager is
     address public override slashingManager;
     address public override swapper;
     address public override policyManager;
-    address public override rewardsManager;
+    address public override premiumManager;
     uint16 public override maxSwapSlippageBps;
 
     mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
     mapping(uint96 policyId => PolicyClaim) private _policyClaims;
     mapping(uint96 policyId => bool) private _claimApprovalRequired;
     mapping(uint96 policyId => mapping(bytes32 evidenceHash => bool used)) private _usedEvidenceHashes;
-    address public override premiumManager;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -166,15 +165,6 @@ contract ClaimManager is
         require(maxSwapSlippageBps_ <= _MAX_SETTABLE_SLIPPAGE_BPS, InvalidSlippageBps(maxSwapSlippageBps_));
         maxSwapSlippageBps = maxSwapSlippageBps_;
         emit MaxSwapSlippageBpsSet(maxSwapSlippageBps_);
-    }
-
-    /**
-     * @inheritdoc IClaimManager
-     */
-    function setRewardsManager(address rewardsManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(rewardsManager_ != address(0), ZeroAddress());
-        rewardsManager = rewardsManager_;
-        emit RewardsManagerSet(rewardsManager_);
     }
 
     /**
@@ -551,7 +541,7 @@ contract ClaimManager is
     /**
      * @notice Processes collateral by swapping or transferring directly, capped at remainingPayout.
      * @dev Uses quoteSwap for amountOutMin instead of oracle-based pricing.
-     *      Surplus beyond remainingPayout is forwarded to RewardsManager if configured.
+     *      Surplus beyond remainingPayout is forwarded via PremiumManager.forwardRewards() if configured.
      *      vaultIndex is included in the taskId to prevent replay collisions when two vault legs
      *      share the same collateral token.
      * @param policyId Identifier of the policy.
@@ -560,7 +550,7 @@ contract ClaimManager is
      * @param collateralAmount Amount of collateral to process.
      * @param payoutToken Desired payout token address.
      * @param beneficiary Address to receive the payout.
-     * @param curator Operator address used as reward recipient context in RewardsManager.
+     * @param curator Operator address used as reward recipient context in PremiumManager.forwardRewards().
      * @param remainingPayout Maximum payout amount still needed.
      * @param vaultIndex Position of this vault leg in the collateralTokens array (used in taskId).
      * @return amountOut Amount of payout token delivered to beneficiary (capped at remainingPayout).
@@ -656,7 +646,7 @@ contract ClaimManager is
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param token ERC-20 token to distribute.
-     * @param curator Operator address passed to RewardsManager as the reward recipient context.
+     * @param curator Operator address passed to PremiumManager.forwardRewards() as the reward recipient context.
      * @param surplus Amount to distribute.
      * @param taskId Unique task identifier for Core replay protection.
      */
