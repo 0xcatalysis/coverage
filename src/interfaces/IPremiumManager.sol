@@ -192,7 +192,7 @@ interface IPremiumManager is IAccessControl {
      * @param token ERC20 token to forward.
      * @param taskId Unique task identifier passed through to RewardsManager for replay protection.
      */
-    function forwardRewards(uint96 policyId, address curator, uint256 amount, IERC20 token, bytes32 taskId) external;
+    function distributeSurplusAsRewards(uint96 policyId, address curator, uint256 amount, IERC20 token, bytes32 taskId) external;
 
     /**
      * @notice Returns true if the token is in the approved premium token set.
