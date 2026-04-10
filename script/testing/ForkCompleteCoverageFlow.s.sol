@@ -41,7 +41,9 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
      * @notice Wraps ETH -> WETH, delegates curator to the vault, and deposits via StrategyManager.
      */
     function _beforePhase4() internal override {
-        if (vaults.length == 0) return;
+        if (vaults.length == 0) {
+            return;
+        }
 
         console.log("\n=== PHASE 3b: FUND VAULTS (EigenLayer stake) ===");
         require(vaults.length == 1, "Phase 3b: multi-vault not supported (one delegator per operator)");
@@ -50,20 +52,14 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
 
         vm.startBroadcast(curatorPrivateKey);
 
-        // Wrap ETH -> WETH
         (bool ok,) = payoutToken.call{value: depositAmount}(abi.encodeWithSignature("deposit()"));
         require(ok, "Phase 3b: ETH->WETH wrap failed");
 
-        // Approve StrategyManager to pull WETH
         (ok,) = payoutToken.call(
             abi.encodeWithSignature("approve(address,uint256)", EIGENLAYER_STRATEGY_MANAGER, depositAmount)
         );
         require(ok, "Phase 3b: WETH approve to StrategyManager failed");
 
-        // Delegate curator to the vault (which registers itself as an EigenLayer operator).
-        // delegationApprover is address(0) so no approver signature is needed.
-        // We manually build the ABI calldata for delegateTo(address,(bytes,uint256),bytes32)
-        // because Solidity cannot directly encode a foreign struct type inline.
         (bool delegatedOk, bytes memory delegatedData) =
             EIGENLAYER_DELEGATION_MANAGER.staticcall(abi.encodeWithSignature("delegatedTo(address)", curator));
         address currentOperator =
@@ -87,7 +83,6 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
             console.log("[SKIP] Curator already delegated to vault");
         }
 
-        // Deposit WETH into the vault via StrategyManager
         (ok,) = EIGENLAYER_STRATEGY_MANAGER.call(
             abi.encodeWithSignature(
                 "depositIntoStrategy(address,address,uint256)", vaults[0], payoutToken, depositAmount

@@ -214,8 +214,6 @@ contract CompleteCoverageFlow is Script {
             console.log("[SKIP] Payout token already whitelisted:", payoutToken);
         }
 
-        // Always run regardless of whether the whitelist step was skipped, so
-        // re-runs within the same session still ensure PremiumManager approval.
         _approveAsPremiumTokenIfNeeded();
 
         emit FlowCompleted("Payout Token Whitelist", 0);
@@ -381,8 +379,6 @@ contract CompleteCoverageFlow is Script {
             return;
         }
 
-        // CoveredVaultWrapper accrues premiums internally via its own accumulator.
-        // collectPremium() can be called by anyone to flush pending premium to PremiumManager.
         console.log("[INFO] CoveredVaultWrapper accrues premiums internally.");
         console.log("[INFO] Call collectPremium() on the vault to distribute accrued premium.");
 
@@ -408,8 +404,6 @@ contract CompleteCoverageFlow is Script {
         console.log("Platform fee BPS:", platformFee);
         console.log("Pool fee BPS:", poolFee);
 
-        // CoveredVaultWrapper.collectPremium() is permissionless — anyone can call it.
-        // It flushes accrued premium to PremiumManager and calls distributePremium() directly.
         vm.startBroadcast(curatorPrivateKey);
         (bool success,) = coveredVault.call(abi.encodeWithSignature("collectPremium()"));
         vm.stopBroadcast();
@@ -649,17 +643,17 @@ contract CompleteCoverageFlow is Script {
      *      Uses low-level staticcalls to avoid importing Core interfaces.
      */
     function _discoverVaultsIfNeeded() internal {
-        if (vaults.length > 0) return;
+        if (vaults.length > 0) {
+            return;
+        }
 
         console.log("\n=== VAULT AUTO-DISCOVERY ===");
 
-        // StakeManager.router() -> SSPRouter address
         (bool ok1, bytes memory d) = stakeManager.staticcall(abi.encodeWithSignature("router()"));
         require(ok1 && d.length >= 32, "Vault discovery: StakeManager.router() call failed");
         address router = abi.decode(d, (address));
         console.log("SSPRouter:", router);
 
-        // SSPRouter.getVaultsByModule(SSPModuleType) where EIGENLAYER = 2
         (bool ok2, bytes memory d2) = router.staticcall(abi.encodeWithSignature("getVaultsByModule(uint8)", uint8(2)));
         require(ok2, "Vault discovery: SSPRouter.getVaultsByModule() call failed");
         vaults = abi.decode(d2, (address[]));
@@ -732,7 +726,6 @@ contract CompleteCoverageFlow is Script {
     function _loadPolicyBindingParams() internal {
         specAddress = vm.envAddress("SPEC_ADDRESS");
 
-        // VAULTS is optional: if empty, vaults are auto-discovered after Phase 2 via SSPRouter.
         string memory vaultsStr = vm.envOr("VAULTS", string(""));
         if (bytes(vaultsStr).length > 0) {
             string[] memory vaultAddresses = vm.split(vaultsStr, ",");
