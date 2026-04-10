@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
@@ -83,6 +84,7 @@ contract ClaimManagerTest is Test {
     event TokensRecovered(address indexed token, address indexed to, uint256 amount);
     event VaultExcludedFromSlashing(address indexed vault, address indexed token);
     event RewardsManagerSet(address indexed rewardsManager);
+    event PremiumManagerSet(address indexed premiumManager);
     event SwapSurplusDistributed(
         uint96 indexed policyId, uint256 indexed claimId, address indexed payoutToken, uint256 surplusAmount
     );
@@ -499,6 +501,40 @@ contract ClaimManagerTest is Test {
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         vm.prank(admin);
         claimManager.setRewardsManager(address(0));
+    }
+
+    function test_premiumManager_InitiallyZeroAddress() public view {
+        assertEq(claimManager.premiumManager(), address(0));
+    }
+
+    function test_setPremiumManager_WhenCallerNotAdmin_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                unauthorized,
+                claimManager.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(unauthorized);
+        claimManager.setPremiumManager(makeAddr("premiumManager"));
+    }
+
+    function test_setPremiumManager_WhenAddressZero_Reverts() public {
+        vm.expectRevert(IClaimManager.ZeroAddress.selector);
+        vm.prank(admin);
+        claimManager.setPremiumManager(address(0));
+    }
+
+    function test_setPremiumManager_WhenValid_UpdatesStateAndEmitsEvent() public {
+        address newPremiumManager = makeAddr("newPremiumManager");
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit PremiumManagerSet(newPremiumManager);
+
+        vm.prank(admin);
+        claimManager.setPremiumManager(newPremiumManager);
+
+        assertEq(claimManager.premiumManager(), newPremiumManager);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1844,9 +1880,9 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
 
-        MockRewardsManager rewardsMock = new MockRewardsManager();
+        MockPremiumManagerForClaims premiumMock = new MockPremiumManagerForClaims();
         vm.prank(admin);
-        claimManager.setRewardsManager(address(rewardsMock));
+        claimManager.setPremiumManager(address(premiumMock));
 
         uint256 favorableSwapOutput = requestedAmount + 5 ether;
         swapperMock.setPayoutToken(payoutToken);
@@ -1868,9 +1904,9 @@ contract ClaimManagerTest is Test {
             0,
             "No payout tokens should remain stranded in ClaimManager"
         );
-        assertEq(rewardsMock.totalReceived(), 5 ether, "Surplus must be forwarded to RewardsManager");
-        assertEq(rewardsMock.lastPolicyId(), POLICY_ID, "RewardsManager must be called with the correct policyId");
-        assertEq(rewardsMock.lastOperator(), operator, "RewardsManager must be called with the pool curator");
+        assertEq(premiumMock.totalReceived(), 5 ether, "Surplus must be forwarded via PremiumManager");
+        assertEq(premiumMock.lastPolicyId(), POLICY_ID, "PremiumManager must be called with the correct policyId");
+        assertEq(premiumMock.lastCurator(), operator, "PremiumManager must be called with the pool curator");
         assertEq(
             claimManager.claimRecord(POLICY_ID, 0).payoutAmount,
             requestedAmount,
@@ -1897,7 +1933,6 @@ contract ClaimManagerTest is Test {
 
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
-        // rewardsManager is address(0) by default — surplus distribution is disabled
 
         uint256 favorableSwapOutput = requestedAmount + 5 ether;
         swapperMock.setPayoutToken(payoutToken);
@@ -1910,7 +1945,7 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
         uint256 claimManagerGained = payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore;
-        assertEq(claimManagerGained, 5 ether, "Surplus stays in ClaimManager when rewardsManager is not configured");
+        assertEq(claimManagerGained, 5 ether, "Surplus stays in ClaimManager when premiumManager is not configured");
     }
 
     function test_fileClaim_WhenSwapProducesSurplus_EmitsSwapSurplusDistributedEvent() public {
@@ -1933,9 +1968,9 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
 
-        MockRewardsManager rewardsMock = new MockRewardsManager();
+        MockPremiumManagerForClaims premiumMock = new MockPremiumManagerForClaims();
         vm.prank(admin);
-        claimManager.setRewardsManager(address(rewardsMock));
+        claimManager.setPremiumManager(address(premiumMock));
 
         uint256 favorableSwapOutput = requestedAmount + 5 ether;
         swapperMock.setPayoutToken(payoutToken);
@@ -1949,12 +1984,12 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
     }
 
-    function test_fileClaim_WhenSwapExactlyMatchesRemainingPayout_RewardsManagerNotCalled() public {
+    function test_fileClaim_WhenSwapExactlyMatchesRemainingPayout_PremiumManagerNotCalled() public {
         uint256 requestedAmount = 100 ether;
 
-        MockRewardsManager rewardsMock = new MockRewardsManager();
+        MockPremiumManagerForClaims premiumMock = new MockPremiumManagerForClaims();
         vm.prank(admin);
-        claimManager.setRewardsManager(address(rewardsMock));
+        claimManager.setPremiumManager(address(premiumMock));
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -1972,13 +2007,13 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        assertEq(rewardsMock.totalReceived(), 0, "RewardsManager must not be called when there is no surplus");
+        assertEq(premiumMock.totalReceived(), 0, "PremiumManager must not be called when there is no surplus");
         assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
     }
 
     function test_fileClaim_WhenSwapProducesSurplusAndNativeETHPayoutToken_SurplusStaysInContract() public {
         uint256 requestedAmount = 10 ether;
-        uint256 favorableSwapOutput = 12 ether; // 2 ETH surplus
+        uint256 favorableSwapOutput = 12 ether;
 
         IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
         metadata.payoutToken = NATIVE_ETH;
@@ -1998,9 +2033,9 @@ contract ClaimManagerTest is Test {
         swapperMock.setPayoutToken(NATIVE_ETH);
         vm.deal(address(swapperMock), favorableSwapOutput);
 
-        MockRewardsManager rewardsMock = new MockRewardsManager();
+        MockPremiumManagerForClaims premiumMock = new MockPremiumManagerForClaims();
         vm.prank(admin);
-        claimManager.setRewardsManager(address(rewardsMock));
+        claimManager.setPremiumManager(address(premiumMock));
 
         uint256 beneficiaryBefore = beneficiary.balance;
         vm.prank(claimer);
@@ -2009,7 +2044,7 @@ contract ClaimManagerTest is Test {
         assertEq(
             beneficiary.balance - beneficiaryBefore, requestedAmount, "Beneficiary receives exactly requestedAmount"
         );
-        assertEq(rewardsMock.totalReceived(), 0, "RewardsManager must not be called for native ETH surplus");
+        assertEq(premiumMock.totalReceived(), 0, "PremiumManager must not be called for native ETH surplus");
         assertEq(
             address(claimManager).balance,
             favorableSwapOutput - requestedAmount,
@@ -2662,9 +2697,9 @@ contract ClaimManagerTest is Test {
         payoutTokenMock.mint(address(slashingManagerMock), slashedAmount);
         slashingManagerMock.setTokenToTransfer(payoutToken);
 
-        MockRewardsManager rewardsMock = new MockRewardsManager();
+        MockPremiumManagerForClaims premiumMock = new MockPremiumManagerForClaims();
         vm.prank(admin);
-        claimManager.setRewardsManager(address(rewardsMock));
+        claimManager.setPremiumManager(address(premiumMock));
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -2674,7 +2709,7 @@ contract ClaimManagerTest is Test {
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
-        assertEq(rewardsMock.totalReceived(), expectedSurplus, "Surplus must be forwarded to RewardsManager");
+        assertEq(premiumMock.totalReceived(), expectedSurplus, "Surplus must be forwarded via PremiumManager");
         assertEq(
             payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
         );
@@ -2692,9 +2727,9 @@ contract ClaimManagerTest is Test {
         payoutTokenMock.mint(address(slashingManagerMock), requestedAmount);
         slashingManagerMock.setTokenToTransfer(payoutToken);
 
-        MockRewardsManager rewardsMock = new MockRewardsManager();
+        MockPremiumManagerForClaims premiumMock = new MockPremiumManagerForClaims();
         vm.prank(admin);
-        claimManager.setRewardsManager(address(rewardsMock));
+        claimManager.setPremiumManager(address(premiumMock));
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -2702,7 +2737,7 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
         assertEq(
-            rewardsMock.totalReceived(), 0, "RewardsManager must not be called when there is no same-token surplus"
+            premiumMock.totalReceived(), 0, "PremiumManager must not be called when there is no same-token surplus"
         );
         assertEq(
             payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
@@ -2710,7 +2745,7 @@ contract ClaimManagerTest is Test {
         assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
     }
 
-    function test_fileClaim_WhenSameTokenVaultProducesSurplusAndNoRewardsManager_SurplusStranded() public {
+    function test_fileClaim_WhenSameTokenVaultProducesSurplusAndNoPremiumManager_SurplusStranded() public {
         uint256 requestedAmount = 100 ether;
         uint256 slashedAmount = 105 ether;
 
@@ -2734,7 +2769,7 @@ contract ClaimManagerTest is Test {
         assertEq(
             payoutTokenMock.balanceOf(address(claimManager)) - claimManagerBefore,
             slashedAmount - requestedAmount,
-            "Surplus stays in ClaimManager when rewardsManager is not configured"
+            "Surplus stays in ClaimManager when premiumManager is not configured"
         );
     }
 
@@ -2770,9 +2805,9 @@ contract ClaimManagerTest is Test {
         swapperMock.setPayoutToken(payoutToken);
         swapperMock.setSwapOutput(crossSwapOutput);
 
-        MockRewardsManager rewardsMock = new MockRewardsManager();
+        MockPremiumManagerForClaims premiumMock = new MockPremiumManagerForClaims();
         vm.prank(admin);
-        claimManager.setRewardsManager(address(rewardsMock));
+        claimManager.setPremiumManager(address(premiumMock));
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -2783,7 +2818,7 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
         assertEq(
-            rewardsMock.totalReceived(), expectedSameTokenSurplus, "Same-token surplus forwarded to RewardsManager"
+            premiumMock.totalReceived(), expectedSameTokenSurplus, "Same-token surplus forwarded via PremiumManager"
         );
         assertEq(
             payoutTokenMock.balanceOf(beneficiary), requestedAmount, "Beneficiary receives exactly requestedAmount"
@@ -2817,9 +2852,9 @@ contract ClaimManagerTest is Test {
         swapperMock.setPayoutToken(payoutToken);
         swapperMock.setSwapOutput(requestedAmount);
 
-        MockRewardsManager rewardsMock = new MockRewardsManager();
+        MockPremiumManagerForClaims premiumMock = new MockPremiumManagerForClaims();
         vm.prank(admin);
-        claimManager.setRewardsManager(address(rewardsMock));
+        claimManager.setPremiumManager(address(premiumMock));
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -2834,7 +2869,7 @@ contract ClaimManagerTest is Test {
             "Beneficiary must receive exactly requestedAmount"
         );
         assertEq(
-            rewardsMock.totalReceived(), 0, "RewardsManager must not receive anything: loop exited before vault[1]"
+            premiumMock.totalReceived(), 0, "PremiumManager must not receive anything: loop exited before vault[1]"
         );
         assertEq(
             payoutTokenMock.balanceOf(address(claimManager)),
@@ -2876,9 +2911,9 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.setSwapper(address(multiSwapper));
 
-        MockRewardsManager rewardsMock = new MockRewardsManager();
+        MockPremiumManagerForClaims premiumMock = new MockPremiumManagerForClaims();
         vm.prank(admin);
-        claimManager.setRewardsManager(address(rewardsMock));
+        claimManager.setPremiumManager(address(premiumMock));
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -2893,7 +2928,7 @@ contract ClaimManagerTest is Test {
             "Beneficiary must receive exactly requestedAmount"
         );
         assertEq(
-            rewardsMock.totalReceived(), 0, "RewardsManager must not receive anything: loop exited before vault[1]"
+            premiumMock.totalReceived(), 0, "PremiumManager must not receive anything: loop exited before vault[1]"
         );
         assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No payout tokens must remain stranded");
         assertEq(
@@ -2951,7 +2986,7 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    function test_fileClaim_WhenDistributeRewardsRevertsOnCrossTokenPath_ClaimCompletesAndEmitsFailureEvent() public {
+    function test_fileClaim_WhenForwardRewardsRevertsOnCrossTokenPath_ClaimCompletesAndEmitsFailureEvent() public {
         uint256 requestedAmount = 100 ether;
 
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
@@ -2970,10 +3005,9 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
 
-        // RewardsManager that always reverts — simulates duplicate taskId, upgrade regression, etc.
-        MockRewardsManagerReverting revertingMock = new MockRewardsManagerReverting();
+        MockPremiumManagerReverting revertingMock = new MockPremiumManagerReverting();
         vm.prank(admin);
-        claimManager.setRewardsManager(address(revertingMock));
+        claimManager.setPremiumManager(address(revertingMock));
 
         uint256 surplus = 5 ether;
         swapperMock.setPayoutToken(payoutToken);
@@ -3001,7 +3035,7 @@ contract ClaimManagerTest is Test {
         );
     }
 
-    function test_fileClaim_WhenDistributeRewardsRevertsOnSameTokenPath_ClaimCompletesAndEmitsFailureEvent() public {
+    function test_fileClaim_WhenForwardRewardsRevertsOnSameTokenPath_ClaimCompletesAndEmitsFailureEvent() public {
         uint256 requestedAmount = 100 ether;
         uint256 slashedAmount = 105 ether;
         uint256 surplus = slashedAmount - requestedAmount;
@@ -3014,9 +3048,9 @@ contract ClaimManagerTest is Test {
         payoutTokenMock.mint(address(slashingManagerMock), slashedAmount);
         slashingManagerMock.setTokenToTransfer(payoutToken);
 
-        MockRewardsManagerReverting revertingMock = new MockRewardsManagerReverting();
+        MockPremiumManagerReverting revertingMock = new MockPremiumManagerReverting();
         vm.prank(admin);
-        claimManager.setRewardsManager(address(revertingMock));
+        claimManager.setPremiumManager(address(revertingMock));
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
@@ -4013,6 +4047,37 @@ contract MockRewardsManager {
 contract MockRewardsManagerReverting {
     function distributeRewards(uint96, address, uint256, IERC20, bytes32) external pure {
         revert("MockRewardsManagerReverting: always reverts");
+    }
+}
+
+/**
+ * @dev Minimal PremiumManager mock that implements forwardRewards() by pulling tokens from the
+ *      caller via safeTransferFrom, mirroring the real PremiumManager behaviour. Tracks the
+ *      last call parameters and accumulates received tokens for assertion.
+ */
+contract MockPremiumManagerForClaims {
+    using SafeERC20 for IERC20;
+
+    uint96 public lastPolicyId;
+    address public lastCurator;
+    uint256 public totalReceived;
+
+    function forwardRewards(uint96 policyId, address curator, uint256 amount, IERC20 token, bytes32) external {
+        lastPolicyId = policyId;
+        lastCurator = curator;
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        totalReceived += amount;
+    }
+}
+
+/**
+ * @dev PremiumManager mock that always reverts on forwardRewards(), simulating a Core-side
+ *      failure (e.g. duplicate taskId, paused state, or an upgrade regression).
+ *      Used to verify that _distributeSurplus's try/catch allows the claim to complete.
+ */
+contract MockPremiumManagerReverting {
+    function forwardRewards(uint96, address, uint256, IERC20, bytes32) external pure {
+        revert("MockPremiumManagerReverting: always reverts");
     }
 }
 
