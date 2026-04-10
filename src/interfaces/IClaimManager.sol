@@ -150,6 +150,12 @@ interface IClaimManager is IAccessControl {
     event RewardsManagerSet(address indexed rewardsManager);
 
     /**
+     * @notice Emitted when the PremiumManager address is updated.
+     * @param premiumManager New PremiumManager address.
+     */
+    event PremiumManagerSet(address indexed premiumManager);
+
+    /**
      * @notice Emitted when surplus collateral or payout tokens are distributed as restaker rewards.
      * @dev Surplus arises in two cases: (1) cross-token path — swap output exceeds remainingPayout;
      *      (2) same-token path — slashed collateral exceeds remainingPayout (no swap involved).
@@ -363,6 +369,13 @@ interface IClaimManager is IAccessControl {
     function setRewardsManager(address rewardsManager_) external;
 
     /**
+     * @notice Sets the PremiumManager address used to route surplus rewards via forwardRewards().
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param premiumManager_ Address of the PremiumManager contract. Must be non-zero.
+     */
+    function setPremiumManager(address premiumManager_) external;
+
+    /**
      * @notice Files and resolves a claim atomically in a single transaction.
      * @dev Caller must be the policy's designated claimer address. Combines filing and resolution into one atomic
      * operation:
@@ -442,6 +455,11 @@ interface IClaimManager is IAccessControl {
      * @notice Returns the RewardsManager address.
      */
     function rewardsManager() external view returns (address);
+
+    /**
+     * @notice Returns the PremiumManager address used to route claim surplus via forwardRewards().
+     */
+    function premiumManager() external view returns (address);
 
     /**
      * @notice Clears the claim approval gate for a policy, allowing the next claim to be filed freely.

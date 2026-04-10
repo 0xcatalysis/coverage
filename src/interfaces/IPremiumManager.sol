@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title IPremiumManager
@@ -54,6 +55,16 @@ interface IPremiumManager is IAccessControl {
      * @param token ERC20 token address.
      */
     event PremiumTokenRemoved(address indexed token);
+
+    /**
+     * @notice Emitted when claim surplus is successfully forwarded to RewardsManager.
+     * @dev Emitted by forwardRewards() on successful distribution.
+     * @param policyId Policy identifier for which surplus is being forwarded.
+     * @param curator Operator address receiving the restaker reward credit.
+     * @param token ERC20 token forwarded as rewards.
+     * @param amount Amount forwarded.
+     */
+    event RewardsForwarded(uint96 indexed policyId, address indexed curator, address indexed token, uint256 amount);
 
     /**
      * @notice Reverts when a zero address is provided where not allowed.
@@ -171,6 +182,17 @@ interface IPremiumManager is IAccessControl {
      * @param amount Total premium amount to distribute.
      */
     function distributePremium(address pool, uint96 policyId, address premiumToken, uint256 amount) external;
+
+    /**
+     * @notice Forwards claim surplus tokens to RewardsManager on behalf of ClaimManager.
+     * @dev Requires CLAIM_MANAGER_ROLE.
+     * @param policyId Policy identifier for replay-protection key derivation.
+     * @param curator Operator address receiving the restaker reward credit.
+     * @param amount Token amount to forward.
+     * @param token ERC20 token to forward.
+     * @param taskId Unique task identifier passed through to RewardsManager for replay protection.
+     */
+    function forwardRewards(uint96 policyId, address curator, uint256 amount, IERC20 token, bytes32 taskId) external;
 
     /**
      * @notice Returns true if the token is in the approved premium token set.

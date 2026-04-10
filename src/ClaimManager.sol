@@ -11,7 +11,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
-import {IRewardsManager} from "./interfaces/IRewardsManager.sol";
+import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
 import {ISpec} from "./interfaces/ISpec.sol";
 import {ISpecRegistry} from "./interfaces/ISpecRegistry.sol";
 import {ISlashingManager} from "./interfaces/ISlashingManager.sol";
@@ -61,6 +61,7 @@ contract ClaimManager is
     mapping(uint96 policyId => PolicyClaim) private _policyClaims;
     mapping(uint96 policyId => bool) private _claimApprovalRequired;
     mapping(uint96 policyId => mapping(bytes32 evidenceHash => bool used)) private _usedEvidenceHashes;
+    address public override premiumManager;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -174,6 +175,15 @@ contract ClaimManager is
         require(rewardsManager_ != address(0), ZeroAddress());
         rewardsManager = rewardsManager_;
         emit RewardsManagerSet(rewardsManager_);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
+    function setPremiumManager(address premiumManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(premiumManager_ != address(0), ZeroAddress());
+        premiumManager = premiumManager_;
+        emit PremiumManagerSet(premiumManager_);
     }
 
     /**
@@ -579,7 +589,7 @@ contract ClaimManager is
             }
             amountOut = transferAmount;
 
-            if (collateralAmount > transferAmount && rewardsManager != address(0) && collateralToken != _NATIVE_ETH) {
+            if (collateralAmount > transferAmount && premiumManager != address(0) && collateralToken != _NATIVE_ETH) {
                 _distributeSurplus(
                     policyId, claimId, collateralToken, curator, collateralAmount - transferAmount, surplusTaskId
                 );
@@ -607,7 +617,7 @@ contract ClaimManager is
                 _transferToken(payoutToken, beneficiary, amountOut);
             }
 
-            if (swapOutput > amountOut && rewardsManager != address(0) && payoutToken != _NATIVE_ETH) {
+            if (swapOutput > amountOut && premiumManager != address(0) && payoutToken != _NATIVE_ETH) {
                 _distributeSurplus(policyId, claimId, payoutToken, curator, swapOutput - amountOut, surplusTaskId);
             }
 
@@ -639,8 +649,8 @@ contract ClaimManager is
     // slither-disable-end calls-loop
 
     /**
-     * @notice Distributes surplus tokens to restakers via RewardsManager.
-     * @dev Guards (rewardsManager set, not native ETH) are checked by the caller.
+     * @notice Distributes surplus tokens to restakers via PremiumManager.forwardRewards().
+     * @dev Guards (premiumManager set, not native ETH) are checked by the caller.
      *      Wrapped in try/catch so a Core revert cannot block beneficiary payout; on failure
      *      the surplus remains in this contract and is recoverable via `recoverTokens`.
      * @param policyId Identifier of the policy.
@@ -660,13 +670,13 @@ contract ClaimManager is
     )
         private
     {
-        IERC20(token).forceApprove(rewardsManager, surplus);
+        IERC20(token).forceApprove(premiumManager, surplus);
         // slither-disable-next-line calls-loop
-        try IRewardsManager(rewardsManager).distributeRewards(policyId, curator, surplus, IERC20(token), taskId) {
-            IERC20(token).forceApprove(rewardsManager, 0);
+        try IPremiumManager(premiumManager).forwardRewards(policyId, curator, surplus, IERC20(token), taskId) {
+            IERC20(token).forceApprove(premiumManager, 0);
             emit SwapSurplusDistributed(policyId, claimId, token, surplus);
         } catch {
-            IERC20(token).forceApprove(rewardsManager, 0);
+            IERC20(token).forceApprove(premiumManager, 0);
             emit SwapSurplusDistributionFailed(policyId, claimId, token, surplus);
         }
     }
