@@ -14,7 +14,7 @@ interface ICoveredVaultWrapperRate {
 
 /**
  * @title SetPremiumRate
- * @notice Manages the two-step timelocked premium rate change on a CoveredVaultWrapper.
+ * @notice Manages premium rate changes on a CoveredVaultWrapper, with automatic fast-path detection.
  * @dev The premium rate controls how quickly
  *      covered depositors' principal is charged for insurance coverage:
  *
@@ -23,13 +23,21 @@ interface ICoveredVaultWrapperRate {
  *      Without a non-zero rate, no premium accrues and DistributePremium.s.sol is a no-op.
  *      Call this script after policy binding (BindPolicy.s.sol) so deposits are open.
  *
- *      The change is timelocked by OPERATIONAL_DELAY (2 hours) to limit damage from
- *      misconfiguration while still allowing rapid operational response:
- *        Step 1 — propose: call setPremiumRate(PREMIUM_RATE), starts the timelock
- *        Step 2 — execute: call executePremiumRate() once the delay has elapsed
+ *      The contract supports two paths depending on whether a rate has already been applied
+ *      this policy period (premiumRateInitialized flag):
+ *
+ *        Fast-path (first-time setting after policy binding):
+ *          setPremiumRate() applies the rate immediately with NO timelock.
+ *          Triggered when policy is bound but no rate has been set this period.
+ *
+ *        Normal path (subsequent rate changes):
+ *          Two-step timelocked flow with OPERATIONAL_DELAY (2 hours):
+ *            Step 1 — propose: call setPremiumRate(PREMIUM_RATE), starts the timelock
+ *            Step 2 — execute: call executePremiumRate() once the delay has elapsed
  *
  *      This script is state-aware and selects the correct action automatically:
- *        • No pending change: broadcasts setPremiumRate() and reports when to run Step 2
+ *        • No pending change: broadcasts setPremiumRate(); if fast-path fires the rate is
+ *          live immediately, otherwise reports when to run Step 2
  *        • Timelock elapsed:  broadcasts executePremiumRate() and verifies the new rate
  *        • Timelock pending:  logs the remaining wait time and exits without broadcasting
  *
@@ -42,7 +50,7 @@ interface ICoveredVaultWrapperRate {
  *        10%   / year ≈ 3_170_979_198
  *        50%   / year ≈ 15_854_895_991  (maximum allowed)
  *
- * Usage (Step 1 — propose):
+ * Usage (first-time or propose):
  *   PREMIUM_RATE=<rate> forge script script/testing/SetPremiumRate.s.sol:SetPremiumRate \
  *     --rpc-url $RPC_URL --broadcast --slow -vvvv
  *
@@ -56,7 +64,7 @@ interface ICoveredVaultWrapperRate {
  *   - PREMIUM_RATE: Desired rate in wei per second (WAD-scaled, i.e. rate × 1e18 / 1e18).
  *       Max value: 15_854_895_991 (~50% per year).
  *       Example for 10%/year: 3_170_979_198
- *       Only read in Step 1 (propose); ignored in Step 2 (execute).
+ *       Only read on initial propose; ignored when executing a pending timelock.
  *
  * Prerequisites:
  *   - Policy must be bound (BindPolicy.s.sol) so deposits are open and accrual is meaningful
@@ -91,25 +99,33 @@ contract SetPremiumRate is Script {
         console.log("Block timestamp:       ", block.timestamp);
 
         if (pendingTimestamp == 0) {
-            // ── Step 1: No pending change — propose a new rate
-            // ──────────────────
-            require(premiumRate > 0, "PREMIUM_RATE env var required to propose a rate change");
+            // ── No pending change — set rate (fast-path or propose) ────────────
+            require(premiumRate > 0, "PREMIUM_RATE env var required to set a rate");
             require(premiumRate <= MAX_PREMIUM_RATE_PER_SECOND, "PREMIUM_RATE exceeds maximum allowed");
 
-            console.log("\n[STEP 1] No pending rate change -- proposing new rate:", premiumRate);
+            console.log("\n[STEP 1] No pending rate change -- setting new rate:", premiumRate);
 
             vm.startBroadcast(deployerKey);
             wrapper.setPremiumRate(premiumRate);
             vm.stopBroadcast();
 
             uint64 effectiveAt = wrapper.pendingPremiumRateTimestamp();
-            uint256 confirmedPending = wrapper.pendingPremiumRate();
-            require(effectiveAt > 0, "Proposal not recorded: pendingPremiumRateTimestamp still zero");
-            require(confirmedPending == premiumRate, "Proposal not recorded: pendingPremiumRate mismatch");
-            console.log("\n[OK] Rate proposal submitted and verified");
-            console.log("Effective at (unix):", effectiveAt);
-            console.log("Run this script again after that timestamp to execute the rate change.");
-            emit PremiumRateProposed(vault, premiumRate, effectiveAt);
+            if (effectiveAt == 0) {
+                // Fast-path: first-time rate setting after policy binding — applied immediately.
+                uint256 activeRate = wrapper.premiumRatePerSecond();
+                require(activeRate == premiumRate, "Fast-path failed: premiumRatePerSecond mismatch");
+                console.log("\n[OK] First-time rate applied immediately (no timelock required)");
+                console.log("Active rate (wei/s):", activeRate);
+                emit PremiumRateExecuted(vault, activeRate);
+            } else {
+                // Normal propose path: timelock started, execution required after delay.
+                uint256 confirmedPending = wrapper.pendingPremiumRate();
+                require(confirmedPending == premiumRate, "Proposal not recorded: pendingPremiumRate mismatch");
+                console.log("\n[OK] Rate proposal submitted and verified");
+                console.log("Effective at (unix):", effectiveAt);
+                console.log("Run this script again after that timestamp to execute the rate change.");
+                emit PremiumRateProposed(vault, premiumRate, effectiveAt);
+            }
         } else if (block.timestamp >= pendingTimestamp) {
             // ── Step 2: Timelock elapsed — execute the pending rate ──────────────
             console.log("\n[STEP 2] Timelock elapsed -- executing pending rate:", pendingRate);
