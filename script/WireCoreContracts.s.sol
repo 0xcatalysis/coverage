@@ -18,6 +18,11 @@ interface ISlashingManagerWire {
     function claimManager() external view returns (address);
 }
 
+interface ISSPRouterWire {
+    function setStakeRecipient(address _stakeRecipient) external;
+    function stakeRecipient() external view returns (address);
+}
+
 interface IRewardsManagerWire {
     function setPremiumManager(address _premiumManager) external;
     function premiumManager() external view returns (address);
@@ -31,7 +36,7 @@ interface IPremiumManagerWire {
  * @title WireCoreContracts
  * @notice Performs all cross-system wiring between Catalysis Core and Coverage contracts.
  * @dev Must be run after both Core and Coverage contracts are deployed.
- *      Executes five calls that bridge the two systems:
+ *      Executes six calls that bridge the two systems:
  *
  *      1. StakeManager.setCoverPoolFactory    — unblocks createCommittee() during requestCoverage()
  *      2. StakeManager.grantRole(POLICY_MANAGER_ROLE, policyManager) — unblocks requestCoverage()
@@ -40,6 +45,9 @@ interface IPremiumManagerWire {
  *      5. PremiumManager.approveSpender       — allows RewardsManager to pull the restaker share
  *                                               from PremiumManager via safeTransferFrom; required
  *                                               for distributeRewards() to route rewards correctly
+ *      6. SSPRouter.setStakeRecipient         — sets the EigenLayer redistribution recipient so
+ *                                               slashed collateral flows to ClaimManager, not the
+ *                                               deployer; must run before any committee is created
  *
  *      Role requirements (all held by the deployer after Core and Coverage deploys):
  *        - STAKE_MANAGER_CONFIG_ROLE on StakeManager
@@ -47,6 +55,7 @@ interface IPremiumManagerWire {
  *        - DEFAULT_ADMIN_ROLE on SlashingManager
  *        - REWARDS_MANAGER_CONFIG_ROLE on RewardsManager
  *        - DEFAULT_ADMIN_ROLE on PremiumManager / Coverage
+ *        - DEFAULT_ADMIN_ROLE on SSPRouter
  *
  * Usage:
  *   forge script script/WireCoreContracts.s.sol:WireCoreContracts \
@@ -57,6 +66,7 @@ interface IPremiumManagerWire {
  *   - STAKE_MANAGER: StakeManager proxy address
  *   - SLASHING_MANAGER: SlashingManager proxy address
  *   - REWARDS_MANAGER: RewardsManager proxy address
+ *   - SSP_ROUTER: SSPRouter proxy address
  *
  *   Coverage (from script/DeploySepolia.s.sol outputs):
  *   - POLICY_MANAGER: PolicyManager proxy address
@@ -73,11 +83,13 @@ interface IPremiumManagerWire {
  *   - Core contracts deployed (DeploySepolia/DeployEthereum in catalysis/core)
  *   - Coverage contracts deployed (script/DeploySepolia.s.sol)
  *   - Caller holds STAKE_MANAGER_CONFIG_ROLE, DEFAULT_ADMIN_ROLE on Core contracts,
- *     REWARDS_MANAGER_CONFIG_ROLE on RewardsManager, and DEFAULT_ADMIN_ROLE on PremiumManager
+ *     REWARDS_MANAGER_CONFIG_ROLE on RewardsManager, DEFAULT_ADMIN_ROLE on PremiumManager,
+ *     and DEFAULT_ADMIN_ROLE on SSPRouter
  *
  * Verify after running:
  *   cast call $STAKE_MANAGER "coverPoolFactory()(address)" --rpc-url $RPC_URL
  *   cast call $SLASHING_MANAGER "claimManager()(address)" --rpc-url $RPC_URL
+ *   cast call $SSP_ROUTER "stakeRecipient()(address)" --rpc-url $RPC_URL
  */
 contract WireCoreContracts is Script {
     bytes32 internal constant POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
@@ -87,6 +99,7 @@ contract WireCoreContracts is Script {
     address public stakeManager;
     address public slashingManager;
     address public rewardsManager;
+    address public sspRouter;
     address public policyManager;
     address public claimManager;
     address public premiumManager;
@@ -97,6 +110,7 @@ contract WireCoreContracts is Script {
         address indexed stakeManager,
         address indexed slashingManager,
         address indexed rewardsManager,
+        address sspRouter,
         address coverPoolFactory,
         address policyManager,
         address claimManager,
@@ -109,6 +123,7 @@ contract WireCoreContracts is Script {
         stakeManager = vm.envAddress("STAKE_MANAGER");
         slashingManager = vm.envAddress("SLASHING_MANAGER");
         rewardsManager = vm.envAddress("REWARDS_MANAGER");
+        sspRouter = vm.envAddress("SSP_ROUTER");
         policyManager = vm.envAddress("POLICY_MANAGER");
         claimManager = vm.envAddress("CLAIM_MANAGER");
         premiumManager = vm.envAddress("PREMIUM_MANAGER");
@@ -124,6 +139,7 @@ contract WireCoreContracts is Script {
         console.log("  StakeManager:    ", stakeManager);
         console.log("  SlashingManager: ", slashingManager);
         console.log("  RewardsManager:  ", rewardsManager);
+        console.log("  SSPRouter:       ", sspRouter);
         console.log("Coverage contracts:");
         console.log("  PolicyManager:   ", policyManager);
         console.log("  ClaimManager:    ", claimManager);
@@ -133,20 +149,23 @@ contract WireCoreContracts is Script {
 
         vm.startBroadcast(deployerKey);
 
-        console.log("\n[1/5] StakeManager.setCoverPoolFactory...");
+        console.log("\n[1/6] StakeManager.setCoverPoolFactory...");
         IStakeManagerWire(stakeManager).setCoverPoolFactory(coverPoolFactory);
 
-        console.log("[2/5] StakeManager.grantRole(POLICY_MANAGER_ROLE, policyManager)...");
+        console.log("[2/6] StakeManager.grantRole(POLICY_MANAGER_ROLE, policyManager)...");
         IStakeManagerWire(stakeManager).grantRole(POLICY_MANAGER_ROLE, policyManager);
 
-        console.log("[3/5] SlashingManager.setClaimManager...");
+        console.log("[3/6] SlashingManager.setClaimManager...");
         ISlashingManagerWire(slashingManager).setClaimManager(claimManager);
 
-        console.log("[4/5] RewardsManager.setPremiumManager...");
+        console.log("[4/6] RewardsManager.setPremiumManager...");
         IRewardsManagerWire(rewardsManager).setPremiumManager(premiumManager);
 
-        console.log("[5/5] PremiumManager.approveSpender(payoutToken, rewardsManager, max)...");
+        console.log("[5/6] PremiumManager.approveSpender(payoutToken, rewardsManager, max)...");
         IPremiumManagerWire(premiumManager).approveSpender(payoutToken, rewardsManager, type(uint256).max);
+
+        console.log("[6/6] SSPRouter.setStakeRecipient(claimManager)...");
+        ISSPRouterWire(sspRouter).setStakeRecipient(claimManager);
 
         vm.stopBroadcast();
 
@@ -154,7 +173,14 @@ contract WireCoreContracts is Script {
 
         console.log("\n=== CROSS-SYSTEM WIRING COMPLETED ===");
         emit WiringCompleted(
-            stakeManager, slashingManager, rewardsManager, coverPoolFactory, policyManager, claimManager, premiumManager
+            stakeManager,
+            slashingManager,
+            rewardsManager,
+            sspRouter,
+            coverPoolFactory,
+            policyManager,
+            claimManager,
+            premiumManager
         );
     }
 
@@ -181,6 +207,10 @@ contract WireCoreContracts is Script {
         console.log("PremiumManager allowance for RewardsManager:", allowance);
         require(allowance == type(uint256).max, "PremiumManager.approveSpender not set");
 
-        console.log("[SUCCESS] All 5 wiring calls verified");
+        address gotStakeRecipient = ISSPRouterWire(sspRouter).stakeRecipient();
+        console.log("SSPRouter.stakeRecipient:", gotStakeRecipient);
+        require(gotStakeRecipient == claimManager, "SSPRouter.stakeRecipient mismatch");
+
+        console.log("[SUCCESS] All 6 wiring calls verified");
     }
 }
