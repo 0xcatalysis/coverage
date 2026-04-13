@@ -33,7 +33,7 @@ import {Swapper} from "../src/Swapper.sol";
  *        - Revoke temporary roles from deployer (when deployer != admin)
  *
  *      Environment Variables:
- *        - PRIVATE_KEY: Deployer private key (defaults to Anvil key 0)
+ *        - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag)
  *        - ADMIN: Admin address for all contracts (defaults to deployer)
  *        - NATIVE_WRAPPER: WETH or equivalent native token wrapper address (required)
  *        - SLASHING_MANAGER: Catalysis Core SlashingManager address (required)
@@ -46,10 +46,6 @@ import {Swapper} from "../src/Swapper.sol";
  *        - SWAP_MANAGER: Swap route configuration manager (defaults to admin)
  */
 abstract contract Deploy is Script {
-    /// @dev Default Anvil private key for local testing.
-    uint256 internal constant DEFAULT_PRIVATE_KEY =
-        uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80);
-
     /// @dev Default platform fee in basis points (5%).
     uint16 internal constant DEFAULT_PLATFORM_FEE_BPS = 500;
 
@@ -81,7 +77,7 @@ abstract contract Deploy is Script {
 
     /**
      * @notice Role configuration loaded from environment variables.
-     * @param deployer Address derived from PRIVATE_KEY, used for broadcasting.
+     * @param deployer Public address of the keystore signer, used for broadcasting.
      * @param admin DEFAULT_ADMIN_ROLE holder for all deployed contracts.
      * @param coverPoolFactoryCreator CREATOR_ROLE holder on CoverPoolFactory.
      * @param swapManager SWAP_MANAGER_ROLE holder on Swapper.
@@ -139,11 +135,11 @@ abstract contract Deploy is Script {
         DeploymentConfig memory config = getDeploymentConfig();
         require(config.chainId == block.chainid, string.concat("Must deploy on ", config.networkName));
 
-        uint256 deployerPrivateKey = vm.envOr("PRIVATE_KEY", DEFAULT_PRIVATE_KEY);
-        RoleConfig memory roles = _loadRoleConfig(deployerPrivateKey);
+        address deployer = vm.envAddress("DEPLOYER_ADDRESS");
+        RoleConfig memory roles = _loadRoleConfig(deployer);
         ExternalConfig memory external_ = _loadAndValidateExternalConfig();
 
-        vm.startBroadcast(deployerPrivateKey);
+        vm.startBroadcast(deployer);
 
         contracts = _deployAllContracts(roles, external_);
         _configureRoles(contracts, roles);
@@ -482,11 +478,11 @@ abstract contract Deploy is Script {
     /**
      * @notice Loads role configuration from environment variables with sensible defaults.
      * @dev Derives deployer from private key; admin defaults to deployer; all other roles default to admin.
-     * @param deployerPrivateKey Private key used to derive the deployer address.
+     * @param deployer Deployer address loaded from DEPLOYER_ADDRESS env var.
      * @return roles Populated RoleConfig struct.
      */
-    function _loadRoleConfig(uint256 deployerPrivateKey) private view returns (RoleConfig memory roles) {
-        roles.deployer = vm.addr(deployerPrivateKey);
+    function _loadRoleConfig(address deployer) private view returns (RoleConfig memory roles) {
+        roles.deployer = deployer;
         roles.admin = vm.envOr("ADMIN", roles.deployer);
         roles.coverPoolFactoryCreator = vm.envOr("COVER_POOL_FACTORY_CREATOR", roles.admin);
         roles.swapManager = vm.envOr("SWAP_MANAGER", roles.admin);

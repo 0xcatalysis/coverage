@@ -15,7 +15,8 @@ import {Script, console2} from "forge-std/Script.sol";
  *      upgrading to avoid corrupting proxy state.
  *
  *      Required environment variables:
- *        - PRIVATE_KEY:     Deployer private key with DEFAULT_ADMIN_ROLE on the target proxy.
+ *        - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag) with DEFAULT_ADMIN_ROLE
+ * on the target proxy.
  *        - <proxyEnvVar()>: Address of the deployed proxy (e.g. CLAIM_MANAGER_PROXY).
  */
 abstract contract UpgradeBase is Script {
@@ -76,8 +77,7 @@ abstract contract UpgradeBase is Script {
         UpgradeConfig memory config = getUpgradeConfig();
         require(config.chainId == block.chainid, string.concat("Must upgrade on ", config.networkName));
 
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerPrivateKey);
+        address deployer = vm.envAddress("DEPLOYER_ADDRESS");
 
         string memory envVar = proxyEnvVar();
         result.proxy = vm.envAddress(envVar);
@@ -90,7 +90,7 @@ abstract contract UpgradeBase is Script {
             string.concat("Deployer must have DEFAULT_ADMIN_ROLE on ", contractName())
         );
 
-        vm.startBroadcast(deployerPrivateKey);
+        vm.startBroadcast(deployer);
 
         Options memory opts;
         opts.unsafeAllow = "constructor";

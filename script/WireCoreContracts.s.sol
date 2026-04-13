@@ -66,17 +66,27 @@ interface IClaimManagerPremiumView {
  *                                               slashed collateral flows to ClaimManager, not the
  *                                               deployer; must run before any committee is created
  *
- *      Role requirements (all held by the deployer after Core and Coverage deploys):
- *        - STAKE_MANAGER_CONFIG_ROLE on StakeManager
+ *      Role requirements (all held by the ADMIN after Core and Coverage deploys):
+ *        - STAKE_MANAGER_CONFIG_ROLE on StakeManager     (defaults to ADMIN)
  *        - DEFAULT_ADMIN_ROLE on StakeManager
  *        - DEFAULT_ADMIN_ROLE on SlashingManager
- *        - REWARDS_MANAGER_CONFIG_ROLE on RewardsManager
+ *        - REWARDS_MANAGER_CONFIG_ROLE on RewardsManager (defaults to ADMIN)
  *        - DEFAULT_ADMIN_ROLE on PremiumManager, ClaimManager, and other Coverage proxies
  *        - DEFAULT_ADMIN_ROLE on SSPRouter
  *
+ *      On testnet (ADMIN == DEPLOYER_ADDRESS): the deployer keystore covers all 6 calls.
+ *      On mainnet (ADMIN is a multisig): omit --broadcast; submit the calldata batch via Safe.
+ *
  * Usage:
- *   forge script script/WireCoreContracts.s.sol:WireCoreContracts \
- *     --rpc-url $RPC_URL --broadcast --slow -vvvv
+ *   Testnet (ADMIN == DEPLOYER_ADDRESS):
+ *     forge script script/WireCoreContracts.s.sol:WireCoreContracts \
+ *       --rpc-url $RPC_URL --broadcast --slow -vvvv \
+ *       --keystore $KEYSTORE --sender $DEPLOYER_ADDRESS
+ *
+ *   Mainnet (ADMIN is a multisig — no keystore or broadcast needed):
+ *     forge script script/WireCoreContracts.s.sol:WireCoreContracts \
+ *       --rpc-url $RPC_URL --slow -vvvv
+ *     (no --broadcast, no --keystore; bundle the 6 printed calldatas into a Safe multi-send batch)
  *
  * Required Environment Variables:
  *   Core (from DeploySepolia/DeployEthereum outputs):
@@ -94,14 +104,16 @@ interface IClaimManagerPremiumView {
  *       approved premium token on PremiumManager (set via getInitialPremiumTokens() in Deploy.s.sol)
  *
  *   Signer:
- *   - PRIVATE_KEY: Key that holds all required roles listed above
+ *   - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag).
+ *   - ADMIN: Address that holds all required roles. Defaults to DEPLOYER_ADDRESS.
+ *            On mainnet this is the Gnosis Safe multisig — omit --broadcast and submit via Safe.
  *
  * Prerequisites:
  *   - Core contracts deployed (DeploySepolia/DeployEthereum in catalysis/core)
  *   - Coverage contracts deployed (script/DeploySepolia.s.sol)
- *   - Caller holds STAKE_MANAGER_CONFIG_ROLE, DEFAULT_ADMIN_ROLE on Core contracts,
- *     REWARDS_MANAGER_CONFIG_ROLE on RewardsManager, DEFAULT_ADMIN_ROLE on PremiumManager
- *     and ClaimManager, and DEFAULT_ADMIN_ROLE on SSPRouter
+ *   - ADMIN holds STAKE_MANAGER_CONFIG_ROLE and DEFAULT_ADMIN_ROLE on Core contracts,
+ *     REWARDS_MANAGER_CONFIG_ROLE on RewardsManager, DEFAULT_ADMIN_ROLE on PremiumManager,
+ *     and DEFAULT_ADMIN_ROLE on SSPRouter
  *
  * Verify after running:
  *   cast call $STAKE_MANAGER "coverPoolFactory()(address)" --rpc-url $RPC_URL
@@ -111,8 +123,9 @@ interface IClaimManagerPremiumView {
 contract WireCoreContracts is Script {
     bytes32 internal constant POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
 
-    uint256 public deployerKey;
     address public deployer;
+    /// @notice Holder of all required roles. Defaults to deployer. On mainnet: ADMIN multisig.
+    address public admin;
     address public stakeManager;
     address public slashingManager;
     address public rewardsManager;
@@ -135,8 +148,8 @@ contract WireCoreContracts is Script {
     );
 
     constructor() {
-        deployerKey = vm.envUint("PRIVATE_KEY");
-        deployer = vm.addr(deployerKey);
+        deployer = vm.envAddress("DEPLOYER_ADDRESS");
+        admin = vm.envOr("ADMIN", deployer);
         stakeManager = vm.envAddress("STAKE_MANAGER");
         slashingManager = vm.envAddress("SLASHING_MANAGER");
         rewardsManager = vm.envAddress("REWARDS_MANAGER");
@@ -150,7 +163,8 @@ contract WireCoreContracts is Script {
 
     function run() external {
         console.log("=== CROSS-SYSTEM WIRING ===");
-        console.log("Caller:", deployer);
+        console.log("Keystore signer (deployer):", deployer);
+        console.log("Broadcaster (admin / role holder):", admin);
         console.log("");
         console.log("Core contracts:");
         console.log("  StakeManager:    ", stakeManager);
@@ -164,7 +178,9 @@ contract WireCoreContracts is Script {
         console.log("  CoverPoolFactory:", coverPoolFactory);
         console.log("  PayoutToken:     ", payoutToken);
 
-        vm.startBroadcast(deployerKey);
+        // All 6 calls require roles held by admin (DEFAULT_ADMIN_ROLE or config roles that default to ADMIN).
+        // On testnet admin == deployer; on mainnet admin is the multisig — omit --broadcast and use Safe.
+        vm.startBroadcast(admin);
 
         console.log("\n[1/8] StakeManager.setCoverPoolFactory...");
         IStakeManagerWire(stakeManager).setCoverPoolFactory(coverPoolFactory);

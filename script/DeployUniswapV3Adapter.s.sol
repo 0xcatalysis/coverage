@@ -14,7 +14,9 @@ import {ISwapper} from "../src/interfaces/ISwapper.sol";
  *        --broadcast --slow -vvvv
  *
  * Required Environment Variables:
- *   - PRIVATE_KEY:   Deployer/admin private key (must hold DEFAULT_ADMIN_ROLE and SWAP_MANAGER_ROLE on Swapper)
+ *   - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag).
+ *   - ADMIN: Holder of DEFAULT_ADMIN_ROLE and SWAP_MANAGER_ROLE on Swapper. Defaults to
+ *            DEPLOYER_ADDRESS. On mainnet this is the Gnosis Safe multisig.
  *   - SWAPPER:       Swapper proxy address (read from ClaimManager.swapper() if unknown)
  *   - SWAP_ROUTER:   Uniswap V3 SwapRouter02 address
  *   - QUOTER_V2:     Uniswap V3 QuoterV2 address
@@ -24,8 +26,10 @@ import {ISwapper} from "../src/interfaces/ISwapper.sol";
  */
 contract DeployUniswapV3Adapter is Script {
     function run() external {
-        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerKey);
+        address deployer = vm.envAddress("DEPLOYER_ADDRESS");
+        // DEFAULT_ADMIN_ROLE and SWAP_MANAGER_ROLE are held by ADMIN after coverage deploy.
+        // On mainnet ADMIN is the multisig; omit --broadcast and submit the calldatas via Safe.
+        address admin = vm.envOr("ADMIN", deployer);
 
         address swapper = vm.envAddress("SWAPPER");
         address swapRouter = vm.envAddress("SWAP_ROUTER");
@@ -35,14 +39,14 @@ contract DeployUniswapV3Adapter is Script {
         uint24 poolFee = uint24(vm.envUint("POOL_FEE"));
 
         console.log("=== DEPLOY UNISWAP V3 ADAPTER ===");
-        console.log("Deployer:", deployer);
+        console.log("Broadcaster (admin / role holder):", admin);
         console.log("Swapper:", swapper);
         console.log("SwapRouter:", swapRouter);
         console.log("TokenIn (collateral):", tokenIn);
         console.log("TokenOut (payout):", tokenOut);
         console.log("Pool fee tier:", poolFee);
 
-        vm.startBroadcast(deployerKey);
+        vm.startBroadcast(admin);
 
         UniswapV3Adapter adapter = new UniswapV3Adapter(swapRouter, quoter, swapper);
         console.log("UniswapV3Adapter deployed at:", address(adapter));

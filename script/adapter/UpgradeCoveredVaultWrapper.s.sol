@@ -40,7 +40,8 @@ interface ICoveredVaultWrapperUpgrade {
  *     --rpc-url $RPC_URL --broadcast --slow -vvvv
  *
  * Required Environment Variables:
- *   - PRIVATE_KEY:        Key that holds ownership of the CoveredVaultWrapper (owner role)
+ *   - DEPLOYER_ADDRESS:   Public address of the keystore signer (used with --keystore flag) that holds ownership of the
+ * CoveredVaultWrapper (owner role)
  *   - COVERED_VAULT:      CoveredVaultWrapper proxy address
  *   - NEW_IMPLEMENTATION: Address of the new CoveredVaultWrapper implementation (Step 1 only)
  */
@@ -52,8 +53,7 @@ contract UpgradeCoveredVaultWrapper is Script {
     event UpgradeExecuted(address indexed proxy, address indexed newImpl);
 
     function run() external {
-        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerKey);
+        address deployer = vm.envAddress("DEPLOYER_ADDRESS");
         address proxy = vm.envAddress("COVERED_VAULT");
 
         ICoveredVaultWrapperUpgrade wrapper = ICoveredVaultWrapperUpgrade(proxy);
@@ -80,7 +80,7 @@ contract UpgradeCoveredVaultWrapper is Script {
 
             console.log("\n[STEP 1] No pending upgrade -- proposing new implementation:", newImpl);
 
-            vm.startBroadcast(deployerKey);
+            vm.startBroadcast(deployer);
             wrapper.proposeUpgrade(newImpl);
             vm.stopBroadcast();
 
@@ -98,7 +98,7 @@ contract UpgradeCoveredVaultWrapper is Script {
             // ── Step 2: Timelock elapsed — execute the pending upgrade ────────────
             console.log("\n[STEP 2] Timelock elapsed -- executing upgrade to:", pendingImpl);
 
-            vm.startBroadcast(deployerKey);
+            vm.startBroadcast(deployer);
             wrapper.executeUpgrade();
             vm.stopBroadcast();
 

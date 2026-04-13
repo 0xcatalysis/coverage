@@ -38,7 +38,8 @@ interface ICoveredVaultWrapperReset {
  *     --rpc-url $RPC_URL --broadcast --slow -vvvv
  *
  * Required Environment Variables:
- *   - PRIVATE_KEY: Key that holds ownership of the CoveredVaultWrapper
+ *   - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag) that holds ownership of the
+ * CoveredVaultWrapper
  *   - COVERED_VAULT: CoveredVaultWrapper proxy address
  *   - POLICY_MANAGER: PolicyManager proxy address (used for pre-flight maturity check)
  *
@@ -52,7 +53,7 @@ contract ResetPolicyBinding is Script {
     event PolicyBindingReset(address indexed vault, uint96 previousPolicyId);
 
     function run() external {
-        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.envAddress("DEPLOYER_ADDRESS");
         address vault = vm.envAddress("COVERED_VAULT");
         address policyMgr = vm.envAddress("POLICY_MANAGER");
 
@@ -76,7 +77,7 @@ contract ResetPolicyBinding is Script {
 
         _verifyMaturity(pm, currentPolicyId);
 
-        vm.startBroadcast(deployerKey);
+        vm.startBroadcast(deployer);
         wrapper.resetPolicyBinding();
         vm.stopBroadcast();
 

@@ -25,7 +25,8 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  *     --rpc-url $RPC_URL --broadcast --slow -vvvv
  *
  * Required Environment Variables:
- *   - PRIVATE_KEY: Private key of the caller (collectPremium is permissionless)
+ *   - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag) (collectPremium is
+ * permissionless)
  *   - COVERED_VAULT: CoveredVaultWrapper proxy address
  *   - PREMIUM_MANAGER: PremiumManager proxy address
  *   - COVER_POOL: CoverPool address associated with the policy
@@ -37,9 +38,6 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 contract DistributePremium is Script {
     /// @notice Deployer/caller address
     address public deployer;
-
-    /// @notice Deployer's private key
-    uint256 public deployerPrivateKey;
 
     /// @notice CoveredVaultWrapper proxy address
     address public coveredVault;
@@ -54,8 +52,7 @@ contract DistributePremium is Script {
     event PremiumsDistributed(address indexed vault, uint256 premiumAmount);
 
     constructor() {
-        deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        deployer = vm.addr(deployerPrivateKey);
+        deployer = vm.envAddress("DEPLOYER_ADDRESS");
 
         coveredVault = vm.envAddress("COVERED_VAULT");
         premiumManager = vm.envAddress("PREMIUM_MANAGER");
@@ -104,7 +101,7 @@ contract DistributePremium is Script {
     function _collectAndDistribute() internal {
         console.log("\n--- Premium Collection & Distribution ---");
 
-        vm.startBroadcast(deployerPrivateKey);
+        vm.startBroadcast(deployer);
         (bool success,) = coveredVault.call(abi.encodeWithSignature("collectPremium()"));
         vm.stopBroadcast();
 
