@@ -31,17 +31,21 @@ interface ICoveredVaultWrapperUpgrade {
  *        • Timelock elapsed:     broadcasts executeUpgrade() and verifies the new implementation
  *        • Timelock pending:     logs the remaining wait time and exits without broadcasting
  *
- * Usage (Step 1 — propose):
+ * Usage (testnet — WRAPPER_OWNER == DEPLOYER_ADDRESS):
  *   NEW_IMPLEMENTATION=<addr> forge script script/adapter/UpgradeCoveredVaultWrapper.s.sol \
- *     --rpc-url $RPC_URL --broadcast --slow -vvvv
+ *     --rpc-url $RPC_URL --broadcast --slow -vvvv \
+ *     --keystore $KEYSTORE --sender $DEPLOYER_ADDRESS
  *
- * Usage (Step 2 — execute, run after UPGRADE_DELAY has elapsed):
- *   forge script script/adapter/UpgradeCoveredVaultWrapper.s.sol \
- *     --rpc-url $RPC_URL --broadcast --slow -vvvv
+ * Usage (mainnet — WRAPPER_OWNER is a Gnosis Safe multisig):
+ *   NEW_IMPLEMENTATION=<addr> forge script script/adapter/UpgradeCoveredVaultWrapper.s.sol \
+ *     --rpc-url $RPC_URL --slow -vvvv
+ *   (no --broadcast, no --keystore; submit the printed calldata via Safe)
  *
  * Required Environment Variables:
- *   - DEPLOYER_ADDRESS:   Public address of the keystore signer (used with --keystore flag) that holds ownership of the
- * CoveredVaultWrapper (owner role)
+ *   - DEPLOYER_ADDRESS:   Public address of the keystore signer (used with --keystore flag).
+ *   - WRAPPER_OWNER:      CoveredVaultWrapper owner (set via acceptOwnership() in Phase 6). Defaults
+ *                         to DEPLOYER_ADDRESS. On mainnet this is the Gnosis Safe multisig — omit
+ *                         --broadcast and submit the calldata via Safe.
  *   - COVERED_VAULT:      CoveredVaultWrapper proxy address
  *   - NEW_IMPLEMENTATION: Address of the new CoveredVaultWrapper implementation (Step 1 only)
  */
@@ -54,6 +58,9 @@ contract UpgradeCoveredVaultWrapper is Script {
 
     function run() external {
         address deployer = vm.envAddress("DEPLOYER_ADDRESS");
+        // onlyOwner — ownership transferred to WRAPPER_OWNER during Phase 6 acceptOwnership().
+        // On mainnet WRAPPER_OWNER is the multisig; omit --broadcast and submit via Safe.
+        address wrapperOwner = vm.envOr("WRAPPER_OWNER", deployer);
         address proxy = vm.envAddress("COVERED_VAULT");
 
         ICoveredVaultWrapperUpgrade wrapper = ICoveredVaultWrapperUpgrade(proxy);
@@ -64,13 +71,13 @@ contract UpgradeCoveredVaultWrapper is Script {
 
         console.log("=== UPGRADE COVERED VAULT WRAPPER ===");
         console.log("Proxy:                 ", proxy);
-        console.log("Deployer:              ", deployer);
+        console.log("Broadcaster (owner):   ", wrapperOwner);
         console.log("Owner:                 ", owner);
         console.log("Pending implementation:", pendingImpl);
         console.log("Pending timestamp:     ", pendingTimestamp);
         console.log("Block timestamp:       ", block.timestamp);
 
-        require(owner == deployer, "Caller is not the CoveredVaultWrapper owner");
+        require(owner == wrapperOwner, "Caller is not the CoveredVaultWrapper owner");
 
         if (pendingTimestamp == 0) {
             // ── Step 1: No pending upgrade — propose a new implementation ───────────
@@ -80,7 +87,7 @@ contract UpgradeCoveredVaultWrapper is Script {
 
             console.log("\n[STEP 1] No pending upgrade -- proposing new implementation:", newImpl);
 
-            vm.startBroadcast(deployer);
+            vm.startBroadcast(wrapperOwner);
             wrapper.proposeUpgrade(newImpl);
             vm.stopBroadcast();
 
@@ -98,7 +105,7 @@ contract UpgradeCoveredVaultWrapper is Script {
             // ── Step 2: Timelock elapsed — execute the pending upgrade ────────────
             console.log("\n[STEP 2] Timelock elapsed -- executing upgrade to:", pendingImpl);
 
-            vm.startBroadcast(deployer);
+            vm.startBroadcast(wrapperOwner);
             wrapper.executeUpgrade();
             vm.stopBroadcast();
 

@@ -4,6 +4,9 @@ ifneq (,$(wildcard .env))
 endif
 
 PRIVATE_KEY ?= 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+# Anvil-specific key/address — always uses the well-known funded account 0 regardless of PRIVATE_KEY in .env
+ANVIL_PRIVATE_KEY ?= 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+ANVIL_DEPLOYER ?= $(shell cast wallet address --private-key $(ANVIL_PRIVATE_KEY) 2>/dev/null)
 ANVIL_RPC_URL ?= http://127.0.0.1:8545
 ANVIL_CHAIN_ID ?= 31337
 
@@ -98,9 +101,9 @@ snapshot-check:
 
 deploy-anvil: clean
 	@echo "Deploying contracts to Anvil..."
-	@$(FORGE_SCRIPT_DEFAULT) script/DeployAnvil.s.sol \
+	@DEPLOYER_ADDRESS=$(ANVIL_DEPLOYER) $(FORGE_SCRIPT_DEFAULT) script/DeployAnvil.s.sol \
 		--rpc-url $(ANVIL_RPC_URL) \
-		--private-key $(PRIVATE_KEY) \
+		--private-key $(ANVIL_PRIVATE_KEY) \
 		--chain $(ANVIL_CHAIN_ID) \
 		$(FORGE_SCRIPT_OPTS)
 

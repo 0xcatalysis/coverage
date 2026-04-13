@@ -15,8 +15,9 @@ import {Script, console2} from "forge-std/Script.sol";
  *      upgrading to avoid corrupting proxy state.
  *
  *      Required environment variables:
- *        - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag) with DEFAULT_ADMIN_ROLE
- * on the target proxy.
+ *        - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag).
+ *        - ADMIN: Holder of DEFAULT_ADMIN_ROLE on the target proxy. Defaults to DEPLOYER_ADDRESS.
+ *                 On mainnet this is the Gnosis Safe multisig — omit --broadcast and submit via Safe.
  *        - <proxyEnvVar()>: Address of the deployed proxy (e.g. CLAIM_MANAGER_PROXY).
  */
 abstract contract UpgradeBase is Script {
@@ -78,6 +79,9 @@ abstract contract UpgradeBase is Script {
         require(config.chainId == block.chainid, string.concat("Must upgrade on ", config.networkName));
 
         address deployer = vm.envAddress("DEPLOYER_ADDRESS");
+        // DEFAULT_ADMIN_ROLE is transferred to ADMIN during Deploy.s.sol when deployer != admin.
+        // On mainnet ADMIN is the multisig; omit --broadcast and submit the calldata via Safe.
+        address admin = vm.envOr("ADMIN", deployer);
 
         string memory envVar = proxyEnvVar();
         result.proxy = vm.envAddress(envVar);
@@ -86,11 +90,11 @@ abstract contract UpgradeBase is Script {
         result.oldImplementation = Upgrades.getImplementationAddress(result.proxy);
 
         require(
-            IAccessControl(result.proxy).hasRole(bytes32(0), deployer),
-            string.concat("Deployer must have DEFAULT_ADMIN_ROLE on ", contractName())
+            IAccessControl(result.proxy).hasRole(bytes32(0), admin),
+            string.concat("ADMIN must have DEFAULT_ADMIN_ROLE on ", contractName())
         );
 
-        vm.startBroadcast(deployer);
+        vm.startBroadcast(admin);
 
         Options memory opts;
         opts.unsafeAllow = "constructor";
@@ -102,7 +106,7 @@ abstract contract UpgradeBase is Script {
 
         result.newImplementation = Upgrades.getImplementationAddress(result.proxy);
 
-        _logUpgrade(config, deployer, result, contractName());
+        _logUpgrade(config, admin, result, contractName());
 
         return result;
     }
