@@ -52,10 +52,12 @@ interface IPolicyManagerView {
 
 interface IClaimManagerView {
     function slashingManager() external view returns (address);
+    function premiumManager() external view returns (address);
 }
 
 interface IPremiumManagerView {
     function rewardsManager() external view returns (address);
+    function CLAIM_MANAGER_ROLE() external view returns (bytes32);
 }
 
 interface IERC20Allowance {
@@ -79,7 +81,7 @@ interface ICoverPoolFactoryView {
  *        Flow 4  – PrepareBindPolicy:     Adapter chainlinkPriceFeed, SSPRouter adapters
  *        Flow 5  – BindPolicy:            SSPRouter vault module registration
  *        Flow 6-7– DistributePremium:     RewardsManager wiring + PREMIUM_MANAGER_ROLE
- *        Flow 8  – FileClaim:             SlashingManager wiring + CLAIM_MANAGER_ROLE
+ *        Flow 8  – FileClaim:             SlashingManager wiring + ClaimManager↔PremiumManager
  *
  *      Output:
  *        [OK]   – value matches expected
@@ -275,6 +277,13 @@ contract VerifySepoliaConfig is Script {
         console2.log("--- Flow 8: FileClaim ---");
 
         _check("ClaimManager.slashingManager", IClaimManagerView(CLAIM_MANAGER).slashingManager(), SLASHING_MANAGER);
+        _check("ClaimManager.premiumManager", IClaimManagerView(CLAIM_MANAGER).premiumManager(), PREMIUM_MANAGER);
+        _checkRole(
+            "PremiumManager: CLAIM_MANAGER_ROLE -> ClaimManager",
+            PREMIUM_MANAGER,
+            IPremiumManagerView(PREMIUM_MANAGER).CLAIM_MANAGER_ROLE(),
+            CLAIM_MANAGER
+        );
         _checkRole(
             "SlashingManager: CLAIM_MANAGER_ROLE -> ClaimManager", SLASHING_MANAGER, CLAIM_MANAGER_ROLE, CLAIM_MANAGER
         );

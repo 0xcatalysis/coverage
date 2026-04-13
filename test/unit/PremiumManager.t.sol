@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Test} from "forge-std/Test.sol";
 import {PremiumManager} from "../../src/PremiumManager.sol";
 import {IPremiumManager} from "../../src/interfaces/IPremiumManager.sol";
@@ -973,6 +974,205 @@ contract PremiumManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                            DISTRIBUTE SURPLUS AS REWARDS
+    //////////////////////////////////////////////////////////////*/
+
+    event SurplusAsRewardsDistributed(
+        uint96 indexed policyId, address indexed curator, address indexed token, uint256 amount
+    );
+
+    function _grantClaimManagerRole(address caller) internal {
+        bytes32 role = premiumManager.CLAIM_MANAGER_ROLE();
+        vm.prank(admin);
+        premiumManager.grantRole(role, caller);
+    }
+
+    function test_distributeSurplusAsRewards_WhenCallerLacksCLAIM_MANAGER_ROLE_Reverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector,
+                premiumCollector,
+                premiumManager.CLAIM_MANAGER_ROLE()
+            )
+        );
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(
+            POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0)
+        );
+    }
+
+    function test_distributeSurplusAsRewards_WhenPaused_Reverts() public {
+        _grantClaimManagerRole(premiumCollector);
+
+        vm.prank(admin);
+        premiumManager.pause();
+
+        vm.expectRevert(abi.encodeWithSelector(PausableUpgradeable.EnforcedPause.selector));
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(
+            POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0)
+        );
+    }
+
+    function test_distributeSurplusAsRewards_WhenAmountZero_Reverts() public {
+        _grantClaimManagerRole(premiumCollector);
+
+        vm.expectRevert(IPremiumManager.ZeroAmount.selector);
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, 0, IERC20(address(premiumToken)), bytes32(0));
+    }
+
+    function test_distributeSurplusAsRewards_WhenPolicyIdZero_Reverts() public {
+        _grantClaimManagerRole(premiumCollector);
+
+        vm.expectRevert(IPremiumManager.InvalidPolicyId.selector);
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(0, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0));
+    }
+
+    function test_distributeSurplusAsRewards_WhenTokenZeroAddress_Reverts() public {
+        _grantClaimManagerRole(premiumCollector);
+
+        vm.expectRevert(IPremiumManager.ZeroAddress.selector);
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, 1 ether, IERC20(address(0)), bytes32(0));
+    }
+
+    function test_distributeSurplusAsRewards_WhenCallerHasInsufficientBalance_Reverts() public {
+        _grantClaimManagerRole(premiumCollector);
+
+        vm.expectRevert();
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(
+            POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0)
+        );
+    }
+
+    function test_distributeSurplusAsRewards_WhenCallerHasInsufficientAllowance_Reverts() public {
+        _grantClaimManagerRole(premiumCollector);
+
+        premiumToken.mint(premiumCollector, 1 ether);
+
+        vm.expectRevert();
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(
+            POLICY_ID, curator, 1 ether, IERC20(address(premiumToken)), bytes32(0)
+        );
+    }
+
+    function test_distributeSurplusAsRewards_WhenValid_PullsTokensAndCallsDistributeRewards() public {
+        uint256 amount = 100 ether;
+        bytes32 taskId = keccak256("taskId");
+        _grantClaimManagerRole(premiumCollector);
+
+        premiumToken.mint(premiumCollector, amount);
+        vm.prank(premiumCollector);
+        premiumToken.approve(address(premiumManager), amount);
+
+        uint256 callerBefore = premiumToken.balanceOf(premiumCollector);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), taskId);
+
+        assertEq(premiumToken.balanceOf(premiumCollector), callerBefore - amount, "Tokens pulled from caller");
+        assertEq(rewardsManager.distributeRewardsCallCount(), 1, "distributeRewards must be called once");
+
+        MockRewardsManager.DistributeRewardsCall memory call = rewardsManager.lastCall();
+        assertEq(call.policyId, POLICY_ID, "policyId forwarded correctly");
+        assertEq(call.curator, curator, "curator forwarded correctly");
+        assertEq(call.rewardAmount, amount, "rewardAmount forwarded correctly");
+        assertEq(address(call.rewardToken), address(premiumToken), "token forwarded correctly");
+    }
+
+    function test_distributeSurplusAsRewards_WhenValid_EmitsSurplusAsRewardsDistributedEvent() public {
+        uint256 amount = 50 ether;
+        bytes32 taskId = keccak256("taskId-event");
+        _grantClaimManagerRole(premiumCollector);
+
+        premiumToken.mint(premiumCollector, amount);
+        vm.prank(premiumCollector);
+        premiumToken.approve(address(premiumManager), amount);
+
+        vm.expectEmit(true, true, true, true, address(premiumManager));
+        emit SurplusAsRewardsDistributed(POLICY_ID, curator, address(premiumToken), amount);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), taskId);
+    }
+
+    function test_distributeSurplusAsRewards_WhenValid_ClearsAllowanceAfterDistribution() public {
+        uint256 amount = 10 ether;
+        _grantClaimManagerRole(premiumCollector);
+
+        premiumToken.mint(premiumCollector, amount);
+        vm.prank(premiumCollector);
+        premiumToken.approve(address(premiumManager), amount);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), bytes32(0));
+
+        assertEq(
+            premiumToken.allowance(address(premiumManager), address(rewardsManager)),
+            0,
+            "Allowance to RewardsManager must be cleared after call"
+        );
+    }
+
+    function test_distributeSurplusAsRewards_WhenCalledAfterDistributePremium_StillWorks() public {
+        uint256 premiumAmount = 1000 ether;
+        uint256 surplusAmount = 50 ether;
+        bytes32 taskId = keccak256("after-distribute");
+        _grantClaimManagerRole(premiumCollector);
+
+        premiumToken.mint(premiumCollector, premiumAmount);
+        vm.prank(premiumCollector);
+        premiumToken.approve(address(premiumManager), premiumAmount);
+        vm.prank(premiumCollector);
+        premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), premiumAmount);
+
+        assertEq(premiumToken.allowance(address(premiumManager), address(rewardsManager)), 0);
+
+        premiumToken.mint(premiumCollector, surplusAmount);
+        vm.prank(premiumCollector);
+        premiumToken.approve(address(premiumManager), surplusAmount);
+
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(
+            POLICY_ID, curator, surplusAmount, IERC20(address(premiumToken)), taskId
+        );
+
+        assertEq(
+            rewardsManager.distributeRewardsCallCount(),
+            2,
+            "distributeRewards called for both distributePremium and distributeSurplusAsRewards"
+        );
+        assertEq(
+            premiumToken.allowance(address(premiumManager), address(rewardsManager)),
+            0,
+            "Allowance cleared after distributeSurplusAsRewards"
+        );
+    }
+
+    function test_distributeSurplusAsRewards_WhenDistributeRewardsReverts_BubblesUp() public {
+        uint256 amount = 1 ether;
+        _grantClaimManagerRole(premiumCollector);
+
+        MockRewardsManagerReverting revertingRM = new MockRewardsManagerReverting();
+        vm.prank(admin);
+        premiumManager.setRewardsManager(address(revertingRM));
+
+        premiumToken.mint(premiumCollector, amount);
+        vm.prank(premiumCollector);
+        premiumToken.approve(address(premiumManager), amount);
+
+        vm.expectRevert();
+        vm.prank(premiumCollector);
+        premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), bytes32(0));
+
+        assertEq(premiumToken.balanceOf(premiumCollector), amount, "Caller balance unchanged after revert");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                                 UPGRADE
     //////////////////////////////////////////////////////////////*/
 
@@ -1038,6 +1238,12 @@ contract MockRewardsManager {
 
     function lastCall() external view returns (DistributeRewardsCall memory) {
         return _lastCall;
+    }
+}
+
+contract MockRewardsManagerReverting {
+    function distributeRewards(uint96, address, uint256, IERC20, bytes32) external pure {
+        revert("MockRewardsManagerReverting: always reverts");
     }
 }
 

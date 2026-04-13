@@ -30,6 +30,8 @@ contract PremiumManager is
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
 
+    bytes32 public constant CLAIM_MANAGER_ROLE = keccak256("CLAIM_MANAGER_ROLE");
+
     uint16 private constant _BPS_DENOMINATOR = 10_000;
     uint16 private constant _MAX_PLATFORM_FEE_BPS = 2500; // 25%
     uint16 private constant _MAX_FEE_BPS = 5000; // 50%
@@ -218,6 +220,34 @@ contract PremiumManager is
         }
 
         emit PremiumDistributed(pool, policyId, amount);
+    }
+
+    /**
+     * @inheritdoc IPremiumManager
+     */
+    function distributeSurplusAsRewards(
+        uint96 policyId,
+        address curator,
+        uint256 amount,
+        IERC20 token,
+        bytes32 taskId
+    )
+        external
+        override
+        onlyRole(CLAIM_MANAGER_ROLE)
+        nonReentrant
+        whenNotPaused
+    {
+        require(policyId != 0, InvalidPolicyId());
+        require(amount > 0, ZeroAmount());
+        require(address(token) != address(0), ZeroAddress());
+
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        token.forceApprove(rewardsManager, amount);
+        IRewardsManager(rewardsManager).distributeRewards(policyId, curator, amount, token, taskId);
+        token.forceApprove(rewardsManager, 0);
+
+        emit SurplusAsRewardsDistributed(policyId, curator, address(token), amount);
     }
 
     /**

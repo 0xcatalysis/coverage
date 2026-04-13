@@ -11,7 +11,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
-import {IRewardsManager} from "./interfaces/IRewardsManager.sol";
+import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
 import {ISpec} from "./interfaces/ISpec.sol";
 import {ISpecRegistry} from "./interfaces/ISpecRegistry.sol";
 import {ISlashingManager} from "./interfaces/ISlashingManager.sol";
@@ -54,7 +54,7 @@ contract ClaimManager is
     address public override slashingManager;
     address public override swapper;
     address public override policyManager;
-    address public override rewardsManager;
+    address public override premiumManager;
     uint16 public override maxSwapSlippageBps;
 
     mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
@@ -170,10 +170,10 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function setRewardsManager(address rewardsManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(rewardsManager_ != address(0), ZeroAddress());
-        rewardsManager = rewardsManager_;
-        emit RewardsManagerSet(rewardsManager_);
+    function setPremiumManager(address premiumManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(premiumManager_ != address(0), ZeroAddress());
+        premiumManager = premiumManager_;
+        emit PremiumManagerSet(premiumManager_);
     }
 
     /**
@@ -541,7 +541,7 @@ contract ClaimManager is
     /**
      * @notice Processes collateral by swapping or transferring directly, capped at remainingPayout.
      * @dev Uses quoteSwap for amountOutMin instead of oracle-based pricing.
-     *      Surplus beyond remainingPayout is forwarded to RewardsManager if configured.
+     *      Surplus beyond remainingPayout is forwarded via PremiumManager.distributeSurplusAsRewards() if configured.
      *      vaultIndex is included in the taskId to prevent replay collisions when two vault legs
      *      share the same collateral token.
      * @param policyId Identifier of the policy.
@@ -550,7 +550,7 @@ contract ClaimManager is
      * @param collateralAmount Amount of collateral to process.
      * @param payoutToken Desired payout token address.
      * @param beneficiary Address to receive the payout.
-     * @param curator Operator address used as reward recipient context in RewardsManager.
+     * @param curator Operator address used as reward recipient context in PremiumManager.distributeSurplusAsRewards().
      * @param remainingPayout Maximum payout amount still needed.
      * @param vaultIndex Position of this vault leg in the collateralTokens array (used in taskId).
      * @return amountOut Amount of payout token delivered to beneficiary (capped at remainingPayout).
@@ -579,7 +579,7 @@ contract ClaimManager is
             }
             amountOut = transferAmount;
 
-            if (collateralAmount > transferAmount && rewardsManager != address(0) && collateralToken != _NATIVE_ETH) {
+            if (collateralAmount > transferAmount && premiumManager != address(0) && collateralToken != _NATIVE_ETH) {
                 _distributeSurplus(
                     policyId, claimId, collateralToken, curator, collateralAmount - transferAmount, surplusTaskId
                 );
@@ -607,7 +607,7 @@ contract ClaimManager is
                 _transferToken(payoutToken, beneficiary, amountOut);
             }
 
-            if (swapOutput > amountOut && rewardsManager != address(0) && payoutToken != _NATIVE_ETH) {
+            if (swapOutput > amountOut && premiumManager != address(0) && payoutToken != _NATIVE_ETH) {
                 _distributeSurplus(policyId, claimId, payoutToken, curator, swapOutput - amountOut, surplusTaskId);
             }
 
@@ -639,14 +639,15 @@ contract ClaimManager is
     // slither-disable-end calls-loop
 
     /**
-     * @notice Distributes surplus tokens to restakers via RewardsManager.
-     * @dev Guards (rewardsManager set, not native ETH) are checked by the caller.
+     * @notice Distributes surplus tokens to restakers via PremiumManager.distributeSurplusAsRewards().
+     * @dev Guards (premiumManager set, not native ETH) are checked by the caller.
      *      Wrapped in try/catch so a Core revert cannot block beneficiary payout; on failure
      *      the surplus remains in this contract and is recoverable via `recoverTokens`.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param token ERC-20 token to distribute.
-     * @param curator Operator address passed to RewardsManager as the reward recipient context.
+     * @param curator Operator address passed to PremiumManager.distributeSurplusAsRewards() as the reward recipient
+     * context.
      * @param surplus Amount to distribute.
      * @param taskId Unique task identifier for Core replay protection.
      */
@@ -660,13 +661,14 @@ contract ClaimManager is
     )
         private
     {
-        IERC20(token).forceApprove(rewardsManager, surplus);
+        IERC20(token).forceApprove(premiumManager, surplus);
         // slither-disable-next-line calls-loop
-        try IRewardsManager(rewardsManager).distributeRewards(policyId, curator, surplus, IERC20(token), taskId) {
-            IERC20(token).forceApprove(rewardsManager, 0);
+        try IPremiumManager(premiumManager)
+            .distributeSurplusAsRewards(policyId, curator, surplus, IERC20(token), taskId) {
+            IERC20(token).forceApprove(premiumManager, 0);
             emit SwapSurplusDistributed(policyId, claimId, token, surplus);
         } catch {
-            IERC20(token).forceApprove(rewardsManager, 0);
+            IERC20(token).forceApprove(premiumManager, 0);
             emit SwapSurplusDistributionFailed(policyId, claimId, token, surplus);
         }
     }

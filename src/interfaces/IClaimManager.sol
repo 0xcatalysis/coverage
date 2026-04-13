@@ -144,16 +144,17 @@ interface IClaimManager is IAccessControl {
     event MaxSwapSlippageBpsSet(uint16 maxSwapSlippageBps);
 
     /**
-     * @notice Emitted when the RewardsManager address is updated.
-     * @param rewardsManager New RewardsManager address.
+     * @notice Emitted when the PremiumManager address is updated.
+     * @param premiumManager New PremiumManager address.
      */
-    event RewardsManagerSet(address indexed rewardsManager);
+    event PremiumManagerSet(address indexed premiumManager);
 
     /**
      * @notice Emitted when surplus collateral or payout tokens are distributed as restaker rewards.
      * @dev Surplus arises in two cases: (1) cross-token path — swap output exceeds remainingPayout;
      *      (2) same-token path — slashed collateral exceeds remainingPayout (no swap involved).
-     *      In both cases the surplus ERC-20 is forwarded to RewardsManager for restaker distribution.
+     *      In both cases the surplus ERC-20 is forwarded via PremiumManager.distributeSurplusAsRewards() to
+     * RewardsManager.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param token Address of the ERC-20 token distributed as reward.
@@ -164,7 +165,8 @@ interface IClaimManager is IAccessControl {
     );
 
     /**
-     * @notice Emitted when surplus distribution to RewardsManager fails so the claim is not blocked.
+     * @notice Emitted when surplus distribution via PremiumManager.distributeSurplusAsRewards() fails so the claim is
+     * not blocked.
      * @dev The surplus amount remains in this contract and can be recovered via `recoverTokens`.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
@@ -356,11 +358,11 @@ interface IClaimManager is IAccessControl {
     function setMaxSwapSlippageBps(uint16 maxSwapSlippageBps_) external;
 
     /**
-     * @notice Sets the RewardsManager address used to distribute swap surplus as restaker rewards.
+     * @notice Sets the PremiumManager address used to route surplus rewards via distributeSurplusAsRewards().
      * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param rewardsManager_ Address of the RewardsManager contract. Must be non-zero.
+     * @param premiumManager_ Address of the PremiumManager contract. Must be non-zero.
      */
-    function setRewardsManager(address rewardsManager_) external;
+    function setPremiumManager(address premiumManager_) external;
 
     /**
      * @notice Files and resolves a claim atomically in a single transaction.
@@ -439,9 +441,9 @@ interface IClaimManager is IAccessControl {
     function maxSwapSlippageBps() external view returns (uint16);
 
     /**
-     * @notice Returns the RewardsManager address.
+     * @notice Returns the PremiumManager address used to route claim surplus via distributeSurplusAsRewards().
      */
-    function rewardsManager() external view returns (address);
+    function premiumManager() external view returns (address);
 
     /**
      * @notice Clears the claim approval gate for a policy, allowing the next claim to be filed freely.
