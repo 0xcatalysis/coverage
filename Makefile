@@ -99,7 +99,12 @@ snapshot-check:
 	@echo "Checking gas snapshot..."
 	@$(FORGE_PROD) snapshot --match-path "test/unit/*.t.sol" --check
 
-deploy-anvil: clean
+seed-createx:
+	@echo "Seeding CreateX on Anvil..."
+	@cast rpc anvil_setCode 0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed "0x$$(cat script/createx-bytecode.txt)" \
+		--rpc-url $(ANVIL_RPC_URL) > /dev/null
+
+deploy-anvil: clean seed-createx
 	@echo "Deploying contracts to Anvil..."
 	@DEPLOYER_ADDRESS=$(ANVIL_DEPLOYER) $(FORGE_SCRIPT_DEFAULT) script/DeployAnvil.s.sol \
 		--rpc-url $(ANVIL_RPC_URL) \
