@@ -17,25 +17,40 @@ import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
  *      and register themselves as EigenLayer operators during deployment.
  *      Symbiotic operator registration (out of scope for e2e testing) is handled separately.
  *
+ *      Ownership: The CoverPool owner (curator) is set at creation time and cannot be changed
+ *      post-deployment. CURATOR_ADDRESS MUST be the intended long-term owner of the pool — on
+ *      mainnet this should be a multisig, not the deployer EOA. The broadcaster (--keystore
+ *      signer) only needs CREATOR_ROLE on CoverPoolFactory; it does not become the pool owner.
+ *
  * Usage:
  *   forge script script/testing/CreateCoverPool.s.sol:CreateCoverPool \
  *     --rpc-url $RPC_URL --broadcast --slow -vvvv
  *
  * Required Environment Variables:
- *   - CURATOR_PRIVATE_KEY: Private key of the curator (will be pool owner/operator)
- *   - COVER_POOL_FACTORY: CoverPoolFactory proxy address
- *   - QUOTE_SIGNER: Address authorized to sign coverage quotes
- *   - POOL_FEE_BPS: Pool fee in basis points (e.g. 1000 = 10%, max 2000 = 20%)
+ *   - DEPLOYER_ADDRESS:          Public address of the keystore signer (used with --keystore flag).
+ *   - COVER_POOL_FACTORY:        CoverPoolFactory proxy address
+ *   - QUOTE_SIGNER:              Address authorized to sign coverage quotes
+ *   - POOL_FEE_BPS:              Pool fee in basis points (e.g. 500 = 5%, max 2000 = 20%)
+ *
+ * Optional Environment Variables:
+ *   - CURATOR_ADDRESS:           CoverPool owner/curator. Defaults to DEPLOYER_ADDRESS. Set to a
+ *                                multisig for production — the pool owner is immutable post-deploy.
+ *   - COVER_POOL_FACTORY_CREATOR: Holder of CREATOR_ROLE on CoverPoolFactory. Defaults to ADMIN,
+ *                                then DEPLOYER_ADDRESS. On mainnet this is the multisig — omit
+ *                                --broadcast and submit the calldata via Safe.
  *
  * Prerequisites:
- *   - Curator must have CREATOR_ROLE on CoverPoolFactory (or caller must be the CREATOR)
+ *   - COVER_POOL_FACTORY_CREATOR (or ADMIN) must hold CREATOR_ROLE on CoverPoolFactory
  */
 contract CreateCoverPool is Script {
-    /// @notice Curator address derived from private key
+    /// @notice CoverPool owner — set at creation time, immutable post-deploy.
     address public curator;
 
-    /// @notice Curator's private key for signing transactions
-    uint256 public curatorPrivateKey;
+    /// @notice Address of the keystore signer that broadcasts the transaction.
+    address public deployer;
+
+    /// @notice Holder of CREATOR_ROLE on CoverPoolFactory. Defaults to ADMIN then deployer.
+    address public creator;
 
     /// @notice CoverPoolFactory proxy address
     address public coverPoolFactory;
@@ -53,19 +68,31 @@ contract CreateCoverPool is Script {
     event CoverPoolCreated(address indexed coverPool, address indexed curator, address quoteSigner, uint16 poolFeeBps);
 
     constructor() {
-        curatorPrivateKey = vm.envUint("CURATOR_PRIVATE_KEY");
-        curator = vm.addr(curatorPrivateKey);
+        deployer = vm.envAddress("DEPLOYER_ADDRESS");
+
+        // Pool owner: defaults to deployer so existing testnet flows need no change,
+        // but on mainnet set CURATOR_ADDRESS to a multisig so the hot signer never
+        // owns the pool.
+        curator = vm.envOr("CURATOR_ADDRESS", deployer);
+
+        // CREATOR_ROLE holder: after coverage deploy with ADMIN != deployer, ADMIN holds this role.
+        // On mainnet ADMIN is the multisig; omit --broadcast and submit the calldata via Safe.
+        address admin = vm.envOr("ADMIN", deployer);
+        creator = vm.envOr("COVER_POOL_FACTORY_CREATOR", admin);
 
         coverPoolFactory = vm.envAddress("COVER_POOL_FACTORY");
         quoteSigner = vm.envAddress("QUOTE_SIGNER");
         poolFeeBps = uint16(vm.envUint("POOL_FEE_BPS"));
 
+        require(curator != address(0), "CURATOR_ADDRESS must not be zero address");
         factoryContract = ICoverPoolFactory(coverPoolFactory);
     }
 
     function run() external {
         console.log("=== FLOW 1: COVER POOL CREATION ===");
-        console.log("Curator:", curator);
+        console.log("Keystore signer (deployer):", deployer);
+        console.log("Broadcaster (CREATOR_ROLE holder):", creator);
+        console.log("Curator (pool owner):", curator);
         console.log("CoverPoolFactory:", coverPoolFactory);
         console.log("Quote Signer:", quoteSigner);
         console.log("Pool Fee BPS:", poolFeeBps);
@@ -84,7 +111,7 @@ contract CreateCoverPool is Script {
         uint256 totalPoolsBefore = factoryContract.totalCoverPools();
         console.log("Total Pools Before:", totalPoolsBefore);
 
-        vm.startBroadcast(curatorPrivateKey);
+        vm.startBroadcast(creator);
 
         factoryContract.createCoverPool(params);
 

@@ -23,7 +23,9 @@ import {ISpecRegistry} from "../src/interfaces/ISpecRegistry.sol";
  *     --rpc-url $RPC_URL --broadcast --slow -vvvv
  *
  * Required Environment Variables:
- *   - PRIVATE_KEY: Admin key (must hold DEFAULT_ADMIN_ROLE on SpecRegistry)
+ *   - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag).
+ *   - ADMIN: Holder of DEFAULT_ADMIN_ROLE on SpecRegistry. Defaults to DEPLOYER_ADDRESS.
+ *            On mainnet this is the Gnosis Safe multisig — omit --broadcast and submit via Safe.
  *   - SPEC_REGISTRY: SpecRegistry proxy address (from Coverage deploy output)
  *   - SPEC_ADDRESS: ISpec implementation contract to approve
  *
@@ -40,13 +42,15 @@ contract ApproveSpec is Script {
     event SpecApproved(address indexed specRegistry, address indexed spec);
 
     function run() external {
-        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerKey);
+        address deployer = vm.envAddress("DEPLOYER_ADDRESS");
+        // DEFAULT_ADMIN_ROLE is transferred to ADMIN during Deploy.s.sol when deployer != admin.
+        // On mainnet ADMIN is the multisig; omit --broadcast and submit the calldata via Safe.
+        address admin = vm.envOr("ADMIN", deployer);
         address specRegistry = vm.envAddress("SPEC_REGISTRY");
         address specAddress = vm.envAddress("SPEC_ADDRESS");
 
         console.log("=== SPEC APPROVAL ===");
-        console.log("Caller:      ", deployer);
+        console.log("Broadcaster (DEFAULT_ADMIN_ROLE holder):", admin);
         console.log("SpecRegistry:", specRegistry);
         console.log("Spec:        ", specAddress);
 
@@ -56,7 +60,7 @@ contract ApproveSpec is Script {
             return;
         }
 
-        vm.startBroadcast(deployerKey);
+        vm.startBroadcast(admin);
         ISpecRegistry(specRegistry).approveSpec(specAddress);
         vm.stopBroadcast();
 

@@ -59,7 +59,10 @@ interface ICoveredVaultWrapperRate {
  *     --rpc-url $RPC_URL --broadcast --slow -vvvv
  *
  * Required Environment Variables:
- *   - PRIVATE_KEY: Key that holds ownership of the CoveredVaultWrapper (owner role)
+ *   - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag).
+ *   - WRAPPER_OWNER: CoveredVaultWrapper owner (set via acceptOwnership() in Phase 6). Defaults
+ *                    to DEPLOYER_ADDRESS. On mainnet this is the Gnosis Safe multisig — omit
+ *                    --broadcast and submit the calldata via Safe.
  *   - COVERED_VAULT: CoveredVaultWrapper proxy address
  *   - PREMIUM_RATE: Desired rate in wei per second (WAD-scaled, i.e. rate × 1e18 / 1e18).
  *       Max value: 15_854_895_991 (~50% per year).
@@ -81,7 +84,10 @@ contract SetPremiumRate is Script {
     event PremiumRateExecuted(address indexed vault, uint256 newRate);
 
     function run() external {
-        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.envAddress("DEPLOYER_ADDRESS");
+        // onlyOwner — ownership transferred to WRAPPER_OWNER during Phase 6 acceptOwnership().
+        // On mainnet WRAPPER_OWNER is the multisig; omit --broadcast and submit via Safe.
+        address wrapperOwner = vm.envOr("WRAPPER_OWNER", deployer);
         address vault = vm.envAddress("COVERED_VAULT");
         uint256 premiumRate = vm.envOr("PREMIUM_RATE", uint256(0));
 
@@ -105,7 +111,7 @@ contract SetPremiumRate is Script {
 
             console.log("\n[STEP 1] No pending rate change -- setting new rate:", premiumRate);
 
-            vm.startBroadcast(deployerKey);
+            vm.startBroadcast(wrapperOwner);
             wrapper.setPremiumRate(premiumRate);
             vm.stopBroadcast();
 
@@ -130,7 +136,7 @@ contract SetPremiumRate is Script {
             // ── Step 2: Timelock elapsed — execute the pending rate ──────────────
             console.log("\n[STEP 2] Timelock elapsed -- executing pending rate:", pendingRate);
 
-            vm.startBroadcast(deployerKey);
+            vm.startBroadcast(wrapperOwner);
             wrapper.executePremiumRate();
             vm.stopBroadcast();
 

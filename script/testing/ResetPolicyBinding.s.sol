@@ -38,7 +38,10 @@ interface ICoveredVaultWrapperReset {
  *     --rpc-url $RPC_URL --broadcast --slow -vvvv
  *
  * Required Environment Variables:
- *   - PRIVATE_KEY: Key that holds ownership of the CoveredVaultWrapper
+ *   - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag).
+ *   - WRAPPER_OWNER: CoveredVaultWrapper owner (set via acceptOwnership() in Phase 6). Defaults
+ *                    to DEPLOYER_ADDRESS. On mainnet this is the Gnosis Safe multisig — omit
+ *                    --broadcast and submit the calldata via Safe.
  *   - COVERED_VAULT: CoveredVaultWrapper proxy address
  *   - POLICY_MANAGER: PolicyManager proxy address (used for pre-flight maturity check)
  *
@@ -52,7 +55,10 @@ contract ResetPolicyBinding is Script {
     event PolicyBindingReset(address indexed vault, uint96 previousPolicyId);
 
     function run() external {
-        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.envAddress("DEPLOYER_ADDRESS");
+        // onlyOwner — ownership transferred to WRAPPER_OWNER during Phase 6 acceptOwnership().
+        // On mainnet WRAPPER_OWNER is the multisig; omit --broadcast and submit via Safe.
+        address wrapperOwner = vm.envOr("WRAPPER_OWNER", deployer);
         address vault = vm.envAddress("COVERED_VAULT");
         address policyMgr = vm.envAddress("POLICY_MANAGER");
 
@@ -64,6 +70,7 @@ contract ResetPolicyBinding is Script {
         uint256 cap = wrapper.depositCap();
 
         console.log("=== RESET POLICY BINDING ===");
+        console.log("Broadcaster (wrapper owner):", wrapperOwner);
         console.log("CoveredVault:        ", vault);
         console.log("Current policyId:    ", currentPolicyId);
         console.log("policyBoundExecuted: ", boundExecuted);
@@ -76,7 +83,7 @@ contract ResetPolicyBinding is Script {
 
         _verifyMaturity(pm, currentPolicyId);
 
-        vm.startBroadcast(deployerKey);
+        vm.startBroadcast(wrapperOwner);
         wrapper.resetPolicyBinding();
         vm.stopBroadcast();
 

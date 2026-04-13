@@ -66,7 +66,7 @@ interface IAllocationManagerPrepare {
  *     --rpc-url $SEPOLIA_RPC_URL --broadcast --slow -vvvv
  *
  * Required Environment Variables:
- *   - PRIVATE_KEY: Operator private key
+ *   - OPERATOR_ADDRESS: Public address of the operator keystore signer (used with --keystore flag)
  *   - EIGEN_ALLOCATION_MANAGER: EigenLayer AllocationManager address
  *   - EIGEN_ADAPTER_ADDRESS: EigenAdapter contract address (acts as AVS)
  *   - EIGEN_STRATEGY: EigenLayer strategy address (DurationVault or WETH strategy)
@@ -78,13 +78,11 @@ contract PrepareEigenLayer is Script {
     address public eigenAdapter;
     address public strategy;
     address public operator;
-    uint256 public operatorPrivateKey;
     uint32 public committeeId;
     uint64 public newMagnitude;
 
     constructor() {
-        operatorPrivateKey = vm.envUint("PRIVATE_KEY");
-        operator = vm.addr(operatorPrivateKey);
+        operator = vm.envAddress("OPERATOR_ADDRESS");
 
         allocationManager = IAllocationManagerPrepare(vm.envAddress("EIGEN_ALLOCATION_MANAGER"));
         eigenAdapter = vm.envAddress("EIGEN_ADAPTER_ADDRESS");
@@ -111,7 +109,7 @@ contract PrepareEigenLayer is Script {
         (uint64 currentMagnitude,,) = allocationManager.getAllocation(operator, opSet, strategy);
         bool isMember = allocationManager.isMemberOfOperatorSet(operator, opSet);
 
-        vm.startBroadcast(operatorPrivateKey);
+        vm.startBroadcast(operator);
 
         // Step 1: Update magnitude if needed
         if (currentMagnitude != newMagnitude) {

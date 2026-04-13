@@ -23,40 +23,63 @@ import {ControllableVault} from "../../test/defi/mocks/ControllableVault.sol";
  *        4. Simulate a loss: call vault.simulateLoss(amount) as admin to deflate share price
  *        5. File claim (FileClaim.s.sol) — CoveredVaultWrapper.evaluate() detects the shortfall
  *
- *      The deployer becomes the vault admin (the only address that can call simulateLoss).
- *      To rotate admin, call transferAdmin(newAdmin) then acceptAdmin() from the new admin.
+ *      Ownership transfer (two-step):
+ *        If VAULT_ADMIN differs from DEPLOYER_ADDRESS, this script calls transferAdmin(VAULT_ADMIN)
+ *        at the end of deployment. The nominated admin must then call acceptAdmin() to take effect.
+ *        Until acceptAdmin() is called, the deployer retains the admin role.
  *
  * Usage:
  *   forge script script/testing/DeployControllableVault.s.sol:DeployControllableVault \
  *     --rpc-url $RPC_URL --broadcast --slow -vvvv
  *
  * Required Environment Variables:
- *   - PRIVATE_KEY:    Deployer key; becomes the vault admin (can call simulateLoss)
- *   - ASSET_ADDRESS:  ERC-20 underlying token (e.g. WETH); must equal PAYOUT_TOKEN
+ *   - DEPLOYER_ADDRESS:  Public address of the keystore signer (used with --keystore flag)
+ *   - ASSET_ADDRESS:     ERC-20 underlying token (e.g. WETH); must equal PAYOUT_TOKEN
+ *
+ * Optional Environment Variables:
+ *   - VAULT_ADMIN:  Address to receive vault admin role (can call simulateLoss).
+ *                   Defaults to DEPLOYER_ADDRESS. Set to a multisig for production deployments.
+ *                   The nominated address must call acceptAdmin() to complete the transfer.
  */
 contract DeployControllableVault is Script {
     function run() external {
-        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerKey);
+        address deployer = vm.envAddress("DEPLOYER_ADDRESS");
         address asset = vm.envAddress("ASSET_ADDRESS");
+        address vaultAdmin = vm.envOr("VAULT_ADMIN", deployer);
 
         require(asset != address(0), "ASSET_ADDRESS must not be zero address");
+        require(vaultAdmin != address(0), "VAULT_ADMIN must not be zero address");
 
         console.log("=== DEPLOY CONTROLLABLE VAULT ===");
-        console.log("Deployer / admin:", deployer);
-        console.log("Asset:           ", asset);
+        console.log("Deployer:   ", deployer);
+        console.log("Vault admin:", vaultAdmin);
+        console.log("Asset:      ", asset);
 
-        vm.startBroadcast(deployerKey);
+        vm.startBroadcast(deployer);
         ControllableVault vault = new ControllableVault(asset);
+
+        if (vaultAdmin != deployer) {
+            vault.transferAdmin(vaultAdmin);
+        }
+
         vm.stopBroadcast();
 
         console.log("\n--- Verification ---");
         require(vault.asset() == asset, "Asset mismatch");
-        require(vault.admin() == deployer, "Admin not set to deployer");
 
-        console.log("ControllableVault deployed at:", address(vault));
+        if (vaultAdmin == deployer) {
+            require(vault.admin() == deployer, "Admin not set to deployer");
+            console.log("Admin (active):", vault.admin());
+        } else {
+            require(vault.admin() == deployer, "Deployer should still be active admin until acceptAdmin()");
+            require(vault.pendingAdmin() == vaultAdmin, "Pending admin not set correctly");
+            console.log("Admin (active, pending transfer):", vault.admin());
+            console.log("Pending admin (must call acceptAdmin):", vault.pendingAdmin());
+            console.log("[ACTION REQUIRED] Call acceptAdmin() from:", vaultAdmin);
+        }
+
+        console.log("\nControllableVault deployed at:", address(vault));
         console.log("Asset:                        ", vault.asset());
-        console.log("Admin:                        ", vault.admin());
         console.log("\nSet this env var for downstream scripts:");
         console.log("MORPHO_VAULT=", address(vault));
         console.log("\n=== DONE ===");

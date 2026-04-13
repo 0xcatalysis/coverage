@@ -57,14 +57,13 @@ contract DeployCoveredVaultWrapper is Script {
         Config memory cfg = _loadConfig();
         _validateConfig(cfg);
 
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerPrivateKey);
+        address deployer = vm.envAddress("DEPLOYER_ADDRESS");
 
         console.log("=== CoveredVaultWrapper Deployment ===");
         console.log("Deployer:", deployer);
         console.log("Morpho vault:", cfg.morphoVault);
 
-        vm.startBroadcast(deployerPrivateKey);
+        vm.startBroadcast(deployer);
 
         // Step 1: Deploy CoveredVaultWrapper
         CoveredVaultWrapper wrapper_ = _step1_deployWrapper(cfg, deployer);
