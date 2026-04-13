@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {Upgrades, Options} from "@openzeppelin/upgrades/Upgrades.sol";
-import {Script, console2} from "forge-std/Script.sol";
+import {console2} from "forge-std/Script.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 import {ClaimManager} from "../src/ClaimManager.sol";
@@ -12,6 +11,7 @@ import {PolicyManager} from "../src/PolicyManager.sol";
 import {PremiumManager} from "../src/PremiumManager.sol";
 import {SpecRegistry} from "../src/SpecRegistry.sol";
 import {Swapper} from "../src/Swapper.sol";
+import {CreateXDeployer} from "./CreateXDeployer.s.sol";
 
 /**
  * @title Deploy
@@ -45,7 +45,7 @@ import {Swapper} from "../src/Swapper.sol";
  *        - COVER_POOL_FACTORY_CREATOR: Factory creator role (defaults to admin)
  *        - SWAP_MANAGER: Swap route configuration manager (defaults to admin)
  */
-abstract contract Deploy is Script {
+abstract contract Deploy is CreateXDeployer {
     /// @dev Default platform fee in basis points (5%).
     uint16 internal constant DEFAULT_PLATFORM_FEE_BPS = 500;
 
@@ -194,6 +194,22 @@ abstract contract Deploy is Script {
     }
 
     /**
+     * @notice Precomputes all deterministic proxy addresses for a given deployer.
+     * @dev Uses CREATE3 salt derivation — addresses are independent of bytecode or init args.
+     *      Call off-chain (via forge script --sig) to know proxy addresses before deployment.
+     * @param deployer Address that will broadcast the deployment transactions.
+     * @return contracts Struct with proxy address fields populated (impl fields are zero).
+     */
+    function computeAllAddresses(address deployer) external pure returns (DeployedContracts memory contracts) {
+        contracts.swapperProxy = _computeProxyAddress(deployer, "SwapperProxy");
+        contracts.premiumManagerProxy = _computeProxyAddress(deployer, "PremiumManagerProxy");
+        contracts.policyManagerProxy = _computeProxyAddress(deployer, "PolicyManagerProxy");
+        contracts.specRegistryProxy = _computeProxyAddress(deployer, "SpecRegistryProxy");
+        contracts.claimManagerProxy = _computeProxyAddress(deployer, "ClaimManagerProxy");
+        contracts.coverPoolFactoryProxy = _computeProxyAddress(deployer, "CoverPoolFactoryProxy");
+    }
+
+    /**
      * @notice Orchestrates deployment of all contract proxies and implementations.
      * @dev Deploys contracts in dependency order. Uses deployer as temporary admin to enable
      *      role configuration phase. Final admin receives DEFAULT_ADMIN_ROLE in _grantRoles.
@@ -208,24 +224,21 @@ abstract contract Deploy is Script {
         private
         returns (DeployedContracts memory contracts)
     {
-        // OZ 5.5 uses base ReentrancyGuard (not Upgradeable variant) with namespaced storage.
-        // The constructor is safe for proxies but the validation tool still flags it.
-        Options memory opts;
-        opts.unsafeAllow = "constructor";
-
         contracts.coverPoolImplementation = address(new CoverPool());
 
-        contracts.swapperProxy = Upgrades.deployUUPSProxy(
-            "Swapper.sol:Swapper",
+        Swapper swapperImpl = new Swapper();
+        contracts.swapperImpl = address(swapperImpl);
+        contracts.swapperProxy = _deployProxy3(
+            roles.deployer,
+            "SwapperProxy",
+            address(swapperImpl),
             abi.encodeCall(
                 Swapper.initialize, (roles.deployer, roles.swapManager, roles.deployer, external_.nativeWrapper)
-            ),
-            opts
+            )
         );
-        contracts.swapperImpl = Upgrades.getImplementationAddress(contracts.swapperProxy);
 
-        _deployPremiumContracts(contracts, roles, external_, opts);
-        _deployClaimAndFactoryContracts(contracts, roles, external_, opts);
+        _deployPremiumContracts(contracts, roles, external_);
+        _deployClaimAndFactoryContracts(contracts, roles, external_);
     }
 
     /**
@@ -236,25 +249,25 @@ abstract contract Deploy is Script {
      * @param contracts DeployedContracts struct to populate with premium contract addresses.
      * @param roles Role configuration containing admin, deployer, and platformTreasury addresses.
      * @param external_ External configuration containing RewardsManager address.
-     * @param opts Upgrade options to skip constructor validation for OZ 5.5 ReentrancyGuard.
      */
     function _deployPremiumContracts(
         DeployedContracts memory contracts,
         RoleConfig memory roles,
-        ExternalConfig memory external_,
-        Options memory opts
+        ExternalConfig memory external_
     )
         private
     {
-        contracts.premiumManagerProxy = Upgrades.deployUUPSProxy(
-            "PremiumManager.sol:PremiumManager",
+        PremiumManager premiumManagerImpl = new PremiumManager();
+        contracts.premiumManagerImpl = address(premiumManagerImpl);
+        contracts.premiumManagerProxy = _deployProxy3(
+            roles.deployer,
+            "PremiumManagerProxy",
+            address(premiumManagerImpl),
             abi.encodeCall(
                 PremiumManager.initialize,
                 (roles.deployer, external_.rewardsManager, roles.platformTreasury, roles.platformFeeBps)
-            ),
-            opts
+            )
         );
-        contracts.premiumManagerImpl = Upgrades.getImplementationAddress(contracts.premiumManagerProxy);
 
         address[] memory premiumTokens = getInitialPremiumTokens();
         for (uint256 i = 0; i < premiumTokens.length; i++) {
@@ -272,18 +285,20 @@ abstract contract Deploy is Script {
      * @param contracts DeployedContracts struct to populate with remaining contract addresses.
      * @param roles Role configuration containing admin and role holder addresses.
      * @param external_ External configuration containing Catalysis Core addresses.
-     * @param opts Upgrade options to skip constructor validation for OZ 5.5 ReentrancyGuard.
      */
     function _deployClaimAndFactoryContracts(
         DeployedContracts memory contracts,
         RoleConfig memory roles,
-        ExternalConfig memory external_,
-        Options memory opts
+        ExternalConfig memory external_
     )
         private
     {
-        contracts.policyManagerProxy = Upgrades.deployUUPSProxy(
-            "PolicyManager.sol:PolicyManager",
+        PolicyManager policyManagerImpl = new PolicyManager();
+        contracts.policyManagerImpl = address(policyManagerImpl);
+        contracts.policyManagerProxy = _deployProxy3(
+            roles.deployer,
+            "PolicyManagerProxy",
+            address(policyManagerImpl),
             abi.encodeCall(
                 PolicyManager.initialize,
                 (
@@ -294,18 +309,24 @@ abstract contract Deploy is Script {
                     external_.chainlinkPriceFeed,
                     getInitialPayoutTokens()
                 )
-            ),
-            opts
+            )
         );
-        contracts.policyManagerImpl = Upgrades.getImplementationAddress(contracts.policyManagerProxy);
 
-        contracts.specRegistryProxy = Upgrades.deployUUPSProxy(
-            "SpecRegistry.sol:SpecRegistry", abi.encodeCall(SpecRegistry.initialize, (roles.deployer, address(0))), opts
+        SpecRegistry specRegistryImpl = new SpecRegistry();
+        contracts.specRegistryImpl = address(specRegistryImpl);
+        contracts.specRegistryProxy = _deployProxy3(
+            roles.deployer,
+            "SpecRegistryProxy",
+            address(specRegistryImpl),
+            abi.encodeCall(SpecRegistry.initialize, (roles.deployer, address(0)))
         );
-        contracts.specRegistryImpl = Upgrades.getImplementationAddress(contracts.specRegistryProxy);
 
-        contracts.claimManagerProxy = Upgrades.deployUUPSProxy(
-            "ClaimManager.sol:ClaimManager",
+        ClaimManager claimManagerImpl = new ClaimManager();
+        contracts.claimManagerImpl = address(claimManagerImpl);
+        contracts.claimManagerProxy = _deployProxy3(
+            roles.deployer,
+            "ClaimManagerProxy",
+            address(claimManagerImpl),
             abi.encodeCall(
                 ClaimManager.initialize,
                 (
@@ -315,17 +336,19 @@ abstract contract Deploy is Script {
                     contracts.swapperProxy,
                     contracts.policyManagerProxy
                 )
-            ),
-            opts
+            )
         );
-        contracts.claimManagerImpl = Upgrades.getImplementationAddress(contracts.claimManagerProxy);
 
         ClaimManager(payable(contracts.claimManagerProxy)).setPremiumManager(contracts.premiumManagerProxy);
 
         PolicyManager(contracts.policyManagerProxy).setClaimManager(contracts.claimManagerProxy);
 
-        contracts.coverPoolFactoryProxy = Upgrades.deployUUPSProxy(
-            "CoverPoolFactory.sol:CoverPoolFactory",
+        CoverPoolFactory coverPoolFactoryImpl = new CoverPoolFactory();
+        contracts.coverPoolFactoryImpl = address(coverPoolFactoryImpl);
+        contracts.coverPoolFactoryProxy = _deployProxy3(
+            roles.deployer,
+            "CoverPoolFactoryProxy",
+            address(coverPoolFactoryImpl),
             abi.encodeCall(
                 CoverPoolFactory.initialize,
                 (
@@ -336,10 +359,8 @@ abstract contract Deploy is Script {
                     external_.stakeManager,
                     contracts.specRegistryProxy
                 )
-            ),
-            opts
+            )
         );
-        contracts.coverPoolFactoryImpl = Upgrades.getImplementationAddress(contracts.coverPoolFactoryProxy);
 
         PolicyManager(contracts.policyManagerProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
         SpecRegistry(contracts.specRegistryProxy).setCoverPoolFactory(contracts.coverPoolFactoryProxy);
