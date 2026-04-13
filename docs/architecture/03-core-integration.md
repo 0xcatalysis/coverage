@@ -34,13 +34,13 @@ Coverage enforces `policyId == committeeId` across all cross-layer calls.
 
 Implications:
 
-- Capacity is set once at policy request (`coverageAmount`).
+- Capacity (`coverageLimit`) is set at bind time from the signed quote.
 - Vault assignment is attached to the same id at bind time.
 - Rewards and slashing are naturally scoped to the policy's committee.
 
 Typical covered-vault actor mapping (CoveredVaultWrapper model):
 
-- `buyer`: `CoveredVaultWrapper`.
+- `buyer`: wrapper **owner** (EOA or multisig). `CoveredVaultWrapper._validatePolicyBinding` enforces `pol.buyer == owner()` and reverts if it does not match.
 - `claimer`: `CoveredVaultWrapper` (withdrawal-triggered claim path).
 - `beneficiary`: `CoveredVaultWrapper` — receives the payout and tops up the withdrawing user atomically.
 
@@ -62,7 +62,7 @@ Outcome:
 
 Sequence:
 
-1. Covered vault (or its adapter acting as buyer) calls `PolicyManager.requestCoverage(...)`.
+1. The wrapper owner (EOA/multisig) calls `PolicyManager.requestCoverage(...)` as `buyer`.
 2. Manager creates draft and increments `policyId`.
 3. Manager calls `StakeManager.createCommittee(policyId, pool, duration)`.
 4. Manager calls `StakeManager.addOperatorToCommittee(curator, policyId)` to explicitly register the pool's curator as committee operator.
@@ -94,8 +94,8 @@ Sequence:
 1. `CoveredVaultWrapper.collectPremium()` flushes accrued premium and calls `PremiumManager.distributePremium(...)`.
 2. `PremiumManager` pulls tokens via `safeTransferFrom`, computes fee splits.
 3. Platform fee → `platformTreasury`; pool fee → pool `feeRecipient`.
-4. `PremiumManager` calls `RewardsManager.distributeRewards(policyId, curator, restakerSplit, token, taskId)`.
-5. `RewardsManager` pulls the restaker share from `PremiumManager` to itself via `safeTransferFrom(premiumManager, address(this), ...)` (requires PremiumManager to have approved RewardsManager), then calls `SSPRouter.distributeRewards(..., tokenSource=address(this))`.
+4. `PremiumManager` grants `RewardsManager` an **ephemeral per-call allowance** via `forceApprove(rewardsManager, restakerSplit)`, then calls `RewardsManager.distributeRewards(policyId, curator, restakerSplit, token, taskId)`. After the call, the allowance is zeroed with `forceApprove(rewardsManager, 0)`. No standing allowance or admin `approveSpender` setup is required.
+5. `RewardsManager` pulls the restaker share from `PremiumManager` to itself via `safeTransferFrom`, then calls `SSPRouter.distributeRewards(..., tokenSource=address(this))`.
 6. `SSPRouter` pulls from `RewardsManager` and fans out to adapters.
 
 Outcome:
@@ -129,7 +129,7 @@ No-shortfall withdrawal path:
 
 - Slash amounts passed to `executeSlashing` are **token-native** (not USD); `ClaimManager` computes them via `previewSlashing` + `quoteSwap`.
 - Coverage payouts are token-denominated by `payoutToken`.
-- `coverageAmount` in `PolicyDraft` is treated as the committee stake requirement (USD, 8 decimals) for bind-time sufficiency checks only; `ChainlinkPriceFeed` is used exclusively there.
+- `coverageLimit` in `Quote`/`BoundPolicy`/`PolicyMetadata` is denominated in **`payoutToken` native units** (not USD). At bind time, `PolicyManager.bindPolicy` converts it to USD via `ChainlinkPriceFeed.getUSDValue(payoutToken, coverageLimit)` and compares against the committee's total staked USD. This is the only point where `ChainlinkPriceFeed` is used in Coverage contracts. The `PolicyDraft` struct does not contain a `coverageAmount` field.
 
 ## Trust and Failure Boundaries
 

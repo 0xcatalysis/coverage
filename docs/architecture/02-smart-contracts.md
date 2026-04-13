@@ -19,17 +19,20 @@ graph LR
     SW[Swapper]
     UV3[UniswapV3Adapter]
     CVW[CoveredVaultWrapper]
+    PF[ChainlinkPriceFeed]
 
     CPF --> CP
     PM --> CP
     CP --> PM
     CP --> SR
-    PM --> CM
     CVW --> PRM
     CVW --> CM
+    PRM --> CP
     CM --> SR
     CM --> SW
+    CM --> PRM
     SW --> UV3
+    PM --> PF
 ```
 
 ## Core Coverage Contracts
@@ -47,14 +50,18 @@ graph LR
 **Key functions:**
 
 - `createCoverPool(params)` creates and initializes a pool clone, grants curator ownership.
-- `computeCoverPoolAddress(params)` predicts deterministic clone address.
+- `computeCoverPoolAddress(params)` predicts deterministic clone address. The salt includes the factory's current `policyManager` address, so predictions change if `setPolicyManager` is called.
 - `coverPoolExists(pool)` validates whether a pool is factory-created.
+- `getCoverPools(offset, limit)`, `totalCoverPools()`, `coverPoolAt(index)` — pagination helpers over the internal pool set.
+- `setCoverPoolImplementation`, `setPolicyManager`, `setStakeManager`, `setSpecRegistry` — admin setters for wired dependencies (`DEFAULT_ADMIN_ROLE`).
+- `pause` / `unpause` — emergency halt via `DEFAULT_ADMIN_ROLE` (not `CREATOR_ROLE`).
 
 Note: On EigenLayer, duration vaults act as operators and are auto-deployed during committee creation.
 
-**Key role:**
+**Key roles:**
 
-- `CREATOR_ROLE` controls pool creation and major factory settings.
+- `CREATOR_ROLE` controls pool creation (`createCoverPool`) and major factory dependency setters.
+- `DEFAULT_ADMIN_ROLE` controls `pause`/`unpause` and upgrades.
 
 ### 2) CoverPool
 
@@ -70,15 +77,21 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 - `bindPolicyForRequest(policyId, quote, spec, vaults, signature)` performs:
   - draft checks via `PolicyManager`,
-  - EIP-712 quote signature verification,
+  - EIP-712 quote signature verification (via `_verifyQuote` with the `validateQuote` modifier enforcing expiry),
+  - local pool-side bind state persisted immediately after signature verification (`_recordBoundPolicy`),
   - spec registration in `SpecRegistry`,
   - committee vault binding in Core via `StakeManager`,
   - final policy bind callback into `PolicyManager`.
-- `setPoolFeeBps(...)`, `setFeeRecipient(...)` configure pool economics.
+- `setPoolFeeBps(fee)` proposes a new pool fee and starts a **48-hour timelock** (`POOL_FEE_TIMELOCK`). The previous fee remains active until the timelock elapses. `finalizePoolFeeBps()` (callable by anyone) materialises the pending proposal once the timelock has passed. If a new proposal is submitted while a previous one is pending but not yet matured, the pending proposal is cancelled and replaced. `setFeeRecipient(...)` updates the fee recipient immediately.
+- `setPremiumDefaulted(policyId, defaulted)` — forwarded to `PolicyManager`; callable only by the pool admin.
+- `getBoundPolicy(policyId)` / `hasBoundPolicy(policyId)` — view helpers for bound policy state.
+- `quoteDomainSeparator()` — returns the EIP-712 domain separator for off-chain quote construction.
+- `pause` / `unpause` — emergency halt via `DEFAULT_ADMIN_ROLE`.
 
 **Key role:**
 
 - `QUOTE_SIGNER_ROLE` defines trusted quote signers.
+- `DEFAULT_ADMIN_ROLE` (curator) controls all pool configuration, role grants, and pausing.
 
 ### 3) PolicyManager
 
@@ -93,10 +106,10 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 **Key functions:**
 
 - `requestCoverage(...)`:
-  - called by the `CoveredVaultWrapper` (or more generally a covered vault / its agent) as the `buyer`,
+  - called by the wrapper **owner** (EOA/multisig) as `msg.sender`, recorded as `buyer`; the `CoveredVaultWrapper` contract itself is **not** the buyer,
   - commonly sets `claimer` to `CoveredVaultWrapper` (files claims atomically on withdrawal shortfall),
   - commonly sets `beneficiary` to `CoveredVaultWrapper` for atomic shortfall top-ups,
-  - validates pool and hook,
+  - validates pool, payout token whitelist, hook, and duration,
   - creates policy draft,
   - creates Core committee with `committeeId = policyId` via `StakeManager.createCommittee(policyId, pool, duration)`,
   - then explicitly calls `StakeManager.addOperatorToCommittee(curator, policyId)` to register the pool curator as operator.
@@ -106,6 +119,12 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
   - verifies stake and vault readiness through Core,
   - stores canonical policy metadata,
   - calls `IBindPolicyHook.onPolicyBound(policyId, coverageLimit)`.
+- `cancelPolicyDraft(policyId)` — buyer-only; cancels a `Created` draft and removes the curator from the committee via `StakeManager.removeOperatorFromCommittee`.
+- `setPremiumDefaulted(policyId, defaulted)` — callable by the bound policy's pool (not admin).
+- `setSupportedPayoutToken(token, supported)` — admin-managed payout token whitelist.
+- `pause` / `unpause` — emergency halt via `DEFAULT_ADMIN_ROLE`.
+
+Note: `PolicyManager` stores a `claimManager` address for reference but does **not** call `ClaimManager` at runtime.
 
 ### 4) PremiumManager
 
@@ -121,19 +140,22 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
 
 - `distributePremium(pool, policyId, premiumToken, amount)`:
   - permissionless entrypoint — any caller (typically `CoveredVaultWrapper.collectPremium()`) may call it,
-  - requires: `pool` has a bound policy for `policyId`, `premiumToken` is in the approved token set,
+  - requires: `pool` has a bound policy for `policyId`, `premiumToken` is in the approved token set, `amount >= 1000`,
   - pulls `amount` from the caller via `safeTransferFrom`, so the caller must have approved `PremiumManager` first,
   - computes split: platform / pool / restaker,
   - transfers platform fee to `platformTreasury`,
   - transfers pool fee to pool `feeRecipient`,
-  - calls `RewardsManager.distributeRewards(policyId, curator, restakerSplit, token, taskId)`;
-    `RewardsManager` then pulls the restaker share from `PremiumManager` to itself and routes via `SSPRouter`.
-- `approveSpender(token, spender, amount)` grants a spender (typically `RewardsManager`) an unlimited allowance to pull the restaker share from `PremiumManager`.
+  - for the restaker share: grants `RewardsManager` an **ephemeral per-call allowance** via `forceApprove(rewardsManager, restakerSplit)`, calls `RewardsManager.distributeRewards(policyId, curator, restakerSplit, token, taskId)` (where `taskId` is derived internally as `keccak256(abi.encodePacked(policyId, ++nonce))`), then zeroes the allowance with `forceApprove(rewardsManager, 0)`.
+- `approveSpender(token, spender, amount)` grants an arbitrary spender a custom allowance from `PremiumManager`; this is a general admin utility and is **not** a prerequisite for `distributePremium` or `distributeSurplusAsRewards`, both of which manage their own ephemeral allowances internally.
 - `addApprovedPremiumToken(token)` / `removeApprovedPremiumToken(token)` admin management of allowed premium tokens.
 - `isApprovedPremiumToken(token)` / `approvedPremiumTokens()` view helpers.
 - `getFeeSplits(...)` deterministic split helper.
 
-**Access control:** `DEFAULT_ADMIN_ROLE` for configuration; `distributePremium` has no role requirement.
+- `distributeSurplusAsRewards(policyId, curator, amount, token, taskId)` — routes excess collateral from claim settlements to `RewardsManager`; requires `CLAIM_MANAGER_ROLE` (held by `ClaimManager`). Uses the same ephemeral `forceApprove` pattern as `distributePremium`.
+- `setRewardsManager`, `setPlatformTreasury`, `setPlatformFeeBps` — admin setters.
+- `pause` / `unpause` — emergency halt via `DEFAULT_ADMIN_ROLE`.
+
+**Access control:** `DEFAULT_ADMIN_ROLE` for configuration; `distributePremium` has no role requirement; `distributeSurplusAsRewards` requires `CLAIM_MANAGER_ROLE`.
 
 ### 5) ClaimManager
 
@@ -154,18 +176,22 @@ Note: On EigenLayer, duration vaults act as operators and are auto-deployed duri
   - resolves spec and runs evaluation,
   - if payable, executes slashing and collateral processing, then sets `claimApprovalRequired[policyId] = true`,
   - transfers payout to beneficiary.
-- `approveNextClaim(policyId)` — called by the policy curator to clear the approval gate after each approved claim.
-- `claimApprovalRequired(policyId)` — view: whether curator approval is required before the next claim.
-- `remainingCoverage(policyId)` and read models for claims.
+- `approveNextClaim(policyId)` — curator clears the per-policy approval gate between successive claims.
+- `claimApprovalRequired(policyId)` / `remainingCoverage(policyId)` / `claimRecord(policyId, claimId)` — views.
+- `recoverTokens(token, to, amount)` — admin utility to recover tokens left by failed surplus distributions.
+- `setMaxSwapSlippageBps`, `setSpecRegistry`, `setSlashingManager`, `setSwapper`, `setPremiumManager` — admin dependency setters.
+- `pause` / `unpause` — emergency halt via `DEFAULT_ADMIN_ROLE`.
+- `receive()` — accepts native ETH for native-token payout flows.
 
 **Slashing and payout mechanics (token-native, no oracle):**
 
 1. `SlashingManager.previewSlashing(committeeId, operator)` returns per-vault collateral tokens and token-native stake amounts.
-2. `_computeVaultSlashes` quotes each cross-token stake via `Swapper.quoteSwap` to determine payout-equivalent values, then computes proportional token-native slash amounts per vault; cross-token amounts are inflated by `1 / (1 - maxSwapSlippageBps)` to absorb worst-case swap slippage.
+2. `_computeVaultSlashes` quotes each cross-token stake via `Swapper.quoteSwap` to determine payout-equivalent values, then computes proportional token-native slash amounts per vault; cross-token amounts are inflated by `1 / (1 - maxSwapSlippageBps)` to absorb worst-case swap slippage. If `quoteSwap` reverts or returns zero, or the computed slash rounds to zero, a `VaultExcludedFromSlashing` event is emitted and the vault is skipped.
 3. `SlashingManager.executeSlashing(committeeId, operator, VaultSlash[], taskId)` executes slashing and returns seized collateral.
 4. For each collateral token:
-   - if it already equals `payoutToken`: transfer directly to beneficiary (surplus forwarded via `PremiumManager.distributeSurplusAsRewards` to `RewardsManager`),
-   - otherwise: swap through `Swapper` using `quoteSwap`-derived `amountOutMin`; surplus forwarded via `PremiumManager.distributeSurplusAsRewards` to `RewardsManager`.
+   - if it already equals `payoutToken`: transfer directly to beneficiary; surplus forwarded via `PremiumManager.distributeSurplusAsRewards` (skipped for native ETH surplus or if `premiumManager` is unset),
+   - otherwise: swap through `Swapper` using `quoteSwap`-derived `amountOutMin`; surplus forwarded similarly.
+   - Surplus routing is wrapped in a `try`/`catch`; failures emit `SwapSurplusDistributionFailed` and leave tokens in the contract for recovery via `recoverTokens`.
 
 No USD conversion or `ChainlinkPriceFeed` is used in the claim execution path.
 
@@ -186,7 +212,7 @@ No USD conversion or `ChainlinkPriceFeed` is used in the claim execution path.
 - `revokeSpec(spec)` called by admin to remove an `ISpec` from the whitelist.
 - `isSpecApproved(spec)` view helper to check whether a spec is currently approved.
 - `registerSpec(specId, spec)` called by pool during bind; reverts with `SpecNotApproved` if the spec is not on the whitelist.
-- `resolveSpec(pool, specId)` called by `ClaimManager`; resolution is not gated by approval status so in-flight claims on existing policies are unaffected by revocations.
+- `resolveSpec(pool, specId)` called by `ClaimManager`; resolution **is** gated by approval status — if a spec is revoked via `revokeSpec`, both new registrations and claim resolution for any `(pool, specId)` pair using that spec address are blocked. Re-approving the spec via `approveSpec` restores resolution. Use revocation as a targeted kill switch for compromised spec implementations.
 
 ### 7) Swapper
 
@@ -205,7 +231,8 @@ No USD conversion or `ChainlinkPriceFeed` is used in the claim execution path.
 
 **Key roles:**
 
-- `SWAP_MANAGER_ROLE` configures routes and whitelisted targets.
+- `DEFAULT_ADMIN_ROLE` whitelists swap targets via `setSwapTargetWhitelist`.
+- `SWAP_MANAGER_ROLE` configures swap routes via `setSwapRoute`.
 - `SWAP_EXECUTOR_ROLE` calls `executeSwap` (held by `ClaimManager`).
 
 ### 8) UniswapV3Adapter
@@ -252,11 +279,13 @@ These components live in `src/defi/` and are first-class architecture actors.
 ### CoveredVaultWrapper
 
 - UUPS-upgradeable ERC-4626 vault that wraps a Morpho V2 vault,
+- shares are **non-transferable** between external accounts,
 - accrues premiums continuously against depositor principal via a reward-per-token accumulator,
-- exposes `collectPremium()` (permissionless) which flushes accrued premium to `PremiumManager.distributePremium()`,
+- exposes `collectPremium()` (permissionless) which flushes accrued premium to `PremiumManager.distributePremium()` when a policy is bound; falls back to a direct `safeTransfer` to `premiumRecipient` when `policyId == 0`,
 - detects shortfall on withdrawal by comparing `insuredBasis` (principal minus paid premium) against proceeds from the Morpho vault,
 - calls `ClaimManager.fileClaim(...)` atomically during withdrawal when a shortfall exists,
-- receives claim payout and tops up the user's withdrawal to make them whole.
+- receives claim payout and tops up the user's withdrawal to make them whole,
+- exposes `emergencyRedeem` / `emergencyWithdraw` for users to exit without insurance by setting a transient skip-insurance flag.
 
 ## Upgrade and Access-Control Model
 
@@ -268,7 +297,7 @@ Typical control planes:
 - specialized roles for restricted entrypoints:
   - `CREATOR_ROLE` on factory,
   - `QUOTE_SIGNER_ROLE` on pools,
-  - `SWAP_MANAGER_ROLE` / `SWAP_EXECUTOR_ROLE` on swapper.
+  - `SWAP_MANAGER_ROLE` (route config) and `SWAP_EXECUTOR_ROLE` (execute swap) on swapper; swap target whitelisting requires `DEFAULT_ADMIN_ROLE` on swapper.
 - On `SpecRegistry`, `DEFAULT_ADMIN_ROLE` additionally controls the spec approval whitelist
   (`approveSpec` / `revokeSpec`). Only admin-approved `ISpec` implementations may be registered
   by cover pool curators.
@@ -287,4 +316,4 @@ Coverage contracts rely on Core interfaces:
 - [Core Integration](./03-core-integration.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
 - [Premiums and Claims](./06-premiums-claims.md)
-- [CoveredVaultWrapper Accounting](../COVERED_VAULT_ACCOUNTING.md)
+- [CoveredVaultWrapper Accounting](./07-covered-vault-accounting.md)

@@ -25,12 +25,12 @@ Core contracts manage:
 Coverage and Core share a canonical identifier:
 
 - `policyId` (Coverage) is the same value as `committeeId` (Core).
-- committee-level capacity in Core is set from requested `coverageAmount`.
+- committee-level capacity in Core is set from the `coverageLimit` in the bound quote.
 - slashing is executed by committee, which means per policy.
 
 Coverage request actor mapping:
 
-- The `buyer` field in policy metadata is typically the `CoveredVaultWrapper` (or more generally, the covered vault / its agent).
+- The `buyer` field in policy metadata is the `msg.sender` of `PolicyManager.requestCoverage`; in the `CoveredVaultWrapper` model, `buyer` must be the **wrapper owner** (EOA or multisig), not the wrapper contract itself. `CoveredVaultWrapper._validatePolicyBinding` enforces this with a hard revert.
 - The `claimer` is a separately authorized address that can file claims for that policy; in the `CoveredVaultWrapper` model, `claimer` is the wrapper itself.
 - The `beneficiary` receives the claim payout; in the `CoveredVaultWrapper` model, `beneficiary` is also the wrapper, which tops up the user's withdrawal atomically.
 
@@ -118,8 +118,9 @@ For Morpho-style integrations, the insured product is a single `CoveredVaultWrap
 Key behaviors:
 
 - premiums accrue continuously on depositor principal via an on-chain accumulator; `collectPremium()` flushes them to `PremiumManager`,
-- on withdrawal, if the Morpho vault has suffered a loss the wrapper detects the shortfall against the user's insured basis and calls `ClaimManager.fileClaim(...)` atomically,
-- the payout is received from `ClaimManager` and forwarded directly to the withdrawing user.
+- on normal withdrawal, if the Morpho vault has suffered a loss the wrapper detects the shortfall against the user's insured basis and calls `ClaimManager.fileClaim(...)` atomically,
+- the payout is received from `ClaimManager` and forwarded directly to the withdrawing user,
+- **emergency exit** (`emergencyRedeem`/`emergencyWithdraw`): users may explicitly waive insurance coverage to exit immediately without triggering a claim, even when a shortfall exists. This is a user-controlled escape hatch, not an insurance bypass.
 
 ## Key Design Principles
 
@@ -162,12 +163,12 @@ Claim logic is delegated to registered `ISpec` implementations:
 
 1. Curator creates a pool through `CoverPoolFactory`.
 2. Factory deploys pool clone; Core `StakeManager` committee is created on coverage request.
-3. Covered vault (or its adapter acting as buyer) requests coverage through `PolicyManager` (draft created).
+3. The wrapper owner (EOA/multisig) requests coverage through `PolicyManager` (draft created, owner recorded as `buyer`).
 4. Core committee is created with `committeeId = policyId`; operator assigned.
 5. Restakers delegate stake in supported vaults/strategies.
 6. Curator binds policy with signed quote and committee vault list.
 7. Premiums accrue continuously in `CoveredVaultWrapper` against depositor principal.
-8. Anyone calls `CoveredVaultWrapper.collectPremium()`; it flushes accrued premium directly to `PremiumManager.distributePremium()`, which splits fees (platform, pool, restaker) and routes the restaker share via `RewardsManager`.
+8. Anyone calls `CoveredVaultWrapper.collectPremium()`; it flushes accrued premium directly to `PremiumManager.distributePremium()`, which splits fees (platform, pool, restaker), transfers platform and pool shares immediately, and routes the restaker share to `RewardsManager` via an ephemeral per-call `forceApprove` — no standing allowance setup is required.
 9. On user withdrawal:
    - no shortfall: `CoveredVaultWrapper` redeems from Morpho and returns assets,
    - shortfall: wrapper calls `ClaimManager.fileClaim(...)` atomically, receives payout, and tops up the user's exit.
@@ -180,4 +181,4 @@ Claim logic is delegated to registered `ISpec` implementations:
 - [Restaker Setup and Delegation Lifecycle](./04-restaker-setup.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
 - [Premiums and Claims](./06-premiums-claims.md)
-- [CoveredVaultWrapper Accounting](../COVERED_VAULT_ACCOUNTING.md)
+- [CoveredVaultWrapper Accounting](./07-covered-vault-accounting.md)
