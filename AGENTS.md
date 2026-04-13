@@ -84,6 +84,7 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus 
 - `PrepareEigenLayer.s.sol` – configures EigenLayer magnitude allocation for an operator
 - `DeployControllableVault.s.sol` – deploys a test ERC-4626 vault with controllable NAV
 - `CompleteCoverageFlow.s.sol` – end-to-end lifecycle from pool creation through claim settlement
+- `ForkCompleteCoverageFlow.s.sol` – extends CompleteCoverageFlow with EigenLayer vault-funding for fresh mainnet forks (used by `make test-fork`)
 
 ## Build, Test, and Development Commands
 

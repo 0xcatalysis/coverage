@@ -65,7 +65,7 @@ import {ISwapper} from "../../src/interfaces/ISwapper.sol";
  *
  *   Policy Binding Params:
  *   - SPEC_ADDRESS: ISpec implementation contract address (must be approved in SpecRegistry first)
- *   - VAULTS: Comma-separated vault addresses
+ *   - VAULTS: (optional) Comma-separated vault addresses; auto-discovered from SSPRouter if omitted
  *   - COVERAGE_LIMIT: Coverage limit in payout token units
  *   - SPEC_ID: Spec identifier (bytes32)
  *   - TERMS_HASH: Terms hash (bytes32)
@@ -159,7 +159,7 @@ contract CompleteCoverageFlow is Script {
         _loadClaimParams();
     }
 
-    function run() external {
+    function run() external virtual {
         console.log("============================================");
         console.log("  COMPLETE COVERAGE PROTOCOL E2E FLOW");
         console.log("============================================");
@@ -174,6 +174,8 @@ contract CompleteCoverageFlow is Script {
         _phase1b_releaseOperator();
         _phase2_requestCoverage();
         _phase3_verifyCommittee();
+        _discoverVaultsIfNeeded();
+        _beforePhase4();
         _phase4_bindPolicy();
         _phase5_verifyPremiumAccrual();
         _phase6_distributePremiums();
@@ -201,22 +203,43 @@ contract CompleteCoverageFlow is Script {
 
         IPolicyManager pm = IPolicyManager(policyManager);
 
-        if (pm.supportedPayoutTokens(payoutToken)) {
+        if (!pm.supportedPayoutTokens(payoutToken)) {
+            console.log("Whitelisting payout token:", payoutToken);
+            vm.startBroadcast(adminPrivateKey);
+            pm.setSupportedPayoutToken(payoutToken, true);
+            vm.stopBroadcast();
+            require(pm.supportedPayoutTokens(payoutToken), "Phase 0: Payout token not whitelisted");
+            console.log("[OK] Payout token whitelisted");
+        } else {
             console.log("[SKIP] Payout token already whitelisted:", payoutToken);
-            emit FlowCompleted("Payout Token Whitelist", 0);
+        }
+
+        _approveAsPremiumTokenIfNeeded();
+
+        emit FlowCompleted("Payout Token Whitelist", 0);
+    }
+
+    /**
+     * @notice Adds payoutToken to PremiumManager's approved premium token set if needed.
+     * @dev Coverage's DeployEthereum returns empty arrays from getInitialPremiumTokens(), so
+     *      the payout token is not automatically added during deployment. Phase 6 (premium
+     *      distribution) calls PremiumManager.distributePremium(), which requires the token to
+     *      be in the approved set -- without this step it would revert with UnapprovedToken.
+     */
+    function _approveAsPremiumTokenIfNeeded() internal {
+        (bool ok, bytes memory data) =
+            premiumManager.staticcall(abi.encodeWithSignature("isApprovedPremiumToken(address)", payoutToken));
+        if (ok && data.length >= 32 && abi.decode(data, (bool))) {
+            console.log("[SKIP] Payout token already approved on PremiumManager");
             return;
         }
 
-        console.log("Whitelisting payout token:", payoutToken);
-
+        console.log("Adding payout token to PremiumManager approved set:", payoutToken);
         vm.startBroadcast(adminPrivateKey);
-        pm.setSupportedPayoutToken(payoutToken, true);
+        (bool success,) = premiumManager.call(abi.encodeWithSignature("addApprovedPremiumToken(address)", payoutToken));
         vm.stopBroadcast();
-
-        require(pm.supportedPayoutTokens(payoutToken), "Phase 0: Payout token not whitelisted");
-
-        console.log("[OK] Payout token whitelisted");
-        emit FlowCompleted("Payout Token Whitelist", 0);
+        require(success, "Phase 0: addApprovedPremiumToken failed");
+        console.log("[OK] Payout token added as approved premium token on PremiumManager");
     }
 
     // ═══════════════════════════════════════════
@@ -356,8 +379,6 @@ contract CompleteCoverageFlow is Script {
             return;
         }
 
-        // CoveredVaultWrapper accrues premiums internally via its own accumulator.
-        // collectPremium() can be called by anyone to flush pending premium to PremiumManager.
         console.log("[INFO] CoveredVaultWrapper accrues premiums internally.");
         console.log("[INFO] Call collectPremium() on the vault to distribute accrued premium.");
 
@@ -383,8 +404,6 @@ contract CompleteCoverageFlow is Script {
         console.log("Platform fee BPS:", platformFee);
         console.log("Pool fee BPS:", poolFee);
 
-        // CoveredVaultWrapper.collectPremium() is permissionless — anyone can call it.
-        // It flushes accrued premium to PremiumManager and calls distributePremium() directly.
         vm.startBroadcast(curatorPrivateKey);
         (bool success,) = coveredVault.call(abi.encodeWithSignature("collectPremium()"));
         vm.stopBroadcast();
@@ -560,6 +579,18 @@ contract CompleteCoverageFlow is Script {
     }
 
     // ═══════════════════════════════════════════
+    //  Extension Hook
+    // ═══════════════════════════════════════════
+
+    /**
+     * @notice Called between vault auto-discovery and Phase 4 (policy binding).
+     * @dev Override in subclasses to inject pre-binding setup, such as funding vaults
+     *      with EigenLayer stake for fork testing (see ForkCompleteCoverageFlow).
+     *      No-op by default so the base script works on any live network.
+     */
+    function _beforePhase4() internal virtual {}
+
+    // ═══════════════════════════════════════════
     //  Phase 1b: Release Operator from Prior Committee
     // ═══════════════════════════════════════════
 
@@ -592,6 +623,46 @@ contract CompleteCoverageFlow is Script {
 
         console.log("[OK] Operator released from committee", currentCommitteeId);
         emit FlowCompleted("Release Operator", 15);
+    }
+
+    // ═══════════════════════════════════════════
+    //  Vault Auto-Discovery
+    // ═══════════════════════════════════════════
+
+    /**
+     * @notice Populates `vaults` from SSPRouter when VAULTS env var was not set.
+     * @dev DurationVaultStrategies are deployed dynamically during `requestCoverage` ->
+     *      `StakeManager.createCommittee` -> `SSPRouter.createCommittee`. Their addresses
+     *      are only available after Phase 2. SSPRouter.getVaultsByModule(EIGENLAYER=2)
+     *      returns ALL strategies registered for the EigenLayer module.
+     *
+     *      On a fresh fork this is exactly one vault (one ACCEPTABLE_TOKEN = one vault).
+     *      On shared or reused networks (e.g. Sepolia across multiple runs) the list may
+     *      include vaults from prior committees; set VAULTS explicitly in that case.
+     *
+     *      Uses low-level staticcalls to avoid importing Core interfaces.
+     */
+    function _discoverVaultsIfNeeded() internal {
+        if (vaults.length > 0) {
+            return;
+        }
+
+        console.log("\n=== VAULT AUTO-DISCOVERY ===");
+
+        (bool ok1, bytes memory d) = stakeManager.staticcall(abi.encodeWithSignature("router()"));
+        require(ok1 && d.length >= 32, "Vault discovery: StakeManager.router() call failed");
+        address router = abi.decode(d, (address));
+        console.log("SSPRouter:", router);
+
+        (bool ok2, bytes memory d2) = router.staticcall(abi.encodeWithSignature("getVaultsByModule(uint8)", uint8(2)));
+        require(ok2, "Vault discovery: SSPRouter.getVaultsByModule() call failed");
+        vaults = abi.decode(d2, (address[]));
+
+        console.log("Auto-discovered", vaults.length, "vault(s) from SSPRouter");
+        for (uint256 i = 0; i < vaults.length; i++) {
+            console.log("  Vault", i, ":", vaults[i]);
+        }
+        require(vaults.length > 0, "Vault auto-discovery: no EigenLayer vaults found in SSPRouter");
     }
 
     // ═══════════════════════════════════════════
@@ -655,10 +726,12 @@ contract CompleteCoverageFlow is Script {
     function _loadPolicyBindingParams() internal {
         specAddress = vm.envAddress("SPEC_ADDRESS");
 
-        string memory vaultsStr = vm.envString("VAULTS");
-        string[] memory vaultAddresses = vm.split(vaultsStr, ",");
-        for (uint256 i = 0; i < vaultAddresses.length; i++) {
-            vaults.push(vm.parseAddress(vaultAddresses[i]));
+        string memory vaultsStr = vm.envOr("VAULTS", string(""));
+        if (bytes(vaultsStr).length > 0) {
+            string[] memory vaultAddresses = vm.split(vaultsStr, ",");
+            for (uint256 i = 0; i < vaultAddresses.length; i++) {
+                vaults.push(vm.parseAddress(vaultAddresses[i]));
+            }
         }
 
         coverageLimit = vm.envUint("COVERAGE_LIMIT");
