@@ -139,6 +139,8 @@ abstract contract Deploy is CreateXDeployer {
         RoleConfig memory roles = _loadRoleConfig(deployer);
         ExternalConfig memory external_ = _loadAndValidateExternalConfig();
 
+        _ensureCreateX();
+
         vm.startBroadcast(deployer);
 
         contracts = _deployAllContracts(roles, external_);

@@ -24,6 +24,19 @@ abstract contract CreateXDeployer is Script {
     ICreateX internal constant CREATEX = ICreateX(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
 
     /**
+     * @notice Ensures CreateX bytecode exists at the canonical address.
+     * @dev On public chains (testnets, mainnet) CreateX is already deployed — this is a no-op.
+     *      On local Anvil chains, this etches the CreateX runtime bytecode at the canonical address.
+     *      Must be called BEFORE vm.startBroadcast() so the cheatcode applies to the local state.
+     *      When using --broadcast against Anvil, also call _ensureCreateXOnChain() after startBroadcast.
+     */
+    function _ensureCreateX() internal {
+        if (address(CREATEX).code.length > 0) return;
+        bytes memory code = vm.parseBytes(vm.readFile("script/createx-bytecode.txt"));
+        vm.etch(address(CREATEX), code);
+    }
+
+    /**
      * @notice Builds a deterministic, deployer-permissioned salt for CREATE3.
      * @param deployer Address that will call CreateX (embedded in bytes 0-19 for frontrun protection).
      * @param contractName Human-readable name (e.g. "SwapperProxy") — hashed for entropy bytes.

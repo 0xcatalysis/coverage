@@ -16,6 +16,7 @@ gas_reports = ["*"]
 fs_permissions = [
     { access = "read", path = "./broadcast" },
     { access = "read", path = "./out" },
+    { access = "read", path = "./script" },
 ]
 allow_paths = ["docs", "lib", "script", "src", "test"]
 ffi = true
