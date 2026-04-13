@@ -74,12 +74,22 @@ abstract contract CreateXDeployer is Script {
     /**
      * @notice Precomputes the deterministic proxy address without deploying.
      * @dev Useful for off-chain tooling, CI/CD, and pre-deployment address verification.
+     *
+     *      CreateX's deployCreate3 guards the raw salt before using it in CREATE2:
+     *        guardedSalt = keccak256(abi.encodePacked(bytes32(uint256(uint160(deployer))), rawSalt))
+     *      This guard applies when bytes 0-19 of the salt equal msg.sender (deployer) and byte 20 = 0x00.
+     *      computeCreate3Address expects the already-guarded salt, so we must apply the same
+     *      transformation here to get an address that matches what deployCreate3 actually produces.
+     *
      * @param deployer Address that will call CreateX.
      * @param contractName Salt name (must match what _deployProxy3 will use).
      * @return The deterministic proxy address.
      */
     function _computeProxyAddress(address deployer, string memory contractName) internal pure returns (address) {
-        bytes32 salt = _computeSalt(deployer, contractName);
-        return CREATEX.computeCreate3Address(salt, address(CREATEX));
+        bytes32 rawSalt = _computeSalt(deployer, contractName);
+        // Apply CreateX's _guard transformation for permissioned salts (bytes 0-19 = deployer, byte 20 = 0x00):
+        //   guardedSalt = keccak256(abi.encodePacked(bytes32(uint256(uint160(deployer))), rawSalt))
+        bytes32 guardedSalt = keccak256(abi.encodePacked(bytes32(uint256(uint160(deployer))), rawSalt));
+        return CREATEX.computeCreate3Address(guardedSalt, address(CREATEX));
     }
 }
