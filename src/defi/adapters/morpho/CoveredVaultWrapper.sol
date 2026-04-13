@@ -261,7 +261,7 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
     ///      intentionally excluded — an emergency exit waives insurance coverage, which is a
     ///      unilateral decision that only the position owner should be able to make.
     // slither-disable-next-line reentrancy-events
-    function emergencyRedeem(uint256 shares, address receiver, address owner) external returns (uint256) {
+    function emergencyRedeem(uint256 shares, address receiver, address owner) external override returns (uint256) {
         require(msg.sender == owner, NotAuthorized());
         _tstore(SKIP_INSURANCE_SLOT, 1);
         super.redeem(shares, receiver, owner);
@@ -279,7 +279,15 @@ contract CoveredVaultWrapper is CoveredVaultAdmin, IBindPolicyHook {
     ///      nonReentrant transitively applied via inner _withdraw().
     ///      IMPORTANT: Only callable by the share owner. See emergencyRedeem NatSpec for rationale.
     // slither-disable-next-line reentrancy-events
-    function emergencyWithdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares) {
+    function emergencyWithdraw(
+        uint256 assets,
+        address receiver,
+        address owner
+    )
+        external
+        override
+        returns (uint256 shares)
+    {
         require(msg.sender == owner, NotAuthorized());
         _tstore(SKIP_INSURANCE_SLOT, 1);
         shares = super.withdraw(assets, receiver, owner);

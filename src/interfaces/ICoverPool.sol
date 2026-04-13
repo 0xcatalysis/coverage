@@ -284,7 +284,7 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
 
     /**
      * @notice Sets or clears the premium default flag for a policy bound to this pool.
-     * @dev Only callable by the pool curator.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
      * @param policyId Identifier of the policy to update.
      * @param defaulted True to mark the policy as in premium default, false to clear.
      */
