@@ -189,8 +189,8 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Initializes the CoverPool clone with roles and quoting configuration.
      * @param curator_ Address assigned as the owner (curator). Serves as the operator for the pool.
-     * @param policyManager_ Address of the PolicyManager contract for policy binding operations.
      * @param quoteSigner_ Address granted QUOTE_SIGNER_ROLE.
+     * @param policyManager_ Address of the PolicyManager contract for policy binding operations.
      * @param stakeManager_ Address of the StakeManager contract for vault binding operations.
      * @param specRegistry_ Address of the SpecRegistry contract for spec registration.
      * @param poolFeeBps_ Pool fee expressed in basis points and capped by protocol limits.
@@ -242,9 +242,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
      * @dev Binds vaults, fetches draft from PolicyManager, and forwards binding request.
      * @param policyId Policy draft identifier from PolicyManager.
      * @param quote Quote struct signed by an authorized quote signer.
-     * @param signature EIP-712 signature authorizing the quote.
-     * @param vaults Vault addresses to bind to the committee.
      * @param spec ISpec implementation contract address for quote.specId registration.
+     * @param vaults Vault addresses to bind to the committee.
+     * @param signature EIP-712 signature authorizing the quote.
      */
     function bindPolicyForRequest(
         uint96 policyId,
