@@ -50,10 +50,10 @@ graph LR
 **Key functions:**
 
 - `createCoverPool(params)` creates and initializes a pool clone, grants curator ownership.
-- `computeCoverPoolAddress(params)` predicts deterministic clone address. The salt includes the factory's current `policyManager` address, so predictions change if `setPolicyManager` is called.
+- `computeCoverPoolAddress(params)` predicts deterministic clone address. The salt combines all `CreateCoverPoolParams` fields with the factory's current `policyManager` address, so predictions change if `setPolicyManager` is called.
 - `coverPoolExists(pool)` validates whether a pool is factory-created.
 - `getCoverPools(offset, limit)`, `totalCoverPools()`, `coverPoolAt(index)` — pagination helpers over the internal pool set.
-- `setCoverPoolImplementation`, `setPolicyManager`, `setStakeManager`, `setSpecRegistry` — admin setters for wired dependencies (`DEFAULT_ADMIN_ROLE`).
+- `setCoverPoolImplementation`, `setPolicyManager`, `setStakeManager`, `setSpecRegistry` — dependency setters (`CREATOR_ROLE`).
 - `pause` / `unpause` — emergency halt via `DEFAULT_ADMIN_ROLE` (not `CREATOR_ROLE`).
 
 Note: On EigenLayer, duration vaults act as operators and are auto-deployed during committee creation.
@@ -179,7 +179,7 @@ Note: `PolicyManager` stores a `claimManager` address for reference but does **n
 - `approveNextClaim(policyId)` — curator clears the per-policy approval gate between successive claims.
 - `claimApprovalRequired(policyId)` / `remainingCoverage(policyId)` / `claimRecord(policyId, claimId)` — views.
 - `recoverTokens(token, to, amount)` — admin utility to recover tokens left by failed surplus distributions.
-- `setMaxSwapSlippageBps`, `setSpecRegistry`, `setSlashingManager`, `setSwapper`, `setPremiumManager` — admin dependency setters.
+- `setMaxSwapSlippageBps`, `setSpecRegistry`, `setSlashingManager`, `setSwapper`, `setPolicyManager`, `setPremiumManager` — admin dependency setters.
 - `pause` / `unpause` — emergency halt via `DEFAULT_ADMIN_ROLE`.
 - `receive()` — accepts native ETH for native-token payout flows.
 
