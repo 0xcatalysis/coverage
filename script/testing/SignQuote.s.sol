@@ -48,7 +48,6 @@ contract SignQuote is Script {
     function run() external view {
         address quoteSigner = vm.envAddress("QUOTE_SIGNER_ADDRESS");
         address coverPool = vm.envAddress("COVER_POOL");
-        address policyManagerAddr = vm.envAddress("POLICY_MANAGER");
         uint96 policyId = uint96(vm.envUint("POLICY_ID"));
         uint256 coverageLimit = vm.envUint("COVERAGE_LIMIT");
         bytes32 specId = vm.envBytes32("SPEC_ID");
@@ -56,8 +55,7 @@ contract SignQuote is Script {
         uint32 expirationTime = uint32(vm.envUint("EXPIRATION_TIME"));
 
         // Fetch beneficiary from the on-chain policy draft — must match what BindPolicy will use.
-        IPolicyManager.PolicyDraft memory draft = IPolicyManager(policyManagerAddr).getPolicyDraft(policyId);
-        address beneficiary = draft.beneficiary;
+        address beneficiary = IPolicyManager(vm.envAddress("POLICY_MANAGER")).getPolicyDraft(policyId).beneficiary;
 
         console.log("=== QUOTE SIGNING ===");
         console.log("Quote signer:    ", quoteSigner);
@@ -69,32 +67,16 @@ contract SignQuote is Script {
         console.log("Terms hash:      ", vm.toString(termsHash));
         console.log("Expiration time: ", expirationTime);
 
-        ICoverPool.Quote memory quote = ICoverPool.Quote({
-            pool: coverPool,
-            policyId: policyId,
-            coverageLimit: coverageLimit,
-            specId: specId,
-            termsHash: termsHash,
-            beneficiary: beneficiary,
-            expirationTime: expirationTime
-        });
-
-        bytes32 domainSeparator = ICoverPool(coverPool).quoteDomainSeparator();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                _QUOTE_TYPEHASH,
-                quote.pool,
-                quote.policyId,
-                quote.coverageLimit,
-                quote.specId,
-                quote.termsHash,
-                quote.beneficiary,
-                quote.expirationTime
-            )
-        );
-
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        // Scope intermediate variables so they are freed before vm.sign, avoiding stack-too-deep.
+        bytes32 digest;
+        {
+            bytes32 structHash = keccak256(
+                abi.encode(
+                    _QUOTE_TYPEHASH, coverPool, policyId, coverageLimit, specId, termsHash, beneficiary, expirationTime
+                )
+            );
+            digest = keccak256(abi.encodePacked("\x19\x01", ICoverPool(coverPool).quoteDomainSeparator(), structHash));
+        }
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(quoteSigner, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
