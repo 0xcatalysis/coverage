@@ -977,7 +977,9 @@ contract PremiumManagerTest is Test {
                             DISTRIBUTE SURPLUS AS REWARDS
     //////////////////////////////////////////////////////////////*/
 
-    event RewardsForwarded(uint96 indexed policyId, address indexed curator, address indexed token, uint256 amount);
+    event SurplusAsRewardsDistributed(
+        uint96 indexed policyId, address indexed curator, address indexed token, uint256 amount
+    );
 
     function _grantClaimManagerRole(address caller) internal {
         bytes32 role = premiumManager.CLAIM_MANAGER_ROLE();
@@ -1082,7 +1084,7 @@ contract PremiumManagerTest is Test {
         assertEq(address(call.rewardToken), address(premiumToken), "token forwarded correctly");
     }
 
-    function test_distributeSurplusAsRewards_WhenValid_EmitsRewardsForwardedEvent() public {
+    function test_distributeSurplusAsRewards_WhenValid_EmitsSurplusAsRewardsDistributedEvent() public {
         uint256 amount = 50 ether;
         bytes32 taskId = keccak256("taskId-event");
         _grantClaimManagerRole(premiumCollector);
@@ -1092,7 +1094,7 @@ contract PremiumManagerTest is Test {
         premiumToken.approve(address(premiumManager), amount);
 
         vm.expectEmit(true, true, true, true, address(premiumManager));
-        emit RewardsForwarded(POLICY_ID, curator, address(premiumToken), amount);
+        emit SurplusAsRewardsDistributed(POLICY_ID, curator, address(premiumToken), amount);
 
         vm.prank(premiumCollector);
         premiumManager.distributeSurplusAsRewards(POLICY_ID, curator, amount, IERC20(address(premiumToken)), taskId);

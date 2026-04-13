@@ -64,7 +64,9 @@ interface IPremiumManager is IAccessControl {
      * @param token ERC20 token forwarded as rewards.
      * @param amount Amount forwarded.
      */
-    event RewardsForwarded(uint96 indexed policyId, address indexed curator, address indexed token, uint256 amount);
+    event SurplusAsRewardsDistributed(
+        uint96 indexed policyId, address indexed curator, address indexed token, uint256 amount
+    );
 
     /**
      * @notice Reverts when a zero address is provided where not allowed.

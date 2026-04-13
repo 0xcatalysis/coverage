@@ -247,7 +247,7 @@ contract PremiumManager is
         IRewardsManager(rewardsManager).distributeRewards(policyId, curator, amount, token, taskId);
         token.forceApprove(rewardsManager, 0);
 
-        emit RewardsForwarded(policyId, curator, address(token), amount);
+        emit SurplusAsRewardsDistributed(policyId, curator, address(token), amount);
     }
 
     /**
