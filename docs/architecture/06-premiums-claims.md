@@ -11,7 +11,7 @@ Premiums and claims both use the same policy/committee identity (`policyId`).
 
 Policy actor note:
 
-- In this architecture, the policy `buyer` is expected to be the `CoveredVaultWrapper` or its operator contract.
+- In this architecture, the policy `buyer` is the wrapper **owner** (EOA or multisig) — the `msg.sender` of `PolicyManager.requestCoverage`. The `CoveredVaultWrapper` contract itself is the `claimer` and `beneficiary`, but **not** the `buyer`. `CoveredVaultWrapper._validatePolicyBinding` enforces `pol.buyer == owner()` and reverts if it does not match.
 
 ## CoveredVaultWrapper Integration Context
 
@@ -32,10 +32,10 @@ sequenceDiagram
 
     User->>CVW: approve + deposit(assets, receiver)
     CVW->>CVW: _accruePremium() — checkpoint premium accumulator
-    CVW->>CVW: record userPrincipal[receiver] += assets
     CVW->>MV: deposit(assets)
     MV-->>CVW: Morpho shares
     CVW-->>User: mint CoveredVaultWrapper shares
+    CVW->>CVW: record userPrincipal[receiver] += assets
 ```
 
 Accounting details:
@@ -47,7 +47,7 @@ Accounting details:
 
 ### Components
 
-- `CoveredVaultWrapper` - accrues premiums internally; exposes `collectPremium()` as a permissionless flush.
+- `CoveredVaultWrapper` - accrues premiums internally; exposes `collectPremium()` as a permissionless flush. When `policyId != 0` (normal bound policy path), it approves `PremiumManager` and calls `distributePremium`. When `policyId == 0` (e.g. after `resetPolicyBinding()`), it falls back to a direct `safeTransfer` to `premiumRecipient`. In practice, premium cannot accrue without a bound policy, so the fallback path is a defensive belt-and-suspenders guard.
 - `PremiumManager` - fee splitting and reward routing.
 - `CoverPool` - source of pool fee settings and fee recipient.
 - Core `RewardsManager` - downstream restaker reward distribution.
@@ -75,8 +75,10 @@ sequenceDiagram
     PRM->>PRM: compute fee splits (retain restaker share in PRM)
     PRM->>Treasury: platform fee
     PRM->>PoolRecipient: pool fee
+    PRM->>PRM: forceApprove(rewardsManager, restakerSplit)
     PRM->>RM: distributeRewards(policyId, curator, restakerSplit, token, taskId)
     RM->>PRM: safeTransferFrom(premiumManager, rewardsManager, restakerShare)
+    PRM->>PRM: forceApprove(rewardsManager, 0)
     RM->>SSP: distributeRewards(..., tokenSource=rewardsManager)
     SSP->>RM: safeTransferFrom(rewardsManager, adapter, restakerShare)
 ```
@@ -100,8 +102,8 @@ Guardrails:
 
 - `ClaimManager` - claim intake, evaluation, and settlement.
 - `SpecRegistry` + `ISpec` - payability decision logic. Only admin-approved `ISpec` implementations
-  can be registered; once registered, a spec remains resolvable for existing policies regardless of
-  subsequent revocation.
+  can be registered. Resolution via `resolveSpec` is also gated by approval — if a spec is revoked,
+  claim resolution for any `(pool, specId)` pair using that address is blocked until the spec is re-approved.
 - Core `SlashingManager` - committee slashing execution (token-native amounts, no USD conversion).
 - `Swapper` + `quoteSwap` - collateral token conversion and slippage-adjusted minimum output.
 
@@ -161,9 +163,10 @@ sequenceDiagram
 
     User->>CVW: redeem/withdraw
     CVW->>CVW: _accruePremium() + compute userPrincipalForWithdrawal
-    CVW->>MV: redeem(shares)
+    CVW->>CVW: burn shares + update userPrincipal/debt
+    CVW->>MV: redeem(morphoShares)
     MV-->>CVW: assetsReceived
-    CVW->>CVW: insuredBasis = principal - premiumForWithdrawal
+    CVW->>CVW: insuredBasis = principalForWithdrawal - premiumForWithdrawal
     Note over CVW: netAssets >= insuredBasis → no shortfall
     CVW-->>User: transfer netAssets
 ```
@@ -179,9 +182,10 @@ sequenceDiagram
 
     User->>CVW: redeem/withdraw
     CVW->>CVW: _accruePremium() + compute userPrincipalForWithdrawal
-    CVW->>MV: redeem(shares)
+    CVW->>CVW: burn shares + update userPrincipal/debt
+    CVW->>MV: redeem(morphoShares)
     MV-->>CVW: assetsReceived
-    CVW->>CVW: insuredBasis = principal - premiumForWithdrawal
+    CVW->>CVW: insuredBasis = principalForWithdrawal - premiumForWithdrawal
     CVW->>CVW: shortfall = insuredBasis - netAssets > 0
     CVW->>CVW: _capAndApplyDeductible(shortfall, insuredBasis)
     CVW->>CM: fileClaim(policyId, claimAmount, evidenceHash, data)
@@ -189,7 +193,11 @@ sequenceDiagram
     CVW-->>User: transfer netAssets + payout
 ```
 
-Note: `ClaimManager.fileClaim(...)` performs file + resolve atomically. `payoutToken` is set to the Morpho vault's underlying token.
+Note: `ClaimManager.fileClaim(...)` performs file + resolve atomically. `payoutToken` is set to the Morpho vault's underlying token. Share burning and principal/debt updates happen **before** the Morpho redeem call in `_executeWithdrawal`.
+
+### Emergency Exit (Insurance Waived)
+
+Users may call `emergencyRedeem` or `emergencyWithdraw` to exit without triggering the claim path. A transient flag (`SKIP_INSURANCE_SLOT`) causes `_computeInsurance` to return 0, bypassing `ClaimManager.fileClaim` even when a shortfall exists. The user explicitly waives insurance for that exit and receives only the Morpho vault proceeds.
 
 ## Coverage and Payout Controls
 
@@ -234,13 +242,17 @@ digest (`keccak256` of the CID multihash bytes), to enable off-chain verificatio
 In `_processCollateral(...)`:
 
 - If collateral already equals payout token:
-  - transfer directly up to `remainingPayout`; any surplus is forwarded to `RewardsManager` via `PremiumManager.distributeSurplusAsRewards`.
+  - transfer directly up to `remainingPayout`; any surplus is forwarded to `RewardsManager` via `PremiumManager.distributeSurplusAsRewards` (skipped for native ETH surplus or if `premiumManager` is unset).
 - Else (cross-token):
   - `_computeAmountOutMin` calls `Swapper.quoteSwap(tokenIn, tokenOut, amountIn)` and applies `maxSwapSlippageBps` to get a slippage-adjusted minimum output,
   - approve `Swapper` for `collateralAmount`,
   - call `Swapper.executeSwap(params)` with the computed `amountOutMin`,
-  - cap delivered amount to `remainingPayout`; any surplus swap output is forwarded to `RewardsManager` via `PremiumManager.distributeSurplusAsRewards`,
+  - cap delivered amount to `remainingPayout`; any surplus swap output is forwarded to `RewardsManager` via `PremiumManager.distributeSurplusAsRewards` (skipped for native ETH payout or if `premiumManager` is unset),
   - clear residual approval.
+
+Surplus distribution is wrapped in a `try`/`catch`. If it fails, a `SwapSurplusDistributionFailed` event is emitted and the surplus tokens remain in `ClaimManager` for recovery via `recoverTokens`.
+
+The `CollateralSwapped` event is emitted for **every** processed collateral leg, including same-token direct transfers — not only for cross-token swaps. Monitor it to track all claim settlement activity.
 
 Vault slashes are pre-inflated in `_computeVaultSlashes` (by `1 / (1 - maxSwapSlippageBps)` for cross-token vaults) so that worst-case slippage still yields the full `requestedAmount` to the beneficiary.
 
@@ -290,13 +302,13 @@ target is whitelisted. It reverts before broadcasting if any route is missing.
 ### Runtime Risks
 
 - If Core slashing returns no collateral, payout path reverts.
-- If `Swapper.quoteSwap` reverts or returns zero for a cross-token vault, that vault is excluded from slashing (`VaultExcludedFromSlashing` event emitted).
+- If `Swapper.quoteSwap` reverts or returns zero for a cross-token vault, or if the computed proportional slash rounds to zero after slippage inflation, that vault is excluded from slashing (`VaultExcludedFromSlashing` event emitted).
 - Claim timing outside coverage window always reverts.
 
 ### Operational Controls
 
 - Keep claim swap routes and whitelisted targets maintained ahead of incidents.
-- Monitor `PremiumDistributed`, `ClaimFiled`, `ClaimApproved`, `ClaimRejected`, `CollateralSwapped`.
+- Monitor `PremiumDistributed`, `ClaimFiled`, `ClaimApproved`, `ClaimRejected`, `CollateralSwapped` (fires for every collateral leg, including same-token transfers), `VaultExcludedFromSlashing`, `SwapSurplusDistributionFailed`.
 - Validate policy-to-vault mappings before policy activation.
 
 ## Migration Flow (Base Vault -> Covered Vault)
@@ -322,4 +334,4 @@ The scripts in `script/testing/` map directly to this document:
 
 - [System Overview](./01-system-overview.md)
 - [Policy Lifecycle](./05-policy-lifecycle.md)
-- [CoveredVaultWrapper Accounting](../COVERED_VAULT_ACCOUNTING.md)
+- [CoveredVaultWrapper Accounting](./07-covered-vault-accounting.md)

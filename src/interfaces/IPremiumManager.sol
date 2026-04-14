@@ -90,7 +90,7 @@ interface IPremiumManager is IAccessControl {
     error InvalidPolicyId();
 
     /**
-     * @notice Reverts when combined platform and pool fees exceed 100%.
+     * @notice Reverts when combined platform and pool fees exceed 50% (5000 bps).
      * @param platformFeeBps Platform fee in basis points.
      * @param poolFeeBps Pool fee in basis points.
      * @param totalFeeBps Sum of both fees.

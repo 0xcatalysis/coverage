@@ -182,4 +182,30 @@ interface ICoveredVaultWrapper is IERC4626 {
 
     /// @notice Rescues tokens accidentally sent to this contract
     function rescueTokens(address token, uint256 amount, address to) external;
+
+    /// @notice Emergency exit: redeem shares without filing an insurance claim.
+    /// @dev Use when ClaimManager is unavailable or the user chooses to waive coverage for an immediate exit.
+    ///      All other accounting (premium deduction, Morpho redemption) proceeds normally.
+    ///      The user explicitly acknowledges they will NOT receive any insurance payout.
+    ///      NOTE: Does NOT bypass the Morpho gate — if Morpho blocks redemptions this will also revert.
+    ///      IMPORTANT: Only callable by the share owner (`msg.sender == owner`). Allowance-based
+    ///      third-party callers are intentionally excluded.
+    /// @param shares Number of vault shares to redeem.
+    /// @param receiver Address to receive the redeemed assets.
+    /// @param owner Address of the share owner.
+    /// @return assetsOut Amount of underlying assets received by receiver.
+    function emergencyRedeem(uint256 shares, address receiver, address owner) external returns (uint256 assetsOut);
+
+    /// @notice Emergency exit: withdraw assets without filing an insurance claim.
+    /// @dev Use when ClaimManager is unavailable or the user chooses to waive coverage for an immediate exit.
+    ///      All other accounting (premium deduction, Morpho redemption) proceeds normally.
+    ///      The user explicitly acknowledges they will NOT receive any insurance payout.
+    ///      NOTE: Does NOT bypass the Morpho gate — see emergencyRedeem NatSpec.
+    ///      IMPORTANT: Only callable by the share owner (`msg.sender == owner`). Allowance-based
+    ///      third-party callers are intentionally excluded.
+    /// @param assets Amount of underlying assets to withdraw.
+    /// @param receiver Address to receive the withdrawn assets.
+    /// @param owner Address of the share owner.
+    /// @return shares Number of vault shares burned.
+    function emergencyWithdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares);
 }

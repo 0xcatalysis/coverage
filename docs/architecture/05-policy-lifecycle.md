@@ -32,11 +32,11 @@ stateDiagram-v2
 
 ## Phase 1: Request Coverage
 
-Entry: Covered vault (or its agent, recorded as `buyer`) calls `PolicyManager.requestCoverage(...)`.
+Entry: The wrapper owner (EOA/multisig) calls `PolicyManager.requestCoverage(...)` as `msg.sender`; this address is recorded as `buyer`.
 
 Recommended tuple for the `CoveredVaultWrapper` integration:
 
-- `buyer`: `CoveredVaultWrapper`,
+- `buyer`: wrapper **owner** (EOA/multisig). `CoveredVaultWrapper._validatePolicyBinding` enforces `pol.buyer == owner()` and reverts otherwise.
 - `claimer`: `CoveredVaultWrapper` (files claims atomically on withdrawal shortfall),
 - `beneficiary`: `CoveredVaultWrapper` (receives payout and tops up user exit),
 - `bindPolicyHook`: `CoveredVaultWrapper` (receives `onPolicyBound` callback to store `policyId` and set deposit cap).
@@ -45,8 +45,11 @@ Checks:
 
 - pool is factory-registered,
 - non-zero beneficiary/claimer/payout token,
-- non-zero coverage amount and duration,
-- hook address supports `IBindPolicyHook`.
+- payout token is on the supported whitelist,
+- non-zero duration,
+- hook address is non-zero and supports `IBindPolicyHook`.
+
+Note: coverage amount (`coverageLimit`) is **not** validated at request time; it appears in the signed quote and is enforced at bind time via `PolicyManager.bindPolicy`.
 
 Effects:
 
@@ -57,12 +60,12 @@ Effects:
 
 ## Phase 2: Optional Draft Cancellation
 
-Entry: The requesting covered vault/buyer calls `cancelPolicyDraft(policyId)`.
+Entry: The `buyer` (wrapper owner who called `requestCoverage`) calls `cancelPolicyDraft(policyId)`.
 
 Checks:
 
 - draft exists and is `Created`,
-- caller is draft buyer (the requesting covered vault/adapter).
+- caller is draft `buyer`.
 
 Effects:
 
@@ -82,7 +85,7 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 - draft status is `Created`,
 - quote pool and policy id match draft,
 - quote beneficiary matches draft beneficiary,
-- quote timing and expiration valid,
+- quote `expirationTime >= block.timestamp` (enforced by the `validateQuote` modifier in `CoverPool`),
 - quote signature valid under `QUOTE_SIGNER_ROLE`.
 
 ### 3.2 Core and Spec Registration
@@ -97,11 +100,13 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 `PolicyManager.bindPolicy(...)` validates:
 
 - caller is pool and pool is factory-registered,
-- request data matches draft values,
-- duration matches quote window,
+- request fields (`buyer`, `beneficiary`, `claimer`, `payoutToken`) match the stored draft,
+- `policyId` matches `quote.policyId`,
 - committee has at least one vault,
-   - committee total stake (USD) >= `coverageLimit` converted to USD via ChainlinkPriceFeed,
+- committee total stake (USD) >= `coverageLimit` (payoutToken-denominated) converted to USD via `ChainlinkPriceFeed.getUSDValue`,
 - policy commit is unique.
+
+Note: quote expiry and EIP-712 signature verification are performed exclusively in `CoverPool._verifyQuote`; `PolicyManager.bindPolicy` does not re-verify the signature even though the `BindPolicyRequest` struct carries the `signature` field.
 
 Then it:
 
@@ -154,6 +159,10 @@ Evaluation and resolution:
 
 - quote signature domain is pool-specific (`quoteDomainSeparator`),
 - policy commits are unique and cannot be re-registered.
+
+## Emergency Exit Path
+
+Users may call `CoveredVaultWrapper.emergencyRedeem` or `emergencyWithdraw` to exit without triggering the insurance claim path. These functions set an in-memory transient flag (`SKIP_INSURANCE_SLOT`) that causes `_computeInsurance` to return 0, bypassing `ClaimManager.fileClaim` even when a shortfall would otherwise exist. The user explicitly waives their insurance entitlement for that exit. This path is intended as an escape hatch when `ClaimManager` is temporarily unavailable or the user chooses to exit at a loss without waiting.
 
 ## Operational Checks for Integrators
 

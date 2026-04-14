@@ -11,8 +11,8 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @title CoveredVaultAccrual
-/// @notice Premium and expected-loss accrual engine for CoveredVaultWrapper.
-/// @dev Implements the reward-per-token accumulator pattern for both premium and expected loss.
+/// @notice Premium accrual engine for CoveredVaultWrapper.
+/// @dev Implements the reward-per-token accumulator pattern for premium accrual.
 ///      All time-windowing uses _activeElapsedFrom() as the single source of truth.
 abstract contract CoveredVaultAccrual is CoveredVaultStorage {
     using SafeERC20 for IERC20;

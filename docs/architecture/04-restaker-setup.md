@@ -64,8 +64,7 @@ The deposited amount must satisfy the coverage USD requirement. The USD value is
 stake_USD = totalShares * sharesToUnderlyingView() * ChainlinkPriceFeed.getUSDValue(token, 1e18) / 1e18
 ```
 
-Example: to cover `coverageAmount = 100_000_000_000` (1000 USD at 8 decimals), at least
-`$1000 / ETH_USD_PRICE` ETH worth of WETH must be deposited.
+Example: to cover a `coverageLimit` equivalent to 1000 USD (at 8 decimals: `100_000_000_000` payout-token units, given a 1:1 price), at least `$1000 / ETH_USD_PRICE` ETH worth of WETH must be deposited.
 
 ### Steps 2 & 3: Add Vaults and Bind Policy
 
@@ -97,14 +96,10 @@ After policy binding and premium collection, premiums are distributed as follows
 
 1. `CoveredVaultWrapper.collectPremium()` (permissionless) checkpoints the premium accumulator and calls `PremiumManager.distributePremium(...)`, approving PremiumManager to pull the pending amount first.
 2. `PremiumManager.distributePremium` pulls tokens via `safeTransferFrom` and splits the amount into platform fee, pool fee, and restaker share. Platform and pool fees are transferred immediately.
-3. `PremiumManager` calls `RewardsManager.distributeRewards(policyId, curator, restakerSplit, token, taskId)`.
-4. `RewardsManager` pulls the restaker share **from `PremiumManager` to itself** via
-   `token.safeTransferFrom(premiumManager, address(this), restakerSplit)`.
+3. `PremiumManager` grants `RewardsManager` an **ephemeral per-call allowance** via `forceApprove(rewardsManager, restakerSplit)`, then calls `RewardsManager.distributeRewards(policyId, curator, restakerSplit, token, taskId)`. After the call, the allowance is cleared with `forceApprove(rewardsManager, 0)`. No standing allowance or prior `approveSpender` call is required.
+4. `RewardsManager` pulls the restaker share **from `PremiumManager` to itself** via `token.safeTransferFrom(premiumManager, address(this), restakerSplit)`.
 5. `RewardsManager` calls `SSPRouter.distributeRewards(..., tokenSource=address(this))`.
 6. `SSPRouter` pulls tokens from `RewardsManager` and fans out to adapters.
-
-**Prerequisite**: admin must call `PremiumManager.approveSpender(token, rewardsManager, type(uint256).max)`
-once during initial setup so that `RewardsManager` has an unlimited allowance to pull the restaker share from `PremiumManager`.
 
 ## Vault Module Registration Prerequisite
 
@@ -189,12 +184,12 @@ Duration vault addresses are looked up at runtime via `StakeManager.getCommittee
 
 | Symptom | Root Cause | Fix |
 |---------|-----------|-----|
-| `InsufficientStake` at bind | `totalStakeUSD` < `coverageLimitUSD` in `PolicyManager.bindPolicy` | Deposit more collateral or reduce `COVERAGE_AMOUNT` |
+| `InsufficientStake` at bind | `totalStakeUSD` < `coverageLimitUSD` in `PolicyManager.bindPolicy` | Deposit more collateral or reduce `coverageLimit` in the quote |
 | `VaultModuleNotSet` at `setCommitteeVaults` | Duration vault not registered in `SSPRouter` | Core admin: `SSPRouter.registerVaultModule(vault, 2)` |
-| `PriceFeedNotFound` at bind or `fileClaim` | Token not registered in `ChainlinkPriceFeed` | Core admin: `registerPriceFeed(token, aggregator, stalenessThreshold)` |
+| `PriceFeedNotFound` at bind | Token not registered in `ChainlinkPriceFeed` (used only at bind time in `PolicyManager.bindPolicy`; not used during `fileClaim`) | Core admin: `registerPriceFeed(token, aggregator, stalenessThreshold)` |
 | `InvalidCommitteeId` | `policyId = 0` (not set from output of RequestCoverage) | Set `POLICY_ID` env var from `RequestCoverage.s.sol` output |
 | Stake reads 0 before bind | Vaults not yet added to committee (expected) | Stake = 0 until `bindPolicyForRequest` runs `setCommitteeVaults` |
-| `RewardsManager safeTransferFrom` reverts on distribution | PremiumManager has not approved RewardsManager | Admin: `PremiumManager.approveSpender(token, rewardsManager, type(uint256).max)` |
+| `RewardsManager safeTransferFrom` reverts on distribution | Unexpected: `PremiumManager` uses ephemeral `forceApprove` internally before each `distributeRewards` call — no admin allowance setup is required | Check that `rewardsManager` is correctly configured in `PremiumManager` |
 
 ## Related Pages
 

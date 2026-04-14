@@ -6,7 +6,10 @@ import {ICoverPool} from "./ICoverPool.sol";
 
 /**
  * @title IPolicyManager
- * @notice Interface for orchestrating policy bindings, premium settlement, and policy receipt minting.
+ * @notice Interface for managing policy drafts and bound policy metadata.
+ * @dev Orchestrates policy request, binding, and cancellation lifecycle. Premium collection is handled
+ *      by vault adapters (e.g. CoveredVaultWrapper) routing through PremiumManager. No NFT or receipt
+ *      is minted by this contract.
  */
 interface IPolicyManager is IAccessControl {
     /**
@@ -368,9 +371,10 @@ interface IPolicyManager is IAccessControl {
     function cancelPolicyDraft(uint96 policyId) external;
 
     /**
-     * @notice Binds a single-pool coverage policy by validating the quote, collecting premium,
-     *         and minting a soulbound policy receipt.
-     * @dev Only registered CoverPools may call this function.
+     * @notice Binds a single-pool coverage policy by validating stake sufficiency and storing canonical
+     *         policy metadata, then triggering the bind hook on the registered hook contract.
+     * @dev Only registered CoverPools may call this function. EIP-712 signature verification is performed
+     *      exclusively by CoverPool before this call; PolicyManager does not re-verify the signature.
      * @param request Struct containing all binding parameters and signed quote.
      * @param boundPolicy Bound policy metadata from the pool.
      */

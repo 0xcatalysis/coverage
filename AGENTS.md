@@ -14,15 +14,15 @@ Coverage contracts live in `src/`. Tests in `test/unit`, `test/fuzz`, and `test/
 |----------|---------|
 | `CoverPool.sol` | Curator-controlled pool for quote validation and policy binding; deployed as minimal proxy clones. |
 | `CoverPoolFactory.sol` | Creates CoverPool clones and assigns PolicyManager role to each new pool. |
-| `PolicyManager.sol` | Entrypoint for policy binding; coordinates premium collection and mints Policy NFTs. |
-| `PremiumManager.sol` | Collects premiums and distributes fees to curators and platform treasury. |
+| `PolicyManager.sol` | Entrypoint for policy request, binding, and cancellation lifecycle. |
+| `PremiumManager.sol` | Receives premiums from vault collectors and distributes fees to curators, platform treasury, and restakers. |
 | `ClaimManager.sol` | Processes parametric/discretionary claims; orchestrates slashing and payouts. |
 | `Swapper.sol` | Converts slashed collateral via configured swap routes. |
 | `SpecRegistry.sol` | Registry mapping `(pool, specId)` pairs to `ISpec` evaluation implementations. |
 
 ### Interfaces (`src/interfaces/`)
 
-Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus external Catalysis Core dependencies (`ISpecRegistry`, `ISlashingManager`, `IRewardsManager`, `IChainlinkPriceFeed`, `IStakeManager`).
+Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, `ISpecRegistry`, etc.) plus external Catalysis Core dependencies (`ISlashingManager`, `IRewardsManager`, `IChainlinkPriceFeed`, `IStakeManager`). Additional interfaces cover hook callbacks (`IBindPolicyHook`), swap adapter patterns (`IQuotableAdapter`, `IQuoterV2`), evaluation logic (`ISpec`), and token wrappers (`IWETH`).
 
 ### Swappers (`src/swappers/`)
 
@@ -34,7 +34,7 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus 
 
 | Contract | Purpose |
 |----------|---------|
-| `adapters/morpho/CoveredVaultWrapper.sol` | UUPS ERC-4626 vault wrapping a Morpho V2 vault. Accrues premiums against depositor principal, files claims on withdrawal if NAV has fallen. Shares are non-transferable. |
+| `adapters/morpho/CoveredVaultWrapper.sol` | UUPS ERC-4626 vault wrapping a Morpho V2 vault. Accrues premiums against depositor principal, files claims on withdrawal if NAV has fallen. Shares are non-transferable. Composed of `CoveredVaultAccrual`, `CoveredVaultAdmin`, and `CoveredVaultStorage` modules. |
 | `base/BasePolicyInteractions.sol` | Shared base for filing and resolving claims against a bound Catalysis policy. |
 
 ### Mock Contracts (`src/mocks/`)
@@ -43,12 +43,14 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus 
 |------|---------|
 | `MockSpec.sol` | Configurable claim evaluation logic; auto-approves by default. |
 | `MockSpecRegistry.sol` | Registry mapping pools to Spec implementations; supports default fallback. |
+| `MockBindPolicyHook.sol` | No-op `IBindPolicyHook` implementation for fork testing. |
 
 ### Test Structure
 
 - `test/unit/*.t.sol` – unit tests for each contract
 - `test/fuzz/*.t.sol` – stateless fuzz tests
 - `test/invariant/*.t.sol` – stateful invariant tests
+- `test/defi/` – `CoveredVaultWrapper` tests (unit, fuzz, precision, scenarios, fork) plus test helpers and mocks
 
 ### Deployment Scripts (`script/`)
 
@@ -58,7 +60,7 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus 
 - `DeploySepolia.s.sol` – Sepolia deployment
 - `DeployEthereum.s.sol` – mainnet deployment
 
-**UUPS Upgrades** (shared base + Sepolia variant for each; CoverPoolFactory also has an Ethereum variant):
+**UUPS Upgrades** (shared base `UpgradeBase.s.sol` + contract-specific base + Sepolia variant for each; CoverPoolFactory also has an Ethereum variant):
 - `UpgradeCoverPoolFactory.s.sol`, `UpgradePolicyManager.s.sol`, `UpgradePremiumManager.s.sol`
 - `UpgradeClaimManager.s.sol`, `UpgradeSwapper.s.sol`, `UpgradeSpecRegistry.s.sol`
 
@@ -88,7 +90,7 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus 
 
 ## Build, Test, and Development Commands
 
-- `make setup` – install Foundry deps and add the `forge fmt --check` + `test-unit` pre-commit hook.
+- `make setup` – add the `format-check` + `lint` + `test-unit` pre-commit hook.
 - `make build` / `make build-prod` – compile with the default or production optimizer profile.
 - `make test`, `make test-unit`, `make test-fuzz`, `make test-invariant` – targeted suites (`-vvv --fail-fast`).
 - `make test-ci` – full suite with CI profile (higher fuzz/invariant runs).
@@ -97,6 +99,7 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, etc.) plus 
 - `make lint` – run `forge lint` with configured exclusions.
 - `make docs` – regenerate NatSpec documentation into `docs/`.
 - `make snapshot` / `make snapshot-check` – capture or verify gas baselines for regression tracking.
+- `make test-fork` – run the end-to-end coverage flow on a forked mainnet.
 - `make slither`, `make mythril` – optional static and symbolic analysis passes mirroring CI.
 - `make clean` – remove build artifacts, localhost broadcasts, and coverage files.
 - `make help` – list all available Makefile targets.

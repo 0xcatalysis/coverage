@@ -15,14 +15,14 @@ Coverage is the onchain risk coverage infrastructure for institutional DeFi. It 
 
 ### Core Contracts
 
-Seven contracts deployed as UUPS proxies, plus one implementation for pool cloning:
+Six contracts deployed as UUPS proxies, plus one implementation for pool cloning:
 
 | Contract | Description |
 |----------|-------------|
 | `CoverPool` | Curator-controlled pool handling quote validation and policy binding. Deployed as minimal proxy clones via `CoverPoolFactory`. |
 | `CoverPoolFactory` | Creates and registers `CoverPool` clones; assigns default `PolicyManager` role to each pool. |
-| `PolicyManager` | Entrypoint for policy binding; coordinates premium collection and mints Policy NFTs. |
-| `PremiumManager` | Collects premiums from policy buyers and routes fees to pool curators and the platform treasury. |
+| `PolicyManager` | Entrypoint for policy request, binding, and cancellation lifecycle. |
+| `PremiumManager` | Receives premiums from vault collectors and distributes fees to curators, platform treasury, and restakers. |
 | `ClaimManager` | Processes parametric and discretionary claims; orchestrates slashing and payout distribution. |
 | `Swapper` | Converts slashed collateral tokens via configured swap routes before payout. |
 | `SpecRegistry` | Registry mapping `(pool, specId)` pairs to `ISpec` evaluation implementations. |
@@ -51,7 +51,7 @@ A standalone ERC-4626 wrapper stack that provides automatic insurance coverage t
 | `CoveredVaultWrapper` | UUPS ERC-4626 vault wrapping a Morpho V2 vault. Accrues premiums continuously against depositor principal, files parametric insurance claims on withdrawal if NAV has fallen. Shares are non-transferable. |
 | `BasePolicyInteractions` | Shared base for filing and resolving claims against a bound Catalysis policy. |
 
-See [`docs/COVERED_VAULT_ACCOUNTING.md`](docs/COVERED_VAULT_ACCOUNTING.md) for the full accounting and liability model.
+See [`docs/architecture/07-covered-vault-accounting.md`](docs/architecture/07-covered-vault-accounting.md) for the full accounting and liability model.
 
 ### Mocks (`src/mocks/`)
 
@@ -59,6 +59,7 @@ See [`docs/COVERED_VAULT_ACCOUNTING.md`](docs/COVERED_VAULT_ACCOUNTING.md) for t
 |----------|-------------|
 | `MockSpec` | Configurable claim evaluation; auto-approves by default. Used for testnet deployments. |
 | `MockSpecRegistry` | Registry mapping pools to Spec implementations with a default fallback. |
+| `MockBindPolicyHook` | No-op `IBindPolicyHook` implementation for fork testing. |
 
 ## Quick Start
 
@@ -66,7 +67,7 @@ See [`docs/COVERED_VAULT_ACCOUNTING.md`](docs/COVERED_VAULT_ACCOUNTING.md) for t
 git clone https://github.com/0xcatalysis/coverage.git
 cd coverage
 
-make setup        # install Foundry deps and add pre-commit hooks
+make setup        # add pre-commit hooks (format-check + lint + test-unit)
 cp .env.example .env
 
 make build
@@ -76,15 +77,16 @@ make test
 ## Development
 
 ```bash
-make setup                  # install pre-commit hook (forge fmt --check + test-unit)
-make build                  # compile with default profile (200 optimizer runs)
-make build-prod             # compile with production profile (1000 optimizer runs, via-ir)
+make setup                  # add pre-commit hook (format-check + lint + test-unit)
+make build                  # compile with default profile
+make build-prod             # compile with production profile
 make test                   # unit + fuzz + invariant suites (-vvv --fail-fast)
 make test-unit              # unit tests only
 make test-fuzz              # fuzz tests only
 make test-invariant         # invariant tests only
 make test-ci                # full suite with CI profile (higher fuzz/invariant runs)
-make gas                    # gas report (production profile)
+make test-fork              # end-to-end flow on forked mainnet
+make gas                    # gas report
 make cover                  # summary coverage report
 make cover-lcov             # LCOV + HTML artifacts (requires genhtml)
 make format                 # enforce forge fmt style
@@ -117,7 +119,7 @@ make verify-ethereum         # verify all contracts on Ethereum Etherscan
 
 ### Upgrade Scripts
 
-Each core UUPS proxy has a shared base (`UpgradeX.s.sol`) plus a Sepolia variant (`UpgradeXSepolia.s.sol`). `CoverPoolFactory` additionally has an Ethereum variant:
+All upgrade scripts share a common base `UpgradeBase.s.sol`. Each core UUPS proxy additionally has a contract-specific base (`UpgradeX.s.sol`) plus a Sepolia variant (`UpgradeXSepolia.s.sol`). `CoverPoolFactory` additionally has an Ethereum variant:
 
 - `UpgradeCoverPoolFactory` / `UpgradePolicyManager` / `UpgradePremiumManager`
 - `UpgradeClaimManager` / `UpgradeSwapper` / `UpgradeSpecRegistry`
@@ -154,6 +156,7 @@ Step-by-step scripts that exercise the full coverage lifecycle:
 | `PrepareEigenLayer.s.sol` | Configures EigenLayer magnitude allocation for an operator. |
 | `DeployControllableVault.s.sol` | Deploys a test ERC-4626 vault with controllable NAV. |
 | `CompleteCoverageFlow.s.sol` | End-to-end lifecycle from pool creation through claim settlement. |
+| `ForkCompleteCoverageFlow.s.sol` | Extends `CompleteCoverageFlow` with EigenLayer vault-funding for fresh mainnet forks (used by `make test-fork`). |
 
 ## Environment Variables
 

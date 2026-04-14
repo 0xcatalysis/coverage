@@ -193,12 +193,14 @@ interface IClaimManager is IAccessControl {
     event TokensRecovered(address indexed token, address indexed to, uint256 amount);
 
     /**
-     * @notice Emitted when a vault is excluded from slashing because its collateral token
-     *         has no configured or functioning swap route (quoteSwap reverted).
+     * @notice Emitted when a cross-token vault is excluded from slashing. This occurs when either:
+     *         (a) `quoteSwap` reverts or returns zero (no functioning swap route), or (b) the
+     *         proportional slash amount rounds to zero after slippage inflation.
      * @dev Partial exclusion is not reverted; remaining vaults absorb the full claim pro-rata.
      *      Monitor this event to detect misconfigured swap routes before a loss event.
+     *      Same-token vaults are never excluded — a zero proportional slash is forced to 1 instead.
      * @param vault Address of the excluded vault.
-     * @param token Collateral token for which the quote failed.
+     * @param token Collateral token for which the quote failed or slash rounded to zero.
      */
     event VaultExcludedFromSlashing(address indexed vault, address indexed token);
 
