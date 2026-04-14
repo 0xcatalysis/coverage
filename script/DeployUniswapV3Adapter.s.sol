@@ -96,10 +96,9 @@ contract DeployUniswapV3Adapter is CreateXDeployer {
 
         vm.startBroadcast(deployer);
 
-        bytes32 salt = _computeSalt(deployer, ADAPTER_SALT);
         bytes memory initCode =
             abi.encodePacked(type(UniswapV3Adapter).creationCode, abi.encode(swapRouter, quoter, swapper));
-        address adapter = CREATEX.deployCreate3(salt, initCode);
+        address adapter = _deploy3(deployer, ADAPTER_SALT, initCode);
 
         vm.stopBroadcast();
 
@@ -113,10 +112,20 @@ contract DeployUniswapV3Adapter is CreateXDeployer {
     /**
      * @notice Whitelists the adapter in Swapper and sets the tokenIn -> tokenOut swap route.
      * @dev setSwapTargetWhitelist requires DEFAULT_ADMIN_ROLE; setSwapRoute requires
-     *      SWAP_MANAGER_ROLE. When TIMELOCK is set, DEFAULT_ADMIN_ROLE is held by the
-     *      TimelockController, so the whitelist call must be scheduled through it. The
-     *      swap route call uses SWAP_MANAGER_ROLE (held directly by admin) and broadcasts
-     *      immediately in both modes.
+     *      SWAP_MANAGER_ROLE. These roles are held by different principals when TIMELOCK is set:
+     *        - DEFAULT_ADMIN_ROLE -> TimelockController (setSwapTargetWhitelist must go via timelock)
+     *        - SWAP_MANAGER_ROLE  -> multisig admin     (setSwapRoute can be called directly)
+     *
+     *      Because setSwapRoute validates whitelistedTargets[adapter] == true on-chain, the
+     *      two calls cannot be batched — they must run in strict sequence across two separate
+     *      script invocations:
+     *
+     *        Run 1 (adapter not yet whitelisted):
+     *          Logs schedule/execute calldata for setSwapTargetWhitelist via Safe TX Builder.
+     *          Submit schedule now; submit execute after the timelock delay elapses.
+     *
+     *        Run 2 (after execute has confirmed, adapter is whitelisted):
+     *          Detects whitelistedTargets[adapter] == true and broadcasts setSwapRoute directly.
      *
      *      Required additional env vars:
      *        - UNISWAP_V3_ADAPTER: Address of the adapter deployed in run()
@@ -137,7 +146,7 @@ contract DeployUniswapV3Adapter is CreateXDeployer {
         bytes memory routeCalldata = abi.encodeCall(UniswapV3Adapter.swap, (tokenIn, tokenOut, poolFee, 0));
 
         console2.log("=== CONFIGURE UNISWAP V3 ADAPTER ===");
-        console2.log("Admin (SWAP_MANAGER_ROLE):", admin);
+        console2.log("Admin:", admin);
         console2.log("Swapper:", swapper);
         console2.log("Adapter:", adapter);
         console2.log("TokenIn (collateral):", tokenIn);
@@ -145,18 +154,26 @@ contract DeployUniswapV3Adapter is CreateXDeployer {
         console2.log("Pool fee tier:", poolFee);
 
         if (timelock != address(0)) {
-            _configureViaTimelock(admin, timelock, swapper, adapter, tokenIn, tokenOut, routeCalldata);
+            bool alreadyWhitelisted = ISwapper(swapper).whitelistedTargets(adapter);
+            if (!alreadyWhitelisted) {
+                // Run 1: adapter not yet whitelisted — schedule setSwapTargetWhitelist via timelock.
+                _scheduleWhitelistViaTimelock(timelock, swapper, adapter);
+            } else {
+                // Run 2: adapter is whitelisted — set the route directly from admin.
+                console2.log("\n[INFO] Adapter already whitelisted. Setting swap route directly.");
+                _setRouteDirect(admin, swapper, tokenIn, tokenOut, adapter, routeCalldata);
+            }
         } else {
             _configureDirect(admin, swapper, adapter, tokenIn, tokenOut, routeCalldata);
-        }
 
-        ISwapper.SwapRoute memory route = ISwapper(swapper).getSwapRoute(tokenIn, tokenOut);
-        bool whitelisted = ISwapper(swapper).whitelistedTargets(route.swapTarget);
-        console2.log("\n=== VERIFICATION ===");
-        console2.log("Route enabled:", route.enabled);
-        console2.log("Swap target:", route.swapTarget);
-        console2.log("Target whitelisted:", whitelisted);
-        console2.log("===================");
+            ISwapper.SwapRoute memory route = ISwapper(swapper).getSwapRoute(tokenIn, tokenOut);
+            bool whitelisted = ISwapper(swapper).whitelistedTargets(route.swapTarget);
+            console2.log("\n=== VERIFICATION ===");
+            console2.log("Route enabled:", route.enabled);
+            console2.log("Swap target:", route.swapTarget);
+            console2.log("Target whitelisted:", whitelisted);
+            console2.log("===================");
+        }
     }
 
     /**
@@ -184,27 +201,16 @@ contract DeployUniswapV3Adapter is CreateXDeployer {
     }
 
     /**
-     * @notice Timelock configuration path (mainnet).
-     * @dev setSwapTargetWhitelist (DEFAULT_ADMIN_ROLE) must go through TimelockController.
-     *      Logs schedule/execute calldata for submission via Safe TX Builder.
-     *      setSwapRoute (SWAP_MANAGER_ROLE) is broadcast directly from admin.
+     * @notice Timelock path Run 1: logs schedule/execute calldata for setSwapTargetWhitelist.
+     * @dev setSwapTargetWhitelist requires DEFAULT_ADMIN_ROLE, held by TimelockController.
+     *      After the execute calldata is submitted and confirmed, run configure() again to
+     *      detect whitelistedTargets[adapter] == true and proceed to setSwapRoute (Run 2).
      */
-    function _configureViaTimelock(
-        address admin,
-        address timelock,
-        address swapper,
-        address adapter,
-        address tokenIn,
-        address tokenOut,
-        bytes memory routeCalldata
-    )
-        private
-    {
+    function _scheduleWhitelistViaTimelock(address timelock, address swapper, address adapter) private view {
         require(
             IAccessControl(swapper).hasRole(bytes32(0), timelock), "TIMELOCK must have DEFAULT_ADMIN_ROLE on Swapper"
         );
 
-        // Build whitelist calldata for the timelock to execute on the Swapper
         bytes memory whitelistCalldata = abi.encodeCall(ISwapper.setSwapTargetWhitelist, (adapter, true));
         uint256 minDelay = TimelockController(payable(timelock)).getMinDelay();
 
@@ -226,13 +232,37 @@ contract DeployUniswapV3Adapter is CreateXDeployer {
         console2.log("Step 2 - Execute (submit after delay):");
         console2.log("  To:", timelock);
         console2.log("  Data:", vm.toString(executeCalldata));
+        console2.log("");
+        console2.log("After Step 2 confirms, re-run configure() to set the swap route.");
         console2.log("=============================================================================");
+    }
 
-        // setSwapRoute uses SWAP_MANAGER_ROLE - admin holds this directly, no timelock needed
+    /**
+     * @notice Timelock path Run 2: broadcasts setSwapRoute directly from admin.
+     * @dev Only callable after the adapter has been whitelisted via the timelock.
+     *      setSwapRoute uses SWAP_MANAGER_ROLE, held directly by the multisig admin.
+     */
+    function _setRouteDirect(
+        address admin,
+        address swapper,
+        address tokenIn,
+        address tokenOut,
+        address adapter,
+        bytes memory routeCalldata
+    )
+        private
+    {
         vm.startBroadcast(admin);
         ISwapper(swapper).setSwapRoute(tokenIn, tokenOut, adapter, true, routeCalldata);
         console2.log("Swap route configured: tokenIn -> tokenOut via adapter");
         vm.stopBroadcast();
+
+        ISwapper.SwapRoute memory route = ISwapper(swapper).getSwapRoute(tokenIn, tokenOut);
+        console2.log("\n=== VERIFICATION ===");
+        console2.log("Route enabled:", route.enabled);
+        console2.log("Swap target:", route.swapTarget);
+        console2.log("Target whitelisted:", ISwapper(swapper).whitelistedTargets(route.swapTarget));
+        console2.log("===================");
     }
 
     // --- Utility -----------------------------------------------------------------
