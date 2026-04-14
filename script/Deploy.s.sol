@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {console2} from "forge-std/Script.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 
 import {ClaimManager} from "../src/ClaimManager.sol";
 import {CoverPool} from "../src/CoverPool.sol";
@@ -18,6 +19,9 @@ import {CreateXDeployer} from "./CreateXDeployer.s.sol";
  * @notice Shared deployment helper that broadcasts all Catalysis Coverage contracts.
  * @dev Deployment follows a specific order to handle inter-contract dependencies:
  *
+ *      Phase 0 - Governance:
+ *        0. TimelockController (holds DEFAULT_ADMIN_ROLE on all contracts; multisig is proposer/executor)
+ *
  *      Phase 1 - External-dependency-only contracts:
  *        1. CoverPool implementation (used by factory for minimal proxy clones)
  *        2. Swapper proxy (requires only WETH address)
@@ -29,8 +33,9 @@ import {CreateXDeployer} from "./CreateXDeployer.s.sol";
  *        6. CoverPoolFactory proxy (pool creation and registry)
  *
  *      Phase 3 - Role configuration:
- *        - Grant actual roles to deployed contracts
- *        - Revoke temporary roles from deployer (when deployer != admin)
+ *        - Grant DEFAULT_ADMIN_ROLE to TimelockController on all contracts
+ *        - Grant operational roles (SWAP_EXECUTOR, CLAIM_MANAGER) directly to contracts
+ *        - Revoke temporary roles from deployer
  *
  *      Environment Variables:
  *        - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag)
@@ -44,6 +49,7 @@ import {CreateXDeployer} from "./CreateXDeployer.s.sol";
  *        - PLATFORM_FEE_BPS: Platform fee in basis points (defaults to 500 = 5%)
  *        - COVER_POOL_FACTORY_CREATOR: Factory creator role (defaults to admin)
  *        - SWAP_MANAGER: Swap route configuration manager (defaults to admin)
+ *        - TIMELOCK_MIN_DELAY: Minimum delay in seconds for TimelockController (defaults to 2 days)
  */
 abstract contract Deploy is CreateXDeployer {
     /// @dev Default platform fee in basis points (5%).
@@ -83,6 +89,7 @@ abstract contract Deploy is CreateXDeployer {
      * @param swapManager SWAP_MANAGER_ROLE holder on Swapper.
      * @param platformTreasury Recipient address for platform fees.
      * @param platformFeeBps Platform fee in basis points.
+     * @param timelockMinDelay Minimum delay in seconds for TimelockController operations.
      */
     struct RoleConfig {
         address deployer;
@@ -91,10 +98,12 @@ abstract contract Deploy is CreateXDeployer {
         address swapManager;
         address platformTreasury;
         uint16 platformFeeBps;
+        uint256 timelockMinDelay;
     }
 
     /**
      * @notice Collection of all deployed contract addresses.
+     * @param timelockController TimelockController governance contract address.
      * @param coverPoolImplementation CoverPool implementation for minimal proxy clones.
      * @param coverPoolFactoryProxy CoverPoolFactory UUPS proxy address.
      * @param coverPoolFactoryImpl CoverPoolFactory implementation address.
@@ -110,6 +119,7 @@ abstract contract Deploy is CreateXDeployer {
      * @param specRegistryImpl SpecRegistry implementation address.
      */
     struct DeployedContracts {
+        address timelockController;
         address coverPoolImplementation;
         address coverPoolFactoryProxy;
         address coverPoolFactoryImpl;
@@ -178,21 +188,73 @@ abstract contract Deploy is CreateXDeployer {
     }
 
     /**
+     * @notice Returns the minimum delay for the TimelockController in seconds.
+     * @dev Defaults to 2 days (172800 seconds). Override in network-specific scripts
+     *      (e.g. DeployAnvil returns 0 for instant local testing).
+     *      Can also be set via the TIMELOCK_MIN_DELAY environment variable.
+     * @return Minimum delay in seconds.
+     */
+    function getTimelockMinDelay() internal view virtual returns (uint256) {
+        return vm.envOr("TIMELOCK_MIN_DELAY", uint256(2 days));
+    }
+
+    /**
      * @notice Returns the initial payout tokens to whitelist on PolicyManager deployment.
-     * @dev Override in network-specific scripts (e.g. DeploySepolia) to return USDC or other tokens.
-     *      Default returns empty array.
+     * @dev Reads comma-separated addresses from the PAYOUT_TOKENS environment variable.
+     *      Returns an empty array if the variable is unset or empty.
+     *      Override in network-specific scripts to provide tokens without environment variables.
      */
     function getInitialPayoutTokens() internal view virtual returns (address[] memory) {
-        return new address[](0);
+        return _parseAddressList(vm.envOr("PAYOUT_TOKENS", string("")));
     }
 
     /**
      * @notice Returns the initial tokens to add to the PremiumManager approved token set.
-     * @dev Override in network-specific scripts (e.g. DeploySepolia) to return USDC or other tokens.
-     *      Only tokens in this set are accepted by distributePremium(). Default returns empty array.
+     * @dev Reads comma-separated addresses from the PREMIUM_TOKENS environment variable.
+     *      Returns an empty array if the variable is unset or empty.
+     *      Only tokens in this set are accepted by distributePremium().
+     *      Override in network-specific scripts to provide tokens without environment variables.
      */
     function getInitialPremiumTokens() internal view virtual returns (address[] memory) {
-        return new address[](0);
+        return _parseAddressList(vm.envOr("PREMIUM_TOKENS", string("")));
+    }
+
+    /**
+     * @notice Parses a comma-separated string of hex addresses into an address array.
+     * @dev Splits on ',' and converts each segment to an address via vm.parseAddress.
+     *      Skips empty segments produced by a missing or empty input string.
+     * @param raw Comma-separated address string, e.g. "0xABC...,0xDEF...". Empty string returns [].
+     * @return addrs Array of parsed addresses.
+     */
+    function _parseAddressList(string memory raw) private pure returns (address[] memory addrs) {
+        bytes memory b = bytes(raw);
+        if (b.length == 0) return new address[](0);
+
+        uint256 count = 1;
+        for (uint256 i = 0; i < b.length; i++) {
+            if (b[i] == ",") ++count;
+        }
+
+        address[] memory temp = new address[](count);
+        uint256 idx;
+        uint256 start;
+        for (uint256 i = 0; i <= b.length; i++) {
+            if (i == b.length || b[i] == ",") {
+                if (i > start) {
+                    bytes memory segment = new bytes(i - start);
+                    for (uint256 j = start; j < i; j++) {
+                        segment[j - start] = b[j];
+                    }
+                    temp[idx++] = vm.parseAddress(string(segment));
+                }
+                start = i + 1;
+            }
+        }
+
+        addrs = new address[](idx);
+        for (uint256 i = 0; i < idx; i++) {
+            addrs[i] = temp[i];
+        }
     }
 
     /**
@@ -203,6 +265,7 @@ abstract contract Deploy is CreateXDeployer {
      * @return contracts Struct with proxy address fields populated (impl fields are zero).
      */
     function computeAllAddresses(address deployer) external pure returns (DeployedContracts memory contracts) {
+        contracts.timelockController = _computeCreate3Address(deployer, "TimelockController");
         contracts.swapperProxy = _computeProxyAddress(deployer, "SwapperProxy");
         contracts.premiumManagerProxy = _computeProxyAddress(deployer, "PremiumManagerProxy");
         contracts.policyManagerProxy = _computeProxyAddress(deployer, "PolicyManagerProxy");
@@ -226,6 +289,7 @@ abstract contract Deploy is CreateXDeployer {
         private
         returns (DeployedContracts memory contracts)
     {
+        contracts.timelockController = _deployTimelockController(roles);
         contracts.coverPoolImplementation = address(new CoverPool());
 
         Swapper swapperImpl = new Swapper();
@@ -241,6 +305,27 @@ abstract contract Deploy is CreateXDeployer {
 
         _deployPremiumContracts(contracts, roles, external_);
         _deployClaimAndFactoryContracts(contracts, roles, external_);
+    }
+
+    /**
+     * @notice Deploys an OZ TimelockController via CREATE3 for a deterministic address.
+     * @dev The multisig (roles.admin) receives PROPOSER, EXECUTOR, and CANCELLER roles.
+     *      The admin parameter is set to address(0), making the timelock self-administered only —
+     *      delay changes must go through the timelock's own propose/execute flow.
+     * @param roles Role configuration containing admin and deployer addresses.
+     * @return The deployed TimelockController address.
+     */
+    function _deployTimelockController(RoleConfig memory roles) private returns (address) {
+        address[] memory proposers = new address[](1);
+        proposers[0] = roles.admin;
+        address[] memory executors = new address[](1);
+        executors[0] = roles.admin;
+
+        bytes memory initCode = abi.encodePacked(
+            type(TimelockController).creationCode, abi.encode(roles.timelockMinDelay, proposers, executors, address(0))
+        );
+
+        return _deploy3(roles.deployer, "TimelockController", initCode);
     }
 
     /**
@@ -385,26 +470,32 @@ abstract contract Deploy is CreateXDeployer {
     /**
      * @notice Grants permanent roles to deployed contracts enabling cross-contract interactions.
      * @dev Role assignments:
-     *      - All contracts: DEFAULT_ADMIN_ROLE → roles.admin (when deployer != admin)
+     *      - All contracts: DEFAULT_ADMIN_ROLE → TimelockController (governance layer)
      *      - Swapper: SWAP_EXECUTOR_ROLE → ClaimManager (for collateral conversion)
+     *      - PremiumManager: CLAIM_MANAGER_ROLE → ClaimManager (for surplus distribution)
+     *
+     *      The multisig (roles.admin) interacts with contracts via the TimelockController's
+     *      schedule/execute flow. Operational roles (SWAP_EXECUTOR, CLAIM_MANAGER) are granted
+     *      directly to contracts for automated cross-contract calls.
      *
      *      NOTE: distributePremium() on PremiumManager is permissionless but requires the token
      *      to be in the approved set. Initial tokens are added in _deployPremiumContracts().
      * @param contracts DeployedContracts containing all proxy addresses.
-     * @param roles RoleConfig containing admin address for DEFAULT_ADMIN_ROLE grant.
+     * @param roles RoleConfig containing admin address (unused for DEFAULT_ADMIN_ROLE — goes to timelock).
      */
     function _grantRoles(DeployedContracts memory contracts, RoleConfig memory roles) private {
         bytes32 defaultAdminRole = bytes32(0);
+        address tc = contracts.timelockController;
 
-        if (roles.deployer != roles.admin) {
-            IAccessControl(contracts.swapperProxy).grantRole(defaultAdminRole, roles.admin);
-            IAccessControl(contracts.premiumManagerProxy).grantRole(defaultAdminRole, roles.admin);
-            IAccessControl(contracts.claimManagerProxy).grantRole(defaultAdminRole, roles.admin);
-            IAccessControl(contracts.policyManagerProxy).grantRole(defaultAdminRole, roles.admin);
-            IAccessControl(contracts.coverPoolFactoryProxy).grantRole(defaultAdminRole, roles.admin);
-            IAccessControl(contracts.specRegistryProxy).grantRole(defaultAdminRole, roles.admin);
-        }
+        // Grant DEFAULT_ADMIN_ROLE to TimelockController on all contracts
+        IAccessControl(contracts.swapperProxy).grantRole(defaultAdminRole, tc);
+        IAccessControl(contracts.premiumManagerProxy).grantRole(defaultAdminRole, tc);
+        IAccessControl(contracts.claimManagerProxy).grantRole(defaultAdminRole, tc);
+        IAccessControl(contracts.policyManagerProxy).grantRole(defaultAdminRole, tc);
+        IAccessControl(contracts.coverPoolFactoryProxy).grantRole(defaultAdminRole, tc);
+        IAccessControl(contracts.specRegistryProxy).grantRole(defaultAdminRole, tc);
 
+        // Operational roles — direct contract-to-contract, not through timelock
         IAccessControl(contracts.swapperProxy)
             .grantRole(Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), contracts.claimManagerProxy);
 
@@ -413,24 +504,22 @@ abstract contract Deploy is CreateXDeployer {
     }
 
     /**
-     * @notice Revokes temporary roles from deployer when deployer differs from admin.
-     * @dev Skips revocation when deployer == admin to avoid breaking admin's ability to manage roles.
-     *      In production deployments where deployer != admin, this ensures the deployer EOA
-     *      cannot interact with privileged contract functions after deployment.
+     * @notice Revokes temporary roles from deployer (and admin if separate) after TimelockController is wired.
+     * @dev The TimelockController now holds DEFAULT_ADMIN_ROLE on all contracts, so both the deployer
+     *      and the admin (multisig) must have their direct roles revoked. The deployer's
+     *      SWAP_EXECUTOR_ROLE placeholder is also revoked (ClaimManager now holds it).
      *      DEFAULT_ADMIN_ROLE is revoked last to ensure all other revocations succeed.
      * @param contracts DeployedContracts containing all proxy addresses.
      * @param roles RoleConfig containing deployer and admin addresses.
      */
     function _revokeTemporaryRoles(DeployedContracts memory contracts, RoleConfig memory roles) private {
-        if (roles.deployer == roles.admin) {
-            return;
-        }
-
         bytes32 defaultAdminRole = bytes32(0);
 
+        // Revoke deployer's placeholder SWAP_EXECUTOR_ROLE (ClaimManager now holds it)
         IAccessControl(contracts.swapperProxy)
             .revokeRole(Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), roles.deployer);
 
+        // Revoke deployer's DEFAULT_ADMIN_ROLE from all contracts
         IAccessControl(contracts.swapperProxy).revokeRole(defaultAdminRole, roles.deployer);
         IAccessControl(contracts.premiumManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
         IAccessControl(contracts.claimManagerProxy).revokeRole(defaultAdminRole, roles.deployer);
@@ -466,6 +555,11 @@ abstract contract Deploy is CreateXDeployer {
         console2.log("Deployer:", roles.deployer);
         console2.log("Admin:", roles.admin);
         console2.log("Platform Treasury:", roles.platformTreasury);
+        console2.log("");
+
+        console2.log("--- Governance ---");
+        console2.log("TimelockController:", contracts.timelockController);
+        console2.log("Timelock Min Delay:", roles.timelockMinDelay, "seconds");
         console2.log("");
 
         console2.log("--- External Dependencies ---");
@@ -511,6 +605,7 @@ abstract contract Deploy is CreateXDeployer {
         roles.swapManager = vm.envOr("SWAP_MANAGER", roles.admin);
         roles.platformTreasury = vm.envOr("PLATFORM_TREASURY", roles.admin);
         roles.platformFeeBps = uint16(vm.envOr("PLATFORM_FEE_BPS", uint256(DEFAULT_PLATFORM_FEE_BPS)));
+        roles.timelockMinDelay = getTimelockMinDelay();
     }
 
     /**
