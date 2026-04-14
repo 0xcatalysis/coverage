@@ -76,12 +76,12 @@ contract ApproveSpec is Script {
 
         if (timelock != address(0)) {
             _approveViaTimelock(admin, timelock, specRegistry, specAddress);
-        } else {
-            _approveDirect(admin, specRegistry, specAddress);
+            // Calldata has been printed; approval is pending Safe TX Builder submission.
+            // Do NOT emit SpecApproved or log completion — the spec is not approved yet.
+            return;
         }
 
-        emit SpecApproved(specRegistry, specAddress);
-        console.log("\n=== SPEC APPROVAL COMPLETED ===");
+        _approveDirect(admin, specRegistry, specAddress);
     }
 
     /**
@@ -104,6 +104,9 @@ contract ApproveSpec is Script {
         console.log("isSpecApproved:", approved);
         require(approved, "Spec approval failed");
         console.log("[SUCCESS] Spec approved in SpecRegistry");
+
+        emit SpecApproved(specRegistry, specAddress);
+        console.log("\n=== SPEC APPROVAL COMPLETED ===");
     }
 
     /**
