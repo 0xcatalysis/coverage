@@ -6,44 +6,23 @@ import {Deploy} from "./Deploy.s.sol";
 /**
  * @title DeploySepolia
  * @notice Deploys all Catalysis Coverage contracts to the Ethereum Sepolia testnet.
- * @dev WETH address is hardcoded for Sepolia. Catalysis Core addresses must be provided
- *      via environment variables:
+ * @dev WETH address is hardcoded for Sepolia. Catalysis Core addresses and initial token
+ *      lists must be provided via environment variables:
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
  *      - STAKE_MANAGER: Address of StakeManager from Catalysis Core
  *      - REWARDS_MANAGER: Address of RewardsManager from Catalysis Core
  *      - CHAINLINK_PRICE_FEED: Address of ChainlinkPriceFeed
+ *      - PAYOUT_TOKENS: Comma-separated payout token addresses to whitelist on PolicyManager
+ *      - PREMIUM_TOKENS: Comma-separated premium token addresses to approve on PremiumManager
  *
  *      Usage:
  *        SLASHING_MANAGER=0x... STAKE_MANAGER=0x... REWARDS_MANAGER=0x...
- * CHAINLINK_PRICE_FEED=0x... PRIVATE_KEY=0x... \
+ *        CHAINLINK_PRICE_FEED=0x... PAYOUT_TOKENS=0x... PREMIUM_TOKENS=0x... \
  *          forge script script/DeploySepolia.s.sol --broadcast --rpc-url sepolia --verify
  */
 contract DeploySepolia is Deploy {
     /// @notice Canonical WETH address on Ethereum Sepolia testnet.
     address internal constant WETH_SEPOLIA = 0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9;
-
-    /// @notice Circle USDC on Sepolia.
-    address internal constant USDC_SEPOLIA = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
-
-    /**
-     * @inheritdoc Deploy
-     * @return initialPayoutTokens Array containing Circle USDC for Sepolia.
-     */
-    function getInitialPayoutTokens() internal pure override returns (address[] memory) {
-        address[] memory tokens = new address[](1);
-        tokens[0] = USDC_SEPOLIA;
-        return tokens;
-    }
-
-    /**
-     * @inheritdoc Deploy
-     * @return initialPremiumTokens Array containing Circle USDC for Sepolia.
-     */
-    function getInitialPremiumTokens() internal pure override returns (address[] memory) {
-        address[] memory tokens = new address[](1);
-        tokens[0] = USDC_SEPOLIA;
-        return tokens;
-    }
 
     /**
      * @inheritdoc Deploy

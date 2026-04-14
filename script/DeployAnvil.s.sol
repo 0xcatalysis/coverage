@@ -21,6 +21,11 @@ contract DeployAnvil is Deploy {
     /// @notice Hardcoded WETH address for Anvil local testing.
     address internal constant WETH_ANVIL = 0x0000000000000000000000000000000000000001;
 
+    /// @notice Zero timelock delay for instant local testing.
+    function getTimelockMinDelay() internal pure override returns (uint256) {
+        return 0;
+    }
+
     /**
      * @inheritdoc Deploy
      * @return DeploymentConfig for Anvil local chain (chain id 31337).

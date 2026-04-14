@@ -12,9 +12,10 @@ import {CreateXDeployer} from "./CreateXDeployer.s.sol";
  */
 contract ComputeAddresses is CreateXDeployer {
     function run(address deployer) external pure {
-        console2.log("=== Deterministic Proxy Addresses ===");
+        console2.log("=== Deterministic Contract Addresses ===");
         console2.log("Deployer:", deployer);
         console2.log("");
+        console2.log("TimelockController:", _computeCreate3Address(deployer, "TimelockController"));
         console2.log("Swapper:          ", _computeProxyAddress(deployer, "SwapperProxy"));
         console2.log("PremiumManager:   ", _computeProxyAddress(deployer, "PremiumManagerProxy"));
         console2.log("PolicyManager:    ", _computeProxyAddress(deployer, "PolicyManagerProxy"));

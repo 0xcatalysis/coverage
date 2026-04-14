@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Script, console2} from "forge-std/Script.sol";
 
 /**
@@ -19,6 +21,9 @@ import {Script, console2} from "forge-std/Script.sol";
  *        - ADMIN: Holder of DEFAULT_ADMIN_ROLE on the target proxy. Defaults to DEPLOYER_ADDRESS.
  *                 On mainnet this is the Gnosis Safe multisig — omit --broadcast and submit via Safe.
  *        - <proxyEnvVar()>: Address of the deployed proxy (e.g. CLAIM_MANAGER_PROXY).
+ *        - TIMELOCK (optional): TimelockController address. When set, the script deploys the new
+ *                 implementation and outputs schedule/execute calldata for Safe TX Builder instead
+ *                 of broadcasting the upgrade directly.
  */
 abstract contract UpgradeBase is Script {
     /**
@@ -72,6 +77,12 @@ abstract contract UpgradeBase is Script {
      * @notice Upgrades the proxy to a new implementation.
      * @dev Validates chain id, loads proxy address from environment, checks admin role,
      *      performs the upgrade, and logs the results.
+     *
+     *      When the TIMELOCK env var is set, the script:
+     *        1. Deploys the new implementation (broadcast from deployer)
+     *        2. Logs TimelockController.schedule() and execute() calldata for Safe TX Builder
+     *
+     *      When TIMELOCK is not set, the script broadcasts the upgrade directly (testnet mode).
      * @return result Struct containing proxy and implementation addresses.
      */
     function run() external returns (UpgradeResult memory result) {
@@ -79,15 +90,28 @@ abstract contract UpgradeBase is Script {
         require(config.chainId == block.chainid, string.concat("Must upgrade on ", config.networkName));
 
         address deployer = vm.envAddress("DEPLOYER_ADDRESS");
-        // DEFAULT_ADMIN_ROLE is transferred to ADMIN during Deploy.s.sol when deployer != admin.
-        // On mainnet ADMIN is the multisig; omit --broadcast and submit the calldata via Safe.
-        address admin = vm.envOr("ADMIN", deployer);
+        address timelock = vm.envOr("TIMELOCK", address(0));
 
         string memory envVar = proxyEnvVar();
         result.proxy = vm.envAddress(envVar);
         require(result.proxy != address(0), string.concat(envVar, " required"));
 
         result.oldImplementation = Upgrades.getImplementationAddress(result.proxy);
+
+        if (timelock != address(0)) {
+            _upgradeViaTimelock(deployer, timelock, result, config);
+        } else {
+            _upgradeDirect(deployer, result, config);
+        }
+
+        return result;
+    }
+
+    /**
+     * @notice Direct upgrade path — broadcasts upgradeProxy directly (testnet / EOA admin).
+     */
+    function _upgradeDirect(address deployer, UpgradeResult memory result, UpgradeConfig memory config) private {
+        address admin = vm.envOr("ADMIN", deployer);
 
         require(
             IAccessControl(result.proxy).hasRole(bytes32(0), admin),
@@ -105,10 +129,68 @@ abstract contract UpgradeBase is Script {
         vm.stopBroadcast();
 
         result.newImplementation = Upgrades.getImplementationAddress(result.proxy);
-
         _logUpgrade(config, admin, result, contractName());
+    }
 
-        return result;
+    /**
+     * @notice Timelock upgrade path — deploys new impl and outputs schedule/execute calldata.
+     * @dev The deployer broadcasts only the new implementation deployment. The actual upgrade
+     *      (upgradeToAndCall on the proxy) must be scheduled through the TimelockController
+     *      by submitting the logged calldata via Gnosis Safe TX Builder.
+     */
+    function _upgradeViaTimelock(
+        address deployer,
+        address timelock,
+        UpgradeResult memory result,
+        UpgradeConfig memory config
+    )
+        private
+    {
+        require(
+            IAccessControl(result.proxy).hasRole(bytes32(0), timelock),
+            string.concat("TIMELOCK must have DEFAULT_ADMIN_ROLE on ", contractName())
+        );
+
+        // Deploy new implementation
+        vm.startBroadcast(deployer);
+
+        Options memory opts;
+        opts.unsafeAllow = "constructor";
+        opts.unsafeSkipStorageCheck = true;
+        address newImpl = Upgrades.deployImplementation(contractArtifact(), opts);
+
+        vm.stopBroadcast();
+
+        result.newImplementation = newImpl;
+
+        // Build the upgradeToAndCall calldata that the timelock will execute on the proxy
+        bytes memory upgradeCalldata = abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (newImpl, ""));
+        uint256 minDelay = TimelockController(payable(timelock)).getMinDelay();
+
+        // Build TimelockController.schedule() calldata
+        bytes memory scheduleCalldata = abi.encodeCall(
+            TimelockController.schedule, (result.proxy, 0, upgradeCalldata, bytes32(0), bytes32(0), minDelay)
+        );
+
+        // Build TimelockController.execute() calldata
+        bytes memory executeCalldata =
+            abi.encodeCall(TimelockController.execute, (result.proxy, 0, upgradeCalldata, bytes32(0), bytes32(0)));
+
+        _logUpgrade(config, timelock, result, contractName());
+
+        console2.log("");
+        console2.log("--- Timelock Calldata (submit via Safe TX Builder) ---");
+        console2.log("TimelockController:", timelock);
+        console2.log("Min Delay:", minDelay, "seconds");
+        console2.log("");
+        console2.log("Step 1 - Schedule (submit now):");
+        console2.log("  To:", timelock);
+        console2.log("  Data:", vm.toString(scheduleCalldata));
+        console2.log("");
+        console2.log("Step 2 - Execute (submit after delay):");
+        console2.log("  To:", timelock);
+        console2.log("  Data:", vm.toString(executeCalldata));
+        console2.log("=============================================");
     }
 
     function _logUpgrade(
