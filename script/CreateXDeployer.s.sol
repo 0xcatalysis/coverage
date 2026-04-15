@@ -32,6 +32,7 @@ abstract contract CreateXDeployer is Script {
      */
     function _ensureCreateX() internal {
         if (address(CREATEX).code.length > 0) return;
+        // forge-lint: disable-next-line(unsafe-cheatcode)
         bytes memory code = vm.parseBytes(vm.readFile("script/createx-bytecode.txt"));
         vm.etch(address(CREATEX), code);
     }
