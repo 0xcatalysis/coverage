@@ -328,6 +328,7 @@ step "Approving MockSpec in SpecRegistry..."
 DEPLOYER_ADDRESS="$DEPLOYER" \
 SPEC_REGISTRY="$SPEC_REGISTRY" \
 SPEC_ADDRESS="$SPEC_ADDRESS" \
+TIMELOCK=0x0000000000000000000000000000000000000000 \
 forge script --root "$COVERAGE_ROOT" \
     "$COVERAGE_ROOT/script/ApproveSpec.s.sol:ApproveSpec" \
     --rpc-url "$ANVIL_RPC_URL" \
