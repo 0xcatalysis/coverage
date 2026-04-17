@@ -34,15 +34,17 @@ info()  { echo -e "${YELLOW}[INFO]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 # ─── Load .env.fork ───────────────────────────────────────────────────────────
-# Caller-provided env vars take precedence: save them before sourcing the file,
-# then restore so inline overrides (e.g. ETHEREUM_RPC_URL=xxx make test-fork) work.
 ENV_FILE="$COVERAGE_ROOT/.env.fork"
 if [[ -f "$ENV_FILE" ]]; then
     info "Sourcing $ENV_FILE"
     _saved_rpc="${ETHEREUM_RPC_URL:-}"
+    _saved_skip_core="${SKIP_CORE_DEPLOY:-}"
+    _saved_anvil_rpc="${ANVIL_RPC_URL:-}"
     # shellcheck disable=SC1090
     set -o allexport; source "$ENV_FILE"; set +o allexport
-    [[ -n "$_saved_rpc" ]] && ETHEREUM_RPC_URL="$_saved_rpc"
+    [[ -n "$_saved_rpc" ]]        && ETHEREUM_RPC_URL="$_saved_rpc"
+    [[ -n "$_saved_skip_core" ]]  && SKIP_CORE_DEPLOY="$_saved_skip_core"
+    [[ -n "$_saved_anvil_rpc" ]]  && ANVIL_RPC_URL="$_saved_anvil_rpc"
 else
     error ".env.fork not found at $ENV_FILE"
     error "Copy .env.fork from the repo and set ETHEREUM_RPC_URL."
