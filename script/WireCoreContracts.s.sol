@@ -3,7 +3,9 @@ pragma solidity 0.8.28;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
+import {console2} from "forge-std/console2.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 
 /// @dev Minimal interfaces for Core contracts — avoids adding a `../core` remapping.
 interface IStakeManagerWire {
@@ -59,34 +61,46 @@ interface IClaimManagerPremiumView {
  *      5. PremiumManager.approveSpender       — allows RewardsManager to pull the restaker share
  *                                               from PremiumManager via safeTransferFrom; required
  *                                               for distributeRewards() to route rewards correctly
- *      6. ClaimManager.setPremiumManager      — routes claim surplus through PremiumManager.
+ *      6. ClaimManager.setPremiumManager      — routes claim surplus through PremiumManager
  *      7. PremiumManager.grantRole(CLAIM_MANAGER_ROLE, claimManager)
- *                                            — allows ClaimManager to call distributeSurplusAsRewards().
+ *                                            — allows ClaimManager to call distributeSurplusAsRewards()
  *      8. SSPRouter.setStakeRecipient         — sets the EigenLayer redistribution recipient so
  *                                               slashed collateral flows to ClaimManager, not the
  *                                               deployer; must run before any committee is created
  *
- *      Role requirements (all held by the ADMIN after Core and Coverage deploys):
- *        - STAKE_MANAGER_CONFIG_ROLE on StakeManager     (defaults to ADMIN)
- *        - DEFAULT_ADMIN_ROLE on StakeManager
- *        - DEFAULT_ADMIN_ROLE on SlashingManager
- *        - REWARDS_MANAGER_CONFIG_ROLE on RewardsManager (defaults to ADMIN)
- *        - DEFAULT_ADMIN_ROLE on PremiumManager, ClaimManager, and other Coverage proxies
- *        - DEFAULT_ADMIN_ROLE on SSPRouter
+ *      Role requirements — two groups with different signers on mainnet:
  *
- *      On testnet (ADMIN == DEPLOYER_ADDRESS): the deployer keystore covers all 6 calls.
- *      On mainnet (ADMIN is a multisig): omit --broadcast; submit the calldata batch via Safe.
+ *        Calls 1, 2, 3, 4, 8 — Core / SSPRouter contracts; ADMIN holds required roles directly:
+ *          - STAKE_MANAGER_CONFIG_ROLE on StakeManager     (defaults to ADMIN)
+ *          - DEFAULT_ADMIN_ROLE on StakeManager
+ *          - DEFAULT_ADMIN_ROLE on SlashingManager
+ *          - REWARDS_MANAGER_CONFIG_ROLE on RewardsManager (defaults to ADMIN)
+ *          - DEFAULT_ADMIN_ROLE on SSPRouter
  *
- * Usage:
- *   Testnet (ADMIN == DEPLOYER_ADDRESS):
- *     forge script script/WireCoreContracts.s.sol:WireCoreContracts \
- *       --rpc-url $RPC_URL --broadcast --slow -vvvv \
- *       --keystore $KEYSTORE --sender $DEPLOYER_ADDRESS
+ *        Calls 5, 6, 7 — Coverage contracts; DEFAULT_ADMIN_ROLE held by TimelockController (mainnet):
+ *          - DEFAULT_ADMIN_ROLE on PremiumManager   (ADMIN direct on testnet; TIMELOCK on mainnet)
+ *          - DEFAULT_ADMIN_ROLE on ClaimManager     (ADMIN direct on testnet; TIMELOCK on mainnet)
  *
- *   Mainnet (ADMIN is a multisig — no keystore or broadcast needed):
- *     forge script script/WireCoreContracts.s.sol:WireCoreContracts \
- *       --rpc-url $RPC_URL --slow -vvvv
- *     (no --broadcast, no --keystore; bundle the 6 printed calldatas into a Safe multi-send batch)
+ *      When TIMELOCK is not set (testnet, ADMIN == DEPLOYER_ADDRESS):
+ *        All 8 calls broadcast in a single block from the deployer keystore.
+ *
+ *      When TIMELOCK is set (mainnet):
+ *        Calls 1, 2, 3, 4, 8: simulated without --broadcast; copy printed calldatas to Safe multi-send.
+ *        Calls 5, 6, 7: printed as scheduleBatch + executeBatch calldatas for TimelockController.
+ *          Step 1 — Submit scheduleBatch calldata via Safe TX Builder now.
+ *          Step 2 — After minDelay elapses, submit executeBatch calldata via Safe TX Builder.
+ *
+ * Usage (testnet, TIMELOCK not set):
+ *   forge script script/WireCoreContracts.s.sol:WireCoreContracts \
+ *     --rpc-url $RPC_URL --broadcast --slow -vvvv \
+ *     --keystore $KEYSTORE --sender $DEPLOYER_ADDRESS
+ *
+ * Usage (mainnet, TIMELOCK set):
+ *   forge script script/WireCoreContracts.s.sol:WireCoreContracts \
+ *     --rpc-url $RPC_URL --slow -vvvv --sender $ADMIN
+ *   (no --broadcast; copy the 5 Core call calldatas to a Safe multi-send batch)
+ *   (copy the printed scheduleBatch calldata and submit to TimelockController via Safe TX Builder)
+ *   (after minDelay, submit the executeBatch calldata via Safe TX Builder)
  *
  * Required Environment Variables:
  *   Core (from DeploySepolia/DeployEthereum outputs):
@@ -95,7 +109,7 @@ interface IClaimManagerPremiumView {
  *   - REWARDS_MANAGER: RewardsManager proxy address
  *   - SSP_ROUTER: SSPRouter proxy address
  *
- *   Coverage (from script/DeploySepolia.s.sol outputs):
+ *   Coverage (from script/Deploy.s.sol outputs):
  *   - POLICY_MANAGER: PolicyManager proxy address
  *   - CLAIM_MANAGER: ClaimManager proxy address
  *   - PREMIUM_MANAGER: PremiumManager proxy address
@@ -104,18 +118,19 @@ interface IClaimManagerPremiumView {
  *       approved premium token on PremiumManager (set via getInitialPremiumTokens() in Deploy.s.sol)
  *
  *   Signer:
- *   - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag).
- *   - ADMIN: Address that holds all required roles. Defaults to DEPLOYER_ADDRESS.
- *            On mainnet this is the Gnosis Safe multisig — omit --broadcast and submit via Safe.
+ *   - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore on testnet).
+ *   - ADMIN: Address that holds all required roles on Core/SSPRouter contracts and is
+ *            proposer/executor on TimelockController. Defaults to DEPLOYER_ADDRESS.
+ *   - TIMELOCK (optional): TimelockController address (fill in after Phase 2 on mainnet).
+ *            When set, calls 5/6/7 are routed through the timelock.
  *
  * Prerequisites:
  *   - Core contracts deployed (DeploySepolia/DeployEthereum in catalysis/core)
- *   - Coverage contracts deployed (script/DeploySepolia.s.sol)
- *   - ADMIN holds STAKE_MANAGER_CONFIG_ROLE and DEFAULT_ADMIN_ROLE on Core contracts,
- *     REWARDS_MANAGER_CONFIG_ROLE on RewardsManager, DEFAULT_ADMIN_ROLE on PremiumManager,
- *     and DEFAULT_ADMIN_ROLE on SSPRouter
+ *   - Coverage contracts deployed (script/Deploy.s.sol)
+ *   - ADMIN holds required roles on Core / SSPRouter contracts
+ *   - TimelockController (TIMELOCK) holds DEFAULT_ADMIN_ROLE on Coverage contracts (mainnet)
  *
- * Verify after running:
+ * Verify after running (after timelock execute on mainnet):
  *   cast call $STAKE_MANAGER "coverPoolFactory()(address)" --rpc-url $RPC_URL
  *   cast call $SLASHING_MANAGER "claimManager()(address)" --rpc-url $RPC_URL
  *   cast call $SSP_ROUTER "stakeRecipient()(address)" --rpc-url $RPC_URL
@@ -124,8 +139,10 @@ contract WireCoreContracts is Script {
     bytes32 internal constant POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
 
     address public deployer;
-    /// @notice Holder of all required roles. Defaults to deployer. On mainnet: ADMIN multisig.
+    /// @notice Holder of required roles on Core/SSPRouter. Proposer/executor on TimelockController.
     address public admin;
+    /// @notice TimelockController address. When set, calls 5/6/7 are routed through the timelock.
+    address public timelock;
     address public stakeManager;
     address public slashingManager;
     address public rewardsManager;
@@ -150,6 +167,7 @@ contract WireCoreContracts is Script {
     constructor() {
         deployer = vm.envAddress("DEPLOYER_ADDRESS");
         admin = vm.envOr("ADMIN", deployer);
+        timelock = vm.envOr("TIMELOCK", address(0));
         stakeManager = vm.envAddress("STAKE_MANAGER");
         slashingManager = vm.envAddress("SLASHING_MANAGER");
         rewardsManager = vm.envAddress("REWARDS_MANAGER");
@@ -165,6 +183,7 @@ contract WireCoreContracts is Script {
         console.log("=== CROSS-SYSTEM WIRING ===");
         console.log("Keystore signer (deployer):", deployer);
         console.log("Broadcaster (admin / role holder):", admin);
+        console.log("TimelockController:", timelock);
         console.log("");
         console.log("Core contracts:");
         console.log("  StakeManager:    ", stakeManager);
@@ -178,8 +197,22 @@ contract WireCoreContracts is Script {
         console.log("  CoverPoolFactory:", coverPoolFactory);
         console.log("  PayoutToken:     ", payoutToken);
 
-        // All 6 calls require roles held by admin (DEFAULT_ADMIN_ROLE or config roles that default to ADMIN).
-        // On testnet admin == deployer; on mainnet admin is the multisig — omit --broadcast and use Safe.
+        if (timelock != address(0)) {
+            _runWithTimelock();
+        } else {
+            _runDirect();
+        }
+    }
+
+    // ─── Direct path (testnet / no timelock)
+    // ────────────────────────────────────
+
+    /**
+     * @notice Direct path (testnet / no timelock): broadcasts all 8 wiring calls from admin.
+     * @dev ADMIN must hold DEFAULT_ADMIN_ROLE on Coverage contracts directly.
+     */
+    function _runDirect() private {
+        // All 8 calls require roles held by admin.
         vm.startBroadcast(admin);
 
         console.log("\n[1/8] StakeManager.setCoverPoolFactory...");
@@ -209,7 +242,7 @@ contract WireCoreContracts is Script {
 
         vm.stopBroadcast();
 
-        _verify();
+        _verifyAll();
 
         console.log("\n=== CROSS-SYSTEM WIRING COMPLETED ===");
         emit WiringCompleted(
@@ -224,7 +257,110 @@ contract WireCoreContracts is Script {
         );
     }
 
-    function _verify() internal view {
+    // ─── Timelock path (mainnet)
+    // ────────────────────────────────────────────────
+
+    /**
+     * @notice Timelock path (mainnet): Core calls simulated for Safe batch; Coverage calls
+     *         printed as scheduleBatch / executeBatch calldata for TimelockController.
+     * @dev Calls 1, 2, 3, 4, 8 target Core/SSPRouter contracts where ADMIN holds the required
+     *      roles directly. Run without --broadcast; copy the printed calldatas into a Safe
+     *      multi-send batch.
+     *
+     *      Calls 5, 6, 7 target Coverage contracts where DEFAULT_ADMIN_ROLE is held by
+     *      TimelockController. These are printed as scheduleBatch + executeBatch calldata:
+     *        Step 1 — Submit scheduleBatch to TimelockController via Safe TX Builder.
+     *        Step 2 — After minDelay elapses, submit executeBatch via Safe TX Builder.
+     *
+     *      Wiring is INCOMPLETE until the timelock execute is confirmed. Do NOT proceed to
+     *      Phase 3b until coverage call verification passes.
+     */
+    function _runWithTimelock() private {
+        // ── Core calls (1, 2, 3, 4, 8): ADMIN holds required roles directly
+        // ──────────────────
+        // Run without --broadcast; Foundry simulation prints calldatas for the Safe multi-send.
+        vm.startBroadcast(admin);
+
+        console.log("\n[1/8] StakeManager.setCoverPoolFactory...");
+        IStakeManagerWire(stakeManager).setCoverPoolFactory(coverPoolFactory);
+
+        console.log("[2/8] StakeManager.grantRole(POLICY_MANAGER_ROLE, policyManager)...");
+        IStakeManagerWire(stakeManager).grantRole(POLICY_MANAGER_ROLE, policyManager);
+
+        console.log("[3/8] SlashingManager.setClaimManager...");
+        ISlashingManagerWire(slashingManager).setClaimManager(claimManager);
+
+        console.log("[4/8] RewardsManager.setPremiumManager...");
+        IRewardsManagerWire(rewardsManager).setPremiumManager(premiumManager);
+
+        console.log("[8/8] SSPRouter.setStakeRecipient(claimManager)...");
+        ISSPRouterWire(sspRouter).setStakeRecipient(claimManager);
+
+        vm.stopBroadcast();
+
+        // ── Coverage calls (5, 6, 7): DEFAULT_ADMIN_ROLE held by TimelockController
+        // ────────────
+        // Calldata has been printed below; submit via Safe TX Builder.
+        // Do NOT emit WiringCompleted — wiring is incomplete until the timelock executes.
+        _printCoverageTimelockCalldata();
+    }
+
+    /**
+     * @notice Prints scheduleBatch + executeBatch calldata for Coverage wiring calls 5, 6, 7.
+     * @dev Coverage calls require DEFAULT_ADMIN_ROLE on PremiumManager and ClaimManager.
+     *      On mainnet this role is held by the TimelockController, so these calls must be
+     *      scheduled and executed via the timelock rather than called directly by ADMIN.
+     */
+    function _printCoverageTimelockCalldata() private view {
+        bytes32 cmRole = IPremiumManagerWire(premiumManager).CLAIM_MANAGER_ROLE();
+        uint256 minDelay = TimelockController(payable(timelock)).getMinDelay();
+
+        address[] memory targets = new address[](3);
+        uint256[] memory values = new uint256[](3);
+        bytes[] memory calldatas = new bytes[](3);
+
+        // Call 5: PremiumManager.approveSpender(payoutToken, rewardsManager, max)
+        targets[0] = premiumManager;
+        values[0] = 0;
+        calldatas[0] =
+            abi.encodeCall(IPremiumManagerWire.approveSpender, (payoutToken, rewardsManager, type(uint256).max));
+
+        // Call 6: ClaimManager.setPremiumManager(premiumManager)
+        targets[1] = claimManager;
+        values[1] = 0;
+        calldatas[1] = abi.encodeCall(IClaimManagerWire.setPremiumManager, (premiumManager));
+
+        // Call 7: PremiumManager.grantRole(CLAIM_MANAGER_ROLE, claimManager)
+        targets[2] = premiumManager;
+        values[2] = 0;
+        calldatas[2] = abi.encodeCall(IAccessControlGrant.grantRole, (cmRole, claimManager));
+
+        bytes memory scheduleCalldata = abi.encodeCall(
+            TimelockController.scheduleBatch, (targets, values, calldatas, bytes32(0), bytes32(0), minDelay)
+        );
+        bytes memory executeCalldata =
+            abi.encodeCall(TimelockController.executeBatch, (targets, values, calldatas, bytes32(0), bytes32(0)));
+
+        console2.log("");
+        console2.log("--- Coverage Wiring Calldata (submit via Safe TX Builder) ---");
+        console2.log("Calls 5/6/7 require DEFAULT_ADMIN_ROLE on Coverage contracts, held by TimelockController.");
+        console2.log("TimelockController:", timelock);
+        console2.log("Min Delay:", minDelay, "seconds");
+        console2.log("");
+        console2.log("Step 1 - Schedule (submit now):");
+        console2.log("  To:", timelock);
+        console2.log("  Data:", vm.toString(scheduleCalldata));
+        console2.log("");
+        console2.log("Step 2 - Execute (submit after delay):");
+        console2.log("  To:", timelock);
+        console2.log("  Data:", vm.toString(executeCalldata));
+        console2.log("=============================================================");
+    }
+
+    // ─── Verification
+    // ───────────────────────────────────────────────────────────
+
+    function _verifyAll() internal view {
         console.log("\n--- Verification ---");
 
         address gotFactory = IStakeManagerWire(stakeManager).coverPoolFactory();
