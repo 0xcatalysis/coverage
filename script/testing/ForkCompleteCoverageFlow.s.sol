@@ -290,10 +290,7 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
         address router = abi.decode(d, (address));
         console.log("SSPRouter:", router);
 
-        (bool ok2, bytes memory d2) =
-            router.staticcall(abi.encodeWithSignature("getCommitteeVaultsByModule(uint96,uint8)", policyId, uint8(2)));
-        require(ok2, "Vault discovery: SSPRouter.getCommitteeVaultsByModule() call failed");
-        vaults = abi.decode(d2, (address[]));
+        vaults = ISSPRouterForkScript(router).getCommitteeVaultsByModule(uint96(policyId), uint8(2));
 
         console.log("Discovered vault(s) for committee:");
         console.log("  vaults.length:", vaults.length);
