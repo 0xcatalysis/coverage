@@ -5,6 +5,7 @@ import {console} from "forge-std/console.sol";
 import {StdCheats} from "forge-std/StdCheats.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {CompleteCoverageFlow} from "./CompleteCoverageFlow.s.sol";
 import {CoveredVaultWrapper} from "../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
 
@@ -21,6 +22,16 @@ interface IVaultV2Fork {
 /// @notice Minimal SSPRouter interface for per-committee vault discovery
 interface ISSPRouterForkScript {
     function getCommitteeVaultsByModule(uint96 committeeId, uint8 moduleType) external view returns (address[] memory);
+}
+
+/// @notice Returns the ERC-20 token held by a DurationVaultStrategy (e.g. wstETH on live mainnet).
+interface IDurationVaultStrategyScript {
+    function underlyingToken() external view returns (address);
+}
+
+/// @notice Queries USD values from the live Catalysis ChainlinkPriceFeed.
+interface IChainlinkPriceFeedForkScript {
+    function getUSDValue(address token, uint256 amount) external view returns (uint256);
 }
 
 /**
@@ -149,25 +160,34 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
 
         console.log("\n=== PHASE 3b: FUND VAULTS (EigenLayer stake) ===");
 
-        uint256 depositAmount = coverageLimit;
+        address chainlinkPriceFeed = vm.envAddress("CHAINLINK_PRICE_FEED");
+        uint256 coverageLimitUSD =
+            IChainlinkPriceFeedForkScript(chainlinkPriceFeed).getUSDValue(payoutToken, coverageLimit);
+        uint256 targetUSD = coverageLimitUSD * 2;
 
         for (uint256 i = 0; i < vaults.length; i++) {
             console.log("Funding vault", i, ":", vaults[i]);
 
+            address collateralToken = IDurationVaultStrategyScript(vaults[i]).underlyingToken();
+            console.log("     collateral token:", collateralToken);
+
+            uint256 tokenUnit = 1e18;
+            uint256 tokenPriceUSD =
+                IChainlinkPriceFeedForkScript(chainlinkPriceFeed).getUSDValue(collateralToken, tokenUnit);
+            uint256 collateralAmount = (targetUSD * tokenUnit + tokenPriceUSD - 1) / tokenPriceUSD;
+
             uint256 depositorKey = uint256(keccak256(abi.encodePacked("eigenlayer_depositor", curatorPrivateKey, i)));
             address depositor = vm.addr(depositorKey);
 
-            deal(depositor, depositAmount + 0.1 ether);
+            deal(depositor, 0.1 ether);
+            deal(collateralToken, depositor, collateralAmount);
 
             vm.startBroadcast(depositorKey);
 
-            (bool ok,) = payoutToken.call{value: depositAmount}(abi.encodeWithSignature("deposit()"));
-            require(ok, "Phase 3b: ETH->WETH wrap failed");
-
-            (ok,) = payoutToken.call(
-                abi.encodeWithSignature("approve(address,uint256)", EIGENLAYER_STRATEGY_MANAGER, depositAmount)
+            (bool ok,) = collateralToken.call(
+                abi.encodeWithSignature("approve(address,uint256)", EIGENLAYER_STRATEGY_MANAGER, collateralAmount)
             );
-            require(ok, "Phase 3b: WETH approve to StrategyManager failed");
+            require(ok, "Phase 3b: collateral token approve to StrategyManager failed");
 
             (bool delegatedOk, bytes memory delegatedData) =
                 EIGENLAYER_DELEGATION_MANAGER.staticcall(abi.encodeWithSignature("delegatedTo(address)", depositor));
@@ -194,11 +214,11 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
 
             (ok,) = EIGENLAYER_STRATEGY_MANAGER.call(
                 abi.encodeWithSignature(
-                    "depositIntoStrategy(address,address,uint256)", vaults[i], payoutToken, depositAmount
+                    "depositIntoStrategy(address,address,uint256)", vaults[i], collateralToken, collateralAmount
                 )
             );
             require(ok, "Phase 3b: EigenLayer depositIntoStrategy failed");
-            console.log("[OK] Deposited", depositAmount, "WETH into vault", i);
+            console.log("[OK] Deposited", collateralAmount, "collateral tokens into vault", i);
             console.log("     via depositor:", depositor);
 
             vm.stopBroadcast();
