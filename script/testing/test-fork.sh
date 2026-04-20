@@ -322,19 +322,23 @@ if [[ "$DEPLOY_COVERED_VAULT" == "false" ]]; then
     export BIND_POLICY_HOOK
 fi
 
-# ─── 6.5 Deploy UniswapV3Adapter and register WETH -> PAYOUT_TOKEN swap route ─
-step "Deploying UniswapV3Adapter and registering WETH -> PAYOUT_TOKEN swap route..."
+# ─── 6.5 Deploy UniswapV3Adapter and register swap routes ────────────────────
+# Registers two routes on the Swapper:
+#   WETH    → PAYOUT_TOKEN  (used when payoutToken itself is slashed)
+#   wstETH  → PAYOUT_TOKEN  (live mainnet: EigenLayer vaults hold wstETH as collateral)
+step "Deploying UniswapV3Adapter and registering swap routes..."
 
 SWAP_ROUTER="0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45"   # Uniswap V3 SwapRouter02
 QUOTER="0x61fFE014bA17989E743c5F6cB21bF9697530B21e"        # Uniswap V3 QuoterV2
-TOKEN_IN="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"      # WETH
+WETH="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"          # WETH
+WSTETH="0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"        # wstETH (live mainnet EigenLayer collateral)
 POOL_FEE_ROUTE="500"                                        # 0.05% Uniswap V3 pool
 
 DEPLOYER_ADDRESS="$DEPLOYER" \
 SWAPPER="$SWAPPER" \
 SWAP_ROUTER="$SWAP_ROUTER" \
 QUOTER="$QUOTER" \
-TOKEN_IN="$TOKEN_IN" \
+TOKEN_IN="$WETH" \
 TOKEN_OUT="$PAYOUT_TOKEN" \
 POOL_FEE="$POOL_FEE_ROUTE" \
 forge script --root "$COVERAGE_ROOT" \
@@ -346,11 +350,12 @@ forge script --root "$COVERAGE_ROOT" \
     --slow \
     -vvvv
 
+# Route 1: WETH → PAYOUT_TOKEN
 DEPLOYER_ADDRESS="$DEPLOYER" \
 SWAPPER="$SWAPPER" \
 SWAP_ROUTER="$SWAP_ROUTER" \
 QUOTER="$QUOTER" \
-TOKEN_IN="$TOKEN_IN" \
+TOKEN_IN="$WETH" \
 TOKEN_OUT="$PAYOUT_TOKEN" \
 POOL_FEE="$POOL_FEE_ROUTE" \
 forge script --root "$COVERAGE_ROOT" \
@@ -362,7 +367,24 @@ forge script --root "$COVERAGE_ROOT" \
     --slow \
     -vvvv
 
-info "Uniswap V3 swap route registered"
+# Route 2: wstETH → PAYOUT_TOKEN
+DEPLOYER_ADDRESS="$DEPLOYER" \
+SWAPPER="$SWAPPER" \
+SWAP_ROUTER="$SWAP_ROUTER" \
+QUOTER="$QUOTER" \
+TOKEN_IN="$WSTETH" \
+TOKEN_OUT="$PAYOUT_TOKEN" \
+POOL_FEE="$POOL_FEE_ROUTE" \
+forge script --root "$COVERAGE_ROOT" \
+    "$COVERAGE_ROOT/script/DeployUniswapV3Adapter.s.sol:DeployUniswapV3Adapter" \
+    --sig "configure()" \
+    --rpc-url "$ANVIL_RPC_URL" \
+    --private-key "$PRIVATE_KEY" \
+    --broadcast \
+    --slow \
+    -vvvv
+
+info "Uniswap V3 swap routes registered (WETH and wstETH)"
 
 # ─── 7. Derive test accounts ──────────────────────────────────────────────────
 if [[ "$DEPLOY_COVERED_VAULT" == "false" ]]; then
