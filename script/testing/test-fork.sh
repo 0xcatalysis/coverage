@@ -334,6 +334,7 @@ WETH="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"          # WETH
 WSTETH="0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"        # wstETH (live mainnet EigenLayer collateral)
 POOL_FEE_ROUTE="500"                                        # 0.05% Uniswap V3 pool
 
+ADAPTER_DEPLOY_LOG=/tmp/forge-adapter-deploy.log
 DEPLOYER_ADDRESS="$DEPLOYER" \
 SWAPPER="$SWAPPER" \
 SWAP_ROUTER="$SWAP_ROUTER" \
@@ -348,13 +349,23 @@ forge script --root "$COVERAGE_ROOT" \
     --private-key "$PRIVATE_KEY" \
     --broadcast \
     --slow \
-    -vvvv
+    -vvvv \
+    2>&1 | tee "$ADAPTER_DEPLOY_LOG"
+
+UNISWAP_V3_ADAPTER=$(grep "UniswapV3Adapter deployed at:" "$ADAPTER_DEPLOY_LOG" | awk '{print $NF}' | tail -1)
+if [[ -z "$UNISWAP_V3_ADAPTER" || "$UNISWAP_V3_ADAPTER" == "0x" ]]; then
+    error "Failed to extract UNISWAP_V3_ADAPTER from deploy log. Check $ADAPTER_DEPLOY_LOG"
+    exit 1
+fi
+info "UNISWAP_V3_ADAPTER = $UNISWAP_V3_ADAPTER"
+export UNISWAP_V3_ADAPTER
 
 # Route 1: WETH → PAYOUT_TOKEN
 DEPLOYER_ADDRESS="$DEPLOYER" \
 SWAPPER="$SWAPPER" \
 SWAP_ROUTER="$SWAP_ROUTER" \
 QUOTER_V2="$QUOTER_V2" \
+UNISWAP_V3_ADAPTER="$UNISWAP_V3_ADAPTER" \
 TOKEN_IN="$WETH" \
 TOKEN_OUT="$PAYOUT_TOKEN" \
 POOL_FEE="$POOL_FEE_ROUTE" \
@@ -372,6 +383,7 @@ DEPLOYER_ADDRESS="$DEPLOYER" \
 SWAPPER="$SWAPPER" \
 SWAP_ROUTER="$SWAP_ROUTER" \
 QUOTER_V2="$QUOTER_V2" \
+UNISWAP_V3_ADAPTER="$UNISWAP_V3_ADAPTER" \
 TOKEN_IN="$WSTETH" \
 TOKEN_OUT="$PAYOUT_TOKEN" \
 POOL_FEE="$POOL_FEE_ROUTE" \
