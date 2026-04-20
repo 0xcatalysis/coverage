@@ -145,7 +145,6 @@ step "Granting Core roles to deployer via MASTER_ADMIN impersonation..."
 ADMIN_ROLE="0x0000000000000000000000000000000000000000000000000000000000000000"
 STAKE_CFG_ROLE=$(cast keccak "STAKE_MANAGER_CONFIG_ROLE")
 REWARDS_CFG_ROLE=$(cast keccak "REWARDS_MANAGER_CONFIG_ROLE")
-POLICY_MGR_ROLE=$(cast keccak "POLICY_MANAGER_ROLE")
 
 cast rpc anvil_impersonateAccount "$MASTER_ADMIN" --rpc-url "$ANVIL_RPC_URL" > /dev/null
 cast rpc anvil_setBalance "$MASTER_ADMIN" 0xDE0B6B3A7640000 --rpc-url "$ANVIL_RPC_URL" > /dev/null
