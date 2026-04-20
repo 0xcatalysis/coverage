@@ -222,6 +222,9 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
 
         address morphoVaultAddr = CoveredVaultWrapper(coveredVault).morphoVault();
 
+        deal(payoutToken, _coveredVaultUser, _coveredVaultDepositAmount);
+        console.log("[OK] Funded user with", _coveredVaultDepositAmount, "payout tokens");
+
         vm.startBroadcast(_coveredVaultUserPrivateKey);
         IERC20(payoutToken).approve(coveredVault, _coveredVaultDepositAmount);
         CoveredVaultWrapper(coveredVault).deposit(_coveredVaultDepositAmount, _coveredVaultUser);
