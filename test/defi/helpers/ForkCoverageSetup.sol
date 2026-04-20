@@ -20,7 +20,6 @@ import {UniswapV3Adapter} from "coverage/swappers/UniswapV3Adapter.sol";
 import {MockSpec} from "coverage/mocks/MockSpec.sol";
 
 import {ICoverPool} from "coverage/interfaces/ICoverPool.sol";
-import {ICoverPoolFactory} from "coverage/interfaces/ICoverPoolFactory.sol";
 
 import {CoveredVaultWrapper} from "../../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
 import {IVaultV2} from "vault-v2/interfaces/IVaultV2.sol";
@@ -379,29 +378,6 @@ abstract contract ForkCoverageSetup is Test {
             opts
         );
         wrapper = CoveredVaultWrapper(proxy);
-    }
-
-    /// @notice Creates a CoverPool and requests coverage, returning (pool, policyId).
-    function _createPoolAndRequestCoverage(
-        address buyer,
-        address beneficiary,
-        address claimer,
-        address bindPolicyHook,
-        address payoutToken,
-        uint32 duration,
-        uint16 poolFeeBps
-    )
-        internal
-        returns (address pool, uint96 policyId)
-    {
-        ICoverPoolFactory.CreateCoverPoolParams memory params = ICoverPoolFactory.CreateCoverPoolParams({
-            curator: address(this), quoteSigner: quoteSigner, poolFeeBps: poolFeeBps
-        });
-        pool = coverPoolFactory.computeCoverPoolAddress(params);
-        coverPoolFactory.createCoverPool(params);
-
-        vm.prank(buyer);
-        policyId = policyManager.requestCoverage(pool, beneficiary, claimer, payoutToken, duration, bindPolicyHook);
     }
 
     /*//////////////////////////////////////////////////////////////

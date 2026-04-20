@@ -153,6 +153,8 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
     // ════════════════════════════════════════════
 
     /// @dev Overrides parent Phase 3b to support multiple vaults (one per acceptableToken).
+    ///      Each vault's underlying collateral token is discovered at runtime via underlyingToken()
+    ///      rather than assumed to be payoutToken — on live mainnet the vault holds wstETH, not WETH.
     function _beforePhase4() internal override {
         if (vaults.length == 0) {
             return;
@@ -171,7 +173,8 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
             address collateralToken = IDurationVaultStrategyScript(vaults[i]).underlyingToken();
             console.log("     collateral token:", collateralToken);
 
-            uint256 tokenUnit = 1e18;
+            // Use actual token decimals — mirrors ForkCoverageSetup._collateralAmountFor2xCoverage.
+            uint256 tokenUnit = 10 ** uint256(IERC20Metadata(collateralToken).decimals());
             uint256 tokenPriceUSD =
                 IChainlinkPriceFeedForkScript(chainlinkPriceFeed).getUSDValue(collateralToken, tokenUnit);
             uint256 collateralAmount = (targetUSD * tokenUnit + tokenPriceUSD - 1) / tokenPriceUSD;
@@ -184,16 +187,13 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
 
             vm.startBroadcast(depositorKey);
 
-            (bool ok,) = collateralToken.call(
-                abi.encodeWithSignature("approve(address,uint256)", EIGENLAYER_STRATEGY_MANAGER, collateralAmount)
-            );
-            require(ok, "Phase 3b: collateral token approve to StrategyManager failed");
-
+            // Delegation must happen before approve+deposit — mirrors _fundEigenLayerStake in ForkCoverageSetup.
             (bool delegatedOk, bytes memory delegatedData) =
                 EIGENLAYER_DELEGATION_MANAGER.staticcall(abi.encodeWithSignature("delegatedTo(address)", depositor));
             address currentOperator =
                 (delegatedOk && delegatedData.length >= 32) ? abi.decode(delegatedData, (address)) : address(0);
 
+            bool ok;
             if (currentOperator != vaults[i]) {
                 (ok,) = EIGENLAYER_DELEGATION_MANAGER.call(
                     abi.encodePacked(
@@ -211,6 +211,11 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
             } else {
                 console.log("[SKIP] Depositor", i, "already delegated to vault", i);
             }
+
+            (ok,) = collateralToken.call(
+                abi.encodeWithSignature("approve(address,uint256)", EIGENLAYER_STRATEGY_MANAGER, collateralAmount)
+            );
+            require(ok, "Phase 3b: collateral token approve to StrategyManager failed");
 
             (ok,) = EIGENLAYER_STRATEGY_MANAGER.call(
                 abi.encodeWithSignature(
