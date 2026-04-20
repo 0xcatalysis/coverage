@@ -19,8 +19,12 @@ interface IVaultV2Fork {
     function setCurator(address curator) external;
 }
 
-/// @notice Minimal SSPRouter interface for per-committee vault discovery
+/// @notice Minimal SSPRouter interface for vault discovery
 interface ISSPRouterForkScript {
+    /// @notice Returns all vaults registered for a given module type (global list, always readable).
+    function getVaultsByModule(uint8 moduleType) external view returns (address[] memory);
+    /// @notice Returns vaults for a specific committee. Only valid AFTER bindPolicyForRequest
+    ///         (setCommitteeVaults inside bindPolicyForRequest populates committeeModuleVaults).
     function getCommitteeVaultsByModule(uint96 committeeId, uint8 moduleType) external view returns (address[] memory);
 }
 
@@ -51,8 +55,10 @@ interface IChainlinkPriceFeedForkScript {
  *                  `deal`, redeems to trigger CoveredVaultWrapper.fileClaim internally.
  *                  Phase 5, 6, 7 still run but Phase 7 becomes a log-only check.
  *
- *      Vault discovery is per-committee (getCommitteeVaultsByModule) rather than global
- *      (getVaultsByModule) to avoid picking up stale vaults from prior live-Core committees.
+ *      Vault discovery uses a snapshot-delta on the global getVaultsByModule list taken just
+ *      before requestCoverage (see _snapshotEigenLayerVaultCount / _discoverVaultsIfNeeded).
+ *      getCommitteeVaultsByModule cannot be used pre-bind because committeeModuleVaults is only
+ *      populated by setCommitteeVaults inside bindPolicyForRequest.
  *
  *      Required additional env vars when DEPLOY_COVERED_VAULT=true:
  *        - COVERED_VAULT_MAX_LOSS_BPS     (default: 1000 = 10%)
@@ -74,6 +80,13 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
     address private constant VAULT_V2_FACTORY = 0xA1D94F746dEfa1928926b84fB2596c06926C0405;
 
     bool private _deployCoveredVault;
+
+    /// @dev Global EigenLayer vault count snapshotted just before _phase2_requestCoverage.
+    ///      requestCoverage triggers SSPRouter to deploy new DurationVaultStrategy vaults; the
+    ///      delta between the post-request global list and this snapshot identifies them.
+    ///      getCommitteeVaultsByModule cannot be used here because committeeModuleVaults is only
+    ///      populated by setCommitteeVaults inside bindPolicyForRequest (Phase 4).
+    uint256 private _eigenLayerVaultCountSnapshot;
 
     uint16 private _coveredVaultMaxLossBps;
     uint16 private _coveredVaultDeductibleBps;
@@ -272,6 +285,27 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
         emit FlowCompleted("Seed + Trigger Claim", 38);
     }
 
+    // ════════════════════════════════════════════
+    //  Vault snapshot helper
+    // ════════════════════════════════════════════
+
+    /// @dev Records the current global EigenLayer vault count so _discoverVaultsIfNeeded can
+    ///      identify the vaults created for this committee as the delta.  Must be called BEFORE
+    ///      _phase2_requestCoverage because requestCoverage triggers SSPRouter to deploy new
+    ///      DurationVaultStrategy vaults into the global list.
+    function _snapshotEigenLayerVaultCount() internal {
+        (bool ok1, bytes memory d1) = stakeManager.staticcall(abi.encodeWithSignature("router()"));
+        require(ok1 && d1.length >= 32, "Snapshot: StakeManager.router() call failed");
+        address router = abi.decode(d1, (address));
+
+        (bool ok2, bytes memory d2) = router.staticcall(abi.encodeWithSignature("getVaultsByModule(uint8)", uint8(2)));
+        require(ok2 && d2.length >= 32, "Snapshot: getVaultsByModule call failed");
+
+        address[] memory currentVaults = abi.decode(d2, (address[]));
+        _eigenLayerVaultCountSnapshot = currentVaults.length;
+        console.log("[OK] EigenLayer vault count snapshot:", _eigenLayerVaultCountSnapshot);
+    }
+
     function run() external override {
         console.log("============================================");
         console.log("  COMPLETE COVERAGE PROTOCOL E2E FLOW");
@@ -287,6 +321,7 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
         _phase1_createCoverPool();
         _phase1b_releaseOperator();
         _phase1c_deployCoveredVault();
+        _snapshotEigenLayerVaultCount();
         _phase2_requestCoverage();
         _phase3_verifyCommittee();
         _discoverVaultsIfNeeded();
@@ -304,28 +339,48 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
         emit EndToEndCompleted(policyId, coverPool, beneficiary);
     }
 
-    /// @dev Overrides parent to query per-committee vaults (moduleType=2, EIGENLAYER on live Core)
-    ///      instead of the global getVaultsByModule which includes stale vaults from prior committees.
+    /// @dev Overrides parent to use the snapshot-delta approach: compares the current global
+    ///      getVaultsByModule(EIGENLAYER) list against the pre-requestCoverage snapshot to find
+    ///      the vaults that were just deployed for this committee.
+    ///
+    ///      getCommitteeVaultsByModule CANNOT be used here because committeeModuleVaults is only
+    ///      populated by setCommitteeVaults inside bindPolicyForRequest (Phase 4), which has not
+    ///      run yet.  This matches the pattern used by ForkCoverageSetup._discoverNewEigenLayerVaults
+    ///      and CoveredVaultWrapper.fork.t.sol.
     function _discoverVaultsIfNeeded() internal override {
         if (vaults.length > 0) {
             return;
         }
 
-        console.log("\n=== VAULT AUTO-DISCOVERY (per committee) ===");
+        console.log("\n=== VAULT AUTO-DISCOVERY (global delta, pre-bind) ===");
 
-        (bool ok1, bytes memory d) = stakeManager.staticcall(abi.encodeWithSignature("router()"));
-        require(ok1 && d.length >= 32, "Vault discovery: StakeManager.router() call failed");
-        address router = abi.decode(d, (address));
+        (bool ok1, bytes memory d1) = stakeManager.staticcall(abi.encodeWithSignature("router()"));
+        require(ok1 && d1.length >= 32, "Vault discovery: StakeManager.router() call failed");
+        address router = abi.decode(d1, (address));
         console.log("SSPRouter:", router);
 
-        vaults = ISSPRouterForkScript(router).getCommitteeVaultsByModule(uint96(policyId), uint8(2));
+        (bool ok2, bytes memory d2) = router.staticcall(abi.encodeWithSignature("getVaultsByModule(uint8)", uint8(2)));
+        require(ok2 && d2.length >= 32, "Vault discovery: getVaultsByModule call failed");
+        address[] memory allVaults = abi.decode(d2, (address[]));
 
-        console.log("Discovered vault(s) for committee:");
-        console.log("  vaults.length:", vaults.length);
+        require(
+            allVaults.length > _eigenLayerVaultCountSnapshot,
+            "Vault auto-discovery: no new EigenLayer vaults deployed since snapshot"
+        );
+
+        uint256 newCount = allVaults.length - _eigenLayerVaultCountSnapshot;
+        vaults = new address[](newCount);
+        for (uint256 i = 0; i < newCount; i++) {
+            vaults[i] = allVaults[_eigenLayerVaultCountSnapshot + i];
+        }
+
+        console.log("Discovered vault(s) for committee (snapshot delta):");
+        console.log("  snapshot count:", _eigenLayerVaultCountSnapshot);
+        console.log("  total count:", allVaults.length);
+        console.log("  new vaults:", vaults.length);
         console.log("  policyId:", policyId);
         for (uint256 i = 0; i < vaults.length; i++) {
             console.log("  Vault", i, ":", vaults[i]);
         }
-        require(vaults.length > 0, "Vault auto-discovery: no EigenLayer vaults found for this committee");
     }
 }
