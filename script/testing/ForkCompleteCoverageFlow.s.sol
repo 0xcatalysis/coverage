@@ -154,7 +154,12 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
         for (uint256 i = 0; i < vaults.length; i++) {
             console.log("Funding vault", i, ":", vaults[i]);
 
-            vm.startBroadcast(curatorPrivateKey);
+            uint256 depositorKey = uint256(keccak256(abi.encodePacked("eigenlayer_depositor", curatorPrivateKey, i)));
+            address depositor = vm.addr(depositorKey);
+
+            deal(depositor, depositAmount + 0.1 ether);
+
+            vm.startBroadcast(depositorKey);
 
             (bool ok,) = payoutToken.call{value: depositAmount}(abi.encodeWithSignature("deposit()"));
             require(ok, "Phase 3b: ETH->WETH wrap failed");
@@ -165,7 +170,7 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
             require(ok, "Phase 3b: WETH approve to StrategyManager failed");
 
             (bool delegatedOk, bytes memory delegatedData) =
-                EIGENLAYER_DELEGATION_MANAGER.staticcall(abi.encodeWithSignature("delegatedTo(address)", curator));
+                EIGENLAYER_DELEGATION_MANAGER.staticcall(abi.encodeWithSignature("delegatedTo(address)", depositor));
             address currentOperator =
                 (delegatedOk && delegatedData.length >= 32) ? abi.decode(delegatedData, (address)) : address(0);
 
@@ -182,9 +187,9 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
                     )
                 );
                 require(ok, "Phase 3b: EigenLayer delegateTo vault failed");
-                console.log("[OK] Curator delegated to vault", i);
+                console.log("[OK] Depositor", i, "delegated to vault", i);
             } else {
-                console.log("[SKIP] Curator already delegated to vault", i);
+                console.log("[SKIP] Depositor", i, "already delegated to vault", i);
             }
 
             (ok,) = EIGENLAYER_STRATEGY_MANAGER.call(
@@ -194,6 +199,7 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
             );
             require(ok, "Phase 3b: EigenLayer depositIntoStrategy failed");
             console.log("[OK] Deposited", depositAmount, "WETH into vault", i);
+            console.log("     via depositor:", depositor);
 
             vm.stopBroadcast();
         }
