@@ -15,14 +15,14 @@ const secondsPerYear = 31_536_000
 // underwriting algorithm. Simulation-derived fields come from Credora; the
 // remaining fields are per-vault config.
 type AlgoInputs struct {
-	VaultAddress     string
-	NTotalPaths      int
-	NLossPaths       int
-	LossArray        []float64
-	Deductible       float64
-	Kappa            float64
-	ConfidenceLevels []float64
-	TVLCovered       float64
+	VaultAddress     string    `json:"vault_address"`
+	NTotalPaths      int       `json:"n_total_paths"`
+	NLossPaths       int       `json:"n_loss_paths"`
+	LossArray        []float64 `json:"-"` // Omit from JSON (not useful in notifications, can be huge)
+	Deductible       float64   `json:"deductible"`
+	Kappa            float64   `json:"kappa"`
+	ConfidenceLevels []float64 `json:"confidence_levels"`
+	TVLCovered       float64   `json:"tvl_covered"`
 }
 
 // VaRPoint represents a single VaR/ES data point, keyed by confidence level.

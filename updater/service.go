@@ -38,7 +38,7 @@ func (s *Service) run(ctx context.Context) {
 	slog.Info("starting premium updater",
 		"poll_interval", s.cfg.pollDuration,
 		"vaults", len(s.cfg.Vaults),
-		"webhook_enabled", s.cfg.Webhook != nil,
+		"webhook_enabled", s.cfg.Webhook != nil && s.cfg.Webhook.URL != "",
 	)
 
 	s.updateAll(ctx)

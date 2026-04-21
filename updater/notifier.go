@@ -108,6 +108,9 @@ func (w *WebhookNotifier) Notify(ctx context.Context, e PremiumEvent) error {
 		if err != nil {
 			lastErr = fmt.Errorf("webhook POST: %w", err)
 			slog.Warn("webhook attempt failed", "attempt", attempt+1, "err", err)
+			if attempt < 1 {
+				time.Sleep(100 * time.Millisecond)
+			}
 			continue
 		}
 		respBody, _ := io.ReadAll(resp.Body)
@@ -124,6 +127,9 @@ func (w *WebhookNotifier) Notify(ctx context.Context, e PremiumEvent) error {
 			return lastErr
 		}
 		slog.Warn("webhook 5xx, retrying", "status", resp.StatusCode)
+		if attempt < 1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 	return lastErr
 }
@@ -140,15 +146,30 @@ func newMultiNotifier(children ...Notifier) *MultiNotifier {
 
 func (m *MultiNotifier) Notify(ctx context.Context, e PremiumEvent) error {
 	var errs []error
+	var successCount int
 	for _, n := range m.children {
 		if err := n.Notify(ctx, e); err != nil {
 			errs = append(errs, err)
+		} else {
+			successCount++
 		}
 	}
-	if len(errs) == 0 {
-		return nil
+
+	// Log partial failures but only return error if ALL notifiers failed.
+	// This allows state to advance even if optional notifiers (e.g., webhook) fail,
+	// preventing log duplication from retry loops on the same premium value.
+	if len(errs) > 0 && successCount == 0 {
+		// All notifiers failed
+		return errors.Join(errs...)
 	}
-	return errors.Join(errs...)
+	if len(errs) > 0 {
+		// Some notifiers failed, but at least one succeeded - log and continue
+		slog.Warn("partial notifier failure",
+			"failed", len(errs),
+			"succeeded", successCount,
+			"errors", errs)
+	}
+	return nil
 }
 
 func truncate(b []byte, max int) []byte {
