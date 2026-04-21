@@ -208,8 +208,9 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
                     LIDO_STETH.call{value: collateralAmount * 2}(abi.encodeWithSignature("submit(address)", address(0)));
                 require(lidoOk, "Phase 3b: Lido ETH submit failed");
 
-                (, bytes memory stETHBalData) =
+                (bool balOk, bytes memory stETHBalData) =
                     LIDO_STETH.staticcall(abi.encodeWithSignature("balanceOf(address)", depositor));
+                require(balOk && stETHBalData.length >= 32, "Phase 3b: stETH balanceOf failed");
                 uint256 stETHBalance = abi.decode(stETHBalData, (uint256));
 
                 (lidoOk,) =
