@@ -359,9 +359,9 @@ if [[ "$DEPLOY_COVERED_VAULT" == "false" ]]; then
 fi
 
 # ─── 6.5 Deploy UniswapV3Adapter and register swap routes ────────────────────
-# Registers two routes on the Swapper:
-#   WETH    → PAYOUT_TOKEN  (used when payoutToken itself is slashed)
-#   wstETH  → PAYOUT_TOKEN  (live mainnet: EigenLayer vaults hold wstETH as collateral)
+# Registers up to two routes on the Swapper:
+#   WETH   → PAYOUT_TOKEN  (only when PAYOUT_TOKEN ≠ WETH; skipped for the default WETH payout)
+#   wstETH → PAYOUT_TOKEN  (live mainnet: EigenLayer vaults hold wstETH as collateral)
 step "Deploying UniswapV3Adapter and registering swap routes..."
 
 SWAP_ROUTER="0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45"   # Uniswap V3 SwapRouter02
@@ -397,22 +397,26 @@ info "UNISWAP_V3_ADAPTER = $UNISWAP_V3_ADAPTER"
 export UNISWAP_V3_ADAPTER
 
 # Route 1: WETH → PAYOUT_TOKEN
-DEPLOYER_ADDRESS="$DEPLOYER" \
-SWAPPER="$SWAPPER" \
-SWAP_ROUTER="$SWAP_ROUTER" \
-QUOTER_V2="$QUOTER_V2" \
-UNISWAP_V3_ADAPTER="$UNISWAP_V3_ADAPTER" \
-TOKEN_IN="$WETH" \
-TOKEN_OUT="$PAYOUT_TOKEN" \
-POOL_FEE="$POOL_FEE_ROUTE" \
-forge script --root "$COVERAGE_ROOT" \
-    "$COVERAGE_ROOT/script/DeployUniswapV3Adapter.s.sol:DeployUniswapV3Adapter" \
-    --sig "configure()" \
-    --rpc-url "$ANVIL_RPC_URL" \
-    --private-key "$PRIVATE_KEY" \
-    --broadcast \
-    --slow \
-    -vvvv
+if [[ "${PAYOUT_TOKEN,,}" != "${WETH,,}" ]]; then
+    DEPLOYER_ADDRESS="$DEPLOYER" \
+    SWAPPER="$SWAPPER" \
+    SWAP_ROUTER="$SWAP_ROUTER" \
+    QUOTER_V2="$QUOTER_V2" \
+    UNISWAP_V3_ADAPTER="$UNISWAP_V3_ADAPTER" \
+    TOKEN_IN="$WETH" \
+    TOKEN_OUT="$PAYOUT_TOKEN" \
+    POOL_FEE="$POOL_FEE_ROUTE" \
+    forge script --root "$COVERAGE_ROOT" \
+        "$COVERAGE_ROOT/script/DeployUniswapV3Adapter.s.sol:DeployUniswapV3Adapter" \
+        --sig "configure()" \
+        --rpc-url "$ANVIL_RPC_URL" \
+        --private-key "$PRIVATE_KEY" \
+        --broadcast \
+        --slow \
+        -vvvv
+else
+    info "Skipping Route 1 (WETH → PAYOUT_TOKEN): PAYOUT_TOKEN is WETH — self-swap route is a no-op"
+fi
 
 # Route 2: wstETH → PAYOUT_TOKEN
 DEPLOYER_ADDRESS="$DEPLOYER" \
