@@ -7,6 +7,7 @@
 #   2b. Register USDC/USD price feed if not already registered on live ChainlinkPriceFeed
 #   3. Deploy Catalysis Coverage on the fork (fresh each run)
 #   3b. Restore deployer DEFAULT_ADMIN_ROLE on Coverage contracts via TimelockController impersonation
+#   3c. Bump PolicyManager._nextPolicyId above existing live committee IDs (avoids CommitteeAlreadyExists)
 #   4. Wire Core <-> Coverage (WireCoreContracts.s.sol)
 #   5. Deploy MockSpec via `forge create`; approve it in SpecRegistry
 #   6. Deploy MockBindPolicyHook (used when DEPLOY_COVERED_VAULT=false)
@@ -250,6 +251,39 @@ done
 
 cast rpc anvil_stopImpersonatingAccount "$TIMELOCK" --rpc-url "$ANVIL_RPC_URL" > /dev/null
 info "DEFAULT_ADMIN_ROLE restored to deployer on all Coverage contracts"
+
+# ─── 3c. Bump PolicyManager._nextPolicyId above live committee IDs ─────────
+# The freshly-deployed PolicyManager starts at _nextPolicyId=0.  The first
+# requestCoverage does ++_nextPolicyId → 1 and then calls
+# StakeManager.createCommittee(1, ...).  If the live mainnet StakeManager
+# already has committee 1 (from existing live policies) this reverts with
+# CommitteeAlreadyExists().  Read the current max and patch the counter.
+step "Bumping PolicyManager policy counter above live committee IDs..."
+MAX_COMMITTEE_ID=$(cast call "$STAKE_MANAGER" "getAllCommitteeIds()(uint256[])" \
+    --rpc-url "$ANVIL_RPC_URL" \
+    | python3 -c "
+import sys, re
+nums = [int(x) for x in re.findall(r'\d+', sys.stdin.read())]
+print(max(nums) if nums else 0)
+")
+info "Max existing committee ID on live StakeManager: $MAX_COMMITTEE_ID"
+
+if [[ "$MAX_COMMITTEE_ID" -gt 0 ]]; then
+    # Slot 2 packs: [_nextPolicyId (uint96, bits 160-255)] | [coverPoolFactory (address, bits 0-159)]
+    SLOT2_VAL=$(cast storage "$POLICY_MANAGER" 2 --rpc-url "$ANVIL_RPC_URL")
+    NEW_SLOT2=$(python3 -c "
+slot2 = int('$SLOT2_VAL', 16)
+factory = slot2 & ((1 << 160) - 1)
+print('0x{:064x}'.format(factory | ($MAX_COMMITTEE_ID << 160)))
+")
+    cast rpc anvil_setStorageAt "$POLICY_MANAGER" \
+        "0x0000000000000000000000000000000000000000000000000000000000000002" \
+        "$NEW_SLOT2" \
+        --rpc-url "$ANVIL_RPC_URL" > /dev/null
+    info "PolicyManager._nextPolicyId set to $MAX_COMMITTEE_ID (next policyId = $((MAX_COMMITTEE_ID + 1)))"
+else
+    info "[SKIP] No existing committees; PolicyManager counter unchanged"
+fi
 
 # ─── 4. Wire Core <-> Coverage ────────────────────────────────────────────────
 step "Wiring Core <-> Coverage..."
