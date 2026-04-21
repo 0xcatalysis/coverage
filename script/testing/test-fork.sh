@@ -112,7 +112,9 @@ trap cleanup EXIT
 extract_log_addr() {
     local label="$1"
     local logfile="$2"
-    grep "${label}:" "$logfile" | tail -1 | awk '{print $NF}'
+    grep -oE "${label}: 0x[0-9a-fA-F]{40}" "$logfile" \
+        | grep -oE '0x[0-9a-fA-F]{40}' \
+        | tail -1
 }
 
 # ─── 1. Start Anvil fork ──────────────────────────────────────────────────────
