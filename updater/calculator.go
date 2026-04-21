@@ -25,22 +25,33 @@ type AlgoInputs struct {
 	TVLCovered       float64
 }
 
+// VaRPoint represents a single VaR/ES data point, keyed by confidence level.
+// Used for JSON serialization (maps with float64 keys are not JSON-serializable).
+type VaRPoint struct {
+	ConfidenceLevel float64 `json:"confidence_level"`
+	Value           float64 `json:"value"`
+}
+
 // AlgoOutputs captures every derived quantity we want to emit in notifications.
 // Float values are in decimal form (0.01 == 1%) unless the name says otherwise.
 type AlgoOutputs struct {
-	NLossPathsDeductible    int
-	TriggerProbability      float64
-	ExpectedPayout          float64
-	Variance                float64
-	StdDev                  float64
-	PremiumRateDecimal      float64
-	AnnualPremiumBps        float64
-	PerSecondPremiumWAD     *big.Int
-	MaxPayout               float64
-	VaR                     map[float64]float64
-	ES                      map[float64]float64
-	MinReserveDollars       float64
-	WorstCaseReserveDollars float64
+	NLossPathsDeductible    int         `json:"n_loss_paths_deductible"`
+	TriggerProbability      float64     `json:"trigger_probability"`
+	ExpectedPayout          float64     `json:"expected_payout"`
+	Variance                float64     `json:"variance"`
+	StdDev                  float64     `json:"std_dev"`
+	PremiumRateDecimal      float64     `json:"premium_rate_decimal"`
+	AnnualPremiumBps        float64     `json:"annual_premium_bps"`
+	PerSecondPremiumWAD     string      `json:"per_second_premium_wad"` // WAD string (uint256 max safe in JSON)
+	MaxPayout               float64     `json:"max_payout"`
+	VaR                     []VaRPoint  `json:"var"`
+	ES                      []VaRPoint  `json:"es"`
+	MinReserveDollars       float64     `json:"min_reserve_dollars"`
+	WorstCaseReserveDollars float64     `json:"worst_case_reserve_dollars"`
+
+	// Internal maps for algorithm use (not JSON-serialized)
+	varMap                  map[float64]float64 `json:"-"`
+	esMap                   map[float64]float64 `json:"-"`
 }
 
 // runUnderwriting executes the full algorithm described in Premium Update
@@ -153,6 +164,19 @@ func runUnderwriting(in AlgoInputs) (AlgoOutputs, error) {
 	// Step 5 per-second WAD rate, computed in big.Int to avoid float drift.
 	perSecondWAD := annualBpsToPerSecondWAD(annualBps)
 
+	// Convert maps to sorted arrays for JSON serialization (maps with float64 keys are not JSON-serializable).
+	varArray := make([]VaRPoint, 0, len(varMap))
+	esArray := make([]VaRPoint, 0, len(esMap))
+	confidences := make([]float64, 0, len(varMap))
+	for q := range varMap {
+		confidences = append(confidences, q)
+	}
+	sort.Float64s(confidences)
+	for _, q := range confidences {
+		varArray = append(varArray, VaRPoint{ConfidenceLevel: q, Value: varMap[q]})
+		esArray = append(esArray, VaRPoint{ConfidenceLevel: q, Value: esMap[q]})
+	}
+
 	return AlgoOutputs{
 		NLossPathsDeductible:    Md,
 		TriggerProbability:      p,
@@ -161,10 +185,12 @@ func runUnderwriting(in AlgoInputs) (AlgoOutputs, error) {
 		StdDev:                  sd,
 		PremiumRateDecimal:      P,
 		AnnualPremiumBps:        annualBps,
-		PerSecondPremiumWAD:     perSecondWAD,
+		PerSecondPremiumWAD:     perSecondWAD.String(),
 		MaxPayout:               maxPayout,
-		VaR:                     varMap,
-		ES:                      esMap,
+		VaR:                     varArray,
+		ES:                      esArray,
+		varMap:                  varMap,
+		esMap:                   esMap,
 		MinReserveDollars:       minReserveDollars,
 		WorstCaseReserveDollars: worstCaseReserve,
 	}, nil

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,10 +14,6 @@ import (
 // timestamp. Credora refreshes every 6 hours; the extra 1-hour buffer absorbs
 // propagation delays and minor scheduling jitter.
 const maxSimulationAge = 7 * time.Hour
-
-// ErrStaleSimulation is returned by CredoraClient when the simulation data is
-// older than maxSimulationAge.
-var ErrStaleSimulation = errors.New("credora simulation data is stale")
 
 // VaultSimulation is the subset of getVaultWithSimulationData we consume.
 type VaultSimulation struct {
@@ -106,8 +101,7 @@ type graphqlResponse struct {
 	Errors []graphqlError `json:"errors"`
 }
 
-// getVaultSimulation fetches simulation data for one vault by address. Returns
-// ErrStaleSimulation if the returned simulation is older than maxSimulationAge.
+// getVaultSimulation fetches simulation data for one vault by address.
 func (c *CredoraClient) getVaultSimulation(ctx context.Context, address string) (VaultSimulation, error) {
 	body, err := json.Marshal(graphqlRequest{
 		Query:     vaultSimulationQuery,

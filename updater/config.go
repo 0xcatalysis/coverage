@@ -115,7 +115,7 @@ func (c *Config) validate() error {
 	}
 	c.pollDuration = d
 
-	if c.Webhook != nil && c.Webhook.Timeout != "" {
+	if c.Webhook != nil {
 		timeoutStr := c.Webhook.Timeout
 		if timeoutStr == "" {
 			timeoutStr = "10s"

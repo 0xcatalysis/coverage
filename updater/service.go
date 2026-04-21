@@ -133,7 +133,7 @@ func (s *Service) updateVault(ctx context.Context, v VaultConfig) error {
 		Timestamp:               time.Now().UTC(),
 		SimulationUpdated:       sim.UpdatedAt,
 		AnnualBps:               annualBps,
-		PerSecondWAD:            out.PerSecondPremiumWAD.String(),
+		PerSecondWAD:            out.PerSecondPremiumWAD,
 		TriggerProbability:      out.TriggerProbability,
 		ExpectedPayout:          out.ExpectedPayout,
 		StdDev:                  out.StdDev,

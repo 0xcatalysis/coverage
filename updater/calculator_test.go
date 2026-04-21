@@ -31,7 +31,7 @@ func TestRunUnderwriting_NoLosses(t *testing.T) {
 	if out.AnnualPremiumBps != 0 {
 		t.Errorf("expected 0 bps, got %v", out.AnnualPremiumBps)
 	}
-	if out.PerSecondPremiumWAD == nil || out.PerSecondPremiumWAD.Sign() != 0 {
+	if out.PerSecondPremiumWAD != "0" {
 		t.Errorf("expected zero perSecondWAD, got %v", out.PerSecondPremiumWAD)
 	}
 }
