@@ -188,7 +188,6 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
             address collateralToken = IDurationVaultStrategyScript(vaults[i]).underlyingToken();
             console.log("     collateral token:", collateralToken);
 
-            // Use actual token decimals — mirrors ForkCoverageSetup._collateralAmountFor2xCoverage.
             uint256 tokenUnit = 10 ** uint256(IERC20Metadata(collateralToken).decimals());
             uint256 tokenPriceUSD =
                 IChainlinkPriceFeedForkScript(chainlinkPriceFeed).getUSDValue(collateralToken, tokenUnit);
@@ -197,17 +196,13 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
             uint256 depositorKey = uint256(keccak256(abi.encodePacked("eigenlayer_depositor", curatorPrivateKey, i)));
             address depositor = vm.addr(depositorKey);
 
-            // vm.deal for native ETH persists to the Anvil node via anvil_setBalance.
-            // Give 2× collateralAmount ETH so the depositor can wrap via Lido, plus 0.5 ETH for gas.
-            // deal(ERC-20, ...) / vm.store only modifies the local forge EVM and is NOT persisted,
-            // so we acquire wstETH on-chain (inside the broadcast block) via Lido submit + wrap.
-            vm.deal(depositor, collateralAmount * 2 + 0.5 ether);
+            vm.startBroadcast(curatorPrivateKey);
+            (bool fundOk,) = payable(depositor).call{value: collateralAmount * 2 + 0.5 ether}("");
+            require(fundOk, "Phase 3b: failed to fund depositor");
+            vm.stopBroadcast();
 
             vm.startBroadcast(depositorKey);
 
-            // Acquire collateral (wstETH on Ethereum mainnet) by submitting ETH to Lido and wrapping.
-            // All Lido contracts are live on the mainnet fork — this is a real on-chain flow that
-            // persists through the broadcast phase (unlike vm.store / deal(token, ...)).
             {
                 (bool lidoOk,) =
                     LIDO_STETH.call{value: collateralAmount * 2}(abi.encodeWithSignature("submit(address)", address(0)));
@@ -225,7 +220,6 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
                 require(lidoOk, "Phase 3b: wstETH wrap failed");
             }
 
-            // Delegation must happen before approve+deposit — mirrors _fundEigenLayerStake in ForkCoverageSetup.
             (bool delegatedOk, bytes memory delegatedData) =
                 EIGENLAYER_DELEGATION_MANAGER.staticcall(abi.encodeWithSignature("delegatedTo(address)", depositor));
             address currentOperator =
