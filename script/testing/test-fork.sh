@@ -61,10 +61,12 @@ if [[ -f "$ENV_FILE" ]]; then
     info "Sourcing $ENV_FILE"
     _saved_rpc="${ETHEREUM_RPC_URL:-}"
     _saved_anvil_rpc="${ANVIL_RPC_URL:-}"
+    _saved_deploy_cv="${DEPLOY_COVERED_VAULT:-}"
     # shellcheck disable=SC1090
     set -o allexport; source "$ENV_FILE"; set +o allexport
     [[ -n "$_saved_rpc" ]]        && ETHEREUM_RPC_URL="$_saved_rpc"
     [[ -n "$_saved_anvil_rpc" ]]  && ANVIL_RPC_URL="$_saved_anvil_rpc"
+    [[ -n "$_saved_deploy_cv" ]]  && DEPLOY_COVERED_VAULT="$_saved_deploy_cv"
 else
     error ".env.fork not found at $ENV_FILE"
     error "Copy .env.fork.example to .env.fork and set ETHEREUM_RPC_URL."
@@ -480,6 +482,7 @@ forge script --root "$COVERAGE_ROOT" \
     "$COVERAGE_ROOT/script/testing/ForkCompleteCoverageFlow.s.sol:ForkCompleteCoverageFlow" \
     --rpc-url "$ANVIL_RPC_URL" \
     --broadcast \
+    --unlocked \
     --slow \
     -vvvv
 

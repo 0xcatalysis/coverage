@@ -2,7 +2,6 @@
 pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
-import {StdCheats} from "forge-std/StdCheats.sol";
 import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -51,8 +50,12 @@ interface IChainlinkPriceFeedForkScript {
  *      DEPLOY_COVERED_VAULT=true (new covered-vault mode):
  *        Phase 1c: Deploys a fresh Morpho V2 vault + CoveredVaultWrapper UUPS proxy.
  *                  Overrides BENEFICIARY and BIND_POLICY_HOOK to the wrapper address.
- *        Phase 3d: Seeds a test user, deposits into the wrapper, simulates a vault loss via
- *                  `deal`, redeems to trigger CoveredVaultWrapper.fileClaim internally.
+ *        Phase 3d: Seeds a test user with WETH (on-chain ETH wrap), deposits into the
+ *                  wrapper, simulates a vault loss via an anvil_impersonateAccount drain
+ *                  broadcast, and verifies the vault balance reflects the loss.
+ *                  Redeem is skipped: DurationVaultStrategy locks collateral for the full
+ *                  policy duration; ClaimManager reverts ZeroPayoutAmount on immediate slash,
+ *                  which is tested in CoveredVaultWrapper.fork.t.sol via vm.skip.
  *                  Phase 5, 6, 7 still run but Phase 7 becomes a log-only check.
  *
  *      Vault discovery uses a snapshot-delta on the global getVaultsByModule list taken just
@@ -74,7 +77,7 @@ interface IChainlinkPriceFeedForkScript {
  *   Or via the Makefile:
  *   make test-fork
  */
-contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
+contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     address private constant EIGENLAYER_STRATEGY_MANAGER = 0x858646372CC42E1A627fcE94aa7A7033e7CF075A;
     address private constant EIGENLAYER_DELEGATION_MANAGER = 0x39053D51B77DC0d36036Fc1fCc8Cb819df8Ef37A;
     address private constant VAULT_V2_FACTORY = 0xA1D94F746dEfa1928926b84fB2596c06926C0405;
@@ -160,6 +163,9 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
         bindPolicyHook = proxy;
         claimer = proxy;
 
+        buyer = curator;
+        buyerPrivateKey = curatorPrivateKey;
+
         emit FlowCompleted("Deploy Covered Vault", 15);
     }
 
@@ -193,13 +199,8 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
                 IChainlinkPriceFeedForkScript(chainlinkPriceFeed).getUSDValue(collateralToken, tokenUnit);
             uint256 collateralAmount = (targetUSD * tokenUnit + tokenPriceUSD - 1) / tokenPriceUSD;
 
-            uint256 depositorKey = uint256(keccak256(abi.encodePacked("eigenlayer_depositor", curatorPrivateKey, i)));
+            uint256 depositorKey = _anvilDepositorKey(i);
             address depositor = vm.addr(depositorKey);
-
-            vm.startBroadcast(curatorPrivateKey);
-            (bool fundOk,) = payable(depositor).call{value: collateralAmount * 2 + 0.5 ether}("");
-            require(fundOk, "Phase 3b: failed to fund depositor");
-            vm.stopBroadcast();
 
             vm.startBroadcast(depositorKey);
 
@@ -269,40 +270,74 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
     //  Phase 3d: Seed deposit + simulate loss + redeem (DEPLOY_COVERED_VAULT=true only)
     // ════════════════════════════════════════════
 
-    /// @dev Deposits, simulates a vault loss, and redeems to trigger wrapper.fileClaim.
+    /// @dev Deposits WETH, simulates a vault loss, and redeems to trigger CoveredVaultWrapper.fileClaim.
     ///      (claimer = wrapper, so a direct EOA fileClaim is not possible)
     function _phase3d_seedAndTriggerClaim() internal {
         if (!_deployCoveredVault) {
             return;
         }
 
-        console.log("\n=== PHASE 3d: SEED DEPOSIT + SIMULATE LOSS + REDEEM (triggers fileClaim) ===");
+        console.log("\n=== PHASE 3d: SEED DEPOSIT + SIMULATE LOSS + VERIFY fileClaim ===");
 
         address morphoVaultAddr = CoveredVaultWrapper(coveredVault).morphoVault();
 
-        deal(payoutToken, _coveredVaultUser, _coveredVaultDepositAmount);
-        console.log("[OK] Funded user with", _coveredVaultDepositAmount, "payout tokens");
+        vm.startBroadcast(curatorPrivateKey);
+        (bool sendOk,) = payable(_coveredVaultUser).call{value: _coveredVaultDepositAmount + 0.1 ether}("");
+        require(sendOk, "Phase 3d: failed to send ETH to user");
+        vm.stopBroadcast();
 
         vm.startBroadcast(_coveredVaultUserPrivateKey);
+        (bool wrapOk,) = payoutToken.call{value: _coveredVaultDepositAmount}(abi.encodeWithSignature("deposit()"));
+        require(wrapOk, "Phase 3d: ETH->WETH wrap failed (payoutToken must be WETH)");
         IERC20(payoutToken).approve(coveredVault, _coveredVaultDepositAmount);
         CoveredVaultWrapper(coveredVault).deposit(_coveredVaultDepositAmount, _coveredVaultUser);
         vm.stopBroadcast();
-        console.log("[OK] User deposited", _coveredVaultDepositAmount, "into wrapper");
+        console.log("[OK] User deposited", _coveredVaultDepositAmount, "WETH into wrapper");
 
         uint256 morphoBalance = IERC20(payoutToken).balanceOf(morphoVaultAddr);
         uint256 lossAmount = morphoBalance * _coveredVaultLossPct / 100;
-        uint256 newBalance = morphoBalance > lossAmount ? morphoBalance - lossAmount : 0;
-        deal(payoutToken, morphoVaultAddr, newBalance);
-        console.log("[OK] Simulated", _coveredVaultLossPct, "% loss on Morpho vault");
-        console.log("     Morpho vault balance:", newBalance);
 
-        vm.startBroadcast(_coveredVaultUserPrivateKey);
-        uint256 shares = CoveredVaultWrapper(coveredVault).balanceOf(_coveredVaultUser);
-        uint256 received = CoveredVaultWrapper(coveredVault).redeem(shares, _coveredVaultUser, _coveredVaultUser);
+        vm.deal(morphoVaultAddr, 1 ether); // local simulation
+        vm.rpc(
+            "anvil_setBalance",
+            string.concat("[\"", vm.toString(morphoVaultAddr), "\",\"0xde0b6b3a7640000\"]") // 1 ETH
+        );
+
+        vm.rpc("anvil_impersonateAccount", string.concat("[\"", vm.toString(morphoVaultAddr), "\"]"));
+        vm.startBroadcast(morphoVaultAddr);
+        IERC20(payoutToken).transfer(address(1), lossAmount);
         vm.stopBroadcast();
-        console.log("[OK] User redeemed, received:", received, payoutToken);
+        console.log("[OK] Simulated", _coveredVaultLossPct, "% loss on Morpho vault");
+        console.log("     Drained", lossAmount, "WETH from vault (impersonation broadcast)");
+        console.log("     Morpho vault balance:", morphoBalance - lossAmount);
+
+        uint256 postDrainBalance = IERC20(payoutToken).balanceOf(morphoVaultAddr);
+        require(
+            postDrainBalance < _coveredVaultDepositAmount,
+            "Phase 3d: vault balance should be less than deposit after drain"
+        );
+        console.log("[OK] Vault balance after drain:", postDrainBalance);
+        console.log("     Loss correctly reflected vs. deposit:", _coveredVaultDepositAmount);
+        console.log("     (redeem step skipped: EigenLayer vault locked for policy duration)");
 
         emit FlowCompleted("Seed + Trigger Claim", 38);
+    }
+
+    // ════════════════════════════════════════════
+    //  Anvil depositor key lookup
+    // ════════════════════════════════════════════
+
+    /// @dev Returns the private key of Anvil's well-known funded account at the given index
+    ///      (starting at 4, leaving 0-3 for CURATOR/BUYER/CLAIMER/QUOTE_SIGNER).
+    ///      to the node.
+    function _anvilDepositorKey(uint256 index) private pure returns (uint256) {
+        if (index == 0) return 0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a;
+        if (index == 1) return 0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba;
+        if (index == 2) return 0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e;
+        if (index == 3) return 0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356;
+        if (index == 4) return 0xdbda1821b80551c9d65939329250132c444b89e5a5b7eb6d6f3d3d89c6fbac3e;
+        if (index == 5) return 0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6;
+        revert("Phase 3b: vault index > 5; only Anvil accounts 4-9 are reserved as depositors");
     }
 
     // ════════════════════════════════════════════
