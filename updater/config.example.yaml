@@ -1,18 +1,25 @@
-rpc_url: "${RPC_URL}"
-private_key: "${PRIVATE_KEY}"
+# Premium updater configuration.
 
-# How often to poll Credora and update vault fees.
-poll_interval: "24h"
+poll_interval: "6h"
 
-credora_api_url: "https://api.credora.io/v1"
-credora_api_key: "${CREDORA_API_KEY}"
+credora_api_url: "https://api.staging.credora.io/graphql/catalysis"
+credora_api_key: "your-credora-api-key-here"
 
-# Safety bounds applied to the calculated fee before submitting on-chain.
-min_fee_bps: 10    # 0.10%
-max_fee_bps: 1000  # 10.00%
+# Optional generic HTTP webhook. Remove this block to disable.
+webhook:
+  url: ""
+  timeout: "10s"
+  headers:
+    Authorization: "Bearer your-token-here"
 
+# Each vault is processed independently every poll_interval. All algorithm
+# parameters are per-vault because kappa/deductible/tvl coverage differ
+# between vaults.
 vaults:
-  - address: "0x0000000000000000000000000000000000000001"
-    credora_entity_id: "entity-abc"
-  - address: "0x0000000000000000000000000000000000000002"
-    credora_entity_id: "entity-xyz"
+  - name: "Core Vault"
+    address: "0xMORPHO_VAULT_ADDRESS"
+    kappa: 0.25
+    deductible: 0.01
+    confidence_levels: [0.995]
+    tvl_covered: 10000000
+    tolerate_older_simulations: false  # Set to true to use stale Credora data

@@ -3,43 +3,43 @@ package main
 import (
 	"fmt"
 	"os"
-	"regexp"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
-// VaultConfig holds per-vault configuration.
+// VaultConfig holds per-vault algorithm inputs and the on-chain address.
 type VaultConfig struct {
-	Address         string `yaml:"address"`
-	CredoraEntityID string `yaml:"credora_entity_id"`
+	Name                      string    `yaml:"name"`
+	Address                   string    `yaml:"address"`
+	Kappa                     float64   `yaml:"kappa"`
+	Deductible                float64   `yaml:"deductible"`
+	ConfidenceLevels          []float64 `yaml:"confidence_levels"`
+	TVLCovered                float64   `yaml:"tvl_covered"`
+	TolerateOlderSimulations  bool      `yaml:"tolerate_older_simulations,omitempty"`
 }
 
-// Config is the top-level configuration for the updater service.
+// WebhookConfig configures the optional generic HTTP webhook notifier.
+type WebhookConfig struct {
+	URL     string            `yaml:"url"`
+	Headers map[string]string `yaml:"headers,omitempty"`
+	Timeout string            `yaml:"timeout,omitempty"`
+}
+
+// Config is the top-level YAML configuration for the updater service.
 type Config struct {
-	RPCURL        string        `yaml:"rpc_url"`
-	PrivateKey    string        `yaml:"private_key"`
-	PollInterval  string        `yaml:"poll_interval"`
-	CredoraAPIURL string        `yaml:"credora_api_url"`
-	CredoraAPIKey string        `yaml:"credora_api_key"`
-	MinFeeBps     uint64        `yaml:"min_fee_bps"`
-	MaxFeeBps     uint64        `yaml:"max_fee_bps"`
-	Vaults        []VaultConfig `yaml:"vaults"`
+	PollInterval  string         `yaml:"poll_interval"`
+	CredoraAPIURL string         `yaml:"credora_api_url"`
+	CredoraAPIKey string         `yaml:"credora_api_key"`
+	Webhook       *WebhookConfig `yaml:"webhook,omitempty"`
+	Vaults        []VaultConfig  `yaml:"vaults"`
 
-	pollDuration time.Duration
+	pollDuration   time.Duration
+	webhookTimeout time.Duration
 }
 
-var envVarRe = regexp.MustCompile(`\$\{([^}]+)\}`)
-
-// expandEnv replaces ${VAR} placeholders with their environment variable values.
-func expandEnv(s string) string {
-	return envVarRe.ReplaceAllStringFunc(s, func(match string) string {
-		name := envVarRe.FindStringSubmatch(match)[1]
-		return os.Getenv(name)
-	})
-}
-
-// loadConfig reads a YAML config file, expands env vars, and validates the result.
+// loadConfig reads a YAML config file and validates the result.
 func loadConfig(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -47,7 +47,7 @@ func loadConfig(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	if err := yaml.Unmarshal([]byte(expandEnv(string(raw))), &cfg); err != nil {
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
@@ -59,12 +59,6 @@ func loadConfig(path string) (*Config, error) {
 }
 
 func (c *Config) validate() error {
-	if c.RPCURL == "" {
-		return fmt.Errorf("rpc_url is required")
-	}
-	if c.PrivateKey == "" {
-		return fmt.Errorf("private_key is required")
-	}
 	if c.CredoraAPIURL == "" {
 		return fmt.Errorf("credora_api_url is required")
 	}
@@ -74,27 +68,67 @@ func (c *Config) validate() error {
 	if len(c.Vaults) == 0 {
 		return fmt.Errorf("at least one vault must be configured")
 	}
+	seen := map[string]bool{}
 	for i, v := range c.Vaults {
+		if v.Name == "" {
+			return fmt.Errorf("vaults[%d].name is required", i)
+		}
 		if v.Address == "" {
 			return fmt.Errorf("vaults[%d].address is required", i)
 		}
-		if v.CredoraEntityID == "" {
-			return fmt.Errorf("vaults[%d].credora_entity_id is required", i)
+		addr := strings.ToLower(v.Address)
+		if !strings.HasPrefix(addr, "0x") || len(addr) != 42 {
+			return fmt.Errorf("vaults[%d].address %q must be a 0x-prefixed 40-hex-char address", i, v.Address)
+		}
+		if seen[addr] {
+			return fmt.Errorf("vaults[%d].address %s is duplicated", i, v.Address)
+		}
+		seen[addr] = true
+		if v.Kappa < 0 {
+			return fmt.Errorf("vaults[%d].kappa must be >= 0", i)
+		}
+		if v.Deductible < 0 || v.Deductible >= 1 {
+			return fmt.Errorf("vaults[%d].deductible must be in [0,1)", i)
+		}
+		if v.TVLCovered < 0 {
+			return fmt.Errorf("vaults[%d].tvl_covered must be >= 0", i)
+		}
+		if len(v.ConfidenceLevels) == 0 {
+			return fmt.Errorf("vaults[%d].confidence_levels must have at least one entry", i)
+		}
+		for j, q := range v.ConfidenceLevels {
+			if q <= 0 || q >= 1 {
+				return fmt.Errorf("vaults[%d].confidence_levels[%d]=%v must be in (0,1)", i, j, q)
+			}
 		}
 	}
-	if c.MinFeeBps > c.MaxFeeBps {
-		return fmt.Errorf("min_fee_bps (%d) must be <= max_fee_bps (%d)", c.MinFeeBps, c.MaxFeeBps)
-	}
-
 	interval := c.PollInterval
 	if interval == "" {
-		interval = "24h"
+		interval = "6h"
 	}
 	d, err := time.ParseDuration(interval)
 	if err != nil {
 		return fmt.Errorf("poll_interval %q is not a valid duration: %w", interval, err)
 	}
+	if d <= 0 {
+		return fmt.Errorf("poll_interval must be > 0")
+	}
 	c.pollDuration = d
+
+	if c.Webhook != nil && c.Webhook.Timeout != "" {
+		timeoutStr := c.Webhook.Timeout
+		if timeoutStr == "" {
+			timeoutStr = "10s"
+		}
+		wt, err := time.ParseDuration(timeoutStr)
+		if err != nil {
+			return fmt.Errorf("webhook.timeout %q invalid: %w", timeoutStr, err)
+		}
+		if wt <= 0 {
+			return fmt.Errorf("webhook.timeout must be > 0")
+		}
+		c.webhookTimeout = wt
+	}
 
 	return nil
 }

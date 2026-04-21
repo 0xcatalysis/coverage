@@ -4,35 +4,42 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
-
-	"github.com/ethereum/go-ethereum/common"
 )
 
-// Service orchestrates the premium update loop: for each configured vault it
-// fetches a loss distribution from Credora, computes a fee in basis points,
-// and updates the vault's management fee on-chain if the value has changed.
+// Service orchestrates the premium update loop. For each configured vault it
+// fetches fresh simulation data from Credora, runs the underwriting algorithm,
+// and emits a notification whenever the clamped premium differs from the last
+// value this process observed. On-chain writes are explicitly out of scope —
+// the Catalysis team pushes the actual on-chain update via multisig.
 type Service struct {
-	cfg        *Config
-	credora    *CredoraClient
-	calculator PremiumCalculator
-	chain      *ChainClient
+	cfg      *Config
+	credora  *CredoraClient
+	notifier Notifier
+
+	// lastBps tracks the last clamped premium (bps) per lowercased vault
+	// address. A miss means "not observed this process run" → always notify.
+	lastBps map[string]float64
 }
 
-// newService constructs a Service from already-initialised dependencies.
-func newService(cfg *Config, credora *CredoraClient, calculator PremiumCalculator, chain *ChainClient) *Service {
+func newService(cfg *Config, credora *CredoraClient, notifier Notifier) *Service {
 	return &Service{
-		cfg:        cfg,
-		credora:    credora,
-		calculator: calculator,
-		chain:      chain,
+		cfg:      cfg,
+		credora:  credora,
+		notifier: notifier,
+		lastBps:  make(map[string]float64, len(cfg.Vaults)),
 	}
 }
 
-// run starts the 24-hour poll loop. It performs one immediate update cycle on
-// startup and then ticks every cfg.pollDuration. Blocks until ctx is cancelled.
+// run starts the poll loop. It performs one immediate pass on startup and then
+// ticks every cfg.pollDuration. Blocks until ctx is cancelled.
 func (s *Service) run(ctx context.Context) {
-	slog.Info("starting premium updater", "poll_interval", s.cfg.pollDuration, "vaults", len(s.cfg.Vaults))
+	slog.Info("starting premium updater",
+		"poll_interval", s.cfg.pollDuration,
+		"vaults", len(s.cfg.Vaults),
+		"webhook_enabled", s.cfg.Webhook != nil,
+	)
 
 	s.updateAll(ctx)
 
@@ -50,84 +57,103 @@ func (s *Service) run(ctx context.Context) {
 	}
 }
 
-// updateAll runs one update cycle across all configured vaults.
+// updateAll runs one full cycle across every configured vault. Per-vault
+// failures are logged and do not abort the cycle.
 func (s *Service) updateAll(ctx context.Context) {
 	for _, v := range s.cfg.Vaults {
+		if ctx.Err() != nil {
+			return
+		}
 		if err := s.updateVault(ctx, v); err != nil {
-			slog.Error("failed to update vault", "vault", v.Address, "entity", v.CredoraEntityID, "err", err)
+			slog.Error("vault update failed", "vault", v.Address, "err", err)
 		}
 	}
 }
 
-// updateVault performs a single update for one vault:
-//  1. Fetch loss distribution from Credora.
-//  2. Calculate fee in bps via the pluggable calculator.
-//  3. Clamp to [min_fee_bps, max_fee_bps].
-//  4. Convert to WAD and compare with on-chain fee; skip if unchanged.
-//  5. Send multicall(submit + setManagementFee) to the vault.
 func (s *Service) updateVault(ctx context.Context, v VaultConfig) error {
-	logger := slog.With("vault", v.Address, "entity", v.CredoraEntityID)
+	logger := slog.With("vault", v.Address)
 
-	dist, err := s.credora.getLossDistribution(ctx, v.CredoraEntityID)
+	sim, err := s.credora.getVaultSimulation(ctx, v.Address)
 	if err != nil {
-		return fmt.Errorf("fetch loss distribution: %w", err)
+		return fmt.Errorf("fetch simulation: %w", err)
 	}
-	logger.Info("fetched loss distribution", "expected_loss", dist.ExpectedLoss)
 
-	rawBps, err := s.calculator.calculate(dist)
+	// Check simulation freshness unless tolerance is enabled
+	age := time.Since(sim.UpdatedAt)
+	if age > maxSimulationAge && !v.TolerateOlderSimulations {
+		logger.Warn("skipping stale simulation",
+			"age", age.Truncate(time.Second),
+			"max_age", maxSimulationAge,
+			"tip", "set tolerate_older_simulations: true to use older data")
+		return nil
+	}
+	if age > maxSimulationAge && v.TolerateOlderSimulations {
+		logger.Info("using older simulation (tolerance enabled)",
+			"age", age.Truncate(time.Second),
+			"max_age", maxSimulationAge)
+	}
+
+	logger.Info("fetched simulation",
+		"n_total_paths", sim.NTotalPaths,
+		"n_loss_paths", sim.NLossPaths,
+		"updated_at", sim.UpdatedAt,
+	)
+
+	inputs := AlgoInputs{
+		VaultAddress:     v.Address,
+		NTotalPaths:      sim.NTotalPaths,
+		NLossPaths:       sim.NLossPaths,
+		LossArray:        sim.LossArray,
+		Deductible:       v.Deductible,
+		Kappa:            v.Kappa,
+		ConfidenceLevels: v.ConfidenceLevels,
+		TVLCovered:       v.TVLCovered,
+	}
+
+	out, err := runUnderwriting(inputs)
 	if err != nil {
-		return fmt.Errorf("calculate premium: %w", err)
+		return fmt.Errorf("run underwriting: %w", err)
 	}
 
-	feeBps := clamp(rawBps, s.cfg.MinFeeBps, s.cfg.MaxFeeBps)
-	if feeBps != rawBps {
-		logger.Info("fee bps clamped", "raw_bps", rawBps, "clamped_bps", feeBps,
-			"min", s.cfg.MinFeeBps, "max", s.cfg.MaxFeeBps)
-	}
+	annualBps := out.AnnualPremiumBps
 
-	feeWAD := bpsToWAD(feeBps)
-	vaultAddr := common.HexToAddress(v.Address)
-
-	currentFeeWAD, err := s.chain.readManagementFee(ctx, vaultAddr)
-	if err != nil {
-		return fmt.Errorf("read current management fee: %w", err)
-	}
-
-	if currentFeeWAD.Cmp(feeWAD) == 0 {
-		logger.Info("management fee unchanged, skipping update", "fee_bps", feeBps)
+	key := strings.ToLower(v.Address)
+	prev, hadPrev := s.lastBps[key]
+	if hadPrev && prev == annualBps {
+		logger.Info("premium unchanged, skipping notify", "bps", annualBps)
 		return nil
 	}
 
-	logger.Info("updating management fee",
-		"current_bps", wadToBps(currentFeeWAD),
-		"new_bps", feeBps,
-	)
-
-	calldata, err := buildSubmitAndSetFeeMulticall(vaultAddr, feeWAD)
-	if err != nil {
-		return fmt.Errorf("build multicall: %w", err)
+	event := PremiumEvent{
+		Vault:                   v.Address,
+		ChainID:                 sim.ChainID,
+		Protocol:                sim.Protocol,
+		Name:                    v.Name,
+		Rating:                  sim.Rating,
+		Timestamp:               time.Now().UTC(),
+		SimulationUpdated:       sim.UpdatedAt,
+		AnnualBps:               annualBps,
+		PerSecondWAD:            out.PerSecondPremiumWAD.String(),
+		TriggerProbability:      out.TriggerProbability,
+		ExpectedPayout:          out.ExpectedPayout,
+		StdDev:                  out.StdDev,
+		MaxPayout:               out.MaxPayout,
+		MinReserveDollars:       out.MinReserveDollars,
+		WorstCaseReserveDollars: out.WorstCaseReserveDollars,
+		NLossPathsDeductible:    out.NLossPathsDeductible,
+		Inputs:                  inputs,
+		Outputs:                 out,
+	}
+	if hadPrev {
+		p := prev
+		event.PreviousBps = &p
 	}
 
-	receipt, err := s.chain.sendMulticall(ctx, vaultAddr, calldata)
-	if err != nil {
-		return fmt.Errorf("send multicall: %w", err)
+	if err := s.notifier.Notify(ctx, event); err != nil {
+		// Don't update lastBps on full notify failure so we retry next tick.
+		return fmt.Errorf("notify: %w", err)
 	}
 
-	logger.Info("management fee updated",
-		"tx", receipt.TxHash.Hex(),
-		"block", receipt.BlockNumber,
-		"fee_bps", feeBps,
-	)
+	s.lastBps[key] = annualBps
 	return nil
-}
-
-// clamp returns v clamped to [lo, hi].
-func clamp(v, lo, hi uint64) uint64 {
-	if v < lo {
-		return lo
-	}
-	if v > hi {
-		return hi
-	}
-	return v
 }

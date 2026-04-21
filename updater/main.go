@@ -23,28 +23,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := parseVaultABI(); err != nil {
-		slog.Error("failed to parse vault ABI", "err", err)
-		os.Exit(1)
-	}
-
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	chain, err := newChainClient(ctx, cfg.RPCURL, cfg.PrivateKey)
-	if err != nil {
-		slog.Error("failed to connect to RPC", "err", err)
-		os.Exit(1)
-	}
-	defer chain.close()
-
-	slog.Info("connected to chain", "chain_id", chain.chainID, "sender", chain.from)
-
 	credora := newCredoraClient(cfg.CredoraAPIURL, cfg.CredoraAPIKey)
 
-	// NoOpCalculator is used until a real actuarial formula is implemented.
-	// TODO: Replace with a production PremiumCalculator implementation.
-	calculator := &NoOpCalculator{fixedBps: cfg.MinFeeBps}
+	notifiers := []Notifier{LogNotifier{}}
+	if cfg.Webhook != nil && cfg.Webhook.URL != "" {
+		notifiers = append(notifiers, newWebhookNotifier(*cfg.Webhook, cfg.webhookTimeout))
+		slog.Info("webhook notifier enabled", "url", cfg.Webhook.URL)
+	}
+	notifier := newMultiNotifier(notifiers...)
 
-	newService(cfg, credora, calculator, chain).run(ctx)
+	newService(cfg, credora, notifier).run(ctx)
 }
