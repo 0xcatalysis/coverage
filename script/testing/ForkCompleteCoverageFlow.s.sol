@@ -78,6 +78,8 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
     address private constant EIGENLAYER_STRATEGY_MANAGER = 0x858646372CC42E1A627fcE94aa7A7033e7CF075A;
     address private constant EIGENLAYER_DELEGATION_MANAGER = 0x39053D51B77DC0d36036Fc1fCc8Cb819df8Ef37A;
     address private constant VAULT_V2_FACTORY = 0xA1D94F746dEfa1928926b84fB2596c06926C0405;
+    /// @dev Lido stETH on Ethereum mainnet — used to acquire wstETH by wrapping ETH in Phase 3b.
+    address private constant LIDO_STETH = 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84;
 
     bool private _deployCoveredVault;
 
@@ -165,29 +167,6 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
     //  Phase 3b: Fund EigenLayer vaults
     // ════════════════════════════════════════════
 
-    /// @dev Sets an ERC-20 balance on the actual Anvil node via anvil_setStorageAt.
-    ///
-    ///      The standard deal(token, addr, amount) from StdCheats uses vm.store internally,
-    ///      which only modifies forge's local simulation EVM.  That change does NOT propagate to
-    ///      the actual Anvil node, so broadcast transactions (depositIntoStrategy) fail with
-    ///      "ERC20: transfer amount exceeds balance" when the token balance is checked on-chain.
-    ///
-    ///      vm.rpc("anvil_setStorageAt", ...) calls the Anvil JSON-RPC method directly, which
-    ///      persists the storage change on the actual node and survives the broadcast phase.
-    function _dealTokenOnAnvil(address token, address account, uint256 amount) internal {
-        vm.record();
-        (bool ok,) = token.staticcall(abi.encodeWithSignature("balanceOf(address)", account));
-        require(ok, "ForkCompleteCoverageFlow: balanceOf staticcall failed");
-        (bytes32[] memory reads,) = vm.accesses(token);
-        require(reads.length > 0, "ForkCompleteCoverageFlow: no storage slot found for balanceOf");
-        bytes32 slot = reads[0];
-
-        vm.rpc(
-            "anvil_setStorageAt",
-            string.concat('["', vm.toString(token), '","', vm.toString(slot), '","', vm.toString(bytes32(amount)), '"]')
-        );
-    }
-
     /// @dev Overrides parent Phase 3b to support multiple vaults (one per acceptableToken).
     ///      Each vault's underlying collateral token is discovered at runtime via underlyingToken()
     ///      rather than assumed to be payoutToken — on live mainnet the vault holds wstETH, not WETH.
@@ -218,12 +197,33 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
             uint256 depositorKey = uint256(keccak256(abi.encodePacked("eigenlayer_depositor", curatorPrivateKey, i)));
             address depositor = vm.addr(depositorKey);
 
-            // vm.deal for ETH persists to Anvil via anvil_setBalance (works in broadcast mode).
-            // _dealTokenOnAnvil for ERC-20 persists via anvil_setStorageAt (deal/vm.store does not).
-            vm.deal(depositor, 0.1 ether);
-            _dealTokenOnAnvil(collateralToken, depositor, collateralAmount);
+            // vm.deal for native ETH persists to the Anvil node via anvil_setBalance.
+            // Give 2× collateralAmount ETH so the depositor can wrap via Lido, plus 0.5 ETH for gas.
+            // deal(ERC-20, ...) / vm.store only modifies the local forge EVM and is NOT persisted,
+            // so we acquire wstETH on-chain (inside the broadcast block) via Lido submit + wrap.
+            vm.deal(depositor, collateralAmount * 2 + 0.5 ether);
 
             vm.startBroadcast(depositorKey);
+
+            // Acquire collateral (wstETH on Ethereum mainnet) by submitting ETH to Lido and wrapping.
+            // All Lido contracts are live on the mainnet fork — this is a real on-chain flow that
+            // persists through the broadcast phase (unlike vm.store / deal(token, ...)).
+            {
+                (bool lidoOk,) =
+                    LIDO_STETH.call{value: collateralAmount * 2}(abi.encodeWithSignature("submit(address)", address(0)));
+                require(lidoOk, "Phase 3b: Lido ETH submit failed");
+
+                (, bytes memory stETHBalData) =
+                    LIDO_STETH.staticcall(abi.encodeWithSignature("balanceOf(address)", depositor));
+                uint256 stETHBalance = abi.decode(stETHBalData, (uint256));
+
+                (lidoOk,) =
+                    LIDO_STETH.call(abi.encodeWithSignature("approve(address,uint256)", collateralToken, stETHBalance));
+                require(lidoOk, "Phase 3b: stETH approve for wrap failed");
+
+                (lidoOk,) = collateralToken.call(abi.encodeWithSignature("wrap(uint256)", stETHBalance));
+                require(lidoOk, "Phase 3b: wstETH wrap failed");
+            }
 
             // Delegation must happen before approve+deposit — mirrors _fundEigenLayerStake in ForkCoverageSetup.
             (bool delegatedOk, bytes memory delegatedData) =
