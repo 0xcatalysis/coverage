@@ -406,6 +406,7 @@ if [[ "${PAYOUT_TOKEN,,}" != "${WETH,,}" ]]; then
     TOKEN_IN="$WETH" \
     TOKEN_OUT="$PAYOUT_TOKEN" \
     POOL_FEE="$POOL_FEE_ROUTE" \
+    TIMELOCK=0x0000000000000000000000000000000000000000 \
     forge script --root "$COVERAGE_ROOT" \
         "$COVERAGE_ROOT/script/DeployUniswapV3Adapter.s.sol:DeployUniswapV3Adapter" \
         --sig "configure()" \
@@ -427,6 +428,7 @@ UNISWAP_V3_ADAPTER="$UNISWAP_V3_ADAPTER" \
 TOKEN_IN="$WSTETH" \
 TOKEN_OUT="$PAYOUT_TOKEN" \
 POOL_FEE="$POOL_FEE_ROUTE" \
+TIMELOCK=0x0000000000000000000000000000000000000000 \
 forge script --root "$COVERAGE_ROOT" \
     "$COVERAGE_ROOT/script/DeployUniswapV3Adapter.s.sol:DeployUniswapV3Adapter" \
     --sig "configure()" \
