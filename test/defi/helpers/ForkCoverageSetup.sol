@@ -93,7 +93,6 @@ abstract contract ForkCoverageSetup is Test {
     address internal constant SLASHING_MANAGER = 0x7Bc39bf135eF3c30E542C196719c91455ff489f0;
     address internal constant REWARDS_MANAGER = 0x8ae0F0B94fe782D7F055B04d4699c3cc01632b46;
     address internal constant SSP_ROUTER = 0xF39E592E93A7a925a57464e0120B555A25590486;
-    address internal constant EIGEN_ADAPTER = 0xe6168092892E545701D92BEe10149178bE0EEDF4;
     address internal constant CHAINLINK_PRICEFEED = 0x57F750E3B8e095A5b3AE96030F0cac5dFe2f8A16;
     address internal constant MASTER_ADMIN = 0xd2d03377Fa96687e9C11380DA9956AcC5F307e2c;
 
