@@ -165,6 +165,29 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
     //  Phase 3b: Fund EigenLayer vaults
     // ════════════════════════════════════════════
 
+    /// @dev Sets an ERC-20 balance on the actual Anvil node via anvil_setStorageAt.
+    ///
+    ///      The standard deal(token, addr, amount) from StdCheats uses vm.store internally,
+    ///      which only modifies forge's local simulation EVM.  That change does NOT propagate to
+    ///      the actual Anvil node, so broadcast transactions (depositIntoStrategy) fail with
+    ///      "ERC20: transfer amount exceeds balance" when the token balance is checked on-chain.
+    ///
+    ///      vm.rpc("anvil_setStorageAt", ...) calls the Anvil JSON-RPC method directly, which
+    ///      persists the storage change on the actual node and survives the broadcast phase.
+    function _dealTokenOnAnvil(address token, address account, uint256 amount) internal {
+        vm.record();
+        (bool ok,) = token.staticcall(abi.encodeWithSignature("balanceOf(address)", account));
+        require(ok, "ForkCompleteCoverageFlow: balanceOf staticcall failed");
+        (bytes32[] memory reads,) = vm.accesses(token);
+        require(reads.length > 0, "ForkCompleteCoverageFlow: no storage slot found for balanceOf");
+        bytes32 slot = reads[0];
+
+        vm.rpc(
+            "anvil_setStorageAt",
+            string.concat('["', vm.toString(token), '","', vm.toString(slot), '","', vm.toString(bytes32(amount)), '"]')
+        );
+    }
+
     /// @dev Overrides parent Phase 3b to support multiple vaults (one per acceptableToken).
     ///      Each vault's underlying collateral token is discovered at runtime via underlyingToken()
     ///      rather than assumed to be payoutToken — on live mainnet the vault holds wstETH, not WETH.
@@ -195,8 +218,10 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow, StdCheats {
             uint256 depositorKey = uint256(keccak256(abi.encodePacked("eigenlayer_depositor", curatorPrivateKey, i)));
             address depositor = vm.addr(depositorKey);
 
-            deal(depositor, 0.1 ether);
-            deal(collateralToken, depositor, collateralAmount);
+            // vm.deal for ETH persists to Anvil via anvil_setBalance (works in broadcast mode).
+            // _dealTokenOnAnvil for ERC-20 persists via anvil_setStorageAt (deal/vm.store does not).
+            vm.deal(depositor, 0.1 ether);
+            _dealTokenOnAnvil(collateralToken, depositor, collateralAmount);
 
             vm.startBroadcast(depositorKey);
 
