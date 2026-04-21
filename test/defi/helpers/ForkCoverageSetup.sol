@@ -413,11 +413,6 @@ abstract contract ForkCoverageSetup is Test {
         return newVaults;
     }
 
-    /// @notice Returns vaults for a committee via SSPRouter. Only valid AFTER bindPolicyForRequest.
-    function _discoverCommitteeEigenLayerVaults(uint96 policyId) internal view returns (address[] memory) {
-        return ISSPRouterFork(SSP_ROUTER).getCommitteeVaultsByModule(policyId, SSP_MODULE_EIGENLAYER);
-    }
-
     /// @notice Returns the underlying token of a DurationVaultStrategy (wstETH on live mainnet).
     function _vaultUnderlyingToken(address vault) internal view returns (address token) {
         (bool ok, bytes memory d) = vault.staticcall(abi.encodeWithSignature("underlyingToken()"));
@@ -492,11 +487,6 @@ abstract contract ForkCoverageSetup is Test {
             expirationTime: uint32(block.timestamp + 1 days)
         });
         ICoverPool(pool).bindPolicyForRequest(policyId, quote, spec, vaults, _signQuote(quote, pool));
-    }
-
-    /// @notice Clears the per-policy claim-approval gate after an approved payout.
-    function _approveNextClaim(uint96 policyId) internal {
-        claimManager.approveNextClaim(policyId);
     }
 
     /*//////////////////////////////////////////////////////////////
