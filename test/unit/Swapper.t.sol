@@ -818,7 +818,6 @@ contract SwapperTest is Test {
 
         mockDex.setShouldRevert(true);
 
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
             tokenIn: address(tokenIn),
             tokenOut: address(tokenOut),
@@ -830,7 +829,7 @@ contract SwapperTest is Test {
 
         vm.startPrank(swapExecutor);
         tokenIn.approve(address(swapper), amountIn);
-        vm.expectRevert(); // Just expect any revert since the error encoding varies
+        vm.expectRevert();
         swapper.executeSwap(params);
         vm.stopPrank();
     }
@@ -845,7 +844,6 @@ contract SwapperTest is Test {
         tokenIn.mint(swapExecutor, amountIn);
         tokenOut.mint(dexTarget, expectedOut);
 
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
             tokenIn: address(tokenIn),
             tokenOut: address(tokenOut),
@@ -871,7 +869,6 @@ contract SwapperTest is Test {
         tokenIn.mint(swapExecutor, amountIn);
         tokenOut.mint(dexTarget, amountOut);
 
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
             tokenIn: address(tokenIn),
             tokenOut: address(tokenOut),
@@ -903,8 +900,6 @@ contract SwapperTest is Test {
 
         mockDex.setReentrancyTarget(address(swapper));
 
-        bytes memory swapCalldata =
-            abi.encodeWithSelector(MockDEX.swapWithReentrancy.selector, address(tokenIn), address(tokenOut));
         ISwapper.SwapParams memory params = ISwapper.SwapParams({
             tokenIn: address(tokenIn),
             tokenOut: address(tokenOut),
@@ -916,7 +911,7 @@ contract SwapperTest is Test {
 
         vm.startPrank(swapExecutor);
         tokenIn.approve(address(swapper), amountIn);
-        vm.expectRevert(); // Expect any revert - reentrancy will be caught and wrapped in SwapFailed
+        vm.expectRevert();
         swapper.executeSwap(params);
         vm.stopPrank();
     }
@@ -1103,7 +1098,6 @@ contract SwapperTest is Test {
         tokenIn.mint(swapExecutor, amountIn1);
         tokenOut.mint(dexTarget, amountOut1);
 
-        bytes memory swapCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
         ISwapper.SwapParams memory params1 = ISwapper.SwapParams({
             tokenIn: address(tokenIn),
             tokenOut: address(tokenOut),

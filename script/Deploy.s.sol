@@ -463,7 +463,7 @@ abstract contract Deploy is CreateXDeployer {
      * @param roles RoleConfig containing deployer address for temporary role revocation.
      */
     function _configureRoles(DeployedContracts memory contracts, RoleConfig memory roles) private {
-        _grantRoles(contracts, roles);
+        _grantRoles(contracts);
         _revokeTemporaryRoles(contracts, roles);
     }
 
@@ -474,16 +474,15 @@ abstract contract Deploy is CreateXDeployer {
      *      - Swapper: SWAP_EXECUTOR_ROLE → ClaimManager (for collateral conversion)
      *      - PremiumManager: CLAIM_MANAGER_ROLE → ClaimManager (for surplus distribution)
      *
-     *      The multisig (roles.admin) interacts with contracts via the TimelockController's
+     *      The multisig interacts with contracts via the TimelockController's
      *      schedule/execute flow. Operational roles (SWAP_EXECUTOR, CLAIM_MANAGER) are granted
      *      directly to contracts for automated cross-contract calls.
      *
      *      NOTE: distributePremium() on PremiumManager is permissionless but requires the token
      *      to be in the approved set. Initial tokens are added in _deployPremiumContracts().
      * @param contracts DeployedContracts containing all proxy addresses.
-     * @param roles RoleConfig containing admin address (unused for DEFAULT_ADMIN_ROLE — goes to timelock).
      */
-    function _grantRoles(DeployedContracts memory contracts, RoleConfig memory roles) private {
+    function _grantRoles(DeployedContracts memory contracts) private {
         bytes32 defaultAdminRole = bytes32(0);
         address tc = contracts.timelockController;
 

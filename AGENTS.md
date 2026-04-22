@@ -52,6 +52,8 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, `ISpecRegis
 - `test/invariant/*.t.sol` – stateful invariant tests
 - `test/defi/` – `CoveredVaultWrapper` tests (unit, fuzz, precision, scenarios, fork) plus test helpers and mocks
 
+**Fork tests** – run with `FOUNDRY_PROFILE=fork forge test --match-path "test/defi/CoveredVaultWrapper.fork.t.sol"` (requires `ETHEREUM_RPC_URL`; gracefully skipped when unset). The Anvil e2e flow is at `make test-fork`.
+
 ### Deployment Scripts (`script/`)
 
 **Initial Deployment:**

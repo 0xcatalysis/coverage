@@ -2,27 +2,88 @@
 pragma solidity 0.8.28;
 
 import {console} from "forge-std/console.sol";
+import {Options, Upgrades} from "@openzeppelin/upgrades/Upgrades.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {CompleteCoverageFlow} from "./CompleteCoverageFlow.s.sol";
+import {CoveredVaultWrapper} from "../../src/defi/adapters/morpho/CoveredVaultWrapper.sol";
+
+/// @notice Minimal interface for Morpho VaultV2Factory
+interface IVaultV2FactoryFork {
+    function createVaultV2(address owner, address asset, bytes32 salt) external returns (address);
+}
+
+/// @notice Minimal interface for Morpho VaultV2 / MetaMorpho v1.1 — setCurator selector is identical across both.
+interface IVaultV2Fork {
+    function setCurator(address curator) external;
+}
+
+/// @notice Minimal interface for the MetaMorpho v1.1 factory (0x1897A899…213535c24).
+interface IMetaMorphoV1_1Factory {
+    function createMetaMorpho(
+        address initialOwner,
+        uint256 initialTimelock,
+        address asset,
+        string memory name,
+        string memory symbol,
+        bytes32 salt
+    )
+        external
+        returns (address metaMorpho);
+}
+
+/// @notice Minimal SSPRouter interface for vault discovery
+interface ISSPRouterFork {
+    /// @notice Returns all vaults registered for a given module type (global list, always readable).
+    function getVaultsByModule(uint8 moduleType) external view returns (address[] memory);
+    /// @notice Returns vaults for a specific committee. Only valid AFTER bindPolicyForRequest
+    ///         (setCommitteeVaults inside bindPolicyForRequest populates committeeModuleVaults).
+    function getCommitteeVaultsByModule(uint96 committeeId, uint8 moduleType) external view returns (address[] memory);
+}
+
+/// @notice Returns the ERC-20 token held by a DurationVaultStrategy (e.g. wstETH on live mainnet).
+interface IDurationVaultStrategyFork {
+    function underlyingToken() external view returns (address);
+}
+
+/// @notice Queries USD values from the live Catalysis ChainlinkPriceFeed.
+interface IChainlinkPriceFeedFork {
+    function getUSDValue(address token, uint256 amount) external view returns (uint256);
+}
 
 /**
  * @title ForkCompleteCoverageFlow
- * @notice Fork-specific extension of CompleteCoverageFlow that funds EigenLayer vaults
- *         with stake before policy binding.
- * @dev On a fresh mainnet fork, DurationVaultStrategy vaults hold zero stake.
- *      setCommitteeVaults (called inside bindPolicyForRequest) verifies that the vault's
- *      USD-valued stake >= coverageLimit, which fails with InsufficientStake on an empty fork.
+ * @notice Extends CompleteCoverageFlow for use against a live Ethereum mainnet fork.
  *
- *      This script inserts Phase 3b between vault discovery and Phase 4:
- *        - Wraps COVERAGE_LIMIT ETH to WETH (curator has 10 000 ETH on Anvil)
- *        - Delegates the curator to the vault (required by DurationVaultStrategy.beforeAddShares,
- *          which enforces delegatedTo(staker) == vault; delegationApprover is address(0))
- *        - Deposits WETH into the vault via EigenLayer StrategyManager
+ * @dev Two modes controlled by the `DEPLOY_COVERED_VAULT` environment variable:
  *
- *      EigenLayer constraint: a staker can only be delegated to ONE operator at a time.
- *      This supports single-vault committees only (one ACCEPTABLE_TOKEN = one vault).
- *      Multi-vault scenarios would require a separate depositor address per vault.
+ *      DEPLOY_COVERED_VAULT=false (default / legacy mode):
+ *        Runs the standard EigenLayer-only end-to-end flow (Phase 3b funds vaults).
+ *        BENEFICIARY and BIND_POLICY_HOOK are taken from environment variables as before.
  *
- *      The EigenLayer contract addresses are hardcoded for Ethereum mainnet (chain ID 1).
+ *      DEPLOY_COVERED_VAULT=true (covered-vault mode):
+ *        Phase 1c: Deploys a Morpho vault + CoveredVaultWrapper UUPS proxy.
+ *                  MORPHO_VAULT_VERSION controls which factory is used:
+ *                    2 (default): Morpho VaultV2 — accepts idle deposits, Phase 3d runs in full.
+ *                    1           : MetaMorpho v1.1 — factory-fresh vault lacks a supply queue so
+ *                                  Phase 3d is skipped; all other phases still run.
+ *                  Overrides BENEFICIARY and BIND_POLICY_HOOK to the wrapper address.
+ *        Phase 3d: (VaultV2 only) Seeds a test user with WETH, deposits into the wrapper,
+ *                  simulates a vault loss via anvil_impersonateAccount drain, and verifies
+ *                  the vault balance reflects the loss.
+ *
+ *      Vault discovery uses a snapshot-delta on the global getVaultsByModule list taken just
+ *      before requestCoverage (see _snapshotEigenLayerVaultCount / _discoverVaultsIfNeeded).
+ *      getCommitteeVaultsByModule cannot be used pre-bind because committeeModuleVaults is only
+ *      populated by setCommitteeVaults inside bindPolicyForRequest.
+ *
+ *      Required additional env vars when DEPLOY_COVERED_VAULT=true:
+ *        - MORPHO_VAULT_VERSION          (default: 2; valid: 1 = v1.1, 2 = VaultV2)
+ *        - COVERED_VAULT_MAX_LOSS_BPS    (default: 1000 = 10%)
+ *        - COVERED_VAULT_DEDUCTIBLE_BPS  (default: 100  =  1%)
+ *        - COVERED_VAULT_USER_PRIVATE_KEY (seed-deposit EOA; defaults to BUYER_PRIVATE_KEY)
+ *        - COVERED_VAULT_DEPOSIT_AMOUNT  (WETH amount to seed-deposit; default: 0.1 WETH)
+ *        - COVERED_VAULT_LOSS_PCT        (% of vault balance to remove; default: 5)
  *
  * Usage:
  *   forge script script/testing/ForkCompleteCoverageFlow.s.sol:ForkCompleteCoverageFlow \
@@ -32,67 +93,432 @@ import {CompleteCoverageFlow} from "./CompleteCoverageFlow.s.sol";
  *   make test-fork
  */
 contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
-    /// @dev EigenLayer StrategyManager on Ethereum mainnet.
     address private constant EIGENLAYER_STRATEGY_MANAGER = 0x858646372CC42E1A627fcE94aa7A7033e7CF075A;
-    /// @dev EigenLayer DelegationManager on Ethereum mainnet.
     address private constant EIGENLAYER_DELEGATION_MANAGER = 0x39053D51B77DC0d36036Fc1fCc8Cb819df8Ef37A;
+    address private constant VAULT_V2_FACTORY = 0xA1D94F746dEfa1928926b84fB2596c06926C0405;
+    /// @dev MetaMorpho v1.1 factory on Ethereum mainnet (initialTimelock = 0 allowed).
+    address private constant META_MORPHO_V1_1_FACTORY = 0x1897A8997241C1cD4bD0698647e4EB7213535c24;
+    /// @dev Lido stETH on Ethereum mainnet — used to acquire wstETH by wrapping ETH in Phase 3b.
+    address private constant LIDO_STETH = 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84;
+    /// @dev Lido wstETH on Ethereum mainnet — the only collateral token supported by _acquireWstETH.
+    address private constant LIDO_WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
-    /**
-     * @notice Wraps ETH -> WETH, delegates curator to the vault, and deposits via StrategyManager.
-     */
+    bool private _deployCoveredVault;
+
+    /// @dev Global EigenLayer vault count snapshotted just before _phase2_requestCoverage.
+    ///      requestCoverage triggers SSPRouter to deploy new DurationVaultStrategy vaults; the
+    ///      delta between the post-request global list and this snapshot identifies them.
+    ///      getCommitteeVaultsByModule cannot be used here because committeeModuleVaults is only
+    ///      populated by setCommitteeVaults inside bindPolicyForRequest (Phase 4).
+    uint256 private _eigenLayerVaultCountSnapshot;
+
+    /// @dev 1 = MetaMorpho v1.1, 2 = VaultV2 (default).
+    uint8 private _morphoVaultVersion;
+
+    uint16 private _coveredVaultMaxLossBps;
+    uint16 private _coveredVaultDeductibleBps;
+    uint256 private _coveredVaultUserPrivateKey;
+    address private _coveredVaultUser;
+    uint256 private _coveredVaultDepositAmount;
+    uint256 private _coveredVaultLossPct;
+
+    constructor() {
+        _deployCoveredVault = vm.envOr("DEPLOY_COVERED_VAULT", false);
+        if (_deployCoveredVault) {
+            _morphoVaultVersion = uint8(vm.envOr("MORPHO_VAULT_VERSION", uint256(2)));
+            require(_morphoVaultVersion == 1 || _morphoVaultVersion == 2, "MORPHO_VAULT_VERSION must be 1 or 2");
+            _coveredVaultMaxLossBps = uint16(vm.envOr("COVERED_VAULT_MAX_LOSS_BPS", uint256(1000)));
+            _coveredVaultDeductibleBps = uint16(vm.envOr("COVERED_VAULT_DEDUCTIBLE_BPS", uint256(100)));
+            _coveredVaultUserPrivateKey = vm.envOr("COVERED_VAULT_USER_PRIVATE_KEY", buyerPrivateKey);
+            _coveredVaultUser = vm.addr(_coveredVaultUserPrivateKey);
+            _coveredVaultDepositAmount = vm.envOr("COVERED_VAULT_DEPOSIT_AMOUNT", uint256(0.1 ether));
+            _coveredVaultLossPct = vm.envOr("COVERED_VAULT_LOSS_PCT", uint256(5));
+        }
+    }
+
+    // ════════════════════════════════════════════
+    //  Phase 1c: Deploy Morpho vault + wrapper (DEPLOY_COVERED_VAULT=true only)
+    // ════════════════════════════════════════════
+
+    /// @dev Deploys a Morpho vault (v1.1 or v2) and a CoveredVaultWrapper UUPS proxy.
+    ///      Overrides beneficiary/claimer/bindPolicyHook to the wrapper address so Phases 2 and 4 use it.
+    ///
+    ///      MORPHO_VAULT_VERSION=2 (default): deploys VaultV2 via VAULT_V2_FACTORY. Fresh VaultV2 vaults
+    ///        hold idle cash — Phase 3d can simulate a loss and verify the balance change.
+    ///
+    ///      MORPHO_VAULT_VERSION=1: deploys MetaMorpho v1.1 via META_MORPHO_V1_1_FACTORY with
+    ///        initialTimelock=0. Factory-fresh v1.1 vaults have an empty supplyQueue, so wrapper.deposit
+    ///        reverts AllCapsReached — Phase 3d is skipped automatically.
+    function _phase1c_deployCoveredVault() internal {
+        if (!_deployCoveredVault) {
+            console.log("[SKIP] DEPLOY_COVERED_VAULT=false, skipping Phase 1c");
+            return;
+        }
+
+        if (_morphoVaultVersion == 1) {
+            console.log("\n=== PHASE 1c: DEPLOY METAMORPHO V1.1 VAULT + COVERED VAULT WRAPPER ===");
+        } else {
+            console.log("\n=== PHASE 1c: DEPLOY MORPHO VAULTV2 + COVERED VAULT WRAPPER ===");
+        }
+
+        vm.startBroadcast(curatorPrivateKey);
+        address morphoVault = _deployMorphoVault();
+        IVaultV2Fork(morphoVault).setCurator(curator);
+        vm.stopBroadcast();
+        console.log("[OK] Morpho vault deployed (version", _morphoVaultVersion, "):", morphoVault);
+
+        Options memory deployOpts;
+        deployOpts.unsafeSkipAllChecks = true;
+
+        vm.startBroadcast(curatorPrivateKey);
+        address proxy = Upgrades.deployUUPSProxy(
+            "CoveredVaultWrapper.sol",
+            abi.encodeCall(
+                CoveredVaultWrapper.initialize,
+                (
+                    morphoVault,
+                    claimManager,
+                    coverPool,
+                    _coveredVaultMaxLossBps,
+                    _coveredVaultDeductibleBps,
+                    premiumManager,
+                    curator,
+                    "Covered Vault",
+                    "cvVAULT"
+                )
+            ),
+            deployOpts
+        );
+        vm.stopBroadcast();
+        console.log("[OK] CoveredVaultWrapper deployed:", proxy);
+
+        coveredVault = proxy;
+        beneficiary = proxy;
+        bindPolicyHook = proxy;
+        claimer = proxy;
+
+        buyer = curator;
+        buyerPrivateKey = curatorPrivateKey;
+
+        emit FlowCompleted("Deploy Covered Vault", 15);
+    }
+
+    /// @dev Deploys the underlying Morpho vault according to _morphoVaultVersion.
+    ///      Must be called inside an active vm.startBroadcast.
+    function _deployMorphoVault() private returns (address morphoVault) {
+        bytes32 salt = bytes32(uint256(block.timestamp));
+        if (_morphoVaultVersion == 2) {
+            morphoVault = IVaultV2FactoryFork(VAULT_V2_FACTORY).createVaultV2(curator, payoutToken, salt);
+        } else {
+            morphoVault = IMetaMorphoV1_1Factory(META_MORPHO_V1_1_FACTORY)
+                .createMetaMorpho(curator, 0, payoutToken, "Covered Vault Underlying", "cvUNDERLYING", salt);
+            console.log("[WARN] MetaMorpho v1.1 vault deployed. Phase 3d will be skipped: factory-fresh v1.1 vaults");
+            console.log("       revert AllCapsReached on the first deposit because supplyQueue is empty.");
+            console.log("       To run Phase 3d with v1.1, manually submitCap + acceptCap + setSupplyQueue first.");
+        }
+    }
+
+    // ════════════════════════════════════════════
+    //  Phase 3b: Fund EigenLayer vaults
+    // ════════════════════════════════════════════
+
+    /// @dev Overrides parent Phase 3b to support multiple vaults (one per acceptableToken).
+    ///      Each vault's underlying collateral token is discovered at runtime via underlyingToken()
+    ///      rather than assumed to be payoutToken — on live mainnet the vault holds wstETH, not WETH.
     function _beforePhase4() internal override {
         if (vaults.length == 0) {
             return;
         }
 
         console.log("\n=== PHASE 3b: FUND VAULTS (EigenLayer stake) ===");
-        require(vaults.length == 1, "Phase 3b: multi-vault not supported (one delegator per operator)");
 
-        uint256 depositAmount = coverageLimit;
+        address chainlinkPriceFeed = vm.envAddress("CHAINLINK_PRICE_FEED");
+        uint256 coverageLimitUSD = IChainlinkPriceFeedFork(chainlinkPriceFeed).getUSDValue(payoutToken, coverageLimit);
+        uint256 targetUSD = coverageLimitUSD * 2;
 
-        vm.startBroadcast(curatorPrivateKey);
+        for (uint256 i = 0; i < vaults.length; i++) {
+            console.log("Funding vault", i, ":", vaults[i]);
 
-        (bool ok,) = payoutToken.call{value: depositAmount}(abi.encodeWithSignature("deposit()"));
-        require(ok, "Phase 3b: ETH->WETH wrap failed");
+            address collateralToken = IDurationVaultStrategyFork(vaults[i]).underlyingToken();
+            console.log("     collateral token:", collateralToken);
 
-        (ok,) = payoutToken.call(
-            abi.encodeWithSignature("approve(address,uint256)", EIGENLAYER_STRATEGY_MANAGER, depositAmount)
-        );
-        require(ok, "Phase 3b: WETH approve to StrategyManager failed");
+            require(
+                collateralToken == LIDO_WSTETH,
+                "Phase 3b: collateral token is not wstETH; _acquireWstETH only supports the Lido ETH->stETH->wstETH path"
+            );
 
+            uint256 tokenUnit = 10 ** uint256(IERC20Metadata(collateralToken).decimals());
+            uint256 tokenPriceUSD = IChainlinkPriceFeedFork(chainlinkPriceFeed).getUSDValue(collateralToken, tokenUnit);
+            uint256 collateralAmount = (targetUSD * tokenUnit + tokenPriceUSD - 1) / tokenPriceUSD;
+
+            uint256 depositorKey = _anvilDepositorKey(i);
+            address depositor = vm.addr(depositorKey);
+
+            vm.startBroadcast(depositorKey);
+            _acquireWstETH(collateralToken, depositor, collateralAmount);
+            _delegateToVaultIfNeeded(depositor, vaults[i]);
+            _depositIntoEigenLayerStrategy(collateralToken, vaults[i], collateralAmount);
+            vm.stopBroadcast();
+
+            console.log("[OK] Deposited", collateralAmount, "collateral tokens into vault", i);
+            console.log("     via depositor:", depositor);
+        }
+
+        emit FlowCompleted("Vault Funding", 35);
+    }
+
+    /// @dev Submits ETH to Lido, wraps the received stETH to wstETH.
+    ///      Must be called inside an active vm.startBroadcast (depositor is msg.sender).
+    function _acquireWstETH(address wstETHToken, address depositor, uint256 targetAmount) private {
+        (bool lidoOk,) =
+            LIDO_STETH.call{value: targetAmount * 2}(abi.encodeWithSignature("submit(address)", address(0)));
+        require(lidoOk, "Phase 3b: Lido ETH submit failed");
+
+        (bool balOk, bytes memory stETHBalData) =
+            LIDO_STETH.staticcall(abi.encodeWithSignature("balanceOf(address)", depositor));
+        require(balOk && stETHBalData.length >= 32, "Phase 3b: stETH balanceOf failed");
+        uint256 stETHBalance = abi.decode(stETHBalData, (uint256));
+
+        (lidoOk,) = LIDO_STETH.call(abi.encodeWithSignature("approve(address,uint256)", wstETHToken, stETHBalance));
+        require(lidoOk, "Phase 3b: stETH approve for wrap failed");
+
+        (lidoOk,) = wstETHToken.call(abi.encodeWithSignature("wrap(uint256)", stETHBalance));
+        require(lidoOk, "Phase 3b: wstETH wrap failed");
+    }
+
+    /// @dev Delegates depositor to vault via EigenLayer DelegationManager if not already delegated.
+    ///      Must be called inside an active vm.startBroadcast (depositor is msg.sender).
+    function _delegateToVaultIfNeeded(address depositor, address vault) private {
         (bool delegatedOk, bytes memory delegatedData) =
-            EIGENLAYER_DELEGATION_MANAGER.staticcall(abi.encodeWithSignature("delegatedTo(address)", curator));
+            EIGENLAYER_DELEGATION_MANAGER.staticcall(abi.encodeWithSignature("delegatedTo(address)", depositor));
         address currentOperator =
             (delegatedOk && delegatedData.length >= 32) ? abi.decode(delegatedData, (address)) : address(0);
 
-        if (currentOperator != vaults[0]) {
-            (ok,) = EIGENLAYER_DELEGATION_MANAGER.call(
+        if (currentOperator != vault) {
+            (bool ok,) = EIGENLAYER_DELEGATION_MANAGER.call(
                 abi.encodePacked(
                     bytes4(keccak256("delegateTo(address,(bytes,uint256),bytes32)")),
-                    bytes32(uint256(uint160(vaults[0]))), // operator (address, zero-padded)
-                    bytes32(uint256(0x60)), // offset to struct (3 * 32 = 96)
-                    bytes32(0), // approverSalt
-                    bytes32(uint256(0x40)), // struct: offset to sig bytes (2 * 32 = 64)
-                    bytes32(uint256(0)), // struct: expiry = 0
-                    bytes32(uint256(0)) // struct: sig length = 0 (empty)
+                    bytes32(uint256(uint160(vault))),
+                    bytes32(uint256(0x60)),
+                    bytes32(0),
+                    bytes32(uint256(0x40)),
+                    bytes32(uint256(0)),
+                    bytes32(uint256(0))
                 )
             );
             require(ok, "Phase 3b: EigenLayer delegateTo vault failed");
-            console.log("[OK] Curator delegated to vault");
+            console.log("[OK] Depositor delegated to vault:", vault);
         } else {
-            console.log("[SKIP] Curator already delegated to vault");
+            console.log("[SKIP] Depositor already delegated to vault:", vault);
         }
+    }
+
+    /// @dev Approves and deposits collateralToken into an EigenLayer strategy (the vault).
+    ///      Must be called inside an active vm.startBroadcast (depositor is msg.sender).
+    ///
+    ///      NOTE: depositIntoStrategy can fail with AllCapsReached when the DurationVaultStrategy
+    ///      internally routes into a MetaMorpho supply market that is at capacity on the mainnet fork.
+    ///      This is mainnet-state-dependent (a live market may be full at certain blocks). The failure
+    ///      is treated as a non-fatal warning so the broadcast does not abort; Phase 4 bindPolicyForRequest
+    ///      will subsequently verify whether sufficient stake exists via its InsufficientStake check.
+    function _depositIntoEigenLayerStrategy(address token, address vault, uint256 amount) private {
+        (bool ok,) =
+            token.call(abi.encodeWithSignature("approve(address,uint256)", EIGENLAYER_STRATEGY_MANAGER, amount));
+        require(ok, "Phase 3b: collateral token approve to StrategyManager failed");
 
         (ok,) = EIGENLAYER_STRATEGY_MANAGER.call(
-            abi.encodeWithSignature(
-                "depositIntoStrategy(address,address,uint256)", vaults[0], payoutToken, depositAmount
-            )
+            abi.encodeWithSignature("depositIntoStrategy(address,address,uint256)", vault, token, amount)
         );
-        require(ok, "Phase 3b: EigenLayer depositIntoStrategy failed");
-        console.log("[OK] Deposited", depositAmount, "WETH into vault");
+        if (!ok) {
+            console.log("[WARN] Phase 3b: depositIntoStrategy failed (MetaMorpho supply cap likely reached)");
+            console.log("       Phase 4 will verify whether existing stake is sufficient.");
+        }
+    }
 
+    // ════════════════════════════════════════════
+    //  Phase 3d: Seed deposit + simulate loss (DEPLOY_COVERED_VAULT=true, VaultV2 only)
+    // ════════════════════════════════════════════
+
+    /// @dev Deposits WETH into the wrapper, simulates a vault loss via Anvil impersonation, and
+    ///      verifies the vault balance reflects the loss.
+    ///
+    ///      Skipped when MORPHO_VAULT_VERSION=1: factory-fresh MetaMorpho v1.1 vaults have an empty
+    ///      supplyQueue and revert AllCapsReached on the first deposit. There is also no idle cash at
+    ///      the vault address to drain. Run submitCap + acceptCap + setSupplyQueue on the v1.1 vault
+    ///      before re-enabling Phase 3d for that mode.
+    ///
+    ///      (claimer = wrapper, so a direct EOA fileClaim is not possible)
+    function _phase3d_seedAndTriggerClaim() internal {
+        if (!_deployCoveredVault) {
+            return;
+        }
+        if (_morphoVaultVersion != 2) {
+            console.log("[SKIP] Phase 3d skipped for MORPHO_VAULT_VERSION=1 (MetaMorpho v1.1 has no idle cash).");
+            emit FlowCompleted("Seed + Trigger Claim (skipped)", 38);
+            return;
+        }
+
+        console.log("\n=== PHASE 3d: SEED DEPOSIT + SIMULATE LOSS + VERIFY fileClaim ===");
+
+        address morphoVaultAddr = CoveredVaultWrapper(coveredVault).morphoVault();
+
+        vm.startBroadcast(curatorPrivateKey);
+        (bool sendOk,) = payable(_coveredVaultUser).call{value: _coveredVaultDepositAmount + 0.1 ether}("");
+        require(sendOk, "Phase 3d: failed to send ETH to user");
         vm.stopBroadcast();
 
-        emit FlowCompleted("Vault Funding", 35);
+        vm.startBroadcast(_coveredVaultUserPrivateKey);
+        (bool wrapOk,) = payoutToken.call{value: _coveredVaultDepositAmount}(abi.encodeWithSignature("deposit()"));
+        require(wrapOk, "Phase 3d: ETH->WETH wrap failed (payoutToken must be WETH)");
+        IERC20(payoutToken).approve(coveredVault, _coveredVaultDepositAmount);
+        CoveredVaultWrapper(coveredVault).deposit(_coveredVaultDepositAmount, _coveredVaultUser);
+        vm.stopBroadcast();
+        console.log("[OK] User deposited", _coveredVaultDepositAmount, "WETH into wrapper");
+
+        uint256 morphoBalance = IERC20(payoutToken).balanceOf(morphoVaultAddr);
+        uint256 lossAmount = morphoBalance * _coveredVaultLossPct / 100;
+
+        vm.deal(morphoVaultAddr, 1 ether); // local simulation
+        vm.rpc(
+            "anvil_setBalance",
+            string.concat("[\"", vm.toString(morphoVaultAddr), "\",\"0xde0b6b3a7640000\"]") // 1 ETH
+        );
+
+        vm.rpc("anvil_impersonateAccount", string.concat("[\"", vm.toString(morphoVaultAddr), "\"]"));
+        vm.startBroadcast(morphoVaultAddr);
+        bool drainOk = IERC20(payoutToken).transfer(address(1), lossAmount);
+        require(drainOk, "Phase 3d: drain transfer failed");
+        vm.stopBroadcast();
+        vm.rpc("anvil_stopImpersonatingAccount", string.concat("[\"", vm.toString(morphoVaultAddr), "\"]"));
+        console.log("[OK] Simulated", _coveredVaultLossPct, "% loss on Morpho vault");
+        console.log("     Drained", lossAmount, "WETH from vault (impersonation broadcast)");
+        console.log("     Morpho vault balance:", morphoBalance - lossAmount);
+
+        uint256 postDrainBalance = IERC20(payoutToken).balanceOf(morphoVaultAddr);
+        require(
+            postDrainBalance < _coveredVaultDepositAmount,
+            "Phase 3d: vault balance should be less than deposit after drain"
+        );
+        console.log("[OK] Vault balance after drain:", postDrainBalance);
+        console.log("     Loss correctly reflected vs. deposit:", _coveredVaultDepositAmount);
+        console.log("     (redeem step skipped: EigenLayer vault locked for policy duration)");
+
+        emit FlowCompleted("Seed + Trigger Claim", 38);
+    }
+
+    // ════════════════════════════════════════════
+    //  Anvil depositor key lookup
+    // ════════════════════════════════════════════
+
+    /// @dev Returns the private key of Anvil's well-known funded account at the given index
+    ///      (starting at 4, leaving 0-3 for CURATOR/BUYER/CLAIMER/QUOTE_SIGNER).
+    function _anvilDepositorKey(uint256 index) private pure returns (uint256) {
+        if (index == 0) return 0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a;
+        if (index == 1) return 0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba;
+        if (index == 2) return 0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e;
+        if (index == 3) return 0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356;
+        if (index == 4) return 0xdbda1821b80551c9d65939329250132c444b89e5a5b7eb6d6f3d3d89c6fbac3e;
+        if (index == 5) return 0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6;
+        revert("Phase 3b: vault index > 5; only Anvil accounts 4-9 are reserved as depositors");
+    }
+
+    // ════════════════════════════════════════════
+    //  Vault snapshot helper
+    // ════════════════════════════════════════════
+
+    /// @dev Records the current global EigenLayer vault count so _discoverVaultsIfNeeded can
+    ///      identify the vaults created for this committee as the delta.  Must be called BEFORE
+    ///      _phase2_requestCoverage because requestCoverage triggers SSPRouter to deploy new
+    ///      DurationVaultStrategy vaults into the global list.
+    function _snapshotEigenLayerVaultCount() internal {
+        (bool ok1, bytes memory d1) = stakeManager.staticcall(abi.encodeWithSignature("router()"));
+        require(ok1 && d1.length >= 32, "Snapshot: StakeManager.router() call failed");
+        address router = abi.decode(d1, (address));
+
+        (bool ok2, bytes memory d2) = router.staticcall(abi.encodeWithSignature("getVaultsByModule(uint8)", uint8(2)));
+        require(ok2 && d2.length >= 32, "Snapshot: getVaultsByModule call failed");
+
+        address[] memory currentVaults = abi.decode(d2, (address[]));
+        _eigenLayerVaultCountSnapshot = currentVaults.length;
+        console.log("[OK] EigenLayer vault count snapshot:", _eigenLayerVaultCountSnapshot);
+    }
+
+    function run() external override {
+        console.log("============================================");
+        console.log("  COMPLETE COVERAGE PROTOCOL E2E FLOW");
+        console.log("============================================");
+        console.log("Curator:", curator);
+        console.log("Buyer:", buyer);
+        console.log("Claimer:", claimer);
+        console.log("Beneficiary:", beneficiary);
+        console.log("DEPLOY_COVERED_VAULT:", _deployCoveredVault);
+        if (_deployCoveredVault) console.log("MORPHO_VAULT_VERSION:", _morphoVaultVersion);
+        console.log("");
+
+        _phase0_whitelistPayoutToken();
+        _phase1_createCoverPool();
+        _phase1b_releaseOperator();
+        _phase1c_deployCoveredVault();
+        _snapshotEigenLayerVaultCount();
+        _phase2_requestCoverage();
+        _phase3_verifyCommittee();
+        _discoverVaultsIfNeeded();
+        _beforePhase4();
+        _phase4_bindPolicy();
+        _phase3d_seedAndTriggerClaim();
+        _phase5_verifyPremiumAccrual();
+        _phase6_distributePremiums();
+        _phase7_fileClaim();
+        _phase8_summary();
+
+        console.log("\n============================================");
+        console.log("  E2E FLOW COMPLETED SUCCESSFULLY");
+        console.log("============================================");
+        emit EndToEndCompleted(policyId, coverPool, beneficiary);
+    }
+
+    /// @dev Overrides parent to use the snapshot-delta approach: compares the current global
+    ///      getVaultsByModule(EIGENLAYER) list against the pre-requestCoverage snapshot to find
+    ///      the vaults that were just deployed for this committee.
+    ///
+    ///      getCommitteeVaultsByModule CANNOT be used here because committeeModuleVaults is only
+    ///      populated by setCommitteeVaults inside bindPolicyForRequest (Phase 4), which has not
+    ///      run yet.  This matches the pattern used by ForkCoverageSetup._discoverNewEigenLayerVaults
+    ///      and CoveredVaultWrapper.fork.t.sol.
+    function _discoverVaultsIfNeeded() internal override {
+        if (vaults.length > 0) {
+            return;
+        }
+
+        console.log("\n=== VAULT AUTO-DISCOVERY (global delta, pre-bind) ===");
+
+        (bool ok1, bytes memory d1) = stakeManager.staticcall(abi.encodeWithSignature("router()"));
+        require(ok1 && d1.length >= 32, "Vault discovery: StakeManager.router() call failed");
+        address router = abi.decode(d1, (address));
+        console.log("SSPRouter:", router);
+
+        (bool ok2, bytes memory d2) = router.staticcall(abi.encodeWithSignature("getVaultsByModule(uint8)", uint8(2)));
+        require(ok2 && d2.length >= 32, "Vault discovery: getVaultsByModule call failed");
+        address[] memory allVaults = abi.decode(d2, (address[]));
+
+        require(
+            allVaults.length > _eigenLayerVaultCountSnapshot,
+            "Vault auto-discovery: no new EigenLayer vaults deployed since snapshot"
+        );
+
+        uint256 newCount = allVaults.length - _eigenLayerVaultCountSnapshot;
+        vaults = new address[](newCount);
+        for (uint256 i = 0; i < newCount; i++) {
+            vaults[i] = allVaults[_eigenLayerVaultCountSnapshot + i];
+        }
+
+        console.log("Discovered vault(s) for committee (snapshot delta):");
+        console.log("  snapshot count:", _eigenLayerVaultCountSnapshot);
+        console.log("  total count:", allVaults.length);
+        console.log("  new vaults:", vaults.length);
+        console.log("  policyId:", policyId);
+        for (uint256 i = 0; i < vaults.length; i++) {
+            console.log("  Vault", i, ":", vaults[i]);
+        }
     }
 }

@@ -642,7 +642,7 @@ contract CompleteCoverageFlow is Script {
      *
      *      Uses low-level staticcalls to avoid importing Core interfaces.
      */
-    function _discoverVaultsIfNeeded() internal {
+    function _discoverVaultsIfNeeded() internal virtual {
         if (vaults.length > 0) {
             return;
         }
