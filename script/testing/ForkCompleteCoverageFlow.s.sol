@@ -129,7 +129,7 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
             _coveredVaultDeductibleBps = uint16(vm.envOr("COVERED_VAULT_DEDUCTIBLE_BPS", uint256(100)));
             _coveredVaultUserPrivateKey = vm.envOr("COVERED_VAULT_USER_PRIVATE_KEY", buyerPrivateKey);
             _coveredVaultUser = vm.addr(_coveredVaultUserPrivateKey);
-            _coveredVaultDepositAmount = vm.envOr("COVERED_VAULT_DEPOSIT_AMOUNT", uint256(1000e6));
+            _coveredVaultDepositAmount = vm.envOr("COVERED_VAULT_DEPOSIT_AMOUNT", uint256(0.1 ether));
             _coveredVaultLossPct = vm.envOr("COVERED_VAULT_LOSS_PCT", uint256(5));
         }
     }
