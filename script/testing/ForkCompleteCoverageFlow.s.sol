@@ -389,6 +389,7 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
         bool drainOk = IERC20(payoutToken).transfer(address(1), lossAmount);
         require(drainOk, "Phase 3d: drain transfer failed");
         vm.stopBroadcast();
+        vm.rpc("anvil_stopImpersonatingAccount", string.concat("[\"", vm.toString(morphoVaultAddr), "\"]"));
         console.log("[OK] Simulated", _coveredVaultLossPct, "% loss on Morpho vault");
         console.log("     Drained", lossAmount, "WETH from vault (impersonation broadcast)");
         console.log("     Morpho vault balance:", morphoBalance - lossAmount);
