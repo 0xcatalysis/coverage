@@ -829,7 +829,7 @@ contract SwapperTest is Test {
 
         vm.startPrank(swapExecutor);
         tokenIn.approve(address(swapper), amountIn);
-        vm.expectRevert(); // Just expect any revert since the error encoding varies
+        vm.expectRevert();
         swapper.executeSwap(params);
         vm.stopPrank();
     }
@@ -911,7 +911,7 @@ contract SwapperTest is Test {
 
         vm.startPrank(swapExecutor);
         tokenIn.approve(address(swapper), amountIn);
-        vm.expectRevert(); // Expect any revert - reentrancy will be caught and wrapped in SwapFailed
+        vm.expectRevert();
         swapper.executeSwap(params);
         vm.stopPrank();
     }

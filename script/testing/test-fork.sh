@@ -41,6 +41,7 @@
 #   STAKE_MANAGER, SLASHING_MANAGER, REWARDS_MANAGER, SSP_ROUTER, CHAINLINK_PRICE_FEED, MASTER_ADMIN
 #
 # Optional covered-vault mode (DEPLOY_COVERED_VAULT=true):
+#   MORPHO_VAULT_VERSION        (default: 2; 1 = MetaMorpho v1.1, 2 = VaultV2)
 #   COVERED_VAULT_MAX_LOSS_BPS, COVERED_VAULT_DEDUCTIBLE_BPS,
 #   COVERED_VAULT_USER_PRIVATE_KEY, COVERED_VAULT_DEPOSIT_AMOUNT, COVERED_VAULT_LOSS_PCT
 
@@ -62,11 +63,13 @@ if [[ -f "$ENV_FILE" ]]; then
     _saved_rpc="${ETHEREUM_RPC_URL:-}"
     _saved_anvil_rpc="${ANVIL_RPC_URL:-}"
     _saved_deploy_cv="${DEPLOY_COVERED_VAULT:-}"
+    _saved_morpho_ver="${MORPHO_VAULT_VERSION:-}"
     # shellcheck disable=SC1090
     set -o allexport; source "$ENV_FILE"; set +o allexport
-    [[ -n "$_saved_rpc" ]]        && ETHEREUM_RPC_URL="$_saved_rpc"
-    [[ -n "$_saved_anvil_rpc" ]]  && ANVIL_RPC_URL="$_saved_anvil_rpc"
-    [[ -n "$_saved_deploy_cv" ]]  && DEPLOY_COVERED_VAULT="$_saved_deploy_cv"
+    [[ -n "$_saved_rpc" ]]          && ETHEREUM_RPC_URL="$_saved_rpc"
+    [[ -n "$_saved_anvil_rpc" ]]    && ANVIL_RPC_URL="$_saved_anvil_rpc"
+    [[ -n "$_saved_deploy_cv" ]]    && DEPLOY_COVERED_VAULT="$_saved_deploy_cv"
+    [[ -n "$_saved_morpho_ver" ]]   && MORPHO_VAULT_VERSION="$_saved_morpho_ver"
 else
     error ".env.fork not found at $ENV_FILE"
     error "Copy .env.fork.example to .env.fork and set ETHEREUM_RPC_URL."
@@ -90,6 +93,7 @@ MASTER_ADMIN="${MASTER_ADMIN:-0xd2d03377Fa96687e9C11380DA9956AcC5F307e2c}"
 
 # ─── Covered vault mode ───────────────────────────────────────────────────────
 DEPLOY_COVERED_VAULT="${DEPLOY_COVERED_VAULT:-false}"
+MORPHO_VAULT_VERSION="${MORPHO_VAULT_VERSION:-2}"
 
 # ─── Derive deployer address from private key ────────────────────────────────
 DEPLOYER=$(cast wallet address --private-key "$PRIVATE_KEY")
@@ -101,6 +105,7 @@ info "SSP_ROUTER = $SSP_ROUTER"
 info "CHAINLINK_PRICE_FEED = $CHAINLINK_PRICE_FEED"
 info "MASTER_ADMIN = $MASTER_ADMIN"
 info "DEPLOY_COVERED_VAULT = $DEPLOY_COVERED_VAULT"
+info "MORPHO_VAULT_VERSION = $MORPHO_VAULT_VERSION"
 
 # ─── Cleanup on exit ─────────────────────────────────────────────────────────
 cleanup() {
@@ -476,6 +481,11 @@ TERMS_HASH="${TERMS_HASH:-0x$(printf '%064x' 2)}" \
 EXPIRATION_TIME="${EXPIRATION_TIME:-$(( $(date +%s) + 86400 ))}" \
 COVERED_VAULT="${COVERED_VAULT:-0x0000000000000000000000000000000000000000}" \
 DEPLOY_COVERED_VAULT="$DEPLOY_COVERED_VAULT" \
+MORPHO_VAULT_VERSION="$MORPHO_VAULT_VERSION" \
+COVERED_VAULT_MAX_LOSS_BPS="${COVERED_VAULT_MAX_LOSS_BPS:-1000}" \
+COVERED_VAULT_DEDUCTIBLE_BPS="${COVERED_VAULT_DEDUCTIBLE_BPS:-100}" \
+COVERED_VAULT_DEPOSIT_AMOUNT="${COVERED_VAULT_DEPOSIT_AMOUNT:-100000000000000000}" \
+COVERED_VAULT_LOSS_PCT="${COVERED_VAULT_LOSS_PCT:-5}" \
 REQUESTED_CLAIM_AMOUNT="${REQUESTED_CLAIM_AMOUNT:-0}" \
 EVIDENCE_HASH="${EVIDENCE_HASH:-0x0000000000000000000000000000000000000000000000000000000000000000}" \
 forge script --root "$COVERAGE_ROOT" \
