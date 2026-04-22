@@ -100,6 +100,8 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     address private constant META_MORPHO_V1_1_FACTORY = 0x1897A8997241C1cD4bD0698647e4EB7213535c24;
     /// @dev Lido stETH on Ethereum mainnet — used to acquire wstETH by wrapping ETH in Phase 3b.
     address private constant LIDO_STETH = 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84;
+    /// @dev Lido wstETH on Ethereum mainnet — the only collateral token supported by _acquireWstETH.
+    address private constant LIDO_WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
 
     bool private _deployCoveredVault;
 
@@ -239,6 +241,11 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
 
             address collateralToken = IDurationVaultStrategyFork(vaults[i]).underlyingToken();
             console.log("     collateral token:", collateralToken);
+
+            require(
+                collateralToken == LIDO_WSTETH,
+                "Phase 3b: collateral token is not wstETH; _acquireWstETH only supports the Lido ETH->stETH->wstETH path"
+            );
 
             uint256 tokenUnit = 10 ** uint256(IERC20Metadata(collateralToken).decimals());
             uint256 tokenPriceUSD = IChainlinkPriceFeedFork(chainlinkPriceFeed).getUSDValue(collateralToken, tokenUnit);
