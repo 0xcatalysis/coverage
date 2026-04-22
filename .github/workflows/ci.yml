@@ -123,10 +123,20 @@ jobs:
           retention-days: ${{ env.RETENTION_DAYS }}
 
   fork-test:
-    name: Fork Test
+    name: Fork Test (${{ matrix.label }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: EigenLayer only
+            make_target: test-fork
+          - label: Covered Vault — VaultV2
+            make_target: test-fork-v2
+          - label: Covered Vault — MetaMorpho v1.1
+            make_target: test-fork-v1
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -141,4 +151,4 @@ jobs:
       - name: Run fork tests
         env:
           ETHEREUM_RPC_URL: ${{ secrets.ETHEREUM_RPC_URL }}
-        run: make test-fork
+        run: make ${{ matrix.make_target }}
