@@ -43,7 +43,6 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, `ISpecRegis
 |------|---------|
 | `MockSpec.sol` | Configurable claim evaluation logic; auto-approves by default. |
 | `MockSpecRegistry.sol` | Registry mapping pools to Spec implementations; supports default fallback. |
-| `MockBindPolicyHook.sol` | No-op `IBindPolicyHook` implementation for fork testing. |
 
 ### Test Structure
 
@@ -52,7 +51,12 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, `ISpecRegis
 - `test/invariant/*.t.sol` – stateful invariant tests
 - `test/defi/` – `CoveredVaultWrapper` tests (unit, fuzz, precision, scenarios, fork) plus test helpers and mocks
 
-**Fork tests** – run with `FOUNDRY_PROFILE=fork forge test --match-path "test/defi/CoveredVaultWrapper.fork.t.sol"` (requires `ETHEREUM_RPC_URL`; gracefully skipped when unset). The Anvil e2e flow is at `make test-fork`.
+**Fork tests** – two distinct suites, both requiring `ETHEREUM_RPC_URL`:
+
+- `make test-fork-v2` – full broadcast e2e flow on a forked mainnet using a fresh Morpho VaultV2 vault; deploys Coverage contracts, wires live Core, funds EigenLayer vaults via Lido, binds policy, seeds a WETH deposit into the wrapper, and simulates a 5 % vault loss.
+- `make test-fork-v1` – same broadcast flow using MetaMorpho v1.1; the seed-deposit phase is skipped because factory-fresh v1.1 vaults have an empty supply queue, so this exercises the skip-branch explicitly.
+
+The `CoveredVaultWrapper.fork.t.sol` forge test suite (under `test/defi/`) runs against a pinned block and uses `deal`/`vm.prank` — it is the only test that exercises `fileClaim + slash + Uniswap swap + payout` end-to-end. Run it locally with `FOUNDRY_PROFILE=fork forge test --match-path "test/defi/CoveredVaultWrapper.fork.t.sol"` (gracefully skipped when `ETHEREUM_RPC_URL` is unset).
 
 ### Deployment Scripts (`script/`)
 
@@ -88,7 +92,7 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, `ISpecRegis
 - `PrepareEigenLayer.s.sol` – configures EigenLayer magnitude allocation for an operator
 - `DeployControllableVault.s.sol` – deploys a test ERC-4626 vault with controllable NAV
 - `CompleteCoverageFlow.s.sol` – end-to-end lifecycle from pool creation through claim settlement
-- `ForkCompleteCoverageFlow.s.sol` – extends CompleteCoverageFlow with EigenLayer vault-funding for fresh mainnet forks (used by `make test-fork`)
+- `ForkCompleteCoverageFlow.s.sol` – extends CompleteCoverageFlow with Morpho vault + CoveredVaultWrapper deployment and EigenLayer vault-funding for fresh mainnet forks (used by `make test-fork-v2` / `make test-fork-v1`)
 
 ## Build, Test, and Development Commands
 
@@ -101,7 +105,7 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, `ISpecRegis
 - `make lint` – run `forge lint` with configured exclusions.
 - `make docs` – regenerate NatSpec documentation into `docs/`.
 - `make snapshot` / `make snapshot-check` – capture or verify gas baselines for regression tracking.
-- `make test-fork` – run the end-to-end coverage flow on a forked mainnet.
+- `make test-fork-v2` / `make test-fork-v1` – run the Morpho VaultV2 or MetaMorpho v1.1 e2e flow on a forked mainnet.
 - `make slither`, `make mythril` – optional static and symbolic analysis passes mirroring CI.
 - `make clean` – remove build artifacts, localhost broadcasts, and coverage files.
 - `make help` – list all available Makefile targets.

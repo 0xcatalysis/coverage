@@ -131,8 +131,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: EigenLayer only
-            make_target: test-fork
           - label: Covered Vault — VaultV2
             make_target: test-fork-v2
           - label: Covered Vault — MetaMorpho v1.1

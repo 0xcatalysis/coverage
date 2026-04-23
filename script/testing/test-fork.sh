@@ -10,19 +10,14 @@
 #   3c. Bump PolicyManager._nextPolicyId above existing live committee IDs (avoids CommitteeAlreadyExists)
 #   4. Wire Core <-> Coverage (WireCoreContracts.s.sol)
 #   5. Deploy MockSpec via `forge create`; approve it in SpecRegistry
-#   6. Deploy MockBindPolicyHook (used when DEPLOY_COVERED_VAULT=false)
-#   6.5 Deploy UniswapV3Adapter and register WETH -> PAYOUT_TOKEN swap route on Swapper
-#   7. Run ForkCompleteCoverageFlow end-to-end
-#   8. Kill Anvil
+#   5.5 Deploy UniswapV3Adapter and register WETH -> PAYOUT_TOKEN swap route on Swapper
+#   6. Run ForkCompleteCoverageFlow end-to-end (covered-vault mode, MORPHO_VAULT_VERSION=1|2)
+#   7. Kill Anvil
 #
 # Prerequisites:
 #   - ETHEREUM_RPC_URL set in environment or .env.fork
 #   - forge, anvil, cast available on PATH
-#   - Run from the coverage workspace root (or via `make test-fork`)
-#
-# Usage:
-#   bash script/testing/test-fork.sh
-#   make test-fork  # equivalent
+#   - Run from the coverage workspace root (or via `make test-fork-v2` / `make test-fork-v1`)
 #
 # Live Catalysis Core addresses (Ethereum mainnet, docs/deployment/Ethereum-Mainnet.md):
 #   STAKE_MANAGER      = 0x5be5220F81e76e0CF6089fb7E7aE9eF48a8D64Be
@@ -40,8 +35,8 @@
 # Live Core addresses (can be overridden via .env.fork for Sepolia or future redeployments):
 #   STAKE_MANAGER, SLASHING_MANAGER, REWARDS_MANAGER, SSP_ROUTER, CHAINLINK_PRICE_FEED, MASTER_ADMIN
 #
-# Optional covered-vault mode (DEPLOY_COVERED_VAULT=true):
-#   MORPHO_VAULT_VERSION        (default: 2; 1 = MetaMorpho v1.1, 2 = VaultV2)
+# Covered-vault mode env vars:
+#   MORPHO_VAULT_VERSION        (set by Makefile: 1 = MetaMorpho v1.1, 2 = VaultV2)
 #   COVERED_VAULT_MAX_LOSS_BPS, COVERED_VAULT_DEDUCTIBLE_BPS,
 #   COVERED_VAULT_USER_PRIVATE_KEY, COVERED_VAULT_DEPOSIT_AMOUNT, COVERED_VAULT_LOSS_PCT
 
@@ -62,13 +57,11 @@ if [[ -f "$ENV_FILE" ]]; then
     info "Sourcing $ENV_FILE"
     _saved_rpc="${ETHEREUM_RPC_URL:-}"
     _saved_anvil_rpc="${ANVIL_RPC_URL:-}"
-    _saved_deploy_cv="${DEPLOY_COVERED_VAULT:-}"
     _saved_morpho_ver="${MORPHO_VAULT_VERSION:-}"
     # shellcheck disable=SC1090
     set -o allexport; source "$ENV_FILE"; set +o allexport
     [[ -n "$_saved_rpc" ]]          && ETHEREUM_RPC_URL="$_saved_rpc"
     [[ -n "$_saved_anvil_rpc" ]]    && ANVIL_RPC_URL="$_saved_anvil_rpc"
-    [[ -n "$_saved_deploy_cv" ]]    && DEPLOY_COVERED_VAULT="$_saved_deploy_cv"
     [[ -n "$_saved_morpho_ver" ]]   && MORPHO_VAULT_VERSION="$_saved_morpho_ver"
 else
     error ".env.fork not found at $ENV_FILE"
@@ -91,8 +84,8 @@ SSP_ROUTER="${SSP_ROUTER:-0xF39E592E93A7a925a57464e0120B555A25590486}"
 CHAINLINK_PRICE_FEED="${CHAINLINK_PRICE_FEED:-0x57F750E3B8e095A5b3AE96030F0cac5dFe2f8A16}"
 MASTER_ADMIN="${MASTER_ADMIN:-0xd2d03377Fa96687e9C11380DA9956AcC5F307e2c}"
 
-# ─── Covered vault mode ───────────────────────────────────────────────────────
-DEPLOY_COVERED_VAULT="${DEPLOY_COVERED_VAULT:-false}"
+# ─── Covered vault mode (always enabled; Makefile sets MORPHO_VAULT_VERSION) ─────
+DEPLOY_COVERED_VAULT=true
 MORPHO_VAULT_VERSION="${MORPHO_VAULT_VERSION:-2}"
 
 # ─── Derive deployer address from private key ────────────────────────────────
@@ -104,7 +97,6 @@ info "REWARDS_MANAGER = $REWARDS_MANAGER"
 info "SSP_ROUTER = $SSP_ROUTER"
 info "CHAINLINK_PRICE_FEED = $CHAINLINK_PRICE_FEED"
 info "MASTER_ADMIN = $MASTER_ADMIN"
-info "DEPLOY_COVERED_VAULT = $DEPLOY_COVERED_VAULT"
 info "MORPHO_VAULT_VERSION = $MORPHO_VAULT_VERSION"
 
 # ─── Cleanup on exit ─────────────────────────────────────────────────────────
@@ -346,26 +338,7 @@ forge script --root "$COVERAGE_ROOT" \
 
 info "MockSpec approved in SpecRegistry"
 
-# ─── 6. Deploy MockBindPolicyHook (used when DEPLOY_COVERED_VAULT=false) ──────
-if [[ "$DEPLOY_COVERED_VAULT" == "false" ]]; then
-    step "Deploying MockBindPolicyHook..."
-    forge create --root "$COVERAGE_ROOT" \
-        "$COVERAGE_ROOT/src/mocks/MockBindPolicyHook.sol:MockBindPolicyHook" \
-        --rpc-url "$ANVIL_RPC_URL" \
-        --private-key "$PRIVATE_KEY" \
-        --broadcast \
-        2>&1 | tee /tmp/forge-create-hook.log || true
-    BIND_POLICY_HOOK=$(grep "Deployed to:" /tmp/forge-create-hook.log | awk '{print $NF}' || true)
-    if [[ -z "$BIND_POLICY_HOOK" ]]; then
-        error "MockBindPolicyHook deployment failed. Full output:"
-        cat /tmp/forge-create-hook.log >&2
-        exit 1
-    fi
-    info "BIND_POLICY_HOOK = $BIND_POLICY_HOOK"
-    export BIND_POLICY_HOOK
-fi
-
-# ─── 6.5 Deploy UniswapV3Adapter and register swap routes ────────────────────
+# ─── 5.5 Deploy UniswapV3Adapter and register swap routes ────────────────────
 # Registers up to two routes on the Swapper:
 #   WETH   → PAYOUT_TOKEN  (only when PAYOUT_TOKEN ≠ WETH; skipped for the default WETH payout)
 #   wstETH → PAYOUT_TOKEN  (live mainnet: EigenLayer vaults hold wstETH as collateral)
@@ -447,15 +420,8 @@ forge script --root "$COVERAGE_ROOT" \
 
 info "Uniswap V3 swap routes registered (WETH and wstETH)"
 
-# ─── 7. Derive test accounts ──────────────────────────────────────────────────
-if [[ "$DEPLOY_COVERED_VAULT" == "false" ]]; then
-    BENEFICIARY=$(cast wallet address --private-key "$CLAIMER_PRIVATE_KEY")
-    info "BENEFICIARY = $BENEFICIARY"
-    export BENEFICIARY
-fi
-
-# ─── 8. Run ForkCompleteCoverageFlow ─────────────────────────────────────────
-step "Running ForkCompleteCoverageFlow end-to-end (DEPLOY_COVERED_VAULT=$DEPLOY_COVERED_VAULT)..."
+# ─── 6. Run ForkCompleteCoverageFlow ─────────────────────────────────────────
+step "Running ForkCompleteCoverageFlow end-to-end (MORPHO_VAULT_VERSION=$MORPHO_VAULT_VERSION)..."
 
 CURATOR_PRIVATE_KEY="$CURATOR_PRIVATE_KEY" \
 BUYER_PRIVATE_KEY="$BUYER_PRIVATE_KEY" \
@@ -469,10 +435,8 @@ SPEC_REGISTRY="$SPEC_REGISTRY" \
 STAKE_MANAGER="$STAKE_MANAGER" \
 CHAINLINK_PRICE_FEED="$CHAINLINK_PRICE_FEED" \
 POOL_FEE_BPS="${POOL_FEE_BPS:-0}" \
-BENEFICIARY="${BENEFICIARY:-0x0000000000000000000000000000000000000001}" \
 PAYOUT_TOKEN="$PAYOUT_TOKEN" \
 DURATION="${DURATION:-15768000}" \
-BIND_POLICY_HOOK="${BIND_POLICY_HOOK:-0x0000000000000000000000000000000000000001}" \
 SPEC_ADDRESS="$SPEC_ADDRESS" \
 VAULTS="${VAULTS:-}" \
 COVERAGE_LIMIT="${COVERAGE_LIMIT:-100000000000}" \
