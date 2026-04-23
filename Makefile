@@ -306,10 +306,10 @@ mythril:
 	@myth analyze src/CoverPool.sol --solv 0.8.28
 
 test-fork-v2:
-	@DEPLOY_COVERED_VAULT=true MORPHO_VAULT_VERSION=2 bash script/testing/test-fork.sh
+	@MORPHO_VAULT_VERSION=2 bash script/testing/test-fork.sh
 
 test-fork-v1:
-	@DEPLOY_COVERED_VAULT=true MORPHO_VAULT_VERSION=1 bash script/testing/test-fork.sh
+	@MORPHO_VAULT_VERSION=1 bash script/testing/test-fork.sh
 
 help:
 	@echo "Coverage Smart Contracts - Available commands:"
