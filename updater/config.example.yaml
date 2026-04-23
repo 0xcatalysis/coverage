@@ -1,0 +1,25 @@
+# Premium updater configuration.
+
+poll_interval: "6h"
+
+credora_api_url: "https://api.staging.credora.io/graphql/catalysis"
+credora_api_key: "your-credora-api-key-here"
+
+# Optional generic HTTP webhook. Remove this block to disable.
+webhook:
+  url: ""
+  timeout: "10s"
+  headers:
+    Authorization: "Bearer your-token-here"
+
+# Each vault is processed independently every poll_interval. All algorithm
+# parameters are per-vault because kappa/deductible/tvl coverage differ
+# between vaults.
+vaults:
+  - name: "Core Vault"
+    address: "0xMORPHO_VAULT_ADDRESS"
+    kappa: 0.25
+    deductible: 0.01
+    confidence_levels: [0.995]
+    tvl_covered: 10000000
+    tolerate_older_simulations: false  # Set to true to use stale Credora data
