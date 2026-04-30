@@ -219,14 +219,14 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         IPolicyManager(policyManager)
             .bindPolicy(
                 IPolicyManager.BindPolicyRequest({
-                    policyId: policyId,
-                    buyer: draft.buyer,
-                    beneficiary: draft.beneficiary,
-                    claimer: draft.claimer,
-                    payoutToken: draft.payoutToken,
-                    quote: quote,
-                    signature: signature
-                }),
+                policyId: policyId,
+                buyer: draft.buyer,
+                beneficiary: draft.beneficiary,
+                claimer: draft.claimer,
+                payoutToken: draft.payoutToken,
+                quote: quote,
+                signature: signature
+            }),
                 boundPolicy
             );
     }
