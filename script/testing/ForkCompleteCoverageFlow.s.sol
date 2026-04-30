@@ -363,20 +363,16 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
         uint256 morphoBalance = IERC20(payoutToken).balanceOf(morphoVaultAddr);
         uint256 lossAmount = morphoBalance * _coveredVaultLossPct / 100;
 
-        vm.deal(morphoVaultAddr, 1 ether); // local simulation
-        vm.rpc(
-            "anvil_setBalance",
-            string.concat("[\"", vm.toString(morphoVaultAddr), "\",\"0xde0b6b3a7640000\"]") // 1 ETH
-        );
-
-        vm.rpc("anvil_impersonateAccount", string.concat("[\"", vm.toString(morphoVaultAddr), "\"]"));
-        vm.startBroadcast(morphoVaultAddr);
-        bool drainOk = IERC20(payoutToken).transfer(address(1), lossAmount);
-        require(drainOk, "Phase 3d: drain transfer failed");
-        vm.stopBroadcast();
-        vm.rpc("anvil_stopImpersonatingAccount", string.concat("[\"", vm.toString(morphoVaultAddr), "\"]"));
+        // Simulate vault loss by manipulating WETH9 balance storage directly.
+        // Foundry v1.7+ collects all broadcast transactions during simulation and sends them
+        // post-simulation. Anvil impersonation set up via vm.rpc inside the simulation is no
+        // longer active by the time those transactions are sent, causing a "No Signer available"
+        // error. Avoid the impersonation+broadcast pattern entirely: write to WETH9's balanceOf
+        // mapping (slot 3) so the change is visible to all subsequent EVM reads in this script.
+        bytes32 morphoBalanceSlot = keccak256(abi.encode(morphoVaultAddr, uint256(3)));
+        vm.store(payoutToken, morphoBalanceSlot, bytes32(morphoBalance - lossAmount));
         console.log("[OK] Simulated", _coveredVaultLossPct, "% loss on Morpho vault");
-        console.log("     Drained", lossAmount, "WETH from vault (impersonation broadcast)");
+        console.log("     Drained", lossAmount, "WETH from vault (storage slot write)");
         console.log("     Morpho vault balance:", morphoBalance - lossAmount);
 
         uint256 postDrainBalance = IERC20(payoutToken).balanceOf(morphoVaultAddr);
