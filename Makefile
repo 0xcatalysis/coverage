@@ -332,7 +332,7 @@ help:
 	@echo "  make cover-lcov       - Generate lcov report + HTML (if genhtml installed)"
 	@echo "  make gas              - Generate gas report"
 	@echo "  make test-fork-v2     - Run E2E flow with covered Morpho VaultV2 on forked mainnet"
-	@echo "  make test-fork-v1     - Run E2E flow with covered MetaMorpho v1.1 on forked mainnet"
+	@echo "  make test-fork-v1     - Run E2E flow with covered MetaMorpho v1 on forked mainnet"
 	@echo ""
 	@echo "Deployment:"
 	@echo "  make deploy-anvil                     - Deploy contracts to Anvil"
