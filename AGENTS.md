@@ -54,7 +54,7 @@ Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, `ISpecRegis
 **Fork tests** – two distinct suites, both requiring `ETHEREUM_RPC_URL`:
 
 - `make test-fork-v2` – full broadcast e2e flow on a forked mainnet using a fresh Morpho VaultV2 vault; deploys Coverage contracts, wires live Core, funds EigenLayer vaults via Lido, binds policy, seeds a WETH deposit into the wrapper, and simulates a 5 % vault loss.
-- `make test-fork-v1` – same broadcast flow using MetaMorpho v1.1; the seed-deposit phase is skipped because factory-fresh v1.1 vaults have an empty supply queue, so this exercises the skip-branch explicitly.
+- `make test-fork-v1` – same broadcast flow using MetaMorpho v1; the seed-deposit phase is skipped because factory-fresh v1 vaults have an empty supply queue, so this exercises the skip-branch explicitly.
 
 The `CoveredVaultWrapper.fork.t.sol` forge test suite (under `test/defi/`) runs against a pinned block and uses `deal`/`vm.prank` — it is the only test that exercises `fileClaim + slash + Uniswap swap + payout` end-to-end. Run it locally with `FOUNDRY_PROFILE=fork forge test --match-path "test/defi/CoveredVaultWrapper.fork.t.sol"` (gracefully skipped when `ETHEREUM_RPC_URL` is unset).
 
@@ -105,7 +105,7 @@ The `CoveredVaultWrapper.fork.t.sol` forge test suite (under `test/defi/`) runs 
 - `make lint` – run `forge lint` with configured exclusions.
 - `make docs` – regenerate NatSpec documentation into `docs/`.
 - `make snapshot` / `make snapshot-check` – capture or verify gas baselines for regression tracking.
-- `make test-fork-v2` / `make test-fork-v1` – run the Morpho VaultV2 or MetaMorpho v1.1 e2e flow on a forked mainnet.
+- `make test-fork-v2` / `make test-fork-v1` – run the Morpho VaultV2 or MetaMorpho v1 e2e flow on a forked mainnet.
 - `make slither`, `make mythril` – optional static and symbolic analysis passes mirroring CI.
 - `make clean` – remove build artifacts, localhost broadcasts, and coverage files.
 - `make help` – list all available Makefile targets.
