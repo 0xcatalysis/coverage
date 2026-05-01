@@ -21,7 +21,7 @@ FORGE_SCRIPT_PROD = $(FORGE_PROD) script --ffi
 FORGE_VERIFY_PROD = $(FORGE_PROD) verify-contract --verifier etherscan --compilation-profile prod
 FORGE_SCRIPT_OPTS = --broadcast --slow
 
-.PHONY: all setup build test test-ci test-unit test-fuzz test-invariant cover cover-lcov gas snapshot snapshot-check build-prod deploy-anvil deploy-sepolia deploy-ethereum upgrade-coverpool-factory-sepolia upgrade-coverpool-factory-ethereum verify-sepolia verify-ethereum verify-coverpool-sepolia verify-coverpool-ethereum verify-coverpool-factory-sepolia verify-coverpool-factory-ethereum verify-swapper-sepolia verify-swapper-ethereum verify-premium-manager-sepolia verify-premium-manager-ethereum verify-claim-manager-sepolia verify-claim-manager-ethereum verify-policy-manager-sepolia verify-policy-manager-ethereum verify-spec-registry-sepolia verify-spec-registry-ethereum show-sepolia show-ethereum format format-check lint docs clean slither mythril test-fork test-fork-v2 test-fork-v1 help
+.PHONY: all setup build test test-ci test-unit test-fuzz test-invariant cover cover-lcov gas snapshot snapshot-check build-prod deploy-anvil deploy-sepolia deploy-ethereum upgrade-coverpool-factory-sepolia upgrade-coverpool-factory-ethereum verify-sepolia verify-ethereum verify-coverpool-sepolia verify-coverpool-ethereum verify-coverpool-factory-sepolia verify-coverpool-factory-ethereum verify-swapper-sepolia verify-swapper-ethereum verify-premium-manager-sepolia verify-premium-manager-ethereum verify-claim-manager-sepolia verify-claim-manager-ethereum verify-policy-manager-sepolia verify-policy-manager-ethereum verify-spec-registry-sepolia verify-spec-registry-ethereum show-sepolia show-ethereum format format-check lint docs clean slither mythril test-fork-v2 test-fork-v1 help
 
 all: clean build test
 
@@ -305,14 +305,11 @@ mythril:
 	@echo "Running mythril analysis..."
 	@myth analyze src/CoverPool.sol --solv 0.8.28
 
-test-fork:
-	@bash script/testing/test-fork.sh
-
 test-fork-v2:
-	@DEPLOY_COVERED_VAULT=true MORPHO_VAULT_VERSION=2 bash script/testing/test-fork.sh
+	@MORPHO_VAULT_VERSION=2 bash script/testing/test-fork.sh
 
 test-fork-v1:
-	@DEPLOY_COVERED_VAULT=true MORPHO_VAULT_VERSION=1 bash script/testing/test-fork.sh
+	@MORPHO_VAULT_VERSION=1 bash script/testing/test-fork.sh
 
 help:
 	@echo "Coverage Smart Contracts - Available commands:"
@@ -334,7 +331,6 @@ help:
 	@echo "  make cover            - Generate coverage summary (console output)"
 	@echo "  make cover-lcov       - Generate lcov report + HTML (if genhtml installed)"
 	@echo "  make gas              - Generate gas report"
-	@echo "  make test-fork        - Run E2E flow on forked mainnet (EigenLayer-only mode)"
 	@echo "  make test-fork-v2     - Run E2E flow with covered Morpho VaultV2 on forked mainnet"
 	@echo "  make test-fork-v1     - Run E2E flow with covered MetaMorpho v1.1 on forked mainnet"
 	@echo ""

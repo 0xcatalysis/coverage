@@ -59,7 +59,6 @@ See [`docs/architecture/07-covered-vault-accounting.md`](docs/architecture/07-co
 |----------|-------------|
 | `MockSpec` | Configurable claim evaluation; auto-approves by default. Used for testnet deployments. |
 | `MockSpecRegistry` | Registry mapping pools to Spec implementations with a default fallback. |
-| `MockBindPolicyHook` | No-op `IBindPolicyHook` implementation for fork testing. |
 
 ## Quick Start
 
@@ -85,7 +84,8 @@ make test-unit              # unit tests only
 make test-fuzz              # fuzz tests only
 make test-invariant         # invariant tests only
 make test-ci                # full suite with CI profile (higher fuzz/invariant runs)
-make test-fork              # end-to-end flow on forked mainnet
+make test-fork-v2           # e2e flow on forked mainnet with Morpho VaultV2
+make test-fork-v1           # e2e flow on forked mainnet with MetaMorpho v1.1
 make gas                    # gas report
 make cover                  # summary coverage report
 make cover-lcov             # LCOV + HTML artifacts (requires genhtml)
@@ -156,7 +156,7 @@ Step-by-step scripts that exercise the full coverage lifecycle:
 | `PrepareEigenLayer.s.sol` | Configures EigenLayer magnitude allocation for an operator. |
 | `DeployControllableVault.s.sol` | Deploys a test ERC-4626 vault with controllable NAV. |
 | `CompleteCoverageFlow.s.sol` | End-to-end lifecycle from pool creation through claim settlement. |
-| `ForkCompleteCoverageFlow.s.sol` | Extends `CompleteCoverageFlow` with EigenLayer vault-funding for fresh mainnet forks (used by `make test-fork`). |
+| `ForkCompleteCoverageFlow.s.sol` | Extends `CompleteCoverageFlow` with Morpho vault + CoveredVaultWrapper deployment and EigenLayer vault-funding for fresh mainnet forks (used by `make test-fork-v2` / `make test-fork-v1`). |
 
 ## Environment Variables
 

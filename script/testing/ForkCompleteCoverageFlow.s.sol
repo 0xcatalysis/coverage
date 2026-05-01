@@ -54,43 +54,38 @@ interface IChainlinkPriceFeedFork {
 /**
  * @title ForkCompleteCoverageFlow
  * @notice Extends CompleteCoverageFlow for use against a live Ethereum mainnet fork.
+ *         Always runs in covered-vault mode: deploys a Morpho vault + CoveredVaultWrapper
+ *         and exercises the full protocol lifecycle.
  *
- * @dev Two modes controlled by the `DEPLOY_COVERED_VAULT` environment variable:
+ * @dev Phase overview:
  *
- *      DEPLOY_COVERED_VAULT=false (default / legacy mode):
- *        Runs the standard EigenLayer-only end-to-end flow (Phase 3b funds vaults).
- *        BENEFICIARY and BIND_POLICY_HOOK are taken from environment variables as before.
- *
- *      DEPLOY_COVERED_VAULT=true (covered-vault mode):
- *        Phase 1c: Deploys a Morpho vault + CoveredVaultWrapper UUPS proxy.
- *                  MORPHO_VAULT_VERSION controls which factory is used:
- *                    2 (default): Morpho VaultV2 — accepts idle deposits, Phase 3d runs in full.
- *                    1           : MetaMorpho v1.1 — factory-fresh vault lacks a supply queue so
- *                                  Phase 3d is skipped; all other phases still run.
- *                  Overrides BENEFICIARY and BIND_POLICY_HOOK to the wrapper address.
- *        Phase 3d: (VaultV2 only) Seeds a test user with WETH, deposits into the wrapper,
- *                  simulates a vault loss via anvil_impersonateAccount drain, and verifies
- *                  the vault balance reflects the loss.
+ *      Phase 1c: Deploys a Morpho vault + CoveredVaultWrapper UUPS proxy.
+ *                MORPHO_VAULT_VERSION controls which factory is used:
+ *                  2 (default): Morpho VaultV2 — accepts idle deposits, Phase 3d runs in full.
+ *                  1           : MetaMorpho v1.1 — factory-fresh vault lacks a supply queue so
+ *                                Phase 3d is skipped; all other phases still run.
+ *                Overrides BENEFICIARY and BIND_POLICY_HOOK to the wrapper address.
+ *      Phase 3b: Funds EigenLayer DurationVaultStrategy vaults with wstETH via Lido.
+ *      Phase 3d: (VaultV2 only) Seeds a test user with WETH, deposits into the wrapper,
+ *                simulates a vault loss via anvil_impersonateAccount drain, and verifies
+ *                the vault balance reflects the loss.
  *
  *      Vault discovery uses a snapshot-delta on the global getVaultsByModule list taken just
  *      before requestCoverage (see _snapshotEigenLayerVaultCount / _discoverVaultsIfNeeded).
  *      getCommitteeVaultsByModule cannot be used pre-bind because committeeModuleVaults is only
  *      populated by setCommitteeVaults inside bindPolicyForRequest.
  *
- *      Required additional env vars when DEPLOY_COVERED_VAULT=true:
- *        - MORPHO_VAULT_VERSION          (default: 2; valid: 1 = v1.1, 2 = VaultV2)
+ *      Required env vars:
+ *        - MORPHO_VAULT_VERSION          (set by Makefile: 1 = MetaMorpho v1.1, 2 = VaultV2)
  *        - COVERED_VAULT_MAX_LOSS_BPS    (default: 1000 = 10%)
  *        - COVERED_VAULT_DEDUCTIBLE_BPS  (default: 100  =  1%)
  *        - COVERED_VAULT_USER_PRIVATE_KEY (seed-deposit EOA; defaults to BUYER_PRIVATE_KEY)
  *        - COVERED_VAULT_DEPOSIT_AMOUNT  (WETH amount to seed-deposit; default: 0.1 WETH)
  *        - COVERED_VAULT_LOSS_PCT        (% of vault balance to remove; default: 5)
  *
- * Usage:
- *   forge script script/testing/ForkCompleteCoverageFlow.s.sol:ForkCompleteCoverageFlow \
- *     --rpc-url $ANVIL_RPC_URL --broadcast --slow -vvvv
- *
- *   Or via the Makefile:
- *   make test-fork
+ * Usage (via Makefile):
+ *   make test-fork-v2   # Morpho VaultV2
+ *   make test-fork-v1   # MetaMorpho v1.1
  */
 contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     address private constant EIGENLAYER_STRATEGY_MANAGER = 0x858646372CC42E1A627fcE94aa7A7033e7CF075A;
@@ -102,8 +97,6 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     address private constant LIDO_STETH = 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84;
     /// @dev Lido wstETH on Ethereum mainnet — the only collateral token supported by _acquireWstETH.
     address private constant LIDO_WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
-
-    bool private _deployCoveredVault;
 
     /// @dev Global EigenLayer vault count snapshotted just before _phase2_requestCoverage.
     ///      requestCoverage triggers SSPRouter to deploy new DurationVaultStrategy vaults; the
@@ -123,21 +116,18 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     uint256 private _coveredVaultLossPct;
 
     constructor() {
-        _deployCoveredVault = vm.envOr("DEPLOY_COVERED_VAULT", false);
-        if (_deployCoveredVault) {
-            _morphoVaultVersion = uint8(vm.envOr("MORPHO_VAULT_VERSION", uint256(2)));
-            require(_morphoVaultVersion == 1 || _morphoVaultVersion == 2, "MORPHO_VAULT_VERSION must be 1 or 2");
-            _coveredVaultMaxLossBps = uint16(vm.envOr("COVERED_VAULT_MAX_LOSS_BPS", uint256(1000)));
-            _coveredVaultDeductibleBps = uint16(vm.envOr("COVERED_VAULT_DEDUCTIBLE_BPS", uint256(100)));
-            _coveredVaultUserPrivateKey = vm.envOr("COVERED_VAULT_USER_PRIVATE_KEY", buyerPrivateKey);
-            _coveredVaultUser = vm.addr(_coveredVaultUserPrivateKey);
-            _coveredVaultDepositAmount = vm.envOr("COVERED_VAULT_DEPOSIT_AMOUNT", uint256(0.1 ether));
-            _coveredVaultLossPct = vm.envOr("COVERED_VAULT_LOSS_PCT", uint256(5));
-        }
+        _morphoVaultVersion = uint8(vm.envOr("MORPHO_VAULT_VERSION", uint256(2)));
+        require(_morphoVaultVersion == 1 || _morphoVaultVersion == 2, "MORPHO_VAULT_VERSION must be 1 or 2");
+        _coveredVaultMaxLossBps = uint16(vm.envOr("COVERED_VAULT_MAX_LOSS_BPS", uint256(1000)));
+        _coveredVaultDeductibleBps = uint16(vm.envOr("COVERED_VAULT_DEDUCTIBLE_BPS", uint256(100)));
+        _coveredVaultUserPrivateKey = vm.envOr("COVERED_VAULT_USER_PRIVATE_KEY", buyerPrivateKey);
+        _coveredVaultUser = vm.addr(_coveredVaultUserPrivateKey);
+        _coveredVaultDepositAmount = vm.envOr("COVERED_VAULT_DEPOSIT_AMOUNT", uint256(0.1 ether));
+        _coveredVaultLossPct = vm.envOr("COVERED_VAULT_LOSS_PCT", uint256(5));
     }
 
     // ════════════════════════════════════════════
-    //  Phase 1c: Deploy Morpho vault + wrapper (DEPLOY_COVERED_VAULT=true only)
+    //  Phase 1c: Deploy Morpho vault + wrapper
     // ════════════════════════════════════════════
 
     /// @dev Deploys a Morpho vault (v1.1 or v2) and a CoveredVaultWrapper UUPS proxy.
@@ -150,11 +140,6 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     ///        initialTimelock=0. Factory-fresh v1.1 vaults have an empty supplyQueue, so wrapper.deposit
     ///        reverts AllCapsReached — Phase 3d is skipped automatically.
     function _phase1c_deployCoveredVault() internal {
-        if (!_deployCoveredVault) {
-            console.log("[SKIP] DEPLOY_COVERED_VAULT=false, skipping Phase 1c");
-            return;
-        }
-
         if (_morphoVaultVersion == 1) {
             console.log("\n=== PHASE 1c: DEPLOY METAMORPHO V1.1 VAULT + COVERED VAULT WRAPPER ===");
         } else {
@@ -336,7 +321,7 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     }
 
     // ════════════════════════════════════════════
-    //  Phase 3d: Seed deposit + simulate loss (DEPLOY_COVERED_VAULT=true, VaultV2 only)
+    //  Phase 3d: Seed deposit + simulate loss (VaultV2 only)
     // ════════════════════════════════════════════
 
     /// @dev Deposits WETH into the wrapper, simulates a vault loss via Anvil impersonation, and
@@ -349,9 +334,6 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     ///
     ///      (claimer = wrapper, so a direct EOA fileClaim is not possible)
     function _phase3d_seedAndTriggerClaim() internal {
-        if (!_deployCoveredVault) {
-            return;
-        }
         if (_morphoVaultVersion != 2) {
             console.log("[SKIP] Phase 3d skipped for MORPHO_VAULT_VERSION=1 (MetaMorpho v1.1 has no idle cash).");
             emit FlowCompleted("Seed + Trigger Claim (skipped)", 38);
@@ -451,8 +433,7 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
         console.log("Buyer:", buyer);
         console.log("Claimer:", claimer);
         console.log("Beneficiary:", beneficiary);
-        console.log("DEPLOY_COVERED_VAULT:", _deployCoveredVault);
-        if (_deployCoveredVault) console.log("MORPHO_VAULT_VERSION:", _morphoVaultVersion);
+        console.log("MORPHO_VAULT_VERSION:", _morphoVaultVersion);
         console.log("");
 
         _phase0_whitelistPayoutToken();
