@@ -85,7 +85,7 @@ make test-fuzz              # fuzz tests only
 make test-invariant         # invariant tests only
 make test-ci                # full suite with CI profile (higher fuzz/invariant runs)
 make test-fork-v2           # e2e flow on forked mainnet with Morpho VaultV2
-make test-fork-v1           # e2e flow on forked mainnet with MetaMorpho v1.1
+make test-fork-v1           # e2e flow on forked mainnet with MetaMorpho v1
 make gas                    # gas report
 make cover                  # summary coverage report
 make cover-lcov             # LCOV + HTML artifacts (requires genhtml)

@@ -13,13 +13,13 @@ interface IVaultV2FactoryFork {
     function createVaultV2(address owner, address asset, bytes32 salt) external returns (address);
 }
 
-/// @notice Minimal interface for Morpho VaultV2 / MetaMorpho v1.1 — setCurator selector is identical across both.
+/// @notice Minimal interface for Morpho VaultV2 / MetaMorpho v1 — setCurator selector is identical across both.
 interface IVaultV2Fork {
     function setCurator(address curator) external;
 }
 
-/// @notice Minimal interface for the MetaMorpho v1.1 factory (0x1897A899…213535c24).
-interface IMetaMorphoV1_1Factory {
+/// @notice Minimal interface for the MetaMorpho v1 factory (0xA9c3D3a3…e5fC41101).
+interface IMetaMorphoV1Factory {
     function createMetaMorpho(
         address initialOwner,
         uint256 initialTimelock,
@@ -62,7 +62,7 @@ interface IChainlinkPriceFeedFork {
  *      Phase 1c: Deploys a Morpho vault + CoveredVaultWrapper UUPS proxy.
  *                MORPHO_VAULT_VERSION controls which factory is used:
  *                  2 (default): Morpho VaultV2 — accepts idle deposits, Phase 3d runs in full.
- *                  1           : MetaMorpho v1.1 — factory-fresh vault lacks a supply queue so
+ *                  1           : MetaMorpho v1 — factory-fresh vault lacks a supply queue so
  *                                Phase 3d is skipped; all other phases still run.
  *                Overrides BENEFICIARY and BIND_POLICY_HOOK to the wrapper address.
  *      Phase 3b: Funds EigenLayer DurationVaultStrategy vaults with wstETH via Lido.
@@ -76,7 +76,7 @@ interface IChainlinkPriceFeedFork {
  *      populated by setCommitteeVaults inside bindPolicyForRequest.
  *
  *      Required env vars:
- *        - MORPHO_VAULT_VERSION          (set by Makefile: 1 = MetaMorpho v1.1, 2 = VaultV2)
+ *        - MORPHO_VAULT_VERSION          (set by Makefile: 1 = MetaMorpho v1, 2 = VaultV2)
  *        - COVERED_VAULT_MAX_LOSS_BPS    (default: 1000 = 10%)
  *        - COVERED_VAULT_DEDUCTIBLE_BPS  (default: 100  =  1%)
  *        - COVERED_VAULT_USER_PRIVATE_KEY (seed-deposit EOA; defaults to BUYER_PRIVATE_KEY)
@@ -85,14 +85,14 @@ interface IChainlinkPriceFeedFork {
  *
  * Usage (via Makefile):
  *   make test-fork-v2   # Morpho VaultV2
- *   make test-fork-v1   # MetaMorpho v1.1
+ *   make test-fork-v1   # MetaMorpho v1
  */
 contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     address private constant EIGENLAYER_STRATEGY_MANAGER = 0x858646372CC42E1A627fcE94aa7A7033e7CF075A;
     address private constant EIGENLAYER_DELEGATION_MANAGER = 0x39053D51B77DC0d36036Fc1fCc8Cb819df8Ef37A;
     address private constant VAULT_V2_FACTORY = 0xA1D94F746dEfa1928926b84fB2596c06926C0405;
-    /// @dev MetaMorpho v1.1 factory on Ethereum mainnet (initialTimelock = 0 allowed).
-    address private constant META_MORPHO_V1_1_FACTORY = 0x1897A8997241C1cD4bD0698647e4EB7213535c24;
+    /// @dev MetaMorpho v1 factory on Ethereum mainnet (initialTimelock must be >= 1 days).
+    address private constant META_MORPHO_V1_FACTORY = 0xA9c3D3a366466Fa809d1Ae982Fb2c46E5fC41101;
     /// @dev Lido stETH on Ethereum mainnet — used to acquire wstETH by wrapping ETH in Phase 3b.
     address private constant LIDO_STETH = 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84;
     /// @dev Lido wstETH on Ethereum mainnet — the only collateral token supported by _acquireWstETH.
@@ -105,7 +105,7 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     ///      populated by setCommitteeVaults inside bindPolicyForRequest (Phase 4).
     uint256 private _eigenLayerVaultCountSnapshot;
 
-    /// @dev 1 = MetaMorpho v1.1, 2 = VaultV2 (default).
+    /// @dev 1 = MetaMorpho v1, 2 = VaultV2 (default).
     uint8 private _morphoVaultVersion;
 
     uint16 private _coveredVaultMaxLossBps;
@@ -130,18 +130,19 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     //  Phase 1c: Deploy Morpho vault + wrapper
     // ════════════════════════════════════════════
 
-    /// @dev Deploys a Morpho vault (v1.1 or v2) and a CoveredVaultWrapper UUPS proxy.
+    /// @dev Deploys a Morpho vault (v1 or v2) and a CoveredVaultWrapper UUPS proxy.
     ///      Overrides beneficiary/claimer/bindPolicyHook to the wrapper address so Phases 2 and 4 use it.
     ///
     ///      MORPHO_VAULT_VERSION=2 (default): deploys VaultV2 via VAULT_V2_FACTORY. Fresh VaultV2 vaults
     ///        hold idle cash — Phase 3d can simulate a loss and verify the balance change.
     ///
-    ///      MORPHO_VAULT_VERSION=1: deploys MetaMorpho v1.1 via META_MORPHO_V1_1_FACTORY with
-    ///        initialTimelock=0. Factory-fresh v1.1 vaults have an empty supplyQueue, so wrapper.deposit
+    ///      MORPHO_VAULT_VERSION=1: deploys MetaMorpho v1 via META_MORPHO_V1_FACTORY with
+    ///        initialTimelock=1 days (minimum required by v1's unconditional _checkTimelockBounds).
+    ///        Factory-fresh v1 vaults have an empty supplyQueue, so wrapper.deposit
     ///        reverts AllCapsReached — Phase 3d is skipped automatically.
     function _phase1c_deployCoveredVault() internal {
         if (_morphoVaultVersion == 1) {
-            console.log("\n=== PHASE 1c: DEPLOY METAMORPHO V1.1 VAULT + COVERED VAULT WRAPPER ===");
+            console.log("\n=== PHASE 1c: DEPLOY METAMORPHO V1 VAULT + COVERED VAULT WRAPPER ===");
         } else {
             console.log("\n=== PHASE 1c: DEPLOY MORPHO VAULTV2 + COVERED VAULT WRAPPER ===");
         }
@@ -195,11 +196,13 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
         if (_morphoVaultVersion == 2) {
             morphoVault = IVaultV2FactoryFork(VAULT_V2_FACTORY).createVaultV2(curator, payoutToken, salt);
         } else {
-            morphoVault = IMetaMorphoV1_1Factory(META_MORPHO_V1_1_FACTORY)
-                .createMetaMorpho(curator, 0, payoutToken, "Covered Vault Underlying", "cvUNDERLYING", salt);
-            console.log("[WARN] MetaMorpho v1.1 vault deployed. Phase 3d will be skipped: factory-fresh v1.1 vaults");
+            // MetaMorpho v1's constructor calls _checkTimelockBounds unconditionally: MIN_TIMELOCK = 1 days.
+            // Passing 0 would revert BelowMinTimelock(); use the minimum legal value.
+            morphoVault = IMetaMorphoV1Factory(META_MORPHO_V1_FACTORY)
+                .createMetaMorpho(curator, 1 days, payoutToken, "Covered Vault Underlying", "cvUNDERLYING", salt);
+            console.log("[WARN] MetaMorpho v1 vault deployed. Phase 3d will be skipped: factory-fresh v1 vaults");
             console.log("       revert AllCapsReached on the first deposit because supplyQueue is empty.");
-            console.log("       To run Phase 3d with v1.1, manually submitCap + acceptCap + setSupplyQueue first.");
+            console.log("       To run Phase 3d with v1, manually submitCap + acceptCap + setSupplyQueue first.");
         }
     }
 
@@ -327,15 +330,15 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
     /// @dev Deposits WETH into the wrapper, simulates a vault loss via Anvil impersonation, and
     ///      verifies the vault balance reflects the loss.
     ///
-    ///      Skipped when MORPHO_VAULT_VERSION=1: factory-fresh MetaMorpho v1.1 vaults have an empty
+    ///      Skipped when MORPHO_VAULT_VERSION=1: factory-fresh MetaMorpho v1 vaults have an empty
     ///      supplyQueue and revert AllCapsReached on the first deposit. There is also no idle cash at
-    ///      the vault address to drain. Run submitCap + acceptCap + setSupplyQueue on the v1.1 vault
+    ///      the vault address to drain. Run submitCap + acceptCap + setSupplyQueue on the v1 vault
     ///      before re-enabling Phase 3d for that mode.
     ///
     ///      (claimer = wrapper, so a direct EOA fileClaim is not possible)
     function _phase3d_seedAndTriggerClaim() internal {
         if (_morphoVaultVersion != 2) {
-            console.log("[SKIP] Phase 3d skipped for MORPHO_VAULT_VERSION=1 (MetaMorpho v1.1 has no idle cash).");
+            console.log("[SKIP] Phase 3d skipped for MORPHO_VAULT_VERSION=1 (MetaMorpho v1 has no idle cash).");
             emit FlowCompleted("Seed + Trigger Claim (skipped)", 38);
             return;
         }
@@ -360,20 +363,16 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
         uint256 morphoBalance = IERC20(payoutToken).balanceOf(morphoVaultAddr);
         uint256 lossAmount = morphoBalance * _coveredVaultLossPct / 100;
 
-        vm.deal(morphoVaultAddr, 1 ether); // local simulation
-        vm.rpc(
-            "anvil_setBalance",
-            string.concat("[\"", vm.toString(morphoVaultAddr), "\",\"0xde0b6b3a7640000\"]") // 1 ETH
-        );
-
-        vm.rpc("anvil_impersonateAccount", string.concat("[\"", vm.toString(morphoVaultAddr), "\"]"));
-        vm.startBroadcast(morphoVaultAddr);
-        bool drainOk = IERC20(payoutToken).transfer(address(1), lossAmount);
-        require(drainOk, "Phase 3d: drain transfer failed");
-        vm.stopBroadcast();
-        vm.rpc("anvil_stopImpersonatingAccount", string.concat("[\"", vm.toString(morphoVaultAddr), "\"]"));
+        // Simulate vault loss by manipulating WETH9 balance storage directly.
+        // Foundry v1.7+ collects all broadcast transactions during simulation and sends them
+        // post-simulation. Anvil impersonation set up via vm.rpc inside the simulation is no
+        // longer active by the time those transactions are sent, causing a "No Signer available"
+        // error. Avoid the impersonation+broadcast pattern entirely: write to WETH9's balanceOf
+        // mapping (slot 3) so the change is visible to all subsequent EVM reads in this script.
+        bytes32 morphoBalanceSlot = keccak256(abi.encode(morphoVaultAddr, uint256(3)));
+        vm.store(payoutToken, morphoBalanceSlot, bytes32(morphoBalance - lossAmount));
         console.log("[OK] Simulated", _coveredVaultLossPct, "% loss on Morpho vault");
-        console.log("     Drained", lossAmount, "WETH from vault (impersonation broadcast)");
+        console.log("     Drained", lossAmount, "WETH from vault (storage slot write)");
         console.log("     Morpho vault balance:", morphoBalance - lossAmount);
 
         uint256 postDrainBalance = IERC20(payoutToken).balanceOf(morphoVaultAddr);
