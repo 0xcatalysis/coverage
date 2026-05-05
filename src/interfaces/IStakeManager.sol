@@ -29,8 +29,8 @@ interface IStakeManager {
     /// @notice Associates vaults with a committee and configures them in the appropriate adapters.
     /// @param committeeId The ID of the committee.
     /// @param vaults The array of vault addresses to associate.
-    /// @param coverageLimit The coverage limit for the committee (in payout token units).
-    function setCommitteeVaults(uint96 committeeId, address[] calldata vaults, uint256 coverageLimit) external;
+    /// @param coverageLimitUSD The coverage limit for the committee expressed in 8-decimal USD (Chainlink standard).
+    function setCommitteeVaults(uint96 committeeId, address[] calldata vaults, uint256 coverageLimitUSD) external;
 
     /// @notice Returns per-vault stake breakdown for a committee in token-native units.
     /// @dev Called by PolicyManager.bindPolicy for the bind-time sufficiency check (oracle-converted to USD).

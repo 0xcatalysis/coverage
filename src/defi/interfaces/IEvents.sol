@@ -32,9 +32,6 @@ interface IEvents {
 
     // --- Liveness and safety events ---
 
-    /// @notice Emitted when claimManager.fileClaim() is unavailable and the claim is skipped
-    event ClaimManagerUnavailable(uint96 indexed policyId);
-
     /// @notice Emitted when the Morpho V2 redeem call fails (gate active or other revert)
     event MorphoRedeemFailed(uint256 redeemShares);
 
