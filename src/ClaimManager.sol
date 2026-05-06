@@ -356,18 +356,26 @@ contract ClaimManager is
         address feed = chainlinkPriceFeed;
         if (feed == address(0)) revert OracleUnavailable(tokenIn, tokenOut);
 
-        address actualIn = tokenIn == _NATIVE_ETH ? ISwapper(swapper).nativeWrapper() : tokenIn;
-        address actualOut = tokenOut == _NATIVE_ETH ? ISwapper(swapper).nativeWrapper() : tokenOut;
+        // Resolve NATIVE_ETH sentinel with a single nativeWrapper() call (at most once per invocation).
+        address nativeWrap = address(0);
+        if (tokenIn == _NATIVE_ETH || tokenOut == _NATIVE_ETH) {
+            // slither-disable-next-line calls-loop
+            nativeWrap = ISwapper(swapper).nativeWrapper();
+        }
+        address actualIn = tokenIn == _NATIVE_ETH ? nativeWrap : tokenIn;
+        address actualOut = tokenOut == _NATIVE_ETH ? nativeWrap : tokenOut;
 
         if (actualIn == actualOut) return amountIn;
 
         IChainlinkPriceFeed oracle = IChainlinkPriceFeed(feed);
 
+        // slither-disable-next-line calls-loop
         if (!oracle.hasPriceFeed(actualIn) || !oracle.hasPriceFeed(actualOut)) {
             revert OracleUnavailable(tokenIn, tokenOut);
         }
 
-        uint256 usd;
+        uint256 usd = 0;
+        // slither-disable-next-line calls-loop
         try oracle.getUSDValue(actualIn, amountIn) returns (uint256 v) {
             usd = v;
         } catch {
@@ -375,6 +383,7 @@ contract ClaimManager is
         }
         if (usd == 0) revert OracleUnavailable(tokenIn, tokenOut);
 
+        // slither-disable-next-line calls-loop
         try oracle.getTokenAmount(actualOut, usd) returns (uint256 v) {
             fair = v;
         } catch {
@@ -642,7 +651,7 @@ contract ClaimManager is
                 // slither-disable-next-line calls-loop
                 uint256 fair = _chainlinkFairValue(tokens[i], payoutToken, tokenStakes[i]);
 
-                uint256 dex;
+                uint256 dex = 0;
                 // slither-disable-next-line calls-loop
                 try ISwapper(swapper).quoteSwap(tokens[i], payoutToken, tokenStakes[i]) returns (uint256 quoted) {
                     dex = quoted;
@@ -799,7 +808,7 @@ contract ClaimManager is
     function _computeAmountOutMin(address tokenIn, address tokenOut, uint256 amountIn) private returns (uint256) {
         uint256 fair = _chainlinkFairValue(tokenIn, tokenOut, amountIn);
 
-        uint256 dex;
+        uint256 dex = 0;
         try ISwapper(swapper).quoteSwap(tokenIn, tokenOut, amountIn) returns (uint256 quoted) {
             dex = quoted;
         } catch {
