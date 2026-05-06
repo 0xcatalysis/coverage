@@ -205,6 +205,21 @@ interface IClaimManager is IAccessControl {
     event VaultExcludedFromSlashing(address indexed vault, address indexed token);
 
     /**
+     * @notice Emitted when a slashed cross-token collateral entry is skipped after the beneficiary
+     *         payout is already filled.
+     * @dev Attempting a surplus-only swap after payout is filled risks reverting an already-complete
+     *      claim (price impact from earlier swaps can push the surplus swap below amountOutMin).
+     *      The collateral remains in this contract and can be recovered via `recoverTokens`.
+     * @param policyId Identifier of the policy.
+     * @param claimId Identifier of the claim.
+     * @param token Collateral token address stranded in this contract.
+     * @param amount Amount of collateral stranded.
+     */
+    event CrossTokenSurplusStranded(
+        uint96 indexed policyId, uint256 indexed claimId, address indexed token, uint256 amount
+    );
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
