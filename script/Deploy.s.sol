@@ -427,6 +427,7 @@ abstract contract Deploy is CreateXDeployer {
         );
 
         ClaimManager(payable(contracts.claimManagerProxy)).setPremiumManager(contracts.premiumManagerProxy);
+        ClaimManager(payable(contracts.claimManagerProxy)).initializeV2(external_.chainlinkPriceFeed, 300);
 
         PolicyManager(contracts.policyManagerProxy).setClaimManager(contracts.claimManagerProxy);
 
