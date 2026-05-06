@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+
 import {ClaimManager} from "../src/ClaimManager.sol";
 import {UpgradeBase} from "./UpgradeBase.s.sol";
 
@@ -48,7 +50,7 @@ abstract contract UpgradeClaimManager is UpgradeBase {
     function upgradeCalldata() internal view override returns (bytes memory) {
         address chainlinkPriceFeed = vm.envAddress("CHAINLINK_PRICE_FEED");
         require(chainlinkPriceFeed != address(0), "CHAINLINK_PRICE_FEED required");
-        uint16 toleranceBps = uint16(vm.envOr("PRICE_DEVIATION_TOLERANCE_BPS", uint256(300)));
+        uint16 toleranceBps = SafeCast.toUint16(vm.envOr("PRICE_DEVIATION_TOLERANCE_BPS", uint256(300)));
         return abi.encodeCall(ClaimManager.initializeV2, (chainlinkPriceFeed, toleranceBps));
     }
 }
