@@ -150,6 +150,18 @@ interface IClaimManager is IAccessControl {
     event PremiumManagerSet(address indexed premiumManager);
 
     /**
+     * @notice Emitted when the Chainlink price feed address is updated.
+     * @param chainlinkPriceFeed New ChainlinkPriceFeed address.
+     */
+    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed);
+
+    /**
+     * @notice Emitted when the price deviation tolerance is updated.
+     * @param priceDeviationToleranceBps New tolerance in basis points.
+     */
+    event PriceDeviationToleranceBpsSet(uint16 priceDeviationToleranceBps);
+
+    /**
      * @notice Emitted when surplus collateral or payout tokens are distributed as restaker rewards.
      * @dev Surplus arises in two cases: (1) cross-token path — swap output exceeds remainingPayout;
      *      (2) same-token path — slashed collateral exceeds remainingPayout (no swap involved).
@@ -195,14 +207,14 @@ interface IClaimManager is IAccessControl {
     event TokensRecovered(address indexed token, address indexed to, uint256 amount);
 
     /**
-     * @notice Emitted when a cross-token vault is excluded from slashing. This occurs when either:
-     *         (a) `quoteSwap` reverts or returns zero (no functioning swap route), or (b) the
-     *         proportional slash amount rounds to zero after slippage inflation.
-     * @dev Partial exclusion is not reverted; remaining vaults absorb the full claim pro-rata.
-     *      Monitor this event to detect misconfigured swap routes before a loss event.
+     * @notice Emitted when a cross-token vault is excluded from slashing because the Chainlink-anchored
+     *         proportional slash amount rounds to zero after slippage inflation (dust vault).
+     * @dev Fires only from the proportional-rounding branch — not from an unavailable quote or oracle
+     *      (those now revert with `QuoteUnavailable` or `OracleUnavailable` respectively).
      *      Same-token vaults are never excluded — a zero proportional slash is forced to 1 instead.
+     *      Monitor this event to detect dust vaults contributing negligible collateral to a claim.
      * @param vault Address of the excluded vault.
-     * @param token Collateral token for which the quote failed or slash rounded to zero.
+     * @param token Collateral token whose proportional slash rounded to zero.
      */
     event VaultExcludedFromSlashing(address indexed vault, address indexed token);
 
@@ -330,6 +342,34 @@ interface IClaimManager is IAccessControl {
      * @param payoutToken Address of the payout token.
      */
     error QuoteUnavailable(address collateralToken, address payoutToken);
+
+    /**
+     * @notice Reverts when a Chainlink fair value cannot be computed for a cross-token collateral leg.
+     *         This occurs when: the ClaimManager's chainlinkPriceFeed is unset, a feed is missing for
+     *         one of the tokens, the feed data is stale, or the USD/token conversion yields zero.
+     * @param tokenIn Collateral token address (or NATIVE_ETH sentinel).
+     * @param tokenOut Payout token address (or NATIVE_ETH sentinel).
+     */
+    error OracleUnavailable(address tokenIn, address tokenOut);
+
+    /**
+     * @notice Reverts when the DEX spot quote deviates from the Chainlink fair value by more than
+     *         the configured `priceDeviationToleranceBps`, indicating a manipulated or thin pool.
+     * @param tokenIn Collateral token address.
+     * @param tokenOut Payout token address.
+     * @param dexQuote Spot quote returned by the DEX route.
+     * @param chainlinkFair Chainlink-derived fair value for the same amount.
+     * @param deviationBps Actual deviation in basis points.
+     */
+    error QuoteDeviatesFromOracle(
+        address tokenIn, address tokenOut, uint256 dexQuote, uint256 chainlinkFair, uint256 deviationBps
+    );
+
+    /**
+     * @notice Reverts when the requested `priceDeviationToleranceBps` exceeds the maximum settable bound.
+     * @param bps The invalid value provided.
+     */
+    error InvalidDeviationBps(uint16 bps);
 
     /**
      * @notice Reverts when previewSlashing returns arrays of different lengths.
@@ -507,4 +547,39 @@ interface IClaimManager is IAccessControl {
      * @param amount Amount to transfer.
      */
     function recoverTokens(address token, address to, uint256 amount) external;
+
+    /**
+     * @notice Initializes V2 state atomically during a UUPS upgrade via upgradeToAndCall.
+     * @dev Uses OpenZeppelin's `reinitializer(2)` pattern. Must be called exactly once, embedded in the
+     *      upgradeToAndCall calldata. For fresh deployments, call immediately after `initialize`.
+     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
+     * @param priceDeviationToleranceBps_ Maximum allowed deviation between DEX quote and Chainlink fair
+     *        value, in basis points. Must be <= 1000 (10%).
+     */
+    function initializeV2(address chainlinkPriceFeed_, uint16 priceDeviationToleranceBps_) external;
+
+    /**
+     * @notice Sets the Chainlink price feed address used for cross-token claim valuation.
+     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract. Must be non-zero.
+     */
+    function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
+
+    /**
+     * @notice Sets the maximum allowed deviation between DEX quote and Chainlink fair value.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Must be <= 1000 bps (10%).
+     * @param priceDeviationToleranceBps_ Tolerance in basis points (e.g. 300 = 3%).
+     */
+    function setPriceDeviationToleranceBps(uint16 priceDeviationToleranceBps_) external;
+
+    /**
+     * @notice Returns the Chainlink price feed address used for cross-token claim valuation.
+     */
+    function chainlinkPriceFeed() external view returns (address);
+
+    /**
+     * @notice Returns the maximum allowed deviation between DEX spot quote and Chainlink fair value,
+     *         in basis points. Cross-token claims revert with `QuoteDeviatesFromOracle` if exceeded.
+     */
+    function priceDeviationToleranceBps() external view returns (uint16);
 }

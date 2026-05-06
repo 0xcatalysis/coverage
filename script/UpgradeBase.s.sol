@@ -74,6 +74,15 @@ abstract contract UpgradeBase is Script {
     function contractName() internal pure virtual returns (string memory);
 
     /**
+     * @notice Returns optional calldata to pass to `upgradeToAndCall` for initializing new storage.
+     * @dev Override in subclasses that introduce new state variables via a reinitializer (e.g. initializeV2).
+     *      Returning empty bytes causes a plain `upgradeProxy` without any call (backward-compatible default).
+     */
+    function upgradeCalldata() internal view virtual returns (bytes memory) {
+        return "";
+    }
+
+    /**
      * @notice Upgrades the proxy to a new implementation.
      * @dev Validates chain id, loads proxy address from environment, checks admin role,
      *      performs the upgrade, and logs the results.
@@ -124,7 +133,7 @@ abstract contract UpgradeBase is Script {
         opts.unsafeAllow = "constructor";
         opts.unsafeSkipStorageCheck = true;
 
-        Upgrades.upgradeProxy(result.proxy, contractArtifact(), "", opts);
+        Upgrades.upgradeProxy(result.proxy, contractArtifact(), upgradeCalldata(), opts);
 
         vm.stopBroadcast();
 
@@ -164,17 +173,19 @@ abstract contract UpgradeBase is Script {
         result.newImplementation = newImpl;
 
         // Build the upgradeToAndCall calldata that the timelock will execute on the proxy
-        bytes memory upgradeCalldata = abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (newImpl, ""));
+        bytes memory timelockUpgradeCalldata =
+            abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (newImpl, upgradeCalldata()));
         uint256 minDelay = TimelockController(payable(timelock)).getMinDelay();
 
         // Build TimelockController.schedule() calldata
         bytes memory scheduleCalldata = abi.encodeCall(
-            TimelockController.schedule, (result.proxy, 0, upgradeCalldata, bytes32(0), bytes32(0), minDelay)
+            TimelockController.schedule, (result.proxy, 0, timelockUpgradeCalldata, bytes32(0), bytes32(0), minDelay)
         );
 
         // Build TimelockController.execute() calldata
-        bytes memory executeCalldata =
-            abi.encodeCall(TimelockController.execute, (result.proxy, 0, upgradeCalldata, bytes32(0), bytes32(0)));
+        bytes memory executeCalldata = abi.encodeCall(
+            TimelockController.execute, (result.proxy, 0, timelockUpgradeCalldata, bytes32(0), bytes32(0))
+        );
 
         _logUpgrade(config, timelock, result, contractName());
 

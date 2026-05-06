@@ -53,6 +53,8 @@ interface IPolicyManagerView {
 interface IClaimManagerView {
     function slashingManager() external view returns (address);
     function premiumManager() external view returns (address);
+    function chainlinkPriceFeed() external view returns (address);
+    function priceDeviationToleranceBps() external view returns (uint16);
 }
 
 interface IPremiumManagerView {
@@ -141,7 +143,7 @@ contract VerifySepoliaConfig is Script {
 
         console2.log("");
         if (_failures == 0) {
-            console2.log("[ALL OK] All", uint256(25), "checks passed. Configuration is complete for E2E testing.");
+            console2.log("[ALL OK] All", uint256(27), "checks passed. Configuration is complete for E2E testing.");
         } else {
             console2.log("[INCOMPLETE]", _failures, "check(s) failed. See [FAIL] lines above.");
             console2.log("  Fix: run cast send commands in docs/deployment/CoreAdminActions-Sepolia.md");
@@ -278,6 +280,18 @@ contract VerifySepoliaConfig is Script {
 
         _check("ClaimManager.slashingManager", IClaimManagerView(CLAIM_MANAGER).slashingManager(), SLASHING_MANAGER);
         _check("ClaimManager.premiumManager", IClaimManagerView(CLAIM_MANAGER).premiumManager(), PREMIUM_MANAGER);
+        _check(
+            "ClaimManager.chainlinkPriceFeed",
+            IClaimManagerView(CLAIM_MANAGER).chainlinkPriceFeed(),
+            CHAINLINK_PRICE_FEED
+        );
+        uint16 toleranceBps = IClaimManagerView(CLAIM_MANAGER).priceDeviationToleranceBps();
+        if (toleranceBps > 0) {
+            console2.log("[OK] ClaimManager.priceDeviationToleranceBps:", toleranceBps, "bps");
+        } else {
+            console2.log("[FAIL] ClaimManager.priceDeviationToleranceBps is 0 -- initializeV2 not called?");
+            _failures++;
+        }
         _checkRole(
             "PremiumManager: CLAIM_MANAGER_ROLE -> ClaimManager",
             PREMIUM_MANAGER,
