@@ -178,9 +178,11 @@ interface IClaimManager is IAccessControl {
     );
 
     /**
-     * @notice Emitted when the pool curator approves the next claim for a policy.
+     * @notice Emitted when the pool curator clears the claim approval gate for a policy,
+     *         permitting the next claim attempt. Does not indicate approval of any specific
+     *         claim parameters (amount, evidence hash, or additional data).
      * @param policyId Identifier of the policy.
-     * @param approver Address that granted the approval.
+     * @param approver Address that cleared the approval gate.
      */
     event NextClaimApproved(uint96 indexed policyId, address indexed approver);
 
@@ -479,8 +481,12 @@ interface IClaimManager is IAccessControl {
     function premiumManager() external view returns (address);
 
     /**
-     * @notice Clears the claim approval gate for a policy, allowing the next claim to be filed freely.
-     * @dev Callable only by the pool curator.
+     * @notice Clears the claim approval gate for a policy, permitting the next claim attempt.
+     * @dev Callable only by the pool curator. This function does not approve any specific claim
+     *      parameters — once the gate is cleared, whichever valid fileClaim() call the configured
+     *      claimer submits first will proceed with its own amount, evidence hash, and additional
+     *      data. Any ordering or front-running risk among multiple authorised operators within a
+     *      contract claimer is the claimer's responsibility.
      * @param policyId Identifier of the policy to clear the approval gate for.
      */
     function approveNextClaim(uint96 policyId) external;
