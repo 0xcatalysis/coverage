@@ -29,6 +29,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         /// @notice Spec identifier the pool intends to use for parametric claims.
         bytes32 specId;
         /// @notice Hash of the pool's policy terms document anchoring off-chain clauses.
+        /// @dev Off-chain terms should specify the accepted collateral tokens and backing vaults.
+        ///      Vault selection at bind time is curator-controlled; there is no on-chain enforcement
+        ///      that bound vaults match collateral tokens the buyer accepted off-chain.
         bytes32 termsHash;
         /// @notice Address that will receive claim payouts for this policy.
         address beneficiary;
@@ -240,6 +243,9 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
     /**
      * @notice Curator entrypoint to bind a policy draft via PolicyManager.
      * @dev Binds vaults, fetches draft from PolicyManager, and forwards binding request.
+     *      The curator selects the vault list unilaterally; there is no on-chain mechanism for
+     *      the buyer to pre-approve the backing collateral tokens. Buyers should verify that the
+     *      off-chain terms referenced by quote.termsHash specify the expected collateral tokens.
      * @param policyId Policy draft identifier from PolicyManager.
      * @param quote Quote struct signed by an authorized quote signer.
      * @param spec ISpec implementation contract address for quote.specId registration.

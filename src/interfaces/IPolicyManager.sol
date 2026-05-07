@@ -344,6 +344,9 @@ interface IPolicyManager is IAccessControl {
      * @dev Allows users to request coverage by specifying which pool they want coverage from.
      *      The caller becomes the buyer and is responsible for paying premiums.
      *      Creates a policy draft that must be bound by the pool curator.
+     *      Collateral token and vault selection is deferred entirely to the CoverPool curator's
+     *      bindPolicyForRequest() call. Buyers should verify that the off-chain terms
+     *      referenced by the quote's termsHash (or curator directly) specify the collateral tokens they accept.
      * @param pool CoverPool address to request coverage from.
      * @param beneficiary Address receiving payouts upon approved claims.
      * @param claimer Account authorized to trigger claims for the policy.
