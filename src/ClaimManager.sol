@@ -428,7 +428,7 @@ contract ClaimManager is
                             surplusTaskId
                         );
                     } else {
-                        emit CrossTokenSurplusStranded(policyId, claimId, collateralTokens[i], collateralAmounts[i]);
+                        emit SameTokenSurplusStranded(policyId, claimId, collateralTokens[i], collateralAmounts[i]);
                     }
                 } else {
                     // Payout is already filled and this is a cross-token entry. A surplus-only swap

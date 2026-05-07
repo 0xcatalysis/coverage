@@ -2941,7 +2941,7 @@ contract ClaimManagerTest is Test {
         uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
 
         vm.expectEmit(true, true, true, true, address(claimManager));
-        emit IClaimManager.CrossTokenSurplusStranded(POLICY_ID, 0, payoutToken, 50 ether);
+        emit IClaimManager.SameTokenSurplusStranded(POLICY_ID, 0, payoutToken, 50 ether);
 
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
