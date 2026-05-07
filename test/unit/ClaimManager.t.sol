@@ -2788,7 +2788,7 @@ contract ClaimManagerTest is Test {
         assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No tokens should remain in ClaimManager");
     }
 
-    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultSameTokenSkippedAndStranded() public {
+    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultSameTokenRoutedAsSurplus() public {
         uint256 requestedAmount = 100 ether;
         uint256 stake = 100 ether;
         vm.prank(admin);
@@ -2831,16 +2831,18 @@ contract ClaimManagerTest is Test {
             "Beneficiary must receive exactly requestedAmount"
         );
         assertEq(
-            premiumMock.totalReceived(), 0, "PremiumManager must not receive anything: loop exited before vault[1]"
+            premiumMock.totalReceived(), 50 ether, "Second vault same-token surplus must be routed to PremiumManager"
         );
         assertEq(
             payoutTokenMock.balanceOf(address(claimManager)),
-            50 ether,
-            "Second vault same-token collateral stays in ClaimManager (recoverable via recoverTokens)"
+            0,
+            "No payout tokens remain in ClaimManager after surplus distribution"
         );
     }
 
-    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultCrossTokenSkippedAndStranded() public {
+    function test_fileClaim_WhenFirstVaultFullySatisfiesPayout_SecondVaultCrossTokenSkippedToAvoidSwapFailureRisk()
+        public
+    {
         uint256 requestedAmount = 100 ether;
         uint256 stake = 100 ether;
         vm.prank(admin);
@@ -2881,6 +2883,9 @@ contract ClaimManagerTest is Test {
 
         uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
 
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit IClaimManager.CrossTokenSurplusStranded(POLICY_ID, 0, collateralToken2, 50 ether);
+
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
@@ -2889,14 +2894,16 @@ contract ClaimManagerTest is Test {
             requestedAmount,
             "Beneficiary must receive exactly requestedAmount"
         );
-        assertEq(
-            premiumMock.totalReceived(), 0, "PremiumManager must not receive anything: loop exited before vault[1]"
-        );
-        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No payout tokens must remain stranded");
+        // Cross-token surplus entries are intentionally skipped when payout is already filled.
+        // A surplus-only swap could revert (liquidity shift / price impact from the earlier swap)
+        // and block an already-completed beneficiary payout. The stranded collateral remains
+        // recoverable via recoverTokens().
+        assertEq(premiumMock.totalReceived(), 0, "Cross-token surplus must not be attempted when payout is filled");
+        assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No payout tokens remain in ClaimManager");
         assertEq(
             collateralToken2Mock.balanceOf(address(claimManager)),
             50 ether,
-            "Second vault cross-token collateral stays in ClaimManager"
+            "Cross-token surplus collateral stays in ClaimManager, recoverable via recoverTokens"
         );
     }
 
@@ -2932,6 +2939,9 @@ contract ClaimManagerTest is Test {
 
         uint256 beneficiaryBefore = payoutTokenMock.balanceOf(beneficiary);
         uint256 claimManagerBefore = payoutTokenMock.balanceOf(address(claimManager));
+
+        vm.expectEmit(true, true, true, true, address(claimManager));
+        emit IClaimManager.SameTokenSurplusStranded(POLICY_ID, 0, payoutToken, 50 ether);
 
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");

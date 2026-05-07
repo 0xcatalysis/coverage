@@ -372,8 +372,9 @@ contract ClaimManager is
     /**
      * @notice Executes slashing and collateral swapping for payout using token-native amounts.
      * @dev Flow: previewSlashing → _computeVaultSlashes → executeSlashing → loop swap/transfer.
-     *      The loop exits as soon as remainingPayout reaches zero; entries beyond that point
-     *      are skipped entirely.
+     *      Every returned collateral entry is processed: entries that arrive after the beneficiary
+     *      payout is already filled (remainingPayout == 0) are routed entirely through the surplus
+     *      distribution path rather than being skipped.
      * @param policyId Identifier of the policy.
      * @param claimId Identifier of the claim.
      * @param metadata Policy metadata containing payout token and beneficiary details.
@@ -397,21 +398,45 @@ contract ClaimManager is
         require(tokensLength > 0 && tokensLength == collateralAmounts.length, NoCollateralSlashed(policyId));
 
         uint256 remainingPayout = requestedAmount;
-        for (uint256 i = 0; i < tokensLength && remainingPayout > 0; ++i) {
+        for (uint256 i = 0; i < tokensLength; ++i) {
             if (collateralAmounts[i] > 0) {
-                uint256 amountOut = _processCollateral(
-                    policyId,
-                    claimId,
-                    collateralTokens[i],
-                    collateralAmounts[i],
-                    metadata.payoutToken,
-                    metadata.beneficiary,
-                    metadata.curator,
-                    remainingPayout,
-                    i
-                );
-                totalPayout += amountOut;
-                remainingPayout -= amountOut;
+                if (remainingPayout > 0) {
+                    uint256 amountOut = _processCollateral(
+                        policyId,
+                        claimId,
+                        collateralTokens[i],
+                        collateralAmounts[i],
+                        metadata.payoutToken,
+                        metadata.beneficiary,
+                        metadata.curator,
+                        remainingPayout,
+                        i
+                    );
+                    totalPayout += amountOut;
+                    remainingPayout -= amountOut;
+                } else if (collateralTokens[i] == metadata.payoutToken) {
+                    // Payout is already filled. Same-token collateral is routed directly as surplus
+                    // without a swap — no revert risk, _distributeSurplus is already try/caught.
+                    if (collateralTokens[i] != _NATIVE_ETH && premiumManager != address(0)) {
+                        bytes32 surplusTaskId = keccak256(abi.encodePacked(policyId, claimId, collateralTokens[i], i));
+                        _distributeSurplus(
+                            policyId,
+                            claimId,
+                            collateralTokens[i],
+                            metadata.curator,
+                            collateralAmounts[i],
+                            surplusTaskId
+                        );
+                    } else {
+                        emit SameTokenSurplusStranded(policyId, claimId, collateralTokens[i], collateralAmounts[i]);
+                    }
+                } else {
+                    // Payout is already filled and this is a cross-token entry. A surplus-only swap
+                    // risks reverting the completed claim (price impact from earlier swaps can push
+                    // output below amountOutMin). Collateral stays in this contract; emit an event
+                    // so admins can recover it via recoverTokens().
+                    emit CrossTokenSurplusStranded(policyId, claimId, collateralTokens[i], collateralAmounts[i]);
+                }
             }
         }
 
