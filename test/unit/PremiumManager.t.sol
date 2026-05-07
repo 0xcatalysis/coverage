@@ -30,7 +30,7 @@ contract PremiumManagerTest is Test {
     MockToken internal premiumToken;
     MockCoverPool internal mockPool;
 
-    event PremiumDistributed(address indexed pool, uint96 indexed policyId, uint256 amount);
+    event PremiumDistributed(address indexed pool, uint96 indexed policyId, address indexed payer, uint256 amount);
     event RewardsManagerSet(address indexed rewardsManager_);
     event PlatformTreasurySet(address indexed treasury);
     event PlatformFeeBpsSet(uint16 indexed platformFeeBps_);
@@ -416,7 +416,7 @@ contract PremiumManagerTest is Test {
         premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT);
 
         vm.expectEmit(true, true, true, true, address(premiumManager));
-        emit PremiumDistributed(pool, POLICY_ID, PREMIUM_AMOUNT);
+        emit PremiumDistributed(pool, POLICY_ID, premiumCollector, PREMIUM_AMOUNT);
 
         premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
         vm.stopPrank();
@@ -722,13 +722,13 @@ contract PremiumManagerTest is Test {
         premiumToken.approve(address(premiumManager), PREMIUM_AMOUNT + premium2);
 
         vm.expectEmit(true, true, true, true, address(premiumManager));
-        emit PremiumDistributed(pool, POLICY_ID, PREMIUM_AMOUNT);
+        emit PremiumDistributed(pool, POLICY_ID, premiumCollector, PREMIUM_AMOUNT);
 
         vm.prank(premiumCollector);
         premiumManager.distributePremium(pool, POLICY_ID, address(premiumToken), PREMIUM_AMOUNT);
 
         vm.expectEmit(true, true, true, true, address(premiumManager));
-        emit PremiumDistributed(pool, policyId2, premium2);
+        emit PremiumDistributed(pool, policyId2, premiumCollector, premium2);
 
         vm.prank(premiumCollector);
         premiumManager.distributePremium(pool, policyId2, address(premiumToken), premium2);
