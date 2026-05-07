@@ -219,7 +219,7 @@ contract PremiumManager is
             token.forceApprove(rewardsManager, 0);
         }
 
-        emit PremiumDistributed(pool, policyId, amount);
+        emit PremiumDistributed(pool, policyId, msg.sender, amount);
     }
 
     /**

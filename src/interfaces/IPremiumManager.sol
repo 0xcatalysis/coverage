@@ -14,9 +14,10 @@ interface IPremiumManager is IAccessControl {
      * @notice Emitted when premiums are successfully distributed.
      * @param pool CoverPool associated with the distribution.
      * @param policyId Policy identifier receiving restaker premiums.
+     * @param payer Address that transferred the premium tokens (msg.sender of distributePremium).
      * @param amount Total premium amount distributed.
      */
-    event PremiumDistributed(address indexed pool, uint96 indexed policyId, uint256 amount);
+    event PremiumDistributed(address indexed pool, uint96 indexed policyId, address indexed payer, uint256 amount);
 
     /**
      * @notice Emitted when the RewardsManager dependency is set or updated.
