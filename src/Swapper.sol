@@ -49,6 +49,10 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
 
     mapping(bytes32 routeKey => SwapRoute) private _swapRoutes;
 
+    address public override claimManager;
+    mapping(bytes32 routeKey => uint256 lockedUntil) private _routeLockedUntil;
+    mapping(address target => uint256 lockedUntil) private _targetLockedUntil;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -113,6 +117,10 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
      */
     function setSwapTargetWhitelist(address target, bool whitelisted) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         require(target != address(0), ZeroAddress());
+        if (!whitelisted && whitelistedTargets[target]) {
+            uint256 lockExpiry = _targetLockedUntil[target];
+            require(block.timestamp >= lockExpiry, TargetLockedByActivePolicies(target, lockExpiry));
+        }
         whitelistedTargets[target] = whitelisted;
         emit SwapTargetWhitelistSet(target, whitelisted);
     }
@@ -143,6 +151,54 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
     /**
      * @inheritdoc ISwapper
      */
+    function setClaimManager(address claimManager_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(claimManager_ != address(0), ZeroAddress());
+        claimManager = claimManager_;
+        emit ClaimManagerSet(claimManager_);
+    }
+
+    /**
+     * @inheritdoc ISwapper
+     */
+    function lockRouteUntil(address tokenIn, address tokenOut, uint256 lockedUntil) external override {
+        require(msg.sender == claimManager, OnlyClaimManager());
+
+        address actualTokenIn = tokenIn == NATIVE_ETH ? nativeWrapper : tokenIn;
+        address actualTokenOut = tokenOut == NATIVE_ETH ? nativeWrapper : tokenOut;
+
+        if (actualTokenIn == actualTokenOut) return;
+
+        bytes32 routeKey = _getRouteKey(actualTokenIn, actualTokenOut);
+        SwapRoute storage route = _swapRoutes[routeKey];
+        require(route.swapTarget != address(0), SwapRouteNotEnabled(tokenIn, tokenOut));
+
+        if (lockedUntil > _routeLockedUntil[routeKey]) {
+            _routeLockedUntil[routeKey] = lockedUntil;
+        }
+        if (lockedUntil > _targetLockedUntil[route.swapTarget]) {
+            _targetLockedUntil[route.swapTarget] = lockedUntil;
+        }
+
+        emit RouteLocked(actualTokenIn, actualTokenOut, route.swapTarget, _routeLockedUntil[routeKey]);
+    }
+
+    /**
+     * @inheritdoc ISwapper
+     */
+    function routeLockedUntil(address tokenIn, address tokenOut) external view override returns (uint256) {
+        return _routeLockedUntil[_getRouteKey(tokenIn, tokenOut)];
+    }
+
+    /**
+     * @inheritdoc ISwapper
+     */
+    function targetLockedUntil(address target) external view override returns (uint256) {
+        return _targetLockedUntil[target];
+    }
+
+    /**
+     * @inheritdoc ISwapper
+     */
     function setSwapRoute(
         address tokenIn,
         address tokenOut,
@@ -162,6 +218,13 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
 
         bytes32 routeKey = _getRouteKey(tokenIn, tokenOut);
         SwapRoute storage route = _swapRoutes[routeKey];
+
+        bool material =
+            route.swapTarget != address(0) && (route.swapTarget != swapTarget || (route.enabled && !enabled));
+        if (material) {
+            uint256 lockExpiry = _routeLockedUntil[routeKey];
+            require(block.timestamp >= lockExpiry, RouteLockedByActivePolicies(tokenIn, tokenOut, lockExpiry));
+        }
 
         route.tokenIn = tokenIn;
         route.tokenOut = tokenOut;

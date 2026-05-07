@@ -258,6 +258,41 @@ Vault slashes are pre-inflated in `_computeVaultSlashes` (by `1 / (1 - maxSwapSl
 
 This supports heterogeneous slash collateral while preserving payout-token settlement without relying on an oracle.
 
+## Bind-Time Route Validation and Active-Policy Route Lock (CYS3-06)
+
+### Invariant
+
+`PolicyManager.bindPolicy` enforces that **every non-payout collateral token** backing a policy
+has an enabled, non-zero `Swapper` quote route to the policy `payoutToken` at bind time. This
+check runs before the USD-value sufficiency check so that collateral without a settlement path
+can never count toward coverage backing.
+
+### How it works
+
+1. `PolicyManager.bindPolicy` calls `IClaimManager.validateAndLockCollateralRoutes(policyId, payoutToken, maturityTime, tokens, tokenStakes)` once per policy, immediately after fetching committee token stakes.
+2. `ClaimManager.validateAndLockCollateralRoutes` (only callable by `policyManager`) iterates the token array:
+   - Tokens that equal `payoutToken` or have zero stake are skipped (no route needed).
+   - For each remaining token: `Swapper.quoteSwap(token, payoutToken, stake)` must return a non-zero value; any zero return or revert causes an immediate `MissingSwapRouteForCollateral` revert.
+   - After passing the quote check, `Swapper.lockRouteUntil(token, payoutToken, maturityTime)` locks the route.
+3. `Swapper.lockRouteUntil` (only callable by `claimManager`) records the lock monotonically for both the `(tokenIn, tokenOut)` route key and the current swap target. The lock timestamp only moves forward — a later policy binding can extend a lock but never shorten it.
+
+### Lock enforcement
+
+While a route lock is active (`block.timestamp < lockedUntil`):
+
+- `Swapper.setSwapRoute` rejects any **material** change: disabling the route or replacing its swap target reverts with `RouteLockedByActivePolicies`. Updating only `swapCalldata` (same target, same `enabled = true`) is still permitted so admins can patch DEX-side calldata.
+- `Swapper.setSwapTargetWhitelist(target, false)` reverts with `TargetLockedByActivePolicies` while the target lock is active.
+
+Locks expire at `maturityTime`. Once the last dependent policy matures, swap managers can freely modify or disable the route.
+
+### Wiring requirement
+
+`Swapper.setClaimManager(claimManager)` must be called as part of the cross-system wiring
+(step 9 in `WireCoreContracts.s.sol`) before any policy is bound. Without this, `lockRouteUntil`
+will revert with `OnlyClaimManager` during the first `bindPolicy` call.
+
+---
+
 ## Swapper Configuration for Cross-Token Payouts
 
 When the vault collateral token differs from the policy `payoutToken`, a swap route must be

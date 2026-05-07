@@ -303,6 +303,15 @@ contract MockClaimManager {
         return _policyClaims[policyId];
     }
 
+    function validateAndLockCollateralRoutes(
+        uint96,
+        address,
+        uint256,
+        address[] calldata,
+        uint256[] calldata
+    )
+        external {}
+
     function fileClaim(
         uint96 policyId,
         uint256, /* claimAmount */

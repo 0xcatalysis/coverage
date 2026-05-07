@@ -12,6 +12,7 @@ import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
 import {IStakeManager} from "./interfaces/IStakeManager.sol";
 import {IBindPolicyHook} from "./interfaces/IBindPolicyHook.sol";
 import {IOraclePriceFeed} from "./interfaces/IOraclePriceFeed.sol";
+import {IClaimManager} from "./interfaces/IClaimManager.sol";
 
 /**
  * @title PolicyManager
@@ -222,6 +223,9 @@ contract PolicyManager is
 
     /**
      * @inheritdoc IPolicyManager
+     * @dev Route availability is validated via `ClaimManager.validateAndLockCollateralRoutes` before
+     *      the USD-value sufficiency check, ensuring that no collateral token counts as backing unless
+     *      it also has an enabled swap route to the policy payout token (CYS3-06 fix).
      */
     function bindPolicy(
         BindPolicyRequest calldata request,
@@ -258,13 +262,11 @@ contract PolicyManager is
         (, address[] memory tokens, uint256[] memory tokenStakes) =
             IStakeManager(stakeManager).getCommitteeTokenStakes(policyId);
 
-        uint256 totalStakeUSD = 0;
-        for (uint256 i = 0; i < tokens.length; ++i) {
-            if (tokenStakes[i] > 0) {
-                // slither-disable-next-line calls-loop
-                totalStakeUSD += IOraclePriceFeed(oraclePriceFeed).getUSDValue(tokens[i], tokenStakes[i]);
-            }
-        }
+        uint256 totalStakeUSD = _validateRoutesAndComputeStake(
+            policyId, request.payoutToken, uint32(block.timestamp) + draft.duration, tokens, tokenStakes
+        );
+
+
         uint256 coverageLimitUSD =
             IOraclePriceFeed(oraclePriceFeed).getUSDValue(request.payoutToken, boundPolicy.coverageLimit);
         require(coverageLimitUSD > 0, ZeroCoverageLimitUSD());
@@ -348,6 +350,31 @@ contract PolicyManager is
      * @notice Restricts UUPS upgrade authorization to DEFAULT_ADMIN_ROLE holders.
      */
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
+
+    /**
+     * @notice Validates that every non-payout collateral token has an enabled swap route to
+     *         `payoutToken` (via `ClaimManager.validateAndLockCollateralRoutes`), locks those routes
+     *         until `maturityTime`, and returns the aggregate USD value of all staked collateral.
+     */
+    function _validateRoutesAndComputeStake(
+        uint96 policyId,
+        address payoutToken,
+        uint32 maturityTime,
+        address[] memory tokens,
+        uint256[] memory tokenStakes
+    )
+        private
+        returns (uint256 totalStakeUSD)
+    {
+        IClaimManager(claimManager)
+            .validateAndLockCollateralRoutes(policyId, payoutToken, maturityTime, tokens, tokenStakes);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (tokenStakes[i] > 0) {
+                // slither-disable-next-line calls-loop
+                totalStakeUSD += IOraclePriceFeed(oraclePriceFeed).getUSDValue(tokens[i], tokenStakes[i]);
+            }
+        }
+    }
 
     /**
      * @notice Validates bind policy request data before processing.

@@ -255,6 +255,38 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
+    function validateAndLockCollateralRoutes(
+        uint96 policyId,
+        address payoutToken,
+        uint256 maturityTime,
+        address[] calldata tokens,
+        uint256[] calldata tokenStakes
+    )
+        external
+        override
+    {
+        require(msg.sender == policyManager, OnlyPolicyManager());
+
+        uint256 length = tokens.length;
+        for (uint256 i = 0; i < length; ++i) {
+            address token = tokens[i];
+            if (token == address(0) || token == payoutToken || tokenStakes[i] == 0) {
+                continue;
+            }
+
+            try ISwapper(swapper).quoteSwap(token, payoutToken, tokenStakes[i]) returns (uint256 quoted) {
+                if (quoted == 0) revert MissingSwapRouteForCollateral(token, payoutToken);
+            } catch {
+                revert MissingSwapRouteForCollateral(token, payoutToken);
+            }
+
+            ISwapper(swapper).lockRouteUntil(token, payoutToken, maturityTime);
+        }
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
     function fileClaim(
         uint96 policyId,
         uint256 requestedAmount,

@@ -4023,6 +4023,120 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                 VALIDATE AND LOCK COLLATERAL ROUTES
+    //////////////////////////////////////////////////////////////*/
+
+    function test_validateAndLockCollateralRoutes_RevertsForNonPolicyManagerCaller() public {
+        address[] memory tokens = new address[](1);
+        uint256[] memory stakes = new uint256[](1);
+        tokens[0] = collateralToken;
+        stakes[0] = 100 ether;
+
+        vm.expectRevert(IClaimManager.OnlyPolicyManager.selector);
+        claimManager.validateAndLockCollateralRoutes(POLICY_ID, payoutToken, block.timestamp + 30 days, tokens, stakes);
+    }
+
+    function test_validateAndLockCollateralRoutes_RevertsWhenRouteReturnsZero() public {
+        MockSwapperWithZeroQuote zeroSwapper = new MockSwapperWithZeroQuote();
+        vm.prank(admin);
+        claimManager.setSwapper(address(zeroSwapper));
+
+        address[] memory tokens = new address[](1);
+        uint256[] memory stakes = new uint256[](1);
+        tokens[0] = collateralToken;
+        stakes[0] = 100 ether;
+
+        vm.prank(policy);
+        vm.expectRevert(
+            abi.encodeWithSelector(IClaimManager.MissingSwapRouteForCollateral.selector, collateralToken, payoutToken)
+        );
+        claimManager.validateAndLockCollateralRoutes(POLICY_ID, payoutToken, block.timestamp + 30 days, tokens, stakes);
+    }
+
+    function test_validateAndLockCollateralRoutes_RevertsWhenRouteReverts() public {
+        MockSwapperWithRevertingQuote revertSwapper = new MockSwapperWithRevertingQuote();
+        vm.prank(admin);
+        claimManager.setSwapper(address(revertSwapper));
+
+        address[] memory tokens = new address[](1);
+        uint256[] memory stakes = new uint256[](1);
+        tokens[0] = collateralToken;
+        stakes[0] = 100 ether;
+
+        vm.prank(policy);
+        vm.expectRevert(
+            abi.encodeWithSelector(IClaimManager.MissingSwapRouteForCollateral.selector, collateralToken, payoutToken)
+        );
+        claimManager.validateAndLockCollateralRoutes(POLICY_ID, payoutToken, block.timestamp + 30 days, tokens, stakes);
+    }
+
+    function test_validateAndLockCollateralRoutes_SkipsPayoutToken() public {
+        MockSwapperWithZeroQuote zeroSwapper = new MockSwapperWithZeroQuote();
+        vm.prank(admin);
+        claimManager.setSwapper(address(zeroSwapper));
+
+        address[] memory tokens = new address[](1);
+        uint256[] memory stakes = new uint256[](1);
+        tokens[0] = payoutToken;
+        stakes[0] = 100 ether;
+
+        vm.prank(policy);
+        claimManager.validateAndLockCollateralRoutes(POLICY_ID, payoutToken, block.timestamp + 30 days, tokens, stakes);
+    }
+
+    function test_validateAndLockCollateralRoutes_SkipsZeroStake() public {
+        MockSwapperWithZeroQuote zeroSwapper = new MockSwapperWithZeroQuote();
+        vm.prank(admin);
+        claimManager.setSwapper(address(zeroSwapper));
+
+        address[] memory tokens = new address[](1);
+        uint256[] memory stakes = new uint256[](1);
+        tokens[0] = collateralToken;
+        stakes[0] = 0;
+
+        vm.prank(policy);
+        claimManager.validateAndLockCollateralRoutes(POLICY_ID, payoutToken, block.timestamp + 30 days, tokens, stakes);
+    }
+
+    function test_validateAndLockCollateralRoutes_LocksRouteForMaturity() public {
+        MockSwapperWithLockTracking lockSwapper = new MockSwapperWithLockTracking();
+        vm.prank(admin);
+        claimManager.setSwapper(address(lockSwapper));
+
+        address[] memory tokens = new address[](1);
+        uint256[] memory stakes = new uint256[](1);
+        tokens[0] = collateralToken;
+        stakes[0] = 100 ether;
+
+        uint256 maturity = block.timestamp + 60 days;
+        vm.prank(policy);
+        claimManager.validateAndLockCollateralRoutes(POLICY_ID, payoutToken, maturity, tokens, stakes);
+
+        assertEq(lockSwapper.lockedUntilFor(collateralToken, payoutToken), maturity, "lock not set");
+    }
+
+    function test_validateAndLockCollateralRoutes_LockTimestampIsMonotonic() public {
+        MockSwapperWithLockTracking lockSwapper = new MockSwapperWithLockTracking();
+        vm.prank(admin);
+        claimManager.setSwapper(address(lockSwapper));
+
+        address[] memory tokens = new address[](1);
+        uint256[] memory stakes = new uint256[](1);
+        tokens[0] = collateralToken;
+        stakes[0] = 100 ether;
+
+        uint256 maturity1 = block.timestamp + 60 days;
+        uint256 maturity2 = block.timestamp + 30 days;
+
+        vm.startPrank(policy);
+        claimManager.validateAndLockCollateralRoutes(POLICY_ID, payoutToken, maturity1, tokens, stakes);
+        claimManager.validateAndLockCollateralRoutes(POLICY_ID, payoutToken, maturity2, tokens, stakes);
+        vm.stopPrank();
+
+        assertEq(lockSwapper.lockedUntilFor(collateralToken, payoutToken), maturity1, "lock should not shrink");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                                 HELPERS
     //////////////////////////////////////////////////////////////*/
     function _setupDefaultPolicy() private {
@@ -4613,6 +4727,56 @@ contract MockPremiumManagerReverting {
         revert("MockPremiumManagerReverting: always reverts");
     }
 }
+
+/// @dev Swapper mock that always returns 0 from quoteSwap (simulates missing route).
+contract MockSwapperWithZeroQuote {
+    function quoteSwap(address, address, uint256) external pure returns (uint256) {
+        return 0;
+    }
+
+    function lockRouteUntil(address, address, uint256) external {}
+
+    function executeSwap(ISwapper.SwapParams calldata) external payable returns (uint256) {
+        return 0;
+    }
+}
+
+/// @dev Swapper mock whose quoteSwap always reverts (simulates an adapter that throws).
+contract MockSwapperWithRevertingQuote {
+    function quoteSwap(address, address, uint256) external pure returns (uint256) {
+        revert("MockSwapperWithRevertingQuote: always reverts");
+    }
+
+    function lockRouteUntil(address, address, uint256) external {}
+
+    function executeSwap(ISwapper.SwapParams calldata) external payable returns (uint256) {
+        return 0;
+    }
+}
+
+/// @dev Swapper mock that returns amountIn and tracks lockRouteUntil calls.
+contract MockSwapperWithLockTracking {
+    mapping(address => mapping(address => uint256)) private _lockedUntil;
+
+    function quoteSwap(address, address, uint256 amountIn) external pure returns (uint256) {
+        return amountIn;
+    }
+
+    function lockRouteUntil(address tokenIn, address tokenOut, uint256 lockedUntil) external {
+        if (lockedUntil > _lockedUntil[tokenIn][tokenOut]) {
+            _lockedUntil[tokenIn][tokenOut] = lockedUntil;
+        }
+    }
+
+    function lockedUntilFor(address tokenIn, address tokenOut) external view returns (uint256) {
+        return _lockedUntil[tokenIn][tokenOut];
+    }
+
+    function executeSwap(ISwapper.SwapParams calldata) external payable returns (uint256) {
+        return 0;
+    }
+}
+
 
 contract MockSwapperWithPerTokenDivisor {
     address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;

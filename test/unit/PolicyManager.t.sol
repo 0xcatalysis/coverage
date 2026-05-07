@@ -10,6 +10,7 @@ import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {Test} from "forge-std/Test.sol";
 import {PolicyManager} from "../../src/PolicyManager.sol";
 import {IPolicyManager} from "../../src/interfaces/IPolicyManager.sol";
+import {IClaimManager} from "../../src/interfaces/IClaimManager.sol";
 import {ICoverPool} from "../../src/interfaces/ICoverPool.sol";
 import {IBindPolicyHook} from "../../src/interfaces/IBindPolicyHook.sol";
 
@@ -1790,6 +1791,68 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+              BIND POLICY — ROUTE VALIDATION (CYS3-06)
+    //////////////////////////////////////////////////////////////*/
+
+    function test_bindPolicy_CallsValidateAndLockCollateralRoutes() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, true);
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        uint256 callsBefore = mockClaimManager.validateCallCount();
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        assertEq(mockClaimManager.validateCallCount(), callsBefore + 1, "validateAndLockCollateralRoutes not called");
+    }
+
+    function test_bindPolicy_PassesCorrectMaturityTimeToValidator() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, true);
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        uint256 expectedMaturity = block.timestamp + COVERAGE_DURATION;
+
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        assertEq(mockClaimManager.lastMaturityTime(), expectedMaturity, "maturityTime mismatch");
+    }
+
+    function test_bindPolicy_MaturityTimeConsistentBetweenValidatorAndMetadata() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, true);
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        vm.prank(address(coverPool));
+        policyManager.bindPolicy(request, boundPolicy);
+
+        IPolicyManager.PolicyMetadata memory metadata = policyManager.policyMetadata(request.policyId);
+        assertEq(
+            mockClaimManager.lastMaturityTime(),
+            metadata.maturityTime,
+            "validator maturityTime and stored maturityTime diverge"
+        );
+    }
+
+    function test_bindPolicy_Reverts_WhenValidateRoutesFails() public {
+        IPolicyManager.BindPolicyRequest memory request = _defaultRequest();
+        _seedCommitteeForTesting(request.quote.policyId, curator, true);
+        ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
+
+        address fakeToken = makeAddr("fakeCollateral");
+        bytes memory encodedRevert =
+            abi.encodeWithSelector(IClaimManager.MissingSwapRouteForCollateral.selector, fakeToken, payoutToken);
+        mockClaimManager.setValidationRevert(true, encodedRevert);
+
+        vm.prank(address(coverPool));
+        vm.expectRevert(
+            abi.encodeWithSelector(IClaimManager.MissingSwapRouteForCollateral.selector, fakeToken, payoutToken)
+        );
+        policyManager.bindPolicy(request, boundPolicy);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                                  HELPERS
     //////////////////////////////////////////////////////////////*/
 
@@ -2014,7 +2077,36 @@ contract MockStakeManager {
     }
 }
 
-contract MockClaimManager {}
+contract MockClaimManager {
+    bool public shouldRevertValidation;
+    bytes public revertReason;
+    uint256 public validateCallCount;
+    uint256 public lastMaturityTime;
+
+    function setValidationRevert(bool shouldRevert_, bytes calldata reason) external {
+        shouldRevertValidation = shouldRevert_;
+        revertReason = reason;
+    }
+
+    function validateAndLockCollateralRoutes(
+        uint96,
+        address,
+        uint256 maturityTime,
+        address[] calldata,
+        uint256[] calldata
+    )
+        external
+    {
+        validateCallCount++;
+        lastMaturityTime = maturityTime;
+        if (shouldRevertValidation) {
+            bytes memory reason = revertReason;
+            assembly {
+                revert(add(reason, 32), mload(reason))
+            }
+        }
+    }
+}
 
 contract MockCoverPoolFactory {
     mapping(address => bool) private _registeredPools;

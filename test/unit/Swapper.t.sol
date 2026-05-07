@@ -29,6 +29,8 @@ contract SwapperTest is Test {
     event SwapRouteSet(address indexed tokenIn, address indexed tokenOut, address swapTarget, bool enabled);
     event SwapTargetWhitelistSet(address indexed target, bool whitelisted);
     event NativeWrapperSet(address indexed wrapper);
+    event RouteLocked(address indexed tokenIn, address indexed tokenOut, address indexed target, uint256 lockedUntil);
+    event ClaimManagerSet(address indexed claimManager);
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
@@ -1270,6 +1272,241 @@ contract SwapperTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                          SET CLAIM MANAGER
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setClaimManager_WhenCallerNotAdmin_Reverts() public {
+        address cm = makeAddr("claimManager");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), swapper.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        swapper.setClaimManager(cm);
+    }
+
+    function test_setClaimManager_WhenZeroAddress_Reverts() public {
+        vm.prank(admin);
+        vm.expectRevert(ISwapper.ZeroAddress.selector);
+        swapper.setClaimManager(address(0));
+    }
+
+    function test_setClaimManager_WhenValid_StoresAndEmits() public {
+        address cm = makeAddr("claimManager");
+        vm.prank(admin);
+        vm.expectEmit(true, false, false, false);
+        emit ClaimManagerSet(cm);
+        swapper.setClaimManager(cm);
+        assertEq(swapper.claimManager(), cm, "claimManager mismatch");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           LOCK ROUTE UNTIL
+    //////////////////////////////////////////////////////////////*/
+
+    function test_lockRouteUntil_WhenCallerNotClaimManager_Reverts() public {
+        _setupRoute();
+        vm.expectRevert(ISwapper.OnlyClaimManager.selector);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), block.timestamp + 1 days);
+    }
+
+    function test_lockRouteUntil_WhenRouteNotConfigured_Reverts() public {
+        address cm = _setupClaimManager();
+        MockToken other = new MockToken("Other", "OTH");
+        vm.prank(cm);
+        vm.expectRevert(
+            abi.encodeWithSelector(ISwapper.SwapRouteNotEnabled.selector, address(other), address(tokenOut))
+        );
+        swapper.lockRouteUntil(address(other), address(tokenOut), block.timestamp + 1 days);
+    }
+
+    function test_lockRouteUntil_SetsLockTimestamp() public {
+        _setupRoute();
+        address cm = _setupClaimManager();
+        uint256 lockExpiry = block.timestamp + 30 days;
+
+        vm.prank(cm);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), lockExpiry);
+
+        assertEq(swapper.routeLockedUntil(address(tokenIn), address(tokenOut)), lockExpiry, "route lock mismatch");
+        assertEq(swapper.targetLockedUntil(dexTarget), lockExpiry, "target lock mismatch");
+    }
+
+    function test_lockRouteUntil_OnlyPushesForward() public {
+        _setupRoute();
+        address cm = _setupClaimManager();
+        uint256 firstExpiry = block.timestamp + 60 days;
+        uint256 earlierExpiry = block.timestamp + 10 days;
+
+        vm.startPrank(cm);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), firstExpiry);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), earlierExpiry);
+        vm.stopPrank();
+
+        assertEq(swapper.routeLockedUntil(address(tokenIn), address(tokenOut)), firstExpiry, "lock should not shrink");
+    }
+
+    function test_lockRouteUntil_MultiplePoliciesPushLockForward() public {
+        _setupRoute();
+        address cm = _setupClaimManager();
+        uint256 expiry1 = block.timestamp + 30 days;
+        uint256 expiry2 = block.timestamp + 90 days;
+
+        vm.startPrank(cm);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), expiry1);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), expiry2);
+        vm.stopPrank();
+
+        assertEq(swapper.routeLockedUntil(address(tokenIn), address(tokenOut)), expiry2, "lock should advance");
+    }
+
+    function test_lockRouteUntil_EmitsRouteLocked() public {
+        _setupRoute();
+        address cm = _setupClaimManager();
+        uint256 lockExpiry = block.timestamp + 30 days;
+
+        vm.prank(cm);
+        vm.expectEmit(true, true, true, true);
+        emit RouteLocked(address(tokenIn), address(tokenOut), dexTarget, lockExpiry);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), lockExpiry);
+    }
+
+    function test_lockRouteUntil_ResolvesNativeEth() public {
+        MockWETH mockWeth = new MockWETH();
+        vm.startPrank(admin);
+        swapper.pause();
+        swapper.setNativeWrapper(address(mockWeth));
+        swapper.unpause();
+        swapper.setSwapTargetWhitelist(dexTarget, true);
+        vm.stopPrank();
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(mockWeth), address(tokenOut), dexTarget, true, "");
+
+        address cm = _setupClaimManager();
+        uint256 lockExpiry = block.timestamp + 30 days;
+        // Cache NATIVE_ETH before vm.prank so the getter call does not consume the prank.
+        address nativeEth = swapper.NATIVE_ETH();
+
+        vm.prank(cm);
+        swapper.lockRouteUntil(nativeEth, address(tokenOut), lockExpiry);
+
+        assertEq(swapper.routeLockedUntil(address(mockWeth), address(tokenOut)), lockExpiry, "WETH route not locked");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+              SET SWAP ROUTE — LOCK GUARD
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setSwapRoute_RevertsWhileLocked_WhenDisabling() public {
+        _setupRoute();
+        address cm = _setupClaimManager();
+        uint256 lockExpiry = block.timestamp + 30 days;
+        vm.prank(cm);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), lockExpiry);
+
+        vm.prank(swapManager);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ISwapper.RouteLockedByActivePolicies.selector, address(tokenIn), address(tokenOut), lockExpiry
+            )
+        );
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, false, "");
+    }
+
+    function test_setSwapRoute_RevertsWhileLocked_WhenChangingTarget() public {
+        _setupRoute();
+        address cm = _setupClaimManager();
+        uint256 lockExpiry = block.timestamp + 30 days;
+        vm.prank(cm);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), lockExpiry);
+
+        address dexTarget2 = address(new MockDEX());
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget2, true);
+
+        vm.prank(swapManager);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ISwapper.RouteLockedByActivePolicies.selector, address(tokenIn), address(tokenOut), lockExpiry
+            )
+        );
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget2, true, "");
+    }
+
+    function test_setSwapRoute_AllowsCalldataOnlyUpdate_WhileLocked() public {
+        _setupRoute();
+        address cm = _setupClaimManager();
+        vm.prank(cm);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), block.timestamp + 30 days);
+
+        bytes memory newCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, newCalldata);
+
+        ISwapper.SwapRoute memory route = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertEq(route.swapCalldata, newCalldata, "calldata should be updated");
+        assertEq(route.swapTarget, dexTarget, "target should be unchanged");
+    }
+
+    function test_setSwapRoute_AllowedAfterLockExpires() public {
+        _setupRoute();
+        address cm = _setupClaimManager();
+        uint256 lockExpiry = block.timestamp + 30 days;
+        vm.prank(cm);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), lockExpiry);
+
+        vm.warp(lockExpiry + 1);
+
+        vm.prank(swapManager);
+        swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, false, "");
+
+        ISwapper.SwapRoute memory route = swapper.getSwapRoute(address(tokenIn), address(tokenOut));
+        assertFalse(route.enabled, "route should be disabled after lock expires");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+         SET SWAP TARGET WHITELIST
+    //////////////////////////////////////////////////////////////*/
+
+    function test_setSwapTargetWhitelist_RevertsWhileTargetLocked() public {
+        _setupRoute();
+        address cm = _setupClaimManager();
+        uint256 lockExpiry = block.timestamp + 30 days;
+        vm.prank(cm);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), lockExpiry);
+
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(ISwapper.TargetLockedByActivePolicies.selector, dexTarget, lockExpiry));
+        swapper.setSwapTargetWhitelist(dexTarget, false);
+    }
+
+    function test_setSwapTargetWhitelist_AllowedAfterTargetLockExpires() public {
+        _setupRoute();
+        address cm = _setupClaimManager();
+        uint256 lockExpiry = block.timestamp + 30 days;
+        vm.prank(cm);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), lockExpiry);
+
+        vm.warp(lockExpiry + 1);
+
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(dexTarget, false);
+        assertFalse(swapper.whitelistedTargets(dexTarget), "target should be de-whitelisted");
+    }
+
+    function test_setSwapTargetWhitelist_AllowsWhitelistingWhileLocked() public {
+        _setupRoute();
+        address cm = _setupClaimManager();
+        vm.prank(cm);
+        swapper.lockRouteUntil(address(tokenIn), address(tokenOut), block.timestamp + 30 days);
+
+        address newTarget = address(new MockDEX());
+        vm.prank(admin);
+        swapper.setSwapTargetWhitelist(newTarget, true);
+        assertTrue(swapper.whitelistedTargets(newTarget), "new target should be whitelisted");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                             GET SWAP ROUTE
     //////////////////////////////////////////////////////////////*/
 
@@ -1296,6 +1533,12 @@ contract SwapperTest is Test {
         bytes memory storedCalldata = abi.encodeWithSelector(MockDEX.swap.selector, address(tokenIn), address(tokenOut));
         vm.prank(swapManager);
         swapper.setSwapRoute(address(tokenIn), address(tokenOut), dexTarget, true, storedCalldata);
+    }
+
+    function _setupClaimManager() internal returns (address cm) {
+        cm = makeAddr("claimManager");
+        vm.prank(admin);
+        swapper.setClaimManager(cm);
     }
 
     function _createSwapParams(
