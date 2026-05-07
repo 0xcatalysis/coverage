@@ -30,6 +30,8 @@ contract PolicyManager is
     ReentrancyGuard,
     IPolicyManager
 {
+    // ── Audit-baseline state (do not reorder)
+    // ──────────────────────────────────
     address public override stakeManager;
     address public override claimManager;
     address public override coverPoolFactory;
@@ -40,6 +42,9 @@ contract PolicyManager is
     mapping(bytes32 policyCommit => bool registered) private _registeredPolicyCommits;
     mapping(address token => bool supported) public override supportedPayoutTokens;
     address public override chainlinkPriceFeed;
+
+    /// @dev Reserved storage gap for future upgrades (no net new slots beyond audit baseline).
+    uint256[50] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -190,11 +195,12 @@ contract PolicyManager is
             beneficiary: beneficiary,
             claimer: claimer,
             payoutToken: payoutToken,
-            curator: curator,
+            _deprecated_coverageAmount: 0,
             duration: duration,
             policyId: policyId,
             status: PolicyStatus.Created,
-            bindPolicyHook: bindPolicyHook
+            bindPolicyHook: bindPolicyHook,
+            curator: curator
         });
 
         emit CoverageRequested(policyId, pool, msg.sender, beneficiary, claimer, duration);
@@ -283,12 +289,12 @@ contract PolicyManager is
             maturityTime: uint32(block.timestamp) + draft.duration,
             payoutToken: request.payoutToken,
             pool: quote.pool,
-            curator: draft.curator,
             coverageLimit: boundPolicy.coverageLimit,
             specId: boundPolicy.specId,
             termsHash: boundPolicy.termsHash,
             policyCommit: policyCommit,
-            premiumDefaulted: false
+            premiumDefaulted: false,
+            curator: draft.curator
         });
 
         _registeredPolicyCommits[policyCommit] = true;

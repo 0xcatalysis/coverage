@@ -35,16 +35,22 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
     );
     uint16 private constant _MAX_POOL_FEE_BPS = 2000; // 20%
 
+    // ── Audit-baseline state (do not reorder)
+    // ──────────────────────────────────
     address public override policyManager;
     address public override stakeManager;
     address public override specRegistry;
     address public override feeRecipient;
-    mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
-
-    mapping(uint96 policyId => BoundPolicy policy) private boundPolicies;
     uint16 private _poolFeeBps;
+    mapping(bytes32 policyCommit => bool bound) public override boundPolicyCommits;
+    mapping(uint96 policyId => BoundPolicy policy) private boundPolicies;
+
+    // ── Appended after audit baseline (do not insert variables above this line) ─
     uint16 private _pendingPoolFeeBps;
     uint256 private _pendingPoolFeeBpsTimestamp;
+
+    /// @dev Reserved storage gap for future upgrades (50 total − 2 appended slots).
+    uint256[48] private __gap;
 
     /**
      * @dev Ensures incoming quote matches pool metadata and timing constraints before processing.
@@ -324,7 +330,9 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
             specId: quote.specId,
             termsHash: quote.termsHash,
             coverageLimit: quote.coverageLimit,
-            beneficiary: quote.beneficiary
+            beneficiary: quote.beneficiary,
+            _deprecated_startTime: 0,
+            _deprecated_maturityTime: 0
         });
 
         boundPolicies[policyId] = boundPolicy;

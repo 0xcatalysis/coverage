@@ -1204,12 +1204,12 @@ contract ClaimManagerTest is Test {
                 maturityTime: 0,
                 payoutToken: address(0),
                 pool: address(0),
-                curator: address(0),
                 coverageLimit: 0,
                 specId: bytes32(0),
                 termsHash: bytes32(0),
                 policyCommit: bytes32(0),
-                premiumDefaulted: false
+                premiumDefaulted: false,
+                curator: address(0)
             })
         );
 
@@ -3867,12 +3867,12 @@ contract ClaimManagerTest is Test {
             maturityTime: uint32(block.timestamp + COVERAGE_DURATION),
             payoutToken: payoutToken,
             pool: pool,
-            curator: operator,
             coverageLimit: COVERAGE_LIMIT,
             specId: keccak256("MorphoSpec"),
             termsHash: keccak256("terms-hash"),
             policyCommit: policyCommit,
-            premiumDefaulted: false
+            premiumDefaulted: false,
+            curator: operator
         });
     }
 

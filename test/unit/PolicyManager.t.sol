@@ -1875,7 +1875,9 @@ contract MockCoverPool {
             specId: keccak256("spec-id"),
             termsHash: keccak256("terms-hash"),
             coverageLimit: 1_000_000e18,
-            beneficiary: address(0x1)
+            beneficiary: address(0x1),
+            _deprecated_startTime: 0,
+            _deprecated_maturityTime: 0
         });
     }
 

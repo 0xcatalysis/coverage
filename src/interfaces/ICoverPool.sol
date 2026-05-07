@@ -53,6 +53,14 @@ interface ICoverPool is IAccessControl, IAccessControlDefaultAdminRules, IERC531
         uint256 coverageLimit;
         /// @notice Destination address for potential claim payouts (the policy holder).
         address beneficiary;
+        /// @custom:oz-renamed-from startTime
+        /// @dev Deprecated. Prefer PolicyMetadata.startTime; retained only so existing
+        ///      per-policy records remain decodable after upgrade.
+        uint32 _deprecated_startTime;
+        /// @custom:oz-renamed-from maturityTime
+        /// @dev Deprecated. Prefer PolicyMetadata.maturityTime; retained only so existing
+        ///      per-policy records remain decodable after upgrade.
+        uint32 _deprecated_maturityTime;
     }
 
     /**

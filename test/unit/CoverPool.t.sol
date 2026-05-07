@@ -1318,11 +1318,12 @@ contract MockPolicyManager {
             beneficiary: address(0),
             claimer: address(0),
             payoutToken: address(0),
-            curator: address(0),
+            _deprecated_coverageAmount: 0,
             duration: 30 days,
             policyId: policyId,
             status: IPolicyManager.PolicyStatus.Created,
-            bindPolicyHook: address(1)
+            bindPolicyHook: address(1),
+            curator: address(0)
         });
     }
 

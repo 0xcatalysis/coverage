@@ -53,11 +53,17 @@ contract ClaimManager is
     address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     uint32 private constant _SWAP_DEADLINE_BUFFER = 15 minutes;
 
+    // ── Audit-baseline state (do not reorder)
+    // ──────────────────────────────────
     address public override specRegistry;
     address public override slashingManager;
     address public override swapper;
     address public override policyManager;
-    address public override premiumManager;
+
+    /// @custom:oz-renamed-from chainlinkPriceFeed
+    /// @dev Deprecated. Slot retained for upgrade layout compatibility; the value is stale
+    ///      and must not be read by new logic. Future re-use only via ERC-7201 namespacing.
+    address private _deprecated_chainlinkPriceFeed;
     uint16 public override maxSwapSlippageBps;
 
     mapping(uint96 policyId => mapping(uint256 claimId => ClaimRecord)) private _claims;
@@ -65,9 +71,12 @@ contract ClaimManager is
     mapping(uint96 policyId => bool) private _claimApprovalRequired;
     mapping(uint96 policyId => mapping(bytes32 evidenceHash => bool used)) private _usedEvidenceHashes;
 
-    // --- Storage layout V2 (appended; do not insert variables above this line) ---
+    // ── Appended after audit baseline (do not insert variables above this line) ─
+    address public override premiumManager;
     address public override chainlinkPriceFeed;
     uint16 public override priceDeviationToleranceBps;
+
+    /// @dev Reserved storage gap for future upgrades (50 total − 2 appended slots).
     // slither-disable-next-line unused-state
     uint256[48] private __gap;
 

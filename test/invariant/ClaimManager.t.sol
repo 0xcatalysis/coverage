@@ -280,12 +280,12 @@ contract ClaimManagerInvariantTest is StdInvariant, Test {
                 maturityTime: MATURITY,
                 payoutToken: address(payoutToken),
                 pool: address(pool),
-                curator: poolOperator,
                 coverageLimit: COVERAGE_LIMIT,
                 specId: keccak256("spec"),
                 termsHash: keccak256("terms"),
                 policyCommit: keccak256("commit"),
-                premiumDefaulted: false
+                premiumDefaulted: false,
+                curator: poolOperator
             })
         );
     }

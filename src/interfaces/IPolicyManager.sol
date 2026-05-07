@@ -36,6 +36,10 @@ interface IPolicyManager is IAccessControl {
         address claimer;
         /// @notice ERC20 token used for claim payouts.
         address payoutToken;
+        /// @custom:oz-renamed-from coverageAmount
+        /// @dev Deprecated. Coverage notional now lives in the signed Quote;
+        ///      slot retained only for record-layout compatibility.
+        uint256 _deprecated_coverageAmount;
         /// @notice Coverage duration requested (in seconds).
         uint32 duration;
         /// @notice Policy identifier (1:1 with committee).
@@ -70,8 +74,6 @@ interface IPolicyManager is IAccessControl {
         address payoutToken;
         /// @notice Address of the pool providing coverage.
         address pool;
-        /// @notice Pool curator snapshotted at request time and registered as committee operator.
-        address curator;
         /// @notice Coverage notional allocated from the pool.
         uint256 coverageLimit;
         /// @notice Spec identifier for parametric claim evaluation (e.g., MorphoSpec, MapleSpec).
@@ -82,6 +84,9 @@ interface IPolicyManager is IAccessControl {
         bytes32 policyCommit;
         /// @notice Whether the policyholder is in premium default; set by the pool curator.
         bool premiumDefaulted;
+        /// @notice Pool curator snapshotted at request time and registered as committee operator.
+        /// @dev Appended after audit baseline; do not reorder above fields.
+        address curator;
     }
 
     /**

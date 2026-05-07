@@ -37,13 +37,19 @@ contract PremiumManager is
     uint16 private constant _MAX_FEE_BPS = 5000; // 50%
     uint256 private constant _MIN_DISTRIBUTION_AMOUNT = 1000;
 
+    // ── Audit-baseline state (do not reorder)
+    // ──────────────────────────────────
     address public override rewardsManager;
     address public override platformTreasury;
     uint16 public override platformFeeBps;
 
+    uint256 private _distributionNonce;
+
+    // ── Appended after audit baseline (do not insert variables above this line) ─
     EnumerableSet.AddressSet private _approvedPremiumTokens;
 
-    uint256 private _distributionNonce;
+    /// @dev Reserved storage gap for future upgrades (50 total − 2 appended slots).
+    uint256[48] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {

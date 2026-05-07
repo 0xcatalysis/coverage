@@ -13,8 +13,9 @@ import {Script, console2} from "forge-std/Script.sol";
  * @dev Subclasses implement three pure methods that supply the contract-specific constants;
  *      network-specific scripts then override `getUpgradeConfig` as before.
  *
- *      WARNING: Storage layout checks are skipped. Manually verify layout before
- *      upgrading to avoid corrupting proxy state.
+ *      Storage layout validation is ENABLED by default. The OZ Upgrades plugin will reject upgrades
+ *      that break existing slot ordering. Pass SKIP_STORAGE_CHECK=1 to override in emergencies
+ *      (a warning is logged).
  *
  *      Required environment variables:
  *        - DEPLOYER_ADDRESS: Public address of the keystore signer (used with --keystore flag).
@@ -24,6 +25,8 @@ import {Script, console2} from "forge-std/Script.sol";
  *        - TIMELOCK (optional): TimelockController address. When set, the script deploys the new
  *                 implementation and outputs schedule/execute calldata for Safe TX Builder instead
  *                 of broadcasting the upgrade directly.
+ *        - SKIP_STORAGE_CHECK (optional): Set to 1 to bypass OZ storage layout validation.
+ *                 Use only in emergencies. A noisy warning is printed when set.
  */
 abstract contract UpgradeBase is Script {
     /**
@@ -131,7 +134,11 @@ abstract contract UpgradeBase is Script {
 
         Options memory opts;
         opts.unsafeAllow = "constructor";
-        opts.unsafeSkipStorageCheck = true;
+
+        if (vm.envOr("SKIP_STORAGE_CHECK", false)) {
+            opts.unsafeSkipStorageCheck = true;
+            console2.log("WARNING: SKIP_STORAGE_CHECK=1 -- storage layout validation is DISABLED for this upgrade.");
+        }
 
         Upgrades.upgradeProxy(result.proxy, contractArtifact(), upgradeCalldata(), opts);
 
@@ -165,7 +172,12 @@ abstract contract UpgradeBase is Script {
 
         Options memory opts;
         opts.unsafeAllow = "constructor";
-        opts.unsafeSkipStorageCheck = true;
+
+        if (vm.envOr("SKIP_STORAGE_CHECK", false)) {
+            opts.unsafeSkipStorageCheck = true;
+            console2.log("WARNING: SKIP_STORAGE_CHECK=1 -- storage layout validation is DISABLED for this upgrade.");
+        }
+
         address newImpl = Upgrades.deployImplementation(contractArtifact(), opts);
 
         vm.stopBroadcast();
