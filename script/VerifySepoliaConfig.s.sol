@@ -42,7 +42,7 @@ interface IOraclePriceFeedView {
 }
 
 interface IAdapterView {
-    function chainlinkPriceFeed() external view returns (address);
+    function oraclePriceFeed() external view returns (address);
 }
 
 interface IPolicyManagerView {
@@ -198,7 +198,7 @@ contract VerifySepoliaConfig is Script {
         _check(
             "SSPRouter.getAdapter(EIGENLAYER)", ISSPRouterView(SSP_ROUTER).getAdapter(MODULE_EIGENLAYER), EIGEN_ADAPTER
         );
-        _check("EigenAdapter.chainlinkPriceFeed", IAdapterView(EIGEN_ADAPTER).chainlinkPriceFeed(), ORACLE_PRICE_FEED);
+        _check("EigenAdapter.oraclePriceFeed", IAdapterView(EIGEN_ADAPTER).oraclePriceFeed(), ORACLE_PRICE_FEED);
 
         console2.log("");
     }
