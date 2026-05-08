@@ -10,11 +10,11 @@ import {Deploy} from "./Deploy.s.sol";
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
  *      - STAKE_MANAGER: Address of StakeManager from Catalysis Core
  *      - REWARDS_MANAGER: Address of RewardsManager from Catalysis Core
- *      - CHAINLINK_PRICE_FEED: Address of ChainlinkPriceFeed
+ *      - ORACLE_PRICE_FEED: Address of OraclePriceFeed
  *
  *      Usage:
  *        SLASHING_MANAGER=0x... STAKE_MANAGER=0x... REWARDS_MANAGER=0x...
- * CHAINLINK_PRICE_FEED=0x... \
+ * ORACLE_PRICE_FEED=0x... \
  *          forge script script/DeployAnvil.s.sol --broadcast --rpc-url http://localhost:8545
  */
 contract DeployAnvil is Deploy {
@@ -43,7 +43,7 @@ contract DeployAnvil is Deploy {
         return ExternalConfig({
             nativeWrapper: WETH_ANVIL,
             slashingManager: vm.envAddress("SLASHING_MANAGER"),
-            chainlinkPriceFeed: vm.envAddress("CHAINLINK_PRICE_FEED"),
+            oraclePriceFeed: vm.envAddress("ORACLE_PRICE_FEED"),
             stakeManager: vm.envAddress("STAKE_MANAGER"),
             rewardsManager: vm.envAddress("REWARDS_MANAGER")
         });

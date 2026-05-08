@@ -49,9 +49,9 @@ contract CoveredVaultWrapperForkTest is ForkCoverageSetup {
         _advancePolicyId();
         _wireCoverageToLiveCore();
 
-        // USDC feed is not registered on live ChainlinkPriceFeed at fork block; WETH is.
-        _registerChainlinkFeedIfMissing(WETH, ETH_USD_AGGREGATOR, 86_400);
-        _registerChainlinkFeedIfMissing(USDC, USDC_USD_AGGREGATOR, 86_400);
+        // USDC feed is not registered on live OraclePriceFeed at fork block; WETH is.
+        _registerPriceFeedIfMissing(WETH, ETH_USD_AGGREGATOR, 86_400);
+        _registerPriceFeedIfMissing(USDC, USDC_USD_AGGREGATOR, 86_400);
         _whitelistPayoutToken(USDC);
 
         _deploySpec();
@@ -83,7 +83,7 @@ contract CoveredVaultWrapperForkTest is ForkCoverageSetup {
             coverPool, address(wrapper), address(wrapper), USDC, 2 * 365 days, address(wrapper)
         );
 
-        // Fund EigenLayer stake before binding (binding checks stake >= coverageLimit via ChainlinkPriceFeed).
+        // Fund EigenLayer stake before binding (binding checks stake >= coverageLimit via OraclePriceFeed).
         address[] memory vaults = _discoverNewEigenLayerVaults(vaultCountBefore);
         require(vaults.length > 0, "no new EigenLayer vaults deployed for committee");
         for (uint256 i = 0; i < vaults.length; i++) {

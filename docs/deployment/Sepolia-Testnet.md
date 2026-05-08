@@ -63,7 +63,7 @@
 - Proxy address: [0xe6168092892E545701D92BEe10149178bE0EEDF4](https://sepolia.etherscan.io/address/0xe6168092892E545701D92BEe10149178bE0EEDF4)
 - Implementation address: [0xfaffe50bdccdecffddfdaf812ac8906765bfb4f6](https://sepolia.etherscan.io/address/0xfaffe50bdccdecffddfdaf812ac8906765bfb4f6)
 
-### ChainlinkPriceFeed
+### OraclePriceFeed
 
 - Proxy address: [0x57F750E3B8e095A5b3AE96030F0cac5dFe2f8A16](https://sepolia.etherscan.io/address/0x57F750E3B8e095A5b3AE96030F0cac5dFe2f8A16)
 - Implementation address: [0x99bba889b9b4df3d62e1ec8f9e03c48b97b580f6](https://sepolia.etherscan.io/address/0x99bba889b9b4df3d62e1ec8f9e03c48b97b580f6)

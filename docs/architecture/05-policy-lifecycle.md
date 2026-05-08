@@ -103,7 +103,7 @@ Entry: Curator (pool admin) calls `CoverPool.bindPolicyForRequest(...)`.
 - request fields (`buyer`, `beneficiary`, `claimer`, `payoutToken`) match the stored draft,
 - `policyId` matches `quote.policyId`,
 - committee has at least one vault,
-- committee total stake (USD) >= `coverageLimit` (payoutToken-denominated) converted to USD via `ChainlinkPriceFeed.getUSDValue`,
+- committee total stake (USD) >= `coverageLimit` (payoutToken-denominated) converted to USD via `OraclePriceFeed.getUSDValue`,
 - policy commit is unique.
 
 Note: quote expiry and EIP-712 signature verification are performed exclusively in `CoverPool._verifyQuote`; `PolicyManager.bindPolicy` does not re-verify the signature even though the `BindPolicyRequest` struct carries the `signature` field.

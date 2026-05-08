@@ -150,10 +150,10 @@ interface IClaimManager is IAccessControl {
     event PremiumManagerSet(address indexed premiumManager);
 
     /**
-     * @notice Emitted when the Chainlink price feed address is updated.
-     * @param chainlinkPriceFeed New ChainlinkPriceFeed address.
+     * @notice Emitted when the oracle price feed address is updated.
+     * @param oraclePriceFeed New OraclePriceFeed address.
      */
-    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed);
+    event OraclePriceFeedSet(address indexed oraclePriceFeed);
 
     /**
      * @notice Emitted when the price deviation tolerance is updated.
@@ -207,7 +207,7 @@ interface IClaimManager is IAccessControl {
     event TokensRecovered(address indexed token, address indexed to, uint256 amount);
 
     /**
-     * @notice Emitted when a cross-token vault is excluded from slashing because the Chainlink-anchored
+     * @notice Emitted when a cross-token vault is excluded from slashing because the oracle-anchored
      *         proportional slash amount rounds to zero after slippage inflation (dust vault).
      * @dev Fires only from the proportional-rounding branch — not from an unavailable quote or oracle
      *      (those now revert with `QuoteUnavailable` or `OracleUnavailable` respectively).
@@ -344,8 +344,8 @@ interface IClaimManager is IAccessControl {
     error QuoteUnavailable(address collateralToken, address payoutToken);
 
     /**
-     * @notice Reverts when a Chainlink fair value cannot be computed for a cross-token collateral leg.
-     *         This occurs when: the ClaimManager's chainlinkPriceFeed is unset, a feed is missing for
+     * @notice Reverts when a fair value cannot be computed for a cross-token collateral leg.
+     *         This occurs when: the ClaimManager's oraclePriceFeed is unset, a feed is missing for
      *         one of the tokens, the feed data is stale, or the USD/token conversion yields zero.
      * @param tokenIn Collateral token address (or NATIVE_ETH sentinel).
      * @param tokenOut Payout token address (or NATIVE_ETH sentinel).
@@ -353,16 +353,16 @@ interface IClaimManager is IAccessControl {
     error OracleUnavailable(address tokenIn, address tokenOut);
 
     /**
-     * @notice Reverts when the DEX spot quote deviates from the Chainlink fair value by more than
+     * @notice Reverts when the DEX spot quote deviates from the oracle fair value by more than
      *         the configured `priceDeviationToleranceBps`, indicating a manipulated or thin pool.
      * @param tokenIn Collateral token address.
      * @param tokenOut Payout token address.
      * @param dexQuote Spot quote returned by the DEX route.
-     * @param chainlinkFair Chainlink-derived fair value for the same amount.
+     * @param oracleFair Oracle-derived fair value for the same amount.
      * @param deviationBps Actual deviation in basis points.
      */
     error QuoteDeviatesFromOracle(
-        address tokenIn, address tokenOut, uint256 dexQuote, uint256 chainlinkFair, uint256 deviationBps
+        address tokenIn, address tokenOut, uint256 dexQuote, uint256 oracleFair, uint256 deviationBps
     );
 
     /**
@@ -552,33 +552,33 @@ interface IClaimManager is IAccessControl {
      * @notice Initializes V2 state atomically during a UUPS upgrade via upgradeToAndCall.
      * @dev Uses OpenZeppelin's `reinitializer(2)` pattern. Must be called exactly once, embedded in the
      *      upgradeToAndCall calldata. For fresh deployments, call immediately after `initialize`.
-     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract.
-     * @param priceDeviationToleranceBps_ Maximum allowed deviation between DEX quote and Chainlink fair
+     * @param oraclePriceFeed_ Address of the OraclePriceFeed contract.
+     * @param priceDeviationToleranceBps_ Maximum allowed deviation between DEX quote and oracle fair
      *        value, in basis points. Must be <= 1000 (10%).
      */
-    function initializeV2(address chainlinkPriceFeed_, uint16 priceDeviationToleranceBps_) external;
+    function initializeV2(address oraclePriceFeed_, uint16 priceDeviationToleranceBps_) external;
 
     /**
-     * @notice Sets the Chainlink price feed address used for cross-token claim valuation.
+     * @notice Sets the oracle price feed address used for cross-token claim valuation.
      * @dev Requires DEFAULT_ADMIN_ROLE.
-     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed contract. Must be non-zero.
+     * @param oraclePriceFeed_ Address of the OraclePriceFeed contract. Must be non-zero.
      */
-    function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
+    function setOraclePriceFeed(address oraclePriceFeed_) external;
 
     /**
-     * @notice Sets the maximum allowed deviation between DEX quote and Chainlink fair value.
+     * @notice Sets the maximum allowed deviation between DEX quote and oracle fair value.
      * @dev Requires DEFAULT_ADMIN_ROLE. Must be <= 1000 bps (10%).
      * @param priceDeviationToleranceBps_ Tolerance in basis points (e.g. 300 = 3%).
      */
     function setPriceDeviationToleranceBps(uint16 priceDeviationToleranceBps_) external;
 
     /**
-     * @notice Returns the Chainlink price feed address used for cross-token claim valuation.
+     * @notice Returns the oracle price feed address used for cross-token claim valuation.
      */
-    function chainlinkPriceFeed() external view returns (address);
+    function oraclePriceFeed() external view returns (address);
 
     /**
-     * @notice Returns the maximum allowed deviation between DEX spot quote and Chainlink fair value,
+     * @notice Returns the maximum allowed deviation between DEX spot quote and oracle fair value,
      *         in basis points. Cross-token claims revert with `QuoteDeviatesFromOracle` if exceeded.
      */
     function priceDeviationToleranceBps() external view returns (uint16);

@@ -19,7 +19,7 @@ graph LR
     SW[Swapper]
     UV3[UniswapV3Adapter]
     CVW[CoveredVaultWrapper]
-    PF[ChainlinkPriceFeed]
+    PF[OraclePriceFeed]
 
     CPF --> CP
     PM --> CP
@@ -193,7 +193,7 @@ Note: `PolicyManager` stores a `claimManager` address for reference but does **n
    - otherwise: swap through `Swapper` using `quoteSwap`-derived `amountOutMin`; surplus forwarded similarly.
    - Surplus routing is wrapped in a `try`/`catch`; failures emit `SwapSurplusDistributionFailed` and leave tokens in the contract for recovery via `recoverTokens`.
 
-No USD conversion or `ChainlinkPriceFeed` is used in the claim execution path.
+No USD conversion or `OraclePriceFeed` is used in the claim execution path.
 
 ### 6) SpecRegistry
 
@@ -309,7 +309,7 @@ Coverage contracts rely on Core interfaces:
 - `IStakeManager` for committee create/operator/vault and stake reads,
 - `IRewardsManager` for reward fan-out trigger,
 - `ISlashingManager` for committee slashing execution,
-- `IChainlinkPriceFeed` for stake-to-USD conversion at bind time (stake sufficiency check in `PolicyManager`).
+- `IOraclePriceFeed` for stake-to-USD conversion at bind time (stake sufficiency check in `PolicyManager`).
 
 ## Next Steps
 

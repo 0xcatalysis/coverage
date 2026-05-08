@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IChainlinkPriceFeed} from "coverage/interfaces/IChainlinkPriceFeed.sol";
+import {IOraclePriceFeed} from "coverage/interfaces/IOraclePriceFeed.sol";
 import {ISpec} from "coverage/interfaces/ISpec.sol";
 import {IBindPolicyHook} from "coverage/interfaces/IBindPolicyHook.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
@@ -63,9 +63,9 @@ contract MockStakeManager {
     }
 }
 
-/// @title MockChainlinkPriceFeedDefi
+/// @title MockOraclePriceFeedDefi
 /// @notice Returns input amount as USD value (1:1 identity) so stake checks always pass when stakes >= coverageLimit
-contract MockChainlinkPriceFeedDefi is IChainlinkPriceFeed {
+contract MockOraclePriceFeedDefi is IOraclePriceFeed {
     function getUSDValue(address, uint256 amount) external pure override returns (uint256) {
         return amount;
     }

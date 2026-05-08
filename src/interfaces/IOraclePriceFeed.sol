@@ -2,10 +2,10 @@
 pragma solidity 0.8.28;
 
 /**
- * @title IChainlinkPriceFeed
- * @notice Interface for Catalysis Core's ChainlinkPriceFeed that converts token amounts to USD values.
+ * @title IOraclePriceFeed
+ * @notice Interface for Catalysis Core's OraclePriceFeed that converts token amounts to USD values.
  */
-interface IChainlinkPriceFeed {
+interface IOraclePriceFeed {
     /**
      * @notice Returns the USD value of a token amount.
      * @param token ERC20 token address.
@@ -23,7 +23,7 @@ interface IChainlinkPriceFeed {
     function getTokenAmount(address token, uint256 amountUSD) external view returns (uint256);
 
     /**
-     * @notice Returns whether a Chainlink price feed is registered for the given token.
+     * @notice Returns whether a price feed is registered for the given token.
      * @param token ERC20 token address.
      * @return True if a price feed exists for the token.
      */

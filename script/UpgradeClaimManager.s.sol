@@ -18,8 +18,8 @@ import {UpgradeBase} from "./UpgradeBase.s.sol";
  *      Environment Variables:
  *        - PRIVATE_KEY: Deployer private key with DEFAULT_ADMIN_ROLE on ClaimManager
  *        - CLAIM_MANAGER_PROXY: Address of the deployed ClaimManager proxy (required)
- *        - CHAINLINK_PRICE_FEED: Address of the ChainlinkPriceFeed contract (required)
- *        - PRICE_DEVIATION_TOLERANCE_BPS: Max DEX-vs-Chainlink deviation tolerance in bps
+ *        - ORACLE_PRICE_FEED: Address of the OraclePriceFeed contract (required)
+ *        - PRICE_DEVIATION_TOLERANCE_BPS: Max DEX-vs-oracle deviation tolerance in bps
  *                                         (optional, defaults to 300 = 3%)
  */
 abstract contract UpgradeClaimManager is UpgradeBase {
@@ -48,9 +48,9 @@ abstract contract UpgradeClaimManager is UpgradeBase {
      *      the V2 storage fields in the same transaction as the implementation swap.
      */
     function upgradeCalldata() internal view override returns (bytes memory) {
-        address chainlinkPriceFeed = vm.envAddress("CHAINLINK_PRICE_FEED");
-        require(chainlinkPriceFeed != address(0), "CHAINLINK_PRICE_FEED required");
+        address oraclePriceFeed = vm.envAddress("ORACLE_PRICE_FEED");
+        require(oraclePriceFeed != address(0), "ORACLE_PRICE_FEED required");
         uint16 toleranceBps = SafeCast.toUint16(vm.envOr("PRICE_DEVIATION_TOLERANCE_BPS", uint256(300)));
-        return abi.encodeCall(ClaimManager.initializeV2, (chainlinkPriceFeed, toleranceBps));
+        return abi.encodeCall(ClaimManager.initializeV2, (oraclePriceFeed, toleranceBps));
     }
 }

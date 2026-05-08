@@ -11,13 +11,13 @@ import {Deploy} from "./Deploy.s.sol";
  *      - SLASHING_MANAGER: Address of SlashingManager from Catalysis Core
  *      - STAKE_MANAGER: Address of StakeManager from Catalysis Core
  *      - REWARDS_MANAGER: Address of RewardsManager from Catalysis Core
- *      - CHAINLINK_PRICE_FEED: Address of ChainlinkPriceFeed
+ *      - ORACLE_PRICE_FEED: Address of OraclePriceFeed
  *      - PAYOUT_TOKENS: Comma-separated payout token addresses to whitelist on PolicyManager
  *      - PREMIUM_TOKENS: Comma-separated premium token addresses to approve on PremiumManager
  *
  *      Usage:
  *        SLASHING_MANAGER=0x... STAKE_MANAGER=0x... REWARDS_MANAGER=0x...
- *        CHAINLINK_PRICE_FEED=0x... PAYOUT_TOKENS=0x... PREMIUM_TOKENS=0x... \
+ *        ORACLE_PRICE_FEED=0x... PAYOUT_TOKENS=0x... PREMIUM_TOKENS=0x... \
  *          forge script script/DeploySepolia.s.sol --broadcast --rpc-url sepolia --verify
  */
 contract DeploySepolia is Deploy {
@@ -42,7 +42,7 @@ contract DeploySepolia is Deploy {
         return ExternalConfig({
             nativeWrapper: WETH_SEPOLIA,
             slashingManager: vm.envAddress("SLASHING_MANAGER"),
-            chainlinkPriceFeed: vm.envAddress("CHAINLINK_PRICE_FEED"),
+            oraclePriceFeed: vm.envAddress("ORACLE_PRICE_FEED"),
             stakeManager: vm.envAddress("STAKE_MANAGER"),
             rewardsManager: vm.envAddress("REWARDS_MANAGER")
         });

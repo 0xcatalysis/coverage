@@ -122,8 +122,8 @@ contract FuzzSwapper {
     }
 }
 
-/// @dev 1:1 Chainlink feed mock for fuzz tests. All tokens have a feed; getUSDValue and getTokenAmount are 1:1.
-contract FuzzChainlinkPriceFeed {
+/// @dev 1:1 oracle feed mock for fuzz tests. All tokens have a feed; getUSDValue and getTokenAmount are 1:1.
+contract FuzzOraclePriceFeed {
     function hasPriceFeed(address) external pure returns (bool) {
         return true;
     }
@@ -175,7 +175,7 @@ contract ClaimManagerFuzzTest is Test {
     FuzzCoverPool internal pool;
     FuzzToken internal collateralToken;
     FuzzToken internal payoutToken;
-    FuzzChainlinkPriceFeed internal chainlinkFeed;
+    FuzzOraclePriceFeed internal oracleFeed;
 
     address internal admin = makeAddr("admin");
     address internal claimer = makeAddr("claimer");
@@ -195,7 +195,7 @@ contract ClaimManagerFuzzTest is Test {
         pool = new FuzzCoverPool(operator);
         collateralToken = new FuzzToken("Collateral", "COL");
         payoutToken = new FuzzToken("Payout", "PAY");
-        chainlinkFeed = new FuzzChainlinkPriceFeed();
+        oracleFeed = new FuzzOraclePriceFeed();
 
         ClaimManager impl = new ClaimManager();
         address proxy = address(
@@ -208,7 +208,7 @@ contract ClaimManagerFuzzTest is Test {
             )
         );
         claimManager = ClaimManager(payable(proxy));
-        claimManager.initializeV2(address(chainlinkFeed), 300);
+        claimManager.initializeV2(address(oracleFeed), 300);
 
         vm.warp(START);
         _setupPolicy(COVERAGE_LIMIT());

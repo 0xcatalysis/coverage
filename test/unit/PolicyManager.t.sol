@@ -36,7 +36,7 @@ contract PolicyManagerTest is Test {
     MockClaimManager internal mockClaimManager;
     MockCoverPoolFactory internal mockCoverPoolFactory;
     MockBindPolicyHook internal defaultHook;
-    MockChainlinkPriceFeed internal mockPriceFeed;
+    MockOraclePriceFeed internal mockPriceFeed;
 
     bytes32 internal policyCommit;
     bytes32 internal specId;
@@ -77,7 +77,7 @@ contract PolicyManagerTest is Test {
         mockClaimManager = new MockClaimManager();
         mockCoverPoolFactory = new MockCoverPoolFactory();
         mockCoverPoolFactory.registerPool(address(coverPool));
-        mockPriceFeed = new MockChainlinkPriceFeed();
+        mockPriceFeed = new MockOraclePriceFeed();
 
         policyCommit = keccak256("policy-commit");
         specId = keccak256("spec-id");
@@ -161,7 +161,7 @@ contract PolicyManagerTest is Test {
         );
     }
 
-    function test_initialize_WhenChainlinkPriceFeedZero_Reverts() public {
+    function test_initialize_WhenOraclePriceFeedZero_Reverts() public {
         PolicyManager implementation = new PolicyManager();
         PolicyManager freshManager = PolicyManager(address(new ERC1967Proxy(address(implementation), "")));
         address[] memory empty = new address[](0);
@@ -505,9 +505,9 @@ contract PolicyManagerTest is Test {
         mockStakeManager.setCommitteeVaults(committeeId, vaults, COVERAGE_LIMIT);
         mockStakeManager.setOperatorCommitteeStake(committeeId, COVERAGE_LIMIT);
 
-        MockChainlinkPriceFeedZero zeroFeed = new MockChainlinkPriceFeedZero(request.payoutToken);
+        MockOraclePriceFeedZero zeroFeed = new MockOraclePriceFeedZero(request.payoutToken);
         vm.prank(admin);
-        policyManager.setChainlinkPriceFeed(address(zeroFeed));
+        policyManager.setOraclePriceFeed(address(zeroFeed));
 
         ICoverPool.BoundPolicy memory boundPolicy = _getBoundPolicy(request);
         vm.expectRevert(IPolicyManager.ZeroCoverageLimitUSD.selector);
@@ -1076,10 +1076,10 @@ contract PolicyManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                      SET CHAINLINK PRICE FEED
+                      SET ORACLE PRICE FEED
     //////////////////////////////////////////////////////////////*/
 
-    function test_setChainlinkPriceFeed_WhenCallerNotAdmin_Reverts() public {
+    function test_setOraclePriceFeed_WhenCallerNotAdmin_Reverts() public {
         address newFeed = makeAddr("newFeed");
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -1087,25 +1087,25 @@ contract PolicyManagerTest is Test {
             )
         );
         vm.prank(buyer);
-        policyManager.setChainlinkPriceFeed(newFeed);
+        policyManager.setOraclePriceFeed(newFeed);
     }
 
-    function test_setChainlinkPriceFeed_WhenAddressZero_Reverts() public {
+    function test_setOraclePriceFeed_WhenAddressZero_Reverts() public {
         vm.expectRevert(IPolicyManager.ZeroAddress.selector);
         vm.prank(admin);
-        policyManager.setChainlinkPriceFeed(address(0));
+        policyManager.setOraclePriceFeed(address(0));
     }
 
-    function test_setChainlinkPriceFeed_WhenValidAddress_UpdatesStateAndEmits() public {
+    function test_setOraclePriceFeed_WhenValidAddress_UpdatesStateAndEmits() public {
         address newFeed = makeAddr("newFeed");
 
         vm.expectEmit(true, true, true, true);
-        emit IPolicyManager.ChainlinkPriceFeedSet(newFeed);
+        emit IPolicyManager.OraclePriceFeedSet(newFeed);
 
         vm.prank(admin);
-        policyManager.setChainlinkPriceFeed(newFeed);
+        policyManager.setOraclePriceFeed(newFeed);
 
-        assertEq(policyManager.chainlinkPriceFeed(), newFeed, "chainlinkPriceFeed not updated");
+        assertEq(policyManager.oraclePriceFeed(), newFeed, "oraclePriceFeed not updated");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -2099,7 +2099,7 @@ contract MockRevertingHook {
     }
 }
 
-contract MockChainlinkPriceFeed {
+contract MockOraclePriceFeed {
     function getUSDValue(address, uint256 amount) external pure returns (uint256) {
         return amount;
     }
@@ -2109,7 +2109,7 @@ contract MockChainlinkPriceFeed {
     }
 }
 
-contract MockChainlinkPriceFeedZero {
+contract MockOraclePriceFeedZero {
     address public zeroToken;
 
     constructor(address zeroToken_) {

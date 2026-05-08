@@ -176,10 +176,10 @@ interface IPolicyManager is IAccessControl {
     event PayoutTokenSet(address indexed token, bool supported);
 
     /**
-     * @notice Emitted when the ChainlinkPriceFeed dependency is set or updated.
-     * @param chainlinkPriceFeed_ Address of the Chainlink price feed contract.
+     * @notice Emitted when the OraclePriceFeed dependency is set or updated.
+     * @param oraclePriceFeed_ Address of the oracle price feed contract.
      */
-    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed_);
+    event OraclePriceFeedSet(address indexed oraclePriceFeed_);
 
     /**
      * @notice Emitted when a policy's premium default status is updated by the pool curator.
@@ -333,11 +333,11 @@ interface IPolicyManager is IAccessControl {
     function setCoverPoolFactory(address coverPoolFactory_) external;
 
     /**
-     * @notice Sets the ChainlinkPriceFeed contract used for stake validation at bind time.
-     * @dev Requires DEFAULT_ADMIN_ROLE. Emits ChainlinkPriceFeedSet.
-     * @param chainlinkPriceFeed_ Address of the ChainlinkPriceFeed implementation.
+     * @notice Sets the OraclePriceFeed contract used for stake validation at bind time.
+     * @dev Requires DEFAULT_ADMIN_ROLE. Emits OraclePriceFeedSet.
+     * @param oraclePriceFeed_ Address of the OraclePriceFeed implementation.
      */
-    function setChainlinkPriceFeed(address chainlinkPriceFeed_) external;
+    function setOraclePriceFeed(address oraclePriceFeed_) external;
 
     /**
      * @notice Requests coverage from a specified pool (user-facing entrypoint).
@@ -411,9 +411,9 @@ interface IPolicyManager is IAccessControl {
     function coverPoolFactory() external view returns (address);
 
     /**
-     * @notice Returns the configured ChainlinkPriceFeed address.
+     * @notice Returns the configured OraclePriceFeed address.
      */
-    function chainlinkPriceFeed() external view returns (address);
+    function oraclePriceFeed() external view returns (address);
 
     /**
      * @notice Adds or removes a payout token from the supported whitelist.

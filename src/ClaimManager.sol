@@ -9,7 +9,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
+import {IOraclePriceFeed} from "./interfaces/IOraclePriceFeed.sol";
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
@@ -66,7 +66,7 @@ contract ClaimManager is
     mapping(uint96 policyId => mapping(bytes32 evidenceHash => bool used)) private _usedEvidenceHashes;
 
     // --- Storage layout V2 (appended; do not insert variables above this line) ---
-    address public override chainlinkPriceFeed;
+    address public override oraclePriceFeed;
     uint16 public override priceDeviationToleranceBps;
     // slither-disable-next-line unused-state
     uint256[48] private __gap;
@@ -120,14 +120,14 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function initializeV2(address chainlinkPriceFeed_, uint16 priceDeviationToleranceBps_) external reinitializer(2) {
-        require(chainlinkPriceFeed_ != address(0), ZeroAddress());
+    function initializeV2(address oraclePriceFeed_, uint16 priceDeviationToleranceBps_) external reinitializer(2) {
+        require(oraclePriceFeed_ != address(0), ZeroAddress());
         require(
             priceDeviationToleranceBps_ <= _MAX_SETTABLE_DEVIATION_BPS, InvalidDeviationBps(priceDeviationToleranceBps_)
         );
-        chainlinkPriceFeed = chainlinkPriceFeed_;
+        oraclePriceFeed = oraclePriceFeed_;
         priceDeviationToleranceBps = priceDeviationToleranceBps_;
-        emit ChainlinkPriceFeedSet(chainlinkPriceFeed_);
+        emit OraclePriceFeedSet(oraclePriceFeed_);
         emit PriceDeviationToleranceBpsSet(priceDeviationToleranceBps_);
     }
 
@@ -202,10 +202,10 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function setChainlinkPriceFeed(address chainlinkPriceFeed_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(chainlinkPriceFeed_ != address(0), ZeroAddress());
-        chainlinkPriceFeed = chainlinkPriceFeed_;
-        emit ChainlinkPriceFeedSet(chainlinkPriceFeed_);
+    function setOraclePriceFeed(address oraclePriceFeed_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(oraclePriceFeed_ != address(0), ZeroAddress());
+        oraclePriceFeed = oraclePriceFeed_;
+        emit OraclePriceFeedSet(oraclePriceFeed_);
     }
 
     /**
@@ -334,26 +334,18 @@ contract ClaimManager is
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     /**
-     * @notice Computes the Chainlink fair value of `amountIn` units of `tokenIn` denominated in `tokenOut`.
+     * @notice Computes the oracle fair value of `amountIn` units of `tokenIn` denominated in `tokenOut`.
      * @dev Normalizes the NATIVE_ETH sentinel to the Swapper's nativeWrapper before feed lookups, mirroring
      *      Swapper.quoteSwap so a slashed-native-ETH leg priced against a WETH feed works correctly.
-     *      Both external Chainlink calls are wrapped in try/catch so staleness reverts surface as
-     *      OracleUnavailable rather than propagating raw Chainlink errors.
+     *      Both external oracle calls are wrapped in try/catch so staleness reverts surface as
+     *      OracleUnavailable rather than propagating raw oracle errors.
      * @param tokenIn Collateral token (may be the NATIVE_ETH sentinel).
      * @param tokenOut Payout token (may be the NATIVE_ETH sentinel).
      * @param amountIn Amount of tokenIn to value.
-     * @return fair Token-native amount of tokenOut equivalent to amountIn of tokenIn at Chainlink prices.
+     * @return fair Token-native amount of tokenOut equivalent to amountIn of tokenIn at oracle prices.
      */
-    function _chainlinkFairValue(
-        address tokenIn,
-        address tokenOut,
-        uint256 amountIn
-    )
-        private
-        view
-        returns (uint256 fair)
-    {
-        address feed = chainlinkPriceFeed;
+    function _oracleFairValue(address tokenIn, address tokenOut, uint256 amountIn) private view returns (uint256 fair) {
+        address feed = oraclePriceFeed;
         if (feed == address(0)) revert OracleUnavailable(tokenIn, tokenOut);
 
         // Resolve NATIVE_ETH sentinel with a single nativeWrapper() call (at most once per invocation).
@@ -367,7 +359,7 @@ contract ClaimManager is
 
         if (actualIn == actualOut) return amountIn;
 
-        IChainlinkPriceFeed oracle = IChainlinkPriceFeed(feed);
+        IOraclePriceFeed oracle = IOraclePriceFeed(feed);
 
         // slither-disable-next-line calls-loop
         if (!oracle.hasPriceFeed(actualIn) || !oracle.hasPriceFeed(actualOut)) {
@@ -393,27 +385,27 @@ contract ClaimManager is
     }
 
     /**
-     * @notice Validates that a DEX spot quote is within the configured tolerance of the Chainlink fair value.
+     * @notice Validates that a DEX spot quote is within the configured tolerance of the oracle fair value.
      * @dev Reverts with QuoteDeviatesFromOracle when the absolute deviation exceeds priceDeviationToleranceBps.
-     *      Callers must guarantee chainlinkFair > 0 (enforced by _chainlinkFairValue).
+     *      Callers must guarantee oracleFair > 0 (enforced by _oracleFairValue).
      * @param tokenIn Collateral token (used only in the revert payload).
      * @param tokenOut Payout token (used only in the revert payload).
      * @param dexQuote Spot quote returned by the DEX route.
-     * @param chainlinkFair Chainlink-derived fair value for the same amount.
+     * @param oracleFair Oracle-derived fair value for the same amount.
      */
     function _validateDexAgainstOracle(
         address tokenIn,
         address tokenOut,
         uint256 dexQuote,
-        uint256 chainlinkFair
+        uint256 oracleFair
     )
         private
         view
     {
-        uint256 diff = dexQuote > chainlinkFair ? dexQuote - chainlinkFair : chainlinkFair - dexQuote;
-        uint256 deviationBps = (diff * 10_000) / chainlinkFair;
+        uint256 diff = dexQuote > oracleFair ? dexQuote - oracleFair : oracleFair - dexQuote;
+        uint256 deviationBps = (diff * 10_000) / oracleFair;
         if (deviationBps > priceDeviationToleranceBps) {
-            revert QuoteDeviatesFromOracle(tokenIn, tokenOut, dexQuote, chainlinkFair, deviationBps);
+            revert QuoteDeviatesFromOracle(tokenIn, tokenOut, dexQuote, oracleFair, deviationBps);
         }
     }
 
@@ -610,8 +602,8 @@ contract ClaimManager is
 
     /**
      * @notice Computes per-vault token-native slash amounts proportional to each vault's payout-equivalent value.
-     * @dev Two-pass: values each stake via Chainlink fair value (oracle-anchored), then computes proportional
-     *      slash amounts. The DEX quote is used as a bounded sanity check — if it deviates from the Chainlink
+     * @dev Two-pass: values each stake via oracle fair value, then computes proportional
+     *      slash amounts. The DEX quote is used as a bounded sanity check — if it deviates from the oracle
      *      fair value by more than `priceDeviationToleranceBps`, the whole claim reverts.
      *      Cross-token slashes are inflated by MAX / (MAX - maxSwapSlippageBps) so the beneficiary receives
      *      the full requestedAmount even at worst-case swap slippage; same-token vaults need no inflation.
@@ -645,11 +637,11 @@ contract ClaimManager is
             if (tokens[i] == payoutToken) {
                 payoutEquivalents[i] = tokenStakes[i];
             } else {
-                // Chainlink fair value is authoritative for slash distribution sizing.
+                // Oracle fair value is authoritative for slash distribution sizing.
                 // The DEX quote is a bounded sanity check: revert if it deviates too far from fair value,
                 // indicating a manipulated or illiquid pool.
                 // slither-disable-next-line calls-loop
-                uint256 fair = _chainlinkFairValue(tokens[i], payoutToken, tokenStakes[i]);
+                uint256 fair = _oracleFairValue(tokens[i], payoutToken, tokenStakes[i]);
 
                 uint256 dex = 0;
                 // slither-disable-next-line calls-loop
@@ -708,7 +700,7 @@ contract ClaimManager is
 
     /**
      * @notice Processes collateral by swapping or transferring directly, capped at remainingPayout.
-     * @dev amountOutMin is derived from Chainlink fair value with the DEX quote as a bounded sanity check
+     * @dev amountOutMin is derived from oracle fair value with the DEX quote as a bounded sanity check
      *      (see `_computeAmountOutMin`). Surplus beyond remainingPayout is forwarded via
      *      PremiumManager.distributeSurplusAsRewards() if configured.
      *      vaultIndex is included in the taskId to prevent replay collisions when two vault legs
@@ -787,16 +779,16 @@ contract ClaimManager is
     }
 
     /**
-     * @notice Derives the minimum acceptable swap output, anchored to Chainlink fair value with a bounded
+     * @notice Derives the minimum acceptable swap output, anchored to oracle fair value with a bounded
      *         DEX sanity check.
-     * @dev The Chainlink fair value is the primary anchor; the DEX quote is validated against it via
+     * @dev The oracle fair value is the primary anchor; the DEX quote is validated against it via
      *      `_validateDexAgainstOracle` and then used to determine the tighter of the two bounds:
      *        anchor = min(fair, dex)
      *        amountOutMin = anchor × (MAX − maxSwapSlippageBps) / MAX
      *      Using min(fair, dex) ensures the bound is achievable on-chain when the DEX quote is within
-     *      tolerance below the Chainlink fair value, while a manipulated DEX quote above fair is capped
+     *      tolerance below the oracle fair value, while a manipulated DEX quote above fair is capped
      *      to fair (preventing an inflated bound that cannot be met).
-     *      Reverts with OracleUnavailable if the Chainlink feed is unset, missing, stale, or returns zero.
+     *      Reverts with OracleUnavailable if the oracle feed is unset, missing, stale, or returns zero.
      *      Reverts with QuoteUnavailable if the DEX quote is unavailable or zero.
      *      Reverts with QuoteDeviatesFromOracle if the DEX quote deviates beyond priceDeviationToleranceBps.
      *      Returns at least 1 to prevent a zero-minimum swap that would accept any output.
@@ -806,7 +798,7 @@ contract ClaimManager is
      * @return Slippage-adjusted minimum output amount (≥ 1).
      */
     function _computeAmountOutMin(address tokenIn, address tokenOut, uint256 amountIn) private returns (uint256) {
-        uint256 fair = _chainlinkFairValue(tokenIn, tokenOut, amountIn);
+        uint256 fair = _oracleFairValue(tokenIn, tokenOut, amountIn);
 
         uint256 dex = 0;
         try ISwapper(swapper).quoteSwap(tokenIn, tokenOut, amountIn) returns (uint256 quoted) {

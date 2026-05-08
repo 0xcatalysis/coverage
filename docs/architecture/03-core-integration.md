@@ -19,7 +19,7 @@ This separation keeps restaking platform complexity out of Coverage contracts.
 | `CoverPool` | `StakeManager` | `setCommitteeVaults(policyId, vaults[], coverageLimit)` | Bind selected vaults/strategies; configures TVL limits on EigenLayer vaults |
 | `PolicyManager` | `StakeManager` | `getCommitteeVaults(policyId)` | Verify vault backing exists before bind finalization |
 | `PolicyManager` | `StakeManager` | `getCommitteeTokenStakes(policyId)` | Retrieve per-vault token-native stake amounts for USD sufficiency check |
-| `PolicyManager` | `ChainlinkPriceFeed` | `getUSDValue(token, amount)` | Convert `coverageLimit` and committee token stakes to USD for bind-time sufficiency check |
+| `PolicyManager` | `OraclePriceFeed` | `getUSDValue(token, amount)` | Convert `coverageLimit` and committee token stakes to USD for bind-time sufficiency check |
 | `PremiumManager` | `RewardsManager` | `distributeRewards(policyId, operator, amount, token, taskId)` | Trigger Core reward fan-out; RewardsManager pulls restaker share from PremiumManager, then routes via SSPRouter |
 | `ClaimManager` | `SlashingManager` | `previewSlashing(committeeId, operator)` | Read per-vault token-native stake amounts before executing |
 | `ClaimManager` | `SlashingManager` | `executeSlashing(committeeId, operator, VaultSlash[], taskId)` | Execute token-native per-vault slashing and return seized collateral |
@@ -81,7 +81,7 @@ Sequence:
    - `SSPRouter._configureEigenStrategies` runs internally: adds strategies to operator set, sets TVL limits (converting `coverageLimit` USD to token-native amounts), and locks duration vaults.
 3. `PolicyManager.bindPolicy(...)` checks:
    - committee has at least one vault (`getCommitteeVaults`),
-   - `getCommitteeTokenStakes(policyId)` returns per-vault stakes; their USD values (via `ChainlinkPriceFeed.getUSDValue`) sum to >= `coverageLimit` USD-equivalent.
+   - `getCommitteeTokenStakes(policyId)` returns per-vault stakes; their USD values (via `OraclePriceFeed.getUSDValue`) sum to >= `coverageLimit` USD-equivalent.
 
 Outcome:
 
@@ -129,7 +129,7 @@ No-shortfall withdrawal path:
 
 - Slash amounts passed to `executeSlashing` are **token-native** (not USD); `ClaimManager` computes them via `previewSlashing` + `quoteSwap`.
 - Coverage payouts are token-denominated by `payoutToken`.
-- `coverageLimit` in `Quote`/`BoundPolicy`/`PolicyMetadata` is denominated in **`payoutToken` native units** (not USD). At bind time, `PolicyManager.bindPolicy` converts it to USD via `ChainlinkPriceFeed.getUSDValue(payoutToken, coverageLimit)` and compares against the committee's total staked USD. This is the only point where `ChainlinkPriceFeed` is used in Coverage contracts. The `PolicyDraft` struct does not contain a `coverageAmount` field.
+- `coverageLimit` in `Quote`/`BoundPolicy`/`PolicyMetadata` is denominated in **`payoutToken` native units** (not USD). At bind time, `PolicyManager.bindPolicy` converts it to USD via `OraclePriceFeed.getUSDValue(payoutToken, coverageLimit)` and compares against the committee's total staked USD. This is the only point where `OraclePriceFeed` is used in Coverage contracts. The `PolicyDraft` struct does not contain a `coverageAmount` field.
 
 ## Trust and Failure Boundaries
 
@@ -151,7 +151,7 @@ Failure patterns:
 - Ensure restakers have deposited into the committee's duration vault before bind. Duration vaults act as EigenLayer operators — no separate magnitude allocation or operator-set registration is needed. See [Restaker Setup](./04-restaker-setup.md).
 - Register and verify vault module mappings in Core (`SSPRouter.registerVaultModule`) before bind.
 - Configure swap routes for expected collateral → payout token pairs before claims; `Swapper.quoteSwap` is used at claim time for slippage computation.
-- `WETH` price feed must be registered in `ChainlinkPriceFeed` before binding policies whose payout token is WETH (stake USD sufficiency check at bind).
+- `WETH` price feed must be registered in `OraclePriceFeed` before binding policies whose payout token is WETH (stake USD sufficiency check at bind).
 
 ## Next Steps
 

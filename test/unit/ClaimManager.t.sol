@@ -47,7 +47,7 @@ contract ClaimManagerTest is Test {
     MockToken internal collateralTokenMock;
     MockToken internal payoutTokenMock;
     MockCoverPool internal mockPool;
-    MockChainlinkPriceFeed internal chainlinkFeedMock;
+    MockOraclePriceFeed internal oracleFeedMock;
 
     bytes32 internal evidenceHash;
     bytes32 internal policyCommit;
@@ -85,7 +85,7 @@ contract ClaimManagerTest is Test {
     event TokensRecovered(address indexed token, address indexed to, uint256 amount);
     event VaultExcludedFromSlashing(address indexed vault, address indexed token);
     event PremiumManagerSet(address indexed premiumManager);
-    event ChainlinkPriceFeedSet(address indexed chainlinkPriceFeed);
+    event OraclePriceFeedSet(address indexed oraclePriceFeed);
     event PriceDeviationToleranceBpsSet(uint16 priceDeviationToleranceBps);
     event SwapSurplusDistributed(
         uint96 indexed policyId, uint256 indexed claimId, address indexed payoutToken, uint256 surplusAmount
@@ -144,7 +144,7 @@ contract ClaimManagerTest is Test {
         vm.label(collateralToken, "CollateralToken");
         vm.label(payoutToken, "PayoutToken");
 
-        chainlinkFeedMock = new MockChainlinkPriceFeed();
+        oracleFeedMock = new MockOraclePriceFeed();
 
         Options memory deployOpts;
         deployOpts.unsafeSkipAllChecks = true;
@@ -156,10 +156,10 @@ contract ClaimManagerTest is Test {
         claimManager = ClaimManager(payable(proxy));
 
         vm.prank(admin);
-        claimManager.initializeV2(address(chainlinkFeedMock), 300);
+        claimManager.initializeV2(address(oracleFeedMock), 300);
 
         vm.label(address(claimManager), "ClaimManager");
-        vm.label(address(chainlinkFeedMock), "ChainlinkPriceFeed");
+        vm.label(address(oracleFeedMock), "OraclePriceFeed");
 
         _setupDefaultPolicy();
     }
@@ -223,7 +223,7 @@ contract ClaimManagerTest is Test {
                            INITIALIZE V2
     //////////////////////////////////////////////////////////////*/
 
-    function test_initializeV2_WhenZeroChainlink_Reverts() public {
+    function test_initializeV2_WhenZeroOraclePriceFeed_Reverts() public {
         ClaimManager impl = new ClaimManager();
         ClaimManager cm = ClaimManager(payable(address(new ERC1967Proxy(address(impl), ""))));
         cm.initialize(admin, specRegistry, slashingManager, swapper, policy);
@@ -236,12 +236,12 @@ contract ClaimManagerTest is Test {
         ClaimManager cm = ClaimManager(payable(address(new ERC1967Proxy(address(impl), ""))));
         cm.initialize(admin, specRegistry, slashingManager, swapper, policy);
         vm.expectRevert(abi.encodeWithSelector(IClaimManager.InvalidDeviationBps.selector, uint16(1001)));
-        cm.initializeV2(address(chainlinkFeedMock), 1001);
+        cm.initializeV2(address(oracleFeedMock), 1001);
     }
 
     function test_initializeV2_WhenCalledTwice_Reverts() public {
         vm.expectRevert();
-        claimManager.initializeV2(address(chainlinkFeedMock), 300);
+        claimManager.initializeV2(address(oracleFeedMock), 300);
     }
 
     function test_initializeV2_EmitsBothSetterEvents() public {
@@ -250,23 +250,23 @@ contract ClaimManagerTest is Test {
         cm.initialize(admin, specRegistry, slashingManager, swapper, policy);
 
         vm.expectEmit(true, false, false, false, address(cm));
-        emit ChainlinkPriceFeedSet(address(chainlinkFeedMock));
+        emit OraclePriceFeedSet(address(oracleFeedMock));
         vm.expectEmit(false, false, false, true, address(cm));
         emit PriceDeviationToleranceBpsSet(300);
 
-        cm.initializeV2(address(chainlinkFeedMock), 300);
+        cm.initializeV2(address(oracleFeedMock), 300);
     }
 
     function test_initializeV2_PopulatesStateCorrectly() public view {
-        assertEq(claimManager.chainlinkPriceFeed(), address(chainlinkFeedMock));
+        assertEq(claimManager.oraclePriceFeed(), address(oracleFeedMock));
         assertEq(claimManager.priceDeviationToleranceBps(), 300);
     }
 
     /*//////////////////////////////////////////////////////////////
-                    SET CHAINLINK PRICE FEED
+                    SET ORACLE PRICE FEED
     //////////////////////////////////////////////////////////////*/
 
-    function test_setChainlinkPriceFeed_WhenCallerNotAdmin_Reverts() public {
+    function test_setOraclePriceFeed_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector,
@@ -275,22 +275,22 @@ contract ClaimManagerTest is Test {
             )
         );
         vm.prank(unauthorized);
-        claimManager.setChainlinkPriceFeed(address(chainlinkFeedMock));
+        claimManager.setOraclePriceFeed(address(oracleFeedMock));
     }
 
-    function test_setChainlinkPriceFeed_WhenZero_Reverts() public {
+    function test_setOraclePriceFeed_WhenZero_Reverts() public {
         vm.expectRevert(IClaimManager.ZeroAddress.selector);
         vm.prank(admin);
-        claimManager.setChainlinkPriceFeed(address(0));
+        claimManager.setOraclePriceFeed(address(0));
     }
 
-    function test_setChainlinkPriceFeed_EmitsEvent() public {
+    function test_setOraclePriceFeed_EmitsEvent() public {
         address newFeed = makeAddr("newFeed");
         vm.expectEmit(true, false, false, false, address(claimManager));
-        emit ChainlinkPriceFeedSet(newFeed);
+        emit OraclePriceFeedSet(newFeed);
         vm.prank(admin);
-        claimManager.setChainlinkPriceFeed(newFeed);
-        assertEq(claimManager.chainlinkPriceFeed(), newFeed);
+        claimManager.setOraclePriceFeed(newFeed);
+        assertEq(claimManager.oraclePriceFeed(), newFeed);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -811,8 +811,8 @@ contract ClaimManagerTest is Test {
            FILE CLAIM — ORACLE PROTECTION (CYS3-03)
     //////////////////////////////////////////////////////////////*/
 
-    function test_fileClaim_WhenChainlinkPriceFeedUnset_RevertsOracleUnavailable() public {
-        // Deploy a fresh ClaimManager that was never given initializeV2 (chainlinkPriceFeed == address(0))
+    function test_fileClaim_WhenOraclePriceFeedUnset_RevertsOracleUnavailable() public {
+        // Deploy a fresh ClaimManager that was never given initializeV2 (oraclePriceFeed == address(0))
         Options memory opts;
         opts.unsafeSkipAllChecks = true;
         address freshProxy = Upgrades.deployUUPSProxy(
@@ -838,8 +838,8 @@ contract ClaimManagerTest is Test {
         freshCm.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
     }
 
-    function test_fileClaim_WhenChainlinkFeedMissingForCollateral_RevertsOracleUnavailable() public {
-        chainlinkFeedMock.setFeedMissing(collateralToken);
+    function test_fileClaim_WhenOracleFeedMissingForCollateral_RevertsOracleUnavailable() public {
+        oracleFeedMock.setFeedMissing(collateralToken);
 
         specMock.setEvaluationResult(true, keccak256("approved"));
         address[] memory assets = new address[](1);
@@ -853,8 +853,8 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
     }
 
-    function test_fileClaim_WhenChainlinkFeedMissingForPayoutToken_RevertsOracleUnavailable() public {
-        chainlinkFeedMock.setFeedMissing(payoutToken);
+    function test_fileClaim_WhenOracleFeedMissingForPayoutToken_RevertsOracleUnavailable() public {
+        oracleFeedMock.setFeedMissing(payoutToken);
 
         specMock.setEvaluationResult(true, keccak256("approved"));
         address[] memory assets = new address[](1);
@@ -868,8 +868,8 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
     }
 
-    function test_fileClaim_WhenChainlinkPriceStale_RevertsOracleUnavailable() public {
-        chainlinkFeedMock.setShouldRevert(true);
+    function test_fileClaim_WhenOraclePriceStale_RevertsOracleUnavailable() public {
+        oracleFeedMock.setShouldRevert(true);
 
         specMock.setEvaluationResult(true, keccak256("approved"));
         address[] memory assets = new address[](1);
@@ -885,7 +885,7 @@ contract ClaimManagerTest is Test {
 
     function test_fileClaim_WhenDexQuoteDeviatesAboveTolerance_RevertsQuoteDeviatesFromOracle() public {
         // Configure a swapper where quoteSwap for collateralToken returns 5000 ether
-        // but Chainlink fair value is 1:1 = SLASH_AMOUNT.
+        // but oracle fair value is 1:1 = SLASH_AMOUNT.
         // Deviation = (5000 ether - 500 ether) / 500 ether * 10000 = 90000 bps >> 300 bps tolerance.
         MockMultiSwapper deviatingSwapper = new MockMultiSwapper();
         deviatingSwapper.setQuoteOutput(collateralToken, 5000 ether); // quoteSwap returns 5000 ether
@@ -901,7 +901,7 @@ contract ClaimManagerTest is Test {
         amounts[0] = SLASH_AMOUNT;
         slashingManagerMock.setSlashResult(assets, amounts);
 
-        // chainlinkFair = SLASH_AMOUNT (1:1); dex = 5000 ether → huge upward deviation
+        // oracleFair = SLASH_AMOUNT (1:1); dex = 5000 ether → huge upward deviation
         vm.expectRevert(
             abi.encodeWithSelector(
                 IClaimManager.QuoteDeviatesFromOracle.selector,
@@ -918,7 +918,7 @@ contract ClaimManagerTest is Test {
 
     function test_fileClaim_WhenDexQuoteDeviatesBelowTolerance_RevertsQuoteDeviatesFromOracle() public {
         // Configure a swapper where quoteSwap for collateralToken returns 400 ether (20% below 500)
-        // but Chainlink fair value is 1:1 = SLASH_AMOUNT = 500 ether.
+        // but oracle fair value is 1:1 = SLASH_AMOUNT = 500 ether.
         // Deviation = (500 - 400) / 500 * 10000 = 2000 bps >> 300 bps tolerance.
         MockMultiSwapper deviatingSwapper = new MockMultiSwapper();
         deviatingSwapper.setQuoteOutput(collateralToken, 400 ether); // quoteSwap returns 400 ether
@@ -948,9 +948,9 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
     }
 
-    function test_fileClaim_WhenDexQuoteWithinTolerance_SlashSizingUsesChainlinkFair() public {
-        // DEX quote and Chainlink fair are both 1:1 (deviation = 0 bps → well within 300 bps tolerance).
-        // Slash sizing uses payoutEquivalents[i] = _chainlinkFairValue(token, payout, stake) = stake.
+    function test_fileClaim_WhenDexQuoteWithinTolerance_SlashSizingUsesOracleFair() public {
+        // DEX quote and oracle fair are both 1:1 (deviation = 0 bps → well within 300 bps tolerance).
+        // Slash sizing uses payoutEquivalents[i] = _oracleFairValue(token, payout, stake) = stake.
         // The proportional slash is: baseSlash = stake * requested / stake = requested, inflated by slippage.
         uint256 stakeA = 300 ether;
         uint256 requestedAmount = 100 ether;
@@ -1039,11 +1039,11 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(claimManager.claimRecord(POLICY_ID, claimId).status), uint8(IClaimManager.ClaimStatus.Approved));
     }
 
-    function test_fileClaim_NativeEthCollateral_NormalizesToWrapperForChainlink() public {
-        // When the collateral is NATIVE_ETH, _chainlinkFairValue must query nativeWrapper not NATIVE_ETH.
+    function test_fileClaim_NativeEthCollateral_NormalizesToWrapperForOracle() public {
+        // When the collateral is NATIVE_ETH, _oracleFairValue must query nativeWrapper not NATIVE_ETH.
         // Mark NATIVE_ETH as missing but nativeWrapper as present in the mock feed.
         address nativeWrapper = swapperMock.nativeWrapper();
-        chainlinkFeedMock.setFeedMissing(NATIVE_ETH); // ensures we only pass via nativeWrapper path
+        oracleFeedMock.setFeedMissing(NATIVE_ETH); // ensures we only pass via nativeWrapper path
 
         // Set up a policy where payoutToken == nativeWrapper so same-token path is taken for NATIVE_ETH
         // (after normalization, NATIVE_ETH → nativeWrapper == payoutToken → same-token path → no oracle needed)
@@ -2902,7 +2902,7 @@ contract ClaimManagerTest is Test {
         assertEq(uint8(record.status), uint8(IClaimManager.ClaimStatus.Approved), "Claim should be approved");
     }
 
-    function test_fileClaim_WhenDexQuoteDeviatesFromChainlinkByPerTokenDivisor_RevertsQuoteDeviatesFromOracle() public {
+    function test_fileClaim_WhenDexQuoteDeviatesFromOracleByPerTokenDivisor_RevertsQuoteDeviatesFromOracle() public {
         (address tinyVaultAddr, address tinyToken) = _setupTinyBaseSlashWithRealisticQuoter();
         // Silence unused variable warning
         tinyVaultAddr;
@@ -2910,7 +2910,7 @@ contract ClaimManagerTest is Test {
         specMock.setEvaluationResult(true, keccak256("approved"));
 
         // The MockSwapperWithPerTokenDivisor divides the quote by 1001, so for tinyStake=1001:
-        // dex = 1001 / 1001 = 1; chainlinkFair = 1001 (1:1 mock).
+        // dex = 1001 / 1001 = 1; oracleFair = 1001 (1:1 mock).
         // Deviation = (1000 / 1001) * 10000 ≈ 9990 bps > priceDeviationToleranceBps(300) → revert.
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -2918,7 +2918,7 @@ contract ClaimManagerTest is Test {
                 tinyToken,
                 payoutToken,
                 uint256(1), // dex quote (1001/1001)
-                uint256(1001), // chainlink fair (1:1)
+                uint256(1001), // oracle fair (1:1)
                 uint256(9990) // actual deviationBps
             )
         );
@@ -4085,13 +4085,13 @@ contract MockPolicy {
 }
 
 /**
- * @dev Configurable Chainlink price feed mock.
+ * @dev Configurable oracle price feed mock.
  *      - All tokens default to a 1:1 price (price = 1e18).
  *      - `setFeedMissing(token)` makes hasPriceFeed return false and getUSDValue revert.
  *      - `setShouldRevert(true)` makes every external call revert (staleness simulation).
  *      - `setPrice(token, price)` overrides the per-token price (in 1e18 scale).
  */
-contract MockChainlinkPriceFeed {
+contract MockOraclePriceFeed {
     mapping(address => uint256) private _pricePerToken;
     mapping(address => bool) private _feedMissing;
     bool private _shouldRevert;
@@ -4113,8 +4113,8 @@ contract MockChainlinkPriceFeed {
     }
 
     function getUSDValue(address token, uint256 amount) external view returns (uint256) {
-        require(!_shouldRevert, "MockChainlinkPriceFeed: stale");
-        require(!_feedMissing[token], "MockChainlinkPriceFeed: no feed");
+        require(!_shouldRevert, "MockOraclePriceFeed: stale");
+        require(!_feedMissing[token], "MockOraclePriceFeed: no feed");
         uint256 price = _pricePerToken[token];
         if (price == 0) {
             return amount; // 1:1 default
@@ -4123,8 +4123,8 @@ contract MockChainlinkPriceFeed {
     }
 
     function getTokenAmount(address token, uint256 usdValue) external view returns (uint256) {
-        require(!_shouldRevert, "MockChainlinkPriceFeed: stale");
-        require(!_feedMissing[token], "MockChainlinkPriceFeed: no feed");
+        require(!_shouldRevert, "MockOraclePriceFeed: stale");
+        require(!_feedMissing[token], "MockOraclePriceFeed: no feed");
         uint256 price = _pricePerToken[token];
         if (price == 0) {
             return usdValue; // 1:1 default
@@ -4150,7 +4150,7 @@ contract MockMultiSwapper {
         _swapOutputs[tokenIn] = output;
     }
 
-    /// @dev Separate quoteSwap amount — allows passing oracle validation (1:1 with chainlink)
+    /// @dev Separate quoteSwap amount — allows passing oracle validation (1:1 with oracle)
     ///      while executeSwap returns a different amount (simulating price impact).
     function setQuoteOutput(address tokenIn, uint256 output) external {
         _quoteOutputs[tokenIn] = output;
@@ -4165,7 +4165,7 @@ contract MockMultiSwapper {
     function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
         uint256 q = _quoteOutputs[tokenIn];
         if (q > 0) return q;
-        return amountIn; // 1:1 default: consistent with Chainlink 1:1 mock
+        return amountIn; // 1:1 default: consistent with oracle 1:1 mock
     }
 
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
