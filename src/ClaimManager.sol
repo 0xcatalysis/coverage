@@ -344,6 +344,7 @@ contract ClaimManager is
      * @param amountIn Amount of tokenIn to value.
      * @return fair Token-native amount of tokenOut equivalent to amountIn of tokenIn at oracle prices.
      */
+    // slither-disable-next-line cyclomatic-complexity
     function _oracleFairValue(address tokenIn, address tokenOut, uint256 amountIn) private view returns (uint256 fair) {
         address feed = oraclePriceFeed;
         if (feed == address(0)) revert OracleUnavailable(tokenIn, tokenOut);
@@ -670,14 +671,15 @@ contract ClaimManager is
             uint256 baseSlash = (tokenStakes[i] * requestedAmount) / totalPayoutEquivalent;
             if (tokens[i] != payoutToken) {
                 {
-                    uint256 maxSlippage = uint256(_MAX_SLIPPAGE_BPS);
-                    if (cachedMaxSwapSlippageBps > 0) {
-                        baseSlash = (baseSlash * maxSlippage) / (maxSlippage - cachedMaxSwapSlippageBps);
-                    }
                     uint256 deviationBps = priceDeviationToleranceBps;
-                    if (deviationBps > 0) {
-                        baseSlash = (baseSlash * maxSlippage) / (maxSlippage - deviationBps);
-                    }
+                    // slither-disable-next-line divide-before-multiply
+                    baseSlash = (baseSlash * uint256(_MAX_SLIPPAGE_BPS) * uint256(_MAX_SLIPPAGE_BPS))
+                        / ((cachedMaxSwapSlippageBps > 0
+                                    ? uint256(_MAX_SLIPPAGE_BPS) - cachedMaxSwapSlippageBps
+                                    : uint256(_MAX_SLIPPAGE_BPS))
+                            * (deviationBps > 0
+                                    ? uint256(_MAX_SLIPPAGE_BPS) - deviationBps
+                                    : uint256(_MAX_SLIPPAGE_BPS)));
                 }
             }
 

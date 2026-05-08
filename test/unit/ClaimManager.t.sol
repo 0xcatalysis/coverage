@@ -2935,8 +2935,9 @@ contract ClaimManagerTest is Test {
         slashMock.setupPreview(pvaults, ptokens, pstakes);
 
         uint256 baseSlash = (largeStake * requestedAmount) / (tinyStake + largeStake);
-        uint256 expectedLargeSlash = baseSlash * 10_000 / (10_000 - claimManager.maxSwapSlippageBps()) * 10_000
-            / (10_000 - claimManager.priceDeviationToleranceBps());
+        uint256 slippageDenom = 10_000 - claimManager.maxSwapSlippageBps();
+        uint256 deviationDenom = 10_000 - claimManager.priceDeviationToleranceBps();
+        uint256 expectedLargeSlash = (baseSlash * 10_000 * 10_000) / (slippageDenom * deviationDenom);
         collateralTokenMock.mint(address(slashMock), expectedLargeSlash);
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
