@@ -274,12 +274,14 @@ contract ClaimManager is
                 continue;
             }
 
+            // slither-disable-next-line calls-loop
             try ISwapper(swapper).quoteSwap(token, payoutToken, tokenStakes[i]) returns (uint256 quoted) {
                 if (quoted == 0) revert MissingSwapRouteForCollateral(token, payoutToken);
             } catch {
                 revert MissingSwapRouteForCollateral(token, payoutToken);
             }
 
+            // slither-disable-next-line calls-loop
             ISwapper(swapper).lockRouteUntil(token, payoutToken, maturityTime);
         }
     }
