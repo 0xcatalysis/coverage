@@ -2205,7 +2205,8 @@ contract ClaimManagerTest is Test {
         uint256 stake = 200 ether;
 
         uint16 slippageBps = claimManager.maxSwapSlippageBps();
-        uint256 inflatedSlash = requestedAmount * 10_000 / (10_000 - slippageBps);
+        uint16 deviationBps = claimManager.priceDeviationToleranceBps();
+        uint256 inflatedSlash = requestedAmount * 10_000 / (10_000 - slippageBps) * 10_000 / (10_000 - deviationBps);
 
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
         address[] memory pvaults = new address[](1);
@@ -2237,6 +2238,51 @@ contract ClaimManagerTest is Test {
         );
     }
 
+    function test_fileClaim_WhenOracleOverestimatesDex_CompoundInflationCoversDeviationGap() public {
+        uint256 requestedAmount = 100 ether;
+        uint256 stake = 200 ether;
+
+        oracleFeedMock.setPrice(collateralToken, 1_030_000_000_000_000_000); // oracle: 1.03 payout per collateral
+
+        uint256 fair = stake * 1_030_000_000_000_000_000 / 1e18; // 206 ether (oracle fair for full stake)
+        uint256 s = claimManager.maxSwapSlippageBps();
+        uint256 d = claimManager.priceDeviationToleranceBps();
+        uint256 inflatedSlash = stake * requestedAmount / fair * 10_000 / (10_000 - s) * 10_000 / (10_000 - d);
+        assertGt(inflatedSlash, requestedAmount, "Compound inflation must exceed requestedAmount to cover oracle gap");
+
+        MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
+        address[] memory pvaults = new address[](1);
+        pvaults[0] = makeAddr("vault");
+        address[] memory ptokens = new address[](1);
+        ptokens[0] = collateralToken;
+        uint256[] memory pstakes = new uint256[](1);
+        pstakes[0] = stake;
+        slashMock.setupPreview(pvaults, ptokens, pstakes);
+        collateralTokenMock.mint(address(slashMock), inflatedSlash);
+        vm.prank(admin);
+        claimManager.setSlashingManager(address(slashMock));
+
+        swapperMock.setPayoutToken(payoutToken);
+        swapperMock.setSwapOutput(stake);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+
+        uint256 balanceBefore = payoutTokenMock.balanceOf(beneficiary);
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
+
+        assertEq(
+            payoutTokenMock.balanceOf(beneficiary) - balanceBefore,
+            requestedAmount,
+            "Beneficiary must receive full requestedAmount despite oracle overestimation"
+        );
+        assertEq(
+            collateralTokenMock.balanceOf(address(slashMock)),
+            0,
+            "All compound-inflated collateral must be transferred from slash mock"
+        );
+    }
+
     function test_fileClaim_WhenSwapProducesMoreThanRemainingPayout_SurplusDistributedAsRewards() public {
         uint256 requestedAmount = 100 ether;
 
@@ -2250,7 +2296,9 @@ contract ClaimManagerTest is Test {
             pstakes[0] = 200 ether;
             slashMock.setupPreview(pvaults, ptokens, pstakes);
             collateralTokenMock.mint(
-                address(slashMock), requestedAmount * 10_000 / (10_000 - claimManager.maxSwapSlippageBps())
+                address(slashMock),
+                requestedAmount * 10_000 / (10_000 - claimManager.maxSwapSlippageBps()) * 10_000
+                    / (10_000 - claimManager.priceDeviationToleranceBps())
             );
         }
 
@@ -2305,7 +2353,8 @@ contract ClaimManagerTest is Test {
         slashMock.setupPreview(pvaults, ptokens, pstakes);
 
         uint16 slippageBps = claimManager.maxSwapSlippageBps();
-        uint256 inflatedSlash = requestedAmount * 10_000 / (10_000 - slippageBps);
+        uint16 deviationBps = claimManager.priceDeviationToleranceBps();
+        uint256 inflatedSlash = requestedAmount * 10_000 / (10_000 - slippageBps) * 10_000 / (10_000 - deviationBps);
         collateralTokenMock.mint(address(slashMock), inflatedSlash);
 
         vm.prank(admin);
@@ -2339,7 +2388,8 @@ contract ClaimManagerTest is Test {
         slashMock.setupPreview(pvaults, ptokens, pstakes);
 
         uint16 slippageBps = claimManager.maxSwapSlippageBps();
-        uint256 inflatedSlash = requestedAmount * 10_000 / (10_000 - slippageBps);
+        uint16 deviationBps = claimManager.priceDeviationToleranceBps();
+        uint256 inflatedSlash = requestedAmount * 10_000 / (10_000 - slippageBps) * 10_000 / (10_000 - deviationBps);
         collateralTokenMock.mint(address(slashMock), inflatedSlash);
 
         vm.prank(admin);
@@ -2885,7 +2935,8 @@ contract ClaimManagerTest is Test {
         slashMock.setupPreview(pvaults, ptokens, pstakes);
 
         uint256 baseSlash = (largeStake * requestedAmount) / (tinyStake + largeStake);
-        uint256 expectedLargeSlash = (baseSlash * 10_000) / (10_000 - claimManager.maxSwapSlippageBps());
+        uint256 expectedLargeSlash = baseSlash * 10_000 / (10_000 - claimManager.maxSwapSlippageBps()) * 10_000
+            / (10_000 - claimManager.priceDeviationToleranceBps());
         collateralTokenMock.mint(address(slashMock), expectedLargeSlash);
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
@@ -2957,7 +3008,8 @@ contract ClaimManagerTest is Test {
 
         uint256 totalEquiv = tinyStake / DIVISOR + largeStake;
         uint256 largeBaseSlash = (largeStake * requestedAmount) / totalEquiv;
-        uint256 expectedLargeSlash = (largeBaseSlash * 10_000) / (10_000 - claimManager.maxSwapSlippageBps());
+        uint256 expectedLargeSlash = largeBaseSlash * 10_000 / (10_000 - claimManager.maxSwapSlippageBps()) * 10_000
+            / (10_000 - claimManager.priceDeviationToleranceBps());
         collateralTokenMock.mint(address(slashMock), expectedLargeSlash);
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
@@ -3156,6 +3208,8 @@ contract ClaimManagerTest is Test {
 
         vm.prank(admin);
         claimManager.setMaxSwapSlippageBps(0);
+        vm.prank(admin);
+        claimManager.setPriceDeviationToleranceBps(0); // no inflation; test focuses on vault-skip behavior
 
         collateralTokenMock.mint(address(slashMock), crossSlash);
         payoutTokenMock.mint(address(slashMock), sameSlash);
@@ -3191,6 +3245,8 @@ contract ClaimManagerTest is Test {
         uint256 stake = 100 ether;
         vm.prank(admin);
         claimManager.setMaxSwapSlippageBps(0);
+        vm.prank(admin);
+        claimManager.setPriceDeviationToleranceBps(0); // no inflation; test focuses on vault-skip behavior
 
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
         address[] memory pvaults = new address[](2);
@@ -3245,6 +3301,8 @@ contract ClaimManagerTest is Test {
         uint256 stake = 100 ether;
         vm.prank(admin);
         claimManager.setMaxSwapSlippageBps(0);
+        vm.prank(admin);
+        claimManager.setPriceDeviationToleranceBps(0); // no inflation; test focuses on vault-skip behavior
 
         MockToken collateralToken2Mock = new MockToken("Collateral2", "COL2");
         address collateralToken2 = address(collateralToken2Mock);
@@ -3313,6 +3371,8 @@ contract ClaimManagerTest is Test {
         uint256 stake = 100 ether;
         vm.prank(admin);
         claimManager.setMaxSwapSlippageBps(0);
+        vm.prank(admin);
+        claimManager.setPriceDeviationToleranceBps(0); // no inflation; test focuses on vault-skip behavior
 
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
         address[] memory pvaults = new address[](2);
@@ -3372,7 +3432,9 @@ contract ClaimManagerTest is Test {
             pstakes[0] = 200 ether;
             slashMock.setupPreview(pvaults, ptokens, pstakes);
             collateralTokenMock.mint(
-                address(slashMock), requestedAmount * 10_000 / (10_000 - claimManager.maxSwapSlippageBps())
+                address(slashMock),
+                requestedAmount * 10_000 / (10_000 - claimManager.maxSwapSlippageBps()) * 10_000
+                    / (10_000 - claimManager.priceDeviationToleranceBps())
             );
         }
         vm.prank(admin);

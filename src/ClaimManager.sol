@@ -605,8 +605,6 @@ contract ClaimManager is
      * @dev Two-pass: values each stake via oracle fair value, then computes proportional
      *      slash amounts. The DEX quote is used as a bounded sanity check — if it deviates from the oracle
      *      fair value by more than `priceDeviationToleranceBps`, the whole claim reverts.
-     *      Cross-token slashes are inflated by MAX / (MAX - maxSwapSlippageBps) so the beneficiary receives
-     *      the full requestedAmount even at worst-case swap slippage; same-token vaults need no inflation.
      * @param vaults Vault addresses from previewSlashing.
      * @param tokens Collateral token address per vault.
      * @param tokenStakes Token-native stake amount per vault.
@@ -637,9 +635,6 @@ contract ClaimManager is
             if (tokens[i] == payoutToken) {
                 payoutEquivalents[i] = tokenStakes[i];
             } else {
-                // Oracle fair value is authoritative for slash distribution sizing.
-                // The DEX quote is a bounded sanity check: revert if it deviates too far from fair value,
-                // indicating a manipulated or illiquid pool.
                 // slither-disable-next-line calls-loop
                 uint256 fair = _oracleFairValue(tokens[i], payoutToken, tokenStakes[i]);
 
@@ -673,9 +668,17 @@ contract ClaimManager is
 
             // slither-disable-next-line divide-before-multiply
             uint256 baseSlash = (tokenStakes[i] * requestedAmount) / totalPayoutEquivalent;
-            if (tokens[i] != payoutToken && cachedMaxSwapSlippageBps > 0) {
-                uint256 maxSlippage = uint256(_MAX_SLIPPAGE_BPS);
-                baseSlash = (baseSlash * maxSlippage) / (maxSlippage - cachedMaxSwapSlippageBps);
+            if (tokens[i] != payoutToken) {
+                {
+                    uint256 maxSlippage = uint256(_MAX_SLIPPAGE_BPS);
+                    if (cachedMaxSwapSlippageBps > 0) {
+                        baseSlash = (baseSlash * maxSlippage) / (maxSlippage - cachedMaxSwapSlippageBps);
+                    }
+                    uint256 deviationBps = priceDeviationToleranceBps;
+                    if (deviationBps > 0) {
+                        baseSlash = (baseSlash * maxSlippage) / (maxSlippage - deviationBps);
+                    }
+                }
             }
 
             if (baseSlash == 0) {
