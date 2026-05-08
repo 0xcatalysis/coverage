@@ -411,7 +411,7 @@ contract ClaimManager is
         view
     {
         uint256 diff = dexQuote > chainlinkFair ? dexQuote - chainlinkFair : chainlinkFair - dexQuote;
-        uint256 deviationBps = (diff * uint256(_MAX_SLIPPAGE_BPS)) / chainlinkFair;
+        uint256 deviationBps = (diff * 10_000) / chainlinkFair;
         if (deviationBps > priceDeviationToleranceBps) {
             revert QuoteDeviatesFromOracle(tokenIn, tokenOut, dexQuote, chainlinkFair, deviationBps);
         }
