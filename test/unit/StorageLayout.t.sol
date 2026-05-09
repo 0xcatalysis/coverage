@@ -162,36 +162,76 @@ contract StorageLayoutTest is Test {
     /**
      * @notice Strips compiler-generated AST node IDs from a Solidity storage type identifier.
      * @dev Foundry/solc embed an AST node ID immediately after the closing paren of struct,
-     *      contract, enum and similar parameterised type names (e.g. `t_struct(PolicyDraft)12345`,
+     *      contract, and enum type names (e.g. `t_struct(PolicyDraft)12345_storage`,
      *      `t_contract(ISpec)6789`). The numeric ID is build-dependent and shifts when unrelated
      *      contracts are added or reordered, even when the actual storage layout is unchanged.
      *      Pinning the canonical name without the ID makes the regression test resilient to
      *      cosmetic AST drift while still catching real layout changes.
+     *
+     *      Digits after `)` are only stripped when the corresponding `(` was preceded by a
+     *      named-type keyword — "struct", "contract", "enum", or "userDefinedValueType" —
+     *      which are the only contexts where solc emits an AST ID. For `t_array(type)N_storage`
+     *      the `N` encodes the array length and must be preserved so that a `uint256[32]` →
+     *      `uint256[64]` change is visible. A per-paren-depth boolean stack records the decision
+     *      made at each `(`.
      * @param s Original type identifier as emitted by solc.
-     * @return Normalised identifier with `)<digits>` collapsed to `)`.
+     * @return Normalised identifier with named-type `(...)<digits>` collapsed to `(...)`.
      */
     function _stripAstIds(string memory s) private pure returns (string memory) {
         bytes memory b = bytes(s);
         bytes memory buf = new bytes(b.length);
         uint256 outLen = 0;
+
+        bool[] memory stripAfterClose = new bool[](32);
+        uint256 depth = 0;
         bool skipDigits = false;
+
         for (uint256 i = 0; i < b.length; ++i) {
             bytes1 c = b[i];
             if (skipDigits) {
-                if (c >= 0x30 && c <= 0x39) {
-                    continue;
-                }
+                if (c >= 0x30 && c <= 0x39) continue;
                 skipDigits = false;
             }
-            buf[outLen++] = c;
-            if (c == 0x29) {
-                skipDigits = true;
+            if (c == 0x28) {
+                stripAfterClose[depth] = _bufEndsWithNamedType(buf, outLen);
+                depth++;
+                buf[outLen++] = c;
+            } else if (c == 0x29) {
+                buf[outLen++] = c;
+                if (depth > 0) {
+                    depth--;
+                    skipDigits = stripAfterClose[depth];
+                }
+            } else {
+                buf[outLen++] = c;
             }
         }
+
         bytes memory trimmed = new bytes(outLen);
         for (uint256 i = 0; i < outLen; ++i) {
             trimmed[i] = buf[i];
         }
         return string(trimmed);
+    }
+
+    /**
+     * @dev Returns true when `buf[0..len-1]` ends with a solc named-type keyword whose closing
+     *      `)` is followed by an AST node ID: "struct", "contract", "enum", or
+     *      "userDefinedValueType" (the last covers `type Foo is uint128` style declarations,
+     *      added in Solidity 0.8.8).
+     */
+    function _bufEndsWithNamedType(bytes memory buf, uint256 len) private pure returns (bool) {
+        return _bufEndsWith(buf, len, "struct") || _bufEndsWith(buf, len, "contract") || _bufEndsWith(buf, len, "enum")
+            || _bufEndsWith(buf, len, "userDefinedValueType");
+    }
+
+    /// @dev Returns true when `buf[0..len-1]` ends with the bytes of `suffix`.
+    function _bufEndsWith(bytes memory buf, uint256 len, string memory suffix) private pure returns (bool) {
+        bytes memory s = bytes(suffix);
+        if (len < s.length) return false;
+        for (uint256 i = 0; i < s.length; ++i) {
+            if (buf[len - s.length + i] != s[i]) return false;
+        }
+        return true;
     }
 }
