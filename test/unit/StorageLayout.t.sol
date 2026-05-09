@@ -108,10 +108,13 @@ contract StorageLayoutTest is Test {
     }
 
     function test_Swapper_storageLayoutPinned() public view {
-        ExpectedSlot[] memory expected = new ExpectedSlot[](3);
+        ExpectedSlot[] memory expected = new ExpectedSlot[](6);
         expected[0] = ExpectedSlot("nativeWrapper", 0, 0, "t_address");
         expected[1] = ExpectedSlot("whitelistedTargets", 1, 0, "t_mapping(t_address,t_bool)");
         expected[2] = ExpectedSlot("_swapRoutes", 2, 0, "t_mapping(t_bytes32,t_struct(SwapRoute)_storage)");
+        expected[3] = ExpectedSlot("claimManager", 3, 0, "t_address");
+        expected[4] = ExpectedSlot("_routeLockedUntil", 4, 0, "t_mapping(t_bytes32,t_uint256)");
+        expected[5] = ExpectedSlot("_targetLockedUntil", 5, 0, "t_mapping(t_address,t_uint256)");
         _assertLayout("Swapper", expected);
     }
 
