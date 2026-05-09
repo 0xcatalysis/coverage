@@ -53,6 +53,13 @@ interface IOraclePriceFeedFork {
     function getUSDValue(address token, uint256 amount) external view returns (uint256);
 }
 
+interface IAggregatorV3Fork {
+    function latestRoundData()
+        external
+        view
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);
+}
+
 interface IDelegationManagerFork {
     struct SignatureWithExpiry {
         bytes signature;
@@ -115,6 +122,9 @@ abstract contract ForkCoverageSetup is Test {
     /// @dev Chainlink aggregators
     address internal constant ETH_USD_AGGREGATOR = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
     address internal constant USDC_USD_AGGREGATOR = 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6;
+    /// @dev wstETH/USD aggregator registered in the live OraclePriceFeed at FORK_BLOCK.
+    ///      Source: confirmed from fileClaim trace (hasPriceFeed(wstETH) == true at FORK_BLOCK).
+    address internal constant WSTETH_USD_AGGREGATOR = 0xe4aE88743c3834d0c492eAbC47384c84BcADC6a6;
 
     /// @dev All live Core addresses are non-empty at this block (Core deployed ~24_875_000).
     uint256 internal constant FORK_BLOCK = 24_900_000;
@@ -232,6 +242,8 @@ abstract contract ForkCoverageSetup is Test {
                 ))
         );
         claimManager.setPremiumManager(address(premiumManager));
+        claimManager.setOraclePriceFeed(ORACLE_PRICEFEED);
+        claimManager.setPriceDeviationToleranceBps(1000); // 10% tolerance for fork tests
         policyManager.setClaimManager(address(claimManager));
         swapper.setClaimManager(address(claimManager));
 
@@ -306,6 +318,37 @@ abstract contract ForkCoverageSetup is Test {
             IOraclePriceFeedFork(ORACLE_PRICEFEED).registerPriceFeed(token, aggregator, staleness);
             vm.stopPrank();
         }
+    }
+
+    /**
+     * @notice Drop-in replacement for `skip()` in fork tests that invoke ClaimManager after a
+     *         long time advance. Reads the pre-skip round data for the wstETH/USD and USDC/USD
+     *         Chainlink aggregators, then after the skip mocks each aggregator's
+     *         `latestRoundData()` to return the same answer with `updatedAt = block.timestamp`.
+     * @dev Without this, the Chainlink aggregators revert with a staleness error (their internal
+     *      check fires when `block.timestamp` moves more than their heartbeat ahead of the last
+     *      on-chain update), causing OraclePriceFeed.getUSDValue to revert and ClaimManager to
+     *      surface OracleUnavailable.  The mock is scoped to the test's vm instance and is
+     *      cleared automatically when Forge resets state between tests.
+     */
+    function _skipFork(uint256 duration) internal {
+        (uint80 wstRoundId, int256 wstAnswer, uint256 wstStartedAt,, uint80 wstAnsweredInRound) =
+            IAggregatorV3Fork(WSTETH_USD_AGGREGATOR).latestRoundData();
+        (uint80 usdcRoundId, int256 usdcAnswer, uint256 usdcStartedAt,, uint80 usdcAnsweredInRound) =
+            IAggregatorV3Fork(USDC_USD_AGGREGATOR).latestRoundData();
+
+        skip(duration);
+
+        vm.mockCall(
+            WSTETH_USD_AGGREGATOR,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(wstRoundId, wstAnswer, wstStartedAt, block.timestamp, wstAnsweredInRound)
+        );
+        vm.mockCall(
+            USDC_USD_AGGREGATOR,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(usdcRoundId, usdcAnswer, usdcStartedAt, block.timestamp, usdcAnsweredInRound)
+        );
     }
 
     /// @notice Whitelists a token as both a payout token and an approved premium token.

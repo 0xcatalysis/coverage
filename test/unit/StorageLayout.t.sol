@@ -66,12 +66,12 @@ contract StorageLayoutTest is Test {
         expected[5] = ExpectedSlot("_policies", 4, 0, "t_mapping(t_uint96,t_struct(PolicyMetadata)_storage)");
         expected[6] = ExpectedSlot("_registeredPolicyCommits", 5, 0, "t_mapping(t_bytes32,t_bool)");
         expected[7] = ExpectedSlot("supportedPayoutTokens", 6, 0, "t_mapping(t_address,t_bool)");
-        expected[8] = ExpectedSlot("chainlinkPriceFeed", 7, 0, "t_address");
+        expected[8] = ExpectedSlot("oraclePriceFeed", 7, 0, "t_address");
         _assertLayout("PolicyManager", expected);
     }
 
     function test_ClaimManager_storageLayoutPinned() public view {
-        ExpectedSlot[] memory expected = new ExpectedSlot[](10);
+        ExpectedSlot[] memory expected = new ExpectedSlot[](13);
         expected[0] = ExpectedSlot("specRegistry", 0, 0, "t_address");
         expected[1] = ExpectedSlot("slashingManager", 1, 0, "t_address");
         expected[2] = ExpectedSlot("swapper", 2, 0, "t_address");
@@ -83,6 +83,9 @@ contract StorageLayoutTest is Test {
         expected[7] = ExpectedSlot("_policyClaims", 6, 0, "t_mapping(t_uint96,t_struct(PolicyClaim)_storage)");
         expected[8] = ExpectedSlot("_claimApprovalRequired", 7, 0, "t_mapping(t_uint96,t_bool)");
         expected[9] = ExpectedSlot("_usedEvidenceHashes", 8, 0, "t_mapping(t_uint96,t_mapping(t_bytes32,t_bool))");
+        expected[10] = ExpectedSlot("oraclePriceFeed", 9, 0, "t_address");
+        expected[11] = ExpectedSlot("priceDeviationToleranceBps", 9, 20, "t_uint16");
+        expected[12] = ExpectedSlot("__gap", 10, 0, "t_array(t_uint256)48_storage");
         _assertLayout("ClaimManager", expected);
     }
 
