@@ -372,6 +372,20 @@ interface IClaimManager is IAccessControl {
     error InvalidDeviationBps(uint16 bps);
 
     /**
+     * @notice Reverts when a non-payout collateral token has no enabled, non-zero quote route to
+     *         the policy payout token at bind time.
+     * @param tokenIn Collateral token address lacking a route.
+     * @param tokenOut Payout token address that cannot be reached.
+     */
+    error MissingSwapRouteForCollateral(address tokenIn, address tokenOut);
+
+    /**
+     * @notice Reverts when a caller other than the configured PolicyManager invokes a
+     *         PolicyManager-only function.
+     */
+    error OnlyPolicyManager();
+
+    /**
      * @notice Reverts when previewSlashing returns arrays of different lengths.
      * @param vaultsLength Length of the vaults array.
      * @param tokensLength Length of the tokens array.
@@ -438,6 +452,29 @@ interface IClaimManager is IAccessControl {
      * @param premiumManager_ Address of the PremiumManager contract. Must be non-zero.
      */
     function setPremiumManager(address premiumManager_) external;
+
+    /**
+     * @notice Validates that every non-payout collateral token has an enabled, non-zero swap route to
+     *         `payoutToken`, and locks each qualifying route (and its swap target) in the Swapper until
+     *         `maturityTime`.
+     * @dev Only callable by the configured PolicyManager. Called inside `PolicyManager.bindPolicy`
+     *      before the USD-value sufficiency check so that collateral lacking a settlement path can
+     *      never contribute to backing. Reverts with `MissingSwapRouteForCollateral` if any
+     *      non-payout, non-zero-stake token has no working quote route.
+     * @param policyId Identifier of the policy being bound (for event attribution).
+     * @param payoutToken ERC-20 token used for claim payouts.
+     * @param maturityTime Policy end timestamp; routes are locked until at least this timestamp.
+     * @param tokens Collateral token array from `getCommitteeTokenStakes`.
+     * @param tokenStakes Per-vault stake array aligned with `tokens`.
+     */
+    function validateAndLockCollateralRoutes(
+        uint96 policyId,
+        address payoutToken,
+        uint256 maturityTime,
+        address[] calldata tokens,
+        uint256[] calldata tokenStakes
+    )
+        external;
 
     /**
      * @notice Files and resolves a claim atomically in a single transaction.

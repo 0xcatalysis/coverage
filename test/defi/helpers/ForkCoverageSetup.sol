@@ -233,6 +233,7 @@ abstract contract ForkCoverageSetup is Test {
         );
         claimManager.setPremiumManager(address(premiumManager));
         policyManager.setClaimManager(address(claimManager));
+        swapper.setClaimManager(address(claimManager));
 
         coverPoolImplementation = new CoverPool();
 

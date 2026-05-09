@@ -59,6 +59,21 @@ interface ISwapper is IAccessControl {
     );
 
     /**
+     * @notice Emitted when a swap route is locked by an active policy.
+     * @param tokenIn Source token address.
+     * @param tokenOut Destination token address.
+     * @param target Swap target address locked alongside the route.
+     * @param lockedUntil New lock expiry timestamp.
+     */
+    event RouteLocked(address indexed tokenIn, address indexed tokenOut, address indexed target, uint256 lockedUntil);
+
+    /**
+     * @notice Emitted when the ClaimManager dependency is set or updated.
+     * @param claimManager Address of the ClaimManager contract.
+     */
+    event ClaimManagerSet(address indexed claimManager);
+
+    /**
      * @notice Emitted when a swap route is set or updated.
      * @param tokenIn Source token address.
      * @param tokenOut Destination token address.
@@ -158,6 +173,26 @@ interface ISwapper is IAccessControl {
      * @param token The NATIVE_ETH constant that was incorrectly used.
      */
     error InvalidRouteToken(address token);
+
+    /**
+     * @notice Reverts when attempting to materially change a route that is locked by one or more active policies.
+     * @param tokenIn Source token address.
+     * @param tokenOut Destination token address.
+     * @param lockedUntil Timestamp until which the route is locked.
+     */
+    error RouteLockedByActivePolicies(address tokenIn, address tokenOut, uint256 lockedUntil);
+
+    /**
+     * @notice Reverts when attempting to de-whitelist a swap target that is still locked by active policies.
+     * @param target Swap target address.
+     * @param lockedUntil Timestamp until which the target is locked.
+     */
+    error TargetLockedByActivePolicies(address target, uint256 lockedUntil);
+
+    /**
+     * @notice Reverts when a caller other than the configured ClaimManager invokes a ClaimManager-only function.
+     */
+    error OnlyClaimManager();
 
     /**
      * @notice Pauses swap operations.
@@ -261,6 +296,24 @@ interface ISwapper is IAccessControl {
     function executeSwap(SwapParams calldata params) external payable returns (uint256 amountOut);
 
     /**
+     * @notice Sets the ClaimManager contract address.
+     * @dev Requires DEFAULT_ADMIN_ROLE. ClaimManager is the sole authorized caller of lockRouteUntil.
+     * @param claimManager_ Address of the ClaimManager contract.
+     */
+    function setClaimManager(address claimManager_) external;
+
+    /**
+     * @notice Locks a swap route and its current swap target until `lockedUntil`.
+     * @dev Only callable by the configured ClaimManager. Called once per bound policy for every
+     *      non-payout collateral token. Pushes the lock timestamp strictly forward — never shrinks it.
+     *      The tokenIn/tokenOut pair undergoes the same NATIVE_ETH → nativeWrapper resolution as quoteSwap.
+     * @param tokenIn Source token address (may be NATIVE_ETH constant).
+     * @param tokenOut Destination token address (may be NATIVE_ETH constant).
+     * @param lockedUntil Timestamp until which material route changes are prohibited.
+     */
+    function lockRouteUntil(address tokenIn, address tokenOut, uint256 lockedUntil) external;
+
+    /**
      * @notice AccessControl identifier for the swap manager role.
      */
     function SWAP_MANAGER_ROLE() external view returns (bytes32);
@@ -282,6 +335,26 @@ interface ISwapper is IAccessControl {
      * @return whitelisted Whether the target is whitelisted.
      */
     function whitelistedTargets(address target) external view returns (bool whitelisted);
+
+    /**
+     * @notice Returns the configured ClaimManager address.
+     */
+    function claimManager() external view returns (address);
+
+    /**
+     * @notice Returns the timestamp until which material changes to a route are prohibited.
+     * @param tokenIn Source token address (resolved, not NATIVE_ETH constant).
+     * @param tokenOut Destination token address (resolved, not NATIVE_ETH constant).
+     * @return Timestamp (0 if never locked).
+     */
+    function routeLockedUntil(address tokenIn, address tokenOut) external view returns (uint256);
+
+    /**
+     * @notice Returns the timestamp until which a swap target may not be de-whitelisted.
+     * @param target Swap target address.
+     * @return Timestamp (0 if never locked).
+     */
+    function targetLockedUntil(address target) external view returns (uint256);
 
     /**
      * @notice Returns the swap route configuration for a token pair.

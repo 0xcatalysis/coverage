@@ -37,6 +37,11 @@ interface IClaimManagerWire {
     function setPremiumManager(address premiumManager_) external;
 }
 
+interface ISwapperWire {
+    function setClaimManager(address claimManager_) external;
+    function claimManager() external view returns (address);
+}
+
 interface IAccessControlGrant {
     function grantRole(bytes32 role, address account) external;
     function hasRole(bytes32 role, address account) external view returns (bool);
@@ -50,7 +55,7 @@ interface IClaimManagerPremiumView {
  * @title WireCoreContracts
  * @notice Performs all cross-system wiring between Catalysis Core and Coverage contracts.
  * @dev Must be run after both Core and Coverage contracts are deployed.
- *      Executes eight calls that bridge the two systems:
+ *      Executes nine calls that bridge the two systems:
  *
  *      1. StakeManager.setCoverPoolFactory    — unblocks createCommittee() during requestCoverage()
  *      2. StakeManager.grantRole(POLICY_MANAGER_ROLE, policyManager) — unblocks requestCoverage()
@@ -65,6 +70,9 @@ interface IClaimManagerPremiumView {
  *      8. SSPRouter.setStakeRecipient         — sets the EigenLayer redistribution recipient so
  *                                               slashed collateral flows to ClaimManager, not the
  *                                               deployer; must run before any committee is created
+ *      9. Swapper.setClaimManager             — authorises ClaimManager as the sole caller of
+ *                                               lockRouteUntil(); must run before any policy is bound
+ *                                               (CYS3-06 fix: bind-time route-availability check)
  *
  *      Role requirements (all held by the ADMIN after Core and Coverage deploys):
  *        - STAKE_MANAGER_CONFIG_ROLE on StakeManager     (defaults to ADMIN)
@@ -100,6 +108,7 @@ interface IClaimManagerPremiumView {
  *   - CLAIM_MANAGER: ClaimManager proxy address
  *   - PREMIUM_MANAGER: PremiumManager proxy address
  *   - COVER_POOL_FACTORY: CoverPoolFactory proxy address
+ *   - SWAPPER: Swapper proxy address
  *   - PAYOUT_TOKEN: ERC-20 payout/premium token address (e.g. WETH); must already be an
  *       approved premium token on PremiumManager (set via getInitialPremiumTokens() in Deploy.s.sol)
  *
@@ -134,6 +143,7 @@ contract WireCoreContracts is Script {
     address public claimManager;
     address public premiumManager;
     address public coverPoolFactory;
+    address public swapper;
     address public payoutToken;
 
     event WiringCompleted(
@@ -144,7 +154,8 @@ contract WireCoreContracts is Script {
         address coverPoolFactory,
         address policyManager,
         address claimManager,
-        address premiumManager
+        address premiumManager,
+        address swapper
     );
 
     constructor() {
@@ -158,6 +169,7 @@ contract WireCoreContracts is Script {
         claimManager = vm.envAddress("CLAIM_MANAGER");
         premiumManager = vm.envAddress("PREMIUM_MANAGER");
         coverPoolFactory = vm.envAddress("COVER_POOL_FACTORY");
+        swapper = vm.envAddress("SWAPPER");
         payoutToken = vm.envAddress("PAYOUT_TOKEN");
     }
 
@@ -176,36 +188,40 @@ contract WireCoreContracts is Script {
         console.log("  ClaimManager:    ", claimManager);
         console.log("  PremiumManager:  ", premiumManager);
         console.log("  CoverPoolFactory:", coverPoolFactory);
+        console.log("  Swapper:         ", swapper);
         console.log("  PayoutToken:     ", payoutToken);
 
         // All 6 calls require roles held by admin (DEFAULT_ADMIN_ROLE or config roles that default to ADMIN).
         // On testnet admin == deployer; on mainnet admin is the multisig — omit --broadcast and use Safe.
         vm.startBroadcast(admin);
 
-        console.log("\n[1/8] StakeManager.setCoverPoolFactory...");
+        console.log("\n[1/9] StakeManager.setCoverPoolFactory...");
         IStakeManagerWire(stakeManager).setCoverPoolFactory(coverPoolFactory);
 
-        console.log("[2/8] StakeManager.grantRole(POLICY_MANAGER_ROLE, policyManager)...");
+        console.log("[2/9] StakeManager.grantRole(POLICY_MANAGER_ROLE, policyManager)...");
         IStakeManagerWire(stakeManager).grantRole(POLICY_MANAGER_ROLE, policyManager);
 
-        console.log("[3/8] SlashingManager.setClaimManager...");
+        console.log("[3/9] SlashingManager.setClaimManager...");
         ISlashingManagerWire(slashingManager).setClaimManager(claimManager);
 
-        console.log("[4/8] RewardsManager.setPremiumManager...");
+        console.log("[4/9] RewardsManager.setPremiumManager...");
         IRewardsManagerWire(rewardsManager).setPremiumManager(premiumManager);
 
-        console.log("[5/8] PremiumManager.approveSpender(payoutToken, rewardsManager, max)...");
+        console.log("[5/9] PremiumManager.approveSpender(payoutToken, rewardsManager, max)...");
         IPremiumManagerWire(premiumManager).approveSpender(payoutToken, rewardsManager, type(uint256).max);
 
-        console.log("[6/8] ClaimManager.setPremiumManager...");
+        console.log("[6/9] ClaimManager.setPremiumManager...");
         IClaimManagerWire(claimManager).setPremiumManager(premiumManager);
 
         bytes32 claimManagerRoleOnPremium = IPremiumManagerWire(premiumManager).CLAIM_MANAGER_ROLE();
-        console.log("[7/8] PremiumManager.grantRole(CLAIM_MANAGER_ROLE, claimManager)...");
+        console.log("[7/9] PremiumManager.grantRole(CLAIM_MANAGER_ROLE, claimManager)...");
         IAccessControlGrant(premiumManager).grantRole(claimManagerRoleOnPremium, claimManager);
 
-        console.log("[8/8] SSPRouter.setStakeRecipient(claimManager)...");
+        console.log("[8/9] SSPRouter.setStakeRecipient(claimManager)...");
         ISSPRouterWire(sspRouter).setStakeRecipient(claimManager);
+
+        console.log("[9/9] Swapper.setClaimManager(claimManager)...");
+        ISwapperWire(swapper).setClaimManager(claimManager);
 
         vm.stopBroadcast();
 
@@ -220,7 +236,8 @@ contract WireCoreContracts is Script {
             coverPoolFactory,
             policyManager,
             claimManager,
-            premiumManager
+            premiumManager,
+            swapper
         );
     }
 
@@ -260,6 +277,10 @@ contract WireCoreContracts is Script {
         console.log("SSPRouter.stakeRecipient:", gotStakeRecipient);
         require(gotStakeRecipient == claimManager, "SSPRouter.stakeRecipient mismatch");
 
-        console.log("[SUCCESS] All 8 wiring calls verified");
+        address gotSwapperClaimMgr = ISwapperWire(swapper).claimManager();
+        console.log("Swapper.claimManager:", gotSwapperClaimMgr);
+        require(gotSwapperClaimMgr == claimManager, "Swapper.claimManager mismatch");
+
+        console.log("[SUCCESS] All 9 wiring calls verified");
     }
 }
