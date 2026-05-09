@@ -4777,7 +4777,6 @@ contract MockSwapperWithLockTracking {
     }
 }
 
-
 contract MockSwapperWithPerTokenDivisor {
     address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 

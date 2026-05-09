@@ -266,7 +266,6 @@ contract PolicyManager is
             policyId, request.payoutToken, uint32(block.timestamp) + draft.duration, tokens, tokenStakes
         );
 
-
         uint256 coverageLimitUSD =
             IOraclePriceFeed(oraclePriceFeed).getUSDValue(request.payoutToken, boundPolicy.coverageLimit);
         require(coverageLimitUSD > 0, ZeroCoverageLimitUSD());
