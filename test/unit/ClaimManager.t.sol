@@ -220,9 +220,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           INITIALIZE V2
+                             INITIALIZE V2
     //////////////////////////////////////////////////////////////*/
-
     function test_initializeV2_WhenZeroOraclePriceFeed_Reverts() public {
         ClaimManager impl = new ClaimManager();
         ClaimManager cm = ClaimManager(payable(address(new ERC1967Proxy(address(impl), ""))));
@@ -263,9 +262,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    SET ORACLE PRICE FEED
+                         SET ORACLE PRICE FEED
     //////////////////////////////////////////////////////////////*/
-
     function test_setOraclePriceFeed_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -294,9 +292,8 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-               SET PRICE DEVIATION TOLERANCE BPS
+                  SET PRICE DEVIATION TOLERANCE BPS
     //////////////////////////////////////////////////////////////*/
-
     function test_setPriceDeviationToleranceBps_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -330,7 +327,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                  PAUSE / UNPAUSE
+                            PAUSE / UNPAUSE
     //////////////////////////////////////////////////////////////*/
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
@@ -386,7 +383,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            SET SPEC REGISTRY
+                           SET SPEC REGISTRY
     //////////////////////////////////////////////////////////////*/
     function test_setSpecRegistry_WhenCallerNotAdmin_Reverts() public {
         address newSpecRegistry = makeAddr("newSpecRegistry");
@@ -420,7 +417,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          SET SLASHING MANAGER
+                         SET SLASHING MANAGER
     //////////////////////////////////////////////////////////////*/
     function test_setSlashingManager_WhenCallerNotAdmin_Reverts() public {
         address newSlashingManager = makeAddr("newSlashingManager");
@@ -454,7 +451,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                               SET SWAPPER
+                              SET SWAPPER
     //////////////////////////////////////////////////////////////*/
     function test_setSwapper_WhenCallerNotAdmin_Reverts() public {
         address newSwapper = makeAddr("newSwapper");
@@ -488,7 +485,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           SET POLICY MANAGER
+                          SET POLICY MANAGER
     //////////////////////////////////////////////////////////////*/
     function test_setPolicyManager_WhenCallerNotAdmin_Reverts() public {
         address newPolicyManager = makeAddr("newPolicyManager");
@@ -738,7 +735,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                             RECOVER TOKENS
+                            RECOVER TOKENS
     //////////////////////////////////////////////////////////////*/
     function test_receive_AcceptsNativeETH() public {
         uint256 amount = 1 ether;
@@ -807,12 +804,7 @@ contract ClaimManagerTest is Test {
         claimManager.recoverTokens(collateralToken, beneficiary, 0);
     }
 
-    /*//////////////////////////////////////////////////////////////
-           FILE CLAIM — ORACLE PROTECTION (CYS3-03)
-    //////////////////////////////////////////////////////////////*/
-
     function test_fileClaim_WhenOraclePriceFeedUnset_RevertsOracleUnavailable() public {
-        // Deploy a fresh ClaimManager that was never given initializeV2 (oraclePriceFeed == address(0))
         Options memory opts;
         opts.unsafeSkipAllChecks = true;
         address freshProxy = Upgrades.deployUUPSProxy(
@@ -822,10 +814,7 @@ contract ClaimManagerTest is Test {
         );
         ClaimManager freshCm = ClaimManager(payable(freshProxy));
 
-        // Wire policy to fresh proxy
         policyMock.setPolicyMetadata(POLICY_ID, _defaultMetadata());
-
-        // collateralToken != payoutToken → cross-token path → OracleUnavailable (feed address is address(0))
         specMock.setEvaluationResult(true, keccak256("approved"));
         address[] memory assets = new address[](1);
         assets[0] = collateralToken;
@@ -883,12 +872,57 @@ contract ClaimManagerTest is Test {
         claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
     }
 
+    /*//////////////////////////////////////////////////////////////
+                  FILE CLAIM — ORACLE PROTECTION (CYS3-03)
+    //////////////////////////////////////////////////////////////*/
+    function test_fileClaim_WhenGetUSDValueReturnsZero_RevertsOracleUnavailable() public {
+        oracleFeedMock.setUSDValueZero(collateralToken);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.OracleUnavailable.selector, collateralToken, payoutToken));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenGetTokenAmountReverts_RevertsOracleUnavailable() public {
+        oracleFeedMock.setGetTokenAmountShouldRevert(true);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.OracleUnavailable.selector, collateralToken, payoutToken));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenGetTokenAmountReturnsZero_RevertsOracleUnavailable() public {
+        oracleFeedMock.setTokenAmountZero(payoutToken);
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = SLASH_AMOUNT;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.expectRevert(abi.encodeWithSelector(IClaimManager.OracleUnavailable.selector, collateralToken, payoutToken));
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "");
+    }
+
     function test_fileClaim_WhenDexQuoteDeviatesAboveTolerance_RevertsQuoteDeviatesFromOracle() public {
-        // Configure a swapper where quoteSwap for collateralToken returns 5000 ether
-        // but oracle fair value is 1:1 = SLASH_AMOUNT.
-        // Deviation = (5000 ether - 500 ether) / 500 ether * 10000 = 90000 bps >> 300 bps tolerance.
         MockMultiSwapper deviatingSwapper = new MockMultiSwapper();
-        deviatingSwapper.setQuoteOutput(collateralToken, 5000 ether); // quoteSwap returns 5000 ether
+        deviatingSwapper.setQuoteOutput(collateralToken, 5000 ether);
         deviatingSwapper.setSwapOutput(collateralToken, 5000 ether);
         deviatingSwapper.setPayoutToken(payoutToken);
         vm.prank(admin);
@@ -901,7 +935,6 @@ contract ClaimManagerTest is Test {
         amounts[0] = SLASH_AMOUNT;
         slashingManagerMock.setSlashResult(assets, amounts);
 
-        // oracleFair = SLASH_AMOUNT (1:1); dex = 5000 ether → huge upward deviation
         vm.expectRevert(
             abi.encodeWithSelector(
                 IClaimManager.QuoteDeviatesFromOracle.selector,
@@ -917,11 +950,8 @@ contract ClaimManagerTest is Test {
     }
 
     function test_fileClaim_WhenDexQuoteDeviatesBelowTolerance_RevertsQuoteDeviatesFromOracle() public {
-        // Configure a swapper where quoteSwap for collateralToken returns 400 ether (20% below 500)
-        // but oracle fair value is 1:1 = SLASH_AMOUNT = 500 ether.
-        // Deviation = (500 - 400) / 500 * 10000 = 2000 bps >> 300 bps tolerance.
         MockMultiSwapper deviatingSwapper = new MockMultiSwapper();
-        deviatingSwapper.setQuoteOutput(collateralToken, 400 ether); // quoteSwap returns 400 ether
+        deviatingSwapper.setQuoteOutput(collateralToken, 400 ether);
         deviatingSwapper.setSwapOutput(collateralToken, 400 ether);
         deviatingSwapper.setPayoutToken(payoutToken);
         vm.prank(admin);
@@ -949,20 +979,15 @@ contract ClaimManagerTest is Test {
     }
 
     function test_fileClaim_WhenDexQuoteWithinTolerance_SlashSizingUsesOracleFair() public {
-        // DEX quote and oracle fair are both 1:1 (deviation = 0 bps → well within 300 bps tolerance).
-        // Slash sizing uses payoutEquivalents[i] = _oracleFairValue(token, payout, stake) = stake.
-        // The proportional slash is: baseSlash = stake * requested / stake = requested, inflated by slippage.
         uint256 stakeA = 300 ether;
         uint256 requestedAmount = 100 ether;
 
-        // Default quoteSwap is 1:1; executeSwap mints requestedAmount to beneficiary.
         MockMultiSwapper multiSwap = new MockMultiSwapper();
         multiSwap.setSwapOutput(collateralToken, requestedAmount);
         multiSwap.setPayoutToken(payoutToken);
         vm.prank(admin);
         claimManager.setSwapper(address(multiSwap));
 
-        // Single cross-token vault: stakeA of collateralToken
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
         address[] memory pvaults = new address[](1);
         pvaults[0] = makeAddr("vA");
@@ -971,7 +996,6 @@ contract ClaimManagerTest is Test {
         uint256[] memory pstakes = new uint256[](1);
         pstakes[0] = stakeA;
         slashMock.setupPreview(pvaults, ptokens, pstakes);
-        // ~102 ether of collateral will be slashed (100 requested inflated by 2% slippage buffer)
         collateralTokenMock.mint(address(slashMock), stakeA);
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
@@ -983,18 +1007,15 @@ contract ClaimManagerTest is Test {
         uint256 claimId = claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
 
         assertEq(uint8(claimManager.claimRecord(POLICY_ID, claimId).status), uint8(IClaimManager.ClaimStatus.Approved));
-        // Beneficiary receives up to requestedAmount (excess is surplus-distributed or stranded)
         assertGt(payoutTokenMock.balanceOf(beneficiary) - balanceBefore, 0, "Beneficiary should receive payout");
     }
 
     function test_fileClaim_WhenDexBelowFairWithinTolerance_AmountOutMinAnchoredToDex() public {
-        // DEX 1.5% below fair → anchor = dex; amountOutMin = dex * (1 - slippage)
-        // The swap should succeed because amountOutMin is achievable.
-        uint256 dexQuote = (SLASH_AMOUNT * 9850) / 10_000; // 1.5% below
+        uint256 dexQuote = (SLASH_AMOUNT * 9850) / 10_000;
 
         MockMultiSwapper nearFairSwapper = new MockMultiSwapper();
-        nearFairSwapper.setQuoteOutput(collateralToken, dexQuote); // quoteSwap returns dexQuote
-        nearFairSwapper.setSwapOutput(collateralToken, dexQuote); // executeSwap also returns dexQuote
+        nearFairSwapper.setQuoteOutput(collateralToken, dexQuote);
+        nearFairSwapper.setSwapOutput(collateralToken, dexQuote);
         nearFairSwapper.setPayoutToken(payoutToken);
         vm.prank(admin);
         claimManager.setSwapper(address(nearFairSwapper));
@@ -1014,13 +1035,11 @@ contract ClaimManagerTest is Test {
     }
 
     function test_fileClaim_WhenDexAboveFairWithinTolerance_AmountOutMinAnchoredToFair() public {
-        // DEX 1.5% above fair → anchor = fair; amountOutMin = fair * (1 - slippage)
-        // The swap should succeed because the swap produces at least the fair-anchored minimum.
-        uint256 dexQuote = (SLASH_AMOUNT * 10_150) / 10_000; // 1.5% above
+        uint256 dexQuote = (SLASH_AMOUNT * 10_150) / 10_000;
 
         MockMultiSwapper aboveFairSwapper = new MockMultiSwapper();
-        aboveFairSwapper.setQuoteOutput(collateralToken, dexQuote); // quoteSwap returns above-fair
-        aboveFairSwapper.setSwapOutput(collateralToken, dexQuote); // executeSwap produces dexQuote
+        aboveFairSwapper.setQuoteOutput(collateralToken, dexQuote);
+        aboveFairSwapper.setSwapOutput(collateralToken, dexQuote);
         aboveFairSwapper.setPayoutToken(payoutToken);
         vm.prank(admin);
         claimManager.setSwapper(address(aboveFairSwapper));
@@ -1040,13 +1059,9 @@ contract ClaimManagerTest is Test {
     }
 
     function test_fileClaim_NativeEthCollateral_NormalizesToWrapperForOracle() public {
-        // When the collateral is NATIVE_ETH, _oracleFairValue must query nativeWrapper not NATIVE_ETH.
-        // Mark NATIVE_ETH as missing but nativeWrapper as present in the mock feed.
         address nativeWrapper = swapperMock.nativeWrapper();
-        oracleFeedMock.setFeedMissing(NATIVE_ETH); // ensures we only pass via nativeWrapper path
+        oracleFeedMock.setFeedMissing(NATIVE_ETH);
 
-        // Set up a policy where payoutToken == nativeWrapper so same-token path is taken for NATIVE_ETH
-        // (after normalization, NATIVE_ETH → nativeWrapper == payoutToken → same-token path → no oracle needed)
         IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
         meta.payoutToken = nativeWrapper;
         meta.claimer = claimer;
@@ -1066,16 +1081,8 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.setSlashingManager(address(slashMock));
 
-        // payoutToken == nativeWrapper; NATIVE_ETH normalizes to nativeWrapper → same-token path → no oracle needed
-        // slashMock sends ETH; claimManager receives it and transfers to beneficiary (native ETH payout)
-        // This test verifies that NATIVE_ETH → nativeWrapper normalization does NOT trigger OracleUnavailable
-        // even when the NATIVE_ETH sentinel's feed is marked missing.
         vm.prank(claimer);
-        // Expected: no OracleUnavailable revert (NATIVE_ETH → nativeWrapper → same-token path)
-        // May revert for other reasons (native transfer), so just assert no oracle error:
-        try claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "") {
-        // success is fine
-        }
+        try claimManager.fileClaim(POLICY_ID, SLASH_AMOUNT, evidenceHash, "") {}
         catch (bytes memory data) {
             bytes4 oracleSelector = IClaimManager.OracleUnavailable.selector;
             if (data.length >= 4) {
@@ -1086,6 +1093,107 @@ contract ClaimManagerTest is Test {
                 assertFalse(gotSelector == oracleSelector, "Should not revert OracleUnavailable for NATIVE_ETH");
             }
         }
+    }
+
+    function test_fileClaim_WhenDeviationExactlyAtBoundary_Succeeds() public {
+        uint256 stake = 10_000 ether;
+        uint256 dexQuote = 10_300 ether;
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.coverageLimit = stake;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        MockMultiSwapper boundarySwapper = new MockMultiSwapper();
+        boundarySwapper.setQuoteOutput(collateralToken, dexQuote);
+        boundarySwapper.setSwapOutput(collateralToken, stake);
+        boundarySwapper.setPayoutToken(payoutToken);
+        vm.prank(admin);
+        claimManager.setSwapper(address(boundarySwapper));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = stake;
+        slashingManagerMock.setSlashResult(assets, amounts);
+        collateralTokenMock.mint(address(slashingManagerMock), stake);
+        slashingManagerMock.setTokenToTransfer(collateralToken);
+
+        vm.prank(claimer);
+        uint256 claimId = claimManager.fileClaim(POLICY_ID, stake, evidenceHash, "");
+        assertEq(uint8(claimManager.claimRecord(POLICY_ID, claimId).status), uint8(IClaimManager.ClaimStatus.Approved));
+    }
+
+    function test_fileClaim_WhenDeviationOneBpsAboveBoundary_RevertsQuoteDeviatesFromOracle() public {
+        uint256 stake = 10_000 ether;
+        uint256 dexQuote = 10_301 ether;
+
+        IPolicyManager.PolicyMetadata memory meta = _defaultMetadata();
+        meta.coverageLimit = stake;
+        policyMock.setPolicyMetadata(POLICY_ID, meta);
+
+        MockMultiSwapper offByOneSwapper = new MockMultiSwapper();
+        offByOneSwapper.setQuoteOutput(collateralToken, dexQuote);
+        offByOneSwapper.setSwapOutput(collateralToken, stake);
+        offByOneSwapper.setPayoutToken(payoutToken);
+        vm.prank(admin);
+        claimManager.setSwapper(address(offByOneSwapper));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = stake;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimManager.QuoteDeviatesFromOracle.selector,
+                collateralToken,
+                payoutToken,
+                dexQuote,
+                stake,
+                uint256(301)
+            )
+        );
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, stake, evidenceHash, "");
+    }
+
+    function test_fileClaim_WhenZeroDeviationTolerance_AnyDeviationReverts() public {
+        vm.prank(admin);
+        claimManager.setPriceDeviationToleranceBps(0);
+
+        uint256 stake = 500 ether;
+
+        uint256 dexQuote = stake + 1 ether;
+
+        MockMultiSwapper zeroTolSwapper = new MockMultiSwapper();
+        zeroTolSwapper.setQuoteOutput(collateralToken, dexQuote);
+        zeroTolSwapper.setSwapOutput(collateralToken, stake);
+        zeroTolSwapper.setPayoutToken(payoutToken);
+        vm.prank(admin);
+        claimManager.setSwapper(address(zeroTolSwapper));
+
+        specMock.setEvaluationResult(true, keccak256("approved"));
+        address[] memory assets = new address[](1);
+        assets[0] = collateralToken;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = stake;
+        slashingManagerMock.setSlashResult(assets, amounts);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IClaimManager.QuoteDeviatesFromOracle.selector,
+                collateralToken,
+                payoutToken,
+                dexQuote,
+                stake,
+                uint256(20)
+            )
+        );
+        vm.prank(claimer);
+        claimManager.fileClaim(POLICY_ID, stake, evidenceHash, "");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1518,7 +1626,7 @@ contract ClaimManagerTest is Test {
         MockMultiSwapper multiSwapper = new MockMultiSwapper();
         multiSwapper.setSwapOutput(collateralToken, firstSwapOutput);
         multiSwapper.setSwapOutput(collateralToken2, secondSwapOutput);
-        // quoteSwap defaults to 1:1 (amountIn) — oracle deviation gate passes automatically.
+
         multiSwapper.setPayoutToken(payoutToken);
         vm.prank(admin);
         claimManager.setSwapper(address(multiSwapper));
@@ -2242,9 +2350,9 @@ contract ClaimManagerTest is Test {
         uint256 requestedAmount = 100 ether;
         uint256 stake = 200 ether;
 
-        oracleFeedMock.setPrice(collateralToken, 1_030_000_000_000_000_000); // oracle: 1.03 payout per collateral
+        oracleFeedMock.setPrice(collateralToken, 1_030_000_000_000_000_000);
 
-        uint256 fair = stake * 1_030_000_000_000_000_000 / 1e18; // 206 ether (oracle fair for full stake)
+        uint256 fair = stake * 1_030_000_000_000_000_000 / 1e18;
         uint256 s = claimManager.maxSwapSlippageBps();
         uint256 d = claimManager.priceDeviationToleranceBps();
         uint256 inflatedSlash = stake * requestedAmount / fair * 10_000 / (10_000 - s) * 10_000 / (10_000 - d);
@@ -2429,7 +2537,7 @@ contract ClaimManagerTest is Test {
         slashingManagerMock.setTokenToTransfer(collateralToken);
 
         swapperMock.setPayoutToken(payoutToken);
-        swapperMock.setSwapOutput(requestedAmount); // exactly matches — no surplus
+        swapperMock.setSwapOutput(requestedAmount);
 
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -2684,7 +2792,7 @@ contract ClaimManagerTest is Test {
         MockNativeMultiSwapper nativeMultiSwapper = new MockNativeMultiSwapper();
         nativeMultiSwapper.setSwapOutput(NATIVE_ETH, ethSwapOutput);
         nativeMultiSwapper.setSwapOutput(collateralToken, erc20SwapOutput);
-        // quoteSwap defaults to 1:1 (amountIn) — oracle deviation gate passes automatically.
+
         nativeMultiSwapper.setPayoutToken(payoutToken);
         vm.prank(admin);
         claimManager.setSwapper(address(nativeMultiSwapper));
@@ -2901,8 +3009,6 @@ contract ClaimManagerTest is Test {
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
-        // Under the new oracle model, a missing DEX quote reverts the whole claim rather than
-        // silently excluding the vault from slashing distribution.
         vm.expectRevert(abi.encodeWithSelector(IClaimManager.QuoteUnavailable.selector, unquotableToken, payoutToken));
         vm.prank(claimer);
         claimManager.fileClaim(POLICY_ID, requestedAmount, evidenceHash, "");
@@ -2956,22 +3062,19 @@ contract ClaimManagerTest is Test {
 
     function test_fileClaim_WhenDexQuoteDeviatesFromOracleByPerTokenDivisor_RevertsQuoteDeviatesFromOracle() public {
         (address tinyVaultAddr, address tinyToken) = _setupTinyBaseSlashWithRealisticQuoter();
-        // Silence unused variable warning
+
         tinyVaultAddr;
 
         specMock.setEvaluationResult(true, keccak256("approved"));
 
-        // The MockSwapperWithPerTokenDivisor divides the quote by 1001, so for tinyStake=1001:
-        // dex = 1001 / 1001 = 1; oracleFair = 1001 (1:1 mock).
-        // Deviation = (1000 / 1001) * 10000 ≈ 9990 bps > priceDeviationToleranceBps(300) → revert.
         vm.expectRevert(
             abi.encodeWithSelector(
                 IClaimManager.QuoteDeviatesFromOracle.selector,
                 tinyToken,
                 payoutToken,
-                uint256(1), // dex quote (1001/1001)
-                uint256(1001), // oracle fair (1:1)
-                uint256(9990) // actual deviationBps
+                uint256(1),
+                uint256(1001),
+                uint256(9990)
             )
         );
         vm.prank(claimer);
@@ -3193,7 +3296,7 @@ contract ClaimManagerTest is Test {
         uint256 crossSlash = 50 ether;
         uint256 sameSlash = 50 ether;
         uint256 crossSwapOutput = 70 ether;
-        uint256 expectedSameTokenSurplus = sameSlash - (requestedAmount - crossSwapOutput); // 50 - 30 = 20
+        uint256 expectedSameTokenSurplus = sameSlash - (requestedAmount - crossSwapOutput);
 
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
         address[] memory pvaults = new address[](2);
@@ -3210,7 +3313,7 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.setMaxSwapSlippageBps(0);
         vm.prank(admin);
-        claimManager.setPriceDeviationToleranceBps(0); // no inflation; test focuses on vault-skip behavior
+        claimManager.setPriceDeviationToleranceBps(0);
 
         collateralTokenMock.mint(address(slashMock), crossSlash);
         payoutTokenMock.mint(address(slashMock), sameSlash);
@@ -3247,7 +3350,7 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.setMaxSwapSlippageBps(0);
         vm.prank(admin);
-        claimManager.setPriceDeviationToleranceBps(0); // no inflation; test focuses on vault-skip behavior
+        claimManager.setPriceDeviationToleranceBps(0);
 
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
         address[] memory pvaults = new address[](2);
@@ -3303,7 +3406,7 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.setMaxSwapSlippageBps(0);
         vm.prank(admin);
-        claimManager.setPriceDeviationToleranceBps(0); // no inflation; test focuses on vault-skip behavior
+        claimManager.setPriceDeviationToleranceBps(0);
 
         MockToken collateralToken2Mock = new MockToken("Collateral2", "COL2");
         address collateralToken2 = address(collateralToken2Mock);
@@ -3328,7 +3431,7 @@ contract ClaimManagerTest is Test {
         MockMultiSwapper multiSwapper = new MockMultiSwapper();
         multiSwapper.setSwapOutput(collateralToken, requestedAmount);
         multiSwapper.setSwapOutput(collateralToken2, requestedAmount);
-        // quoteSwap defaults to 1:1 (amountIn) so oracle deviation gate passes automatically.
+
         multiSwapper.setPayoutToken(payoutToken);
         vm.prank(admin);
         claimManager.setSwapper(address(multiSwapper));
@@ -3352,10 +3455,7 @@ contract ClaimManagerTest is Test {
             requestedAmount,
             "Beneficiary must receive exactly requestedAmount"
         );
-        // Cross-token surplus entries are intentionally skipped when payout is already filled.
-        // A surplus-only swap could revert (liquidity shift / price impact from the earlier swap)
-        // and block an already-completed beneficiary payout. The stranded collateral remains
-        // recoverable via recoverTokens().
+
         assertEq(premiumMock.totalReceived(), 0, "Cross-token surplus must not be attempted when payout is filled");
         assertEq(payoutTokenMock.balanceOf(address(claimManager)), 0, "No payout tokens remain in ClaimManager");
         assertEq(
@@ -3373,7 +3473,7 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.setMaxSwapSlippageBps(0);
         vm.prank(admin);
-        claimManager.setPriceDeviationToleranceBps(0); // no inflation; test focuses on vault-skip behavior
+        claimManager.setPriceDeviationToleranceBps(0);
 
         MockSlashingManagerRespectingSlash slashMock = new MockSlashingManagerRespectingSlash();
         address[] memory pvaults = new address[](2);
@@ -3647,7 +3747,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              CLAIM RECORD
+                             CLAIM RECORD
     //////////////////////////////////////////////////////////////*/
     function test_claimRecord_WhenClaimNotFiled_ReturnsDefault() public view {
         IClaimManager.ClaimRecord memory record = claimManager.claimRecord(POLICY_ID, 0);
@@ -3708,7 +3808,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                              POLICY CLAIM
+                             POLICY CLAIM
     //////////////////////////////////////////////////////////////*/
     function test_policyClaim_WhenNoClaims_ReturnsDefaults() public view {
         IClaimManager.PolicyClaim memory state = claimManager.policyClaim(POLICY_ID);
@@ -3923,7 +4023,7 @@ contract ClaimManagerTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                                 HELPERS
+                                HELPERS
     //////////////////////////////////////////////////////////////*/
     function _setupDefaultPolicy() private {
         IPolicyManager.PolicyMetadata memory metadata = _defaultMetadata();
@@ -3971,9 +4071,8 @@ contract ClaimManagerTest is Test {
 }
 
 /*//////////////////////////////////////////////////////////////
-                         MOCK CONTRACTS
+                           MOCK CONTRACTS
 //////////////////////////////////////////////////////////////*/
-
 contract MockToken is ERC20 {
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
 
@@ -4019,7 +4118,6 @@ contract MockSlashingManager {
 
     receive() external payable {}
 
-    /// @dev Also configures preview data from the same arrays (min-length safe).
     function setSlashResult(address[] memory assets, uint256[] memory amounts) external {
         _assets = assets;
         _amounts = amounts;
@@ -4033,8 +4131,6 @@ contract MockSlashingManager {
         _token2ToTransfer = token;
     }
 
-    /// @dev Returns preview using the same assets/amounts set via setSlashResult.
-    ///      Uses min(assets.length, amounts.length) to stay safe with mismatched test data.
     function previewSlashing(
         uint96,
         address
@@ -4059,7 +4155,7 @@ contract MockSlashingManager {
         uint96 committeeId,
         address operator,
         ISlashingManager.VaultSlash[] memory vaultSlashes,
-        bytes32 /*taskId*/
+        bytes32
     )
         external
         returns (address[] memory, uint256[] memory)
@@ -4101,7 +4197,7 @@ contract MockSwapper {
 
     uint256 private _swapOutput;
     address private _payoutToken;
-    address public nativeWrapper = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2); // WETH placeholder
+    address public nativeWrapper = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     receive() external payable {}
 
@@ -4113,7 +4209,6 @@ contract MockSwapper {
         _payoutToken = token;
     }
 
-    /// @dev Returns amountIn (1:1 ratio) so _computeVaultSlashes proportional math works in tests.
     function quoteSwap(address, address, uint256 amountIn) external pure returns (uint256) {
         return amountIn;
     }
@@ -4147,17 +4242,13 @@ contract MockPolicy {
     }
 }
 
-/**
- * @dev Configurable oracle price feed mock.
- *      - All tokens default to a 1:1 price (price = 1e18).
- *      - `setFeedMissing(token)` makes hasPriceFeed return false and getUSDValue revert.
- *      - `setShouldRevert(true)` makes every external call revert (staleness simulation).
- *      - `setPrice(token, price)` overrides the per-token price (in 1e18 scale).
- */
 contract MockOraclePriceFeed {
     mapping(address => uint256) private _pricePerToken;
     mapping(address => bool) private _feedMissing;
     bool private _shouldRevert;
+    mapping(address => bool) private _usdValueZero;
+    bool private _getTokenAmountShouldRevert;
+    mapping(address => bool) private _tokenAmountZero;
 
     function setPrice(address token, uint256 price) external {
         _pricePerToken[token] = price;
@@ -4171,6 +4262,18 @@ contract MockOraclePriceFeed {
         _shouldRevert = shouldRevert_;
     }
 
+    function setUSDValueZero(address token) external {
+        _usdValueZero[token] = true;
+    }
+
+    function setGetTokenAmountShouldRevert(bool value) external {
+        _getTokenAmountShouldRevert = value;
+    }
+
+    function setTokenAmountZero(address token) external {
+        _tokenAmountZero[token] = true;
+    }
+
     function hasPriceFeed(address token) external view returns (bool) {
         return !_feedMissing[token];
     }
@@ -4178,31 +4281,26 @@ contract MockOraclePriceFeed {
     function getUSDValue(address token, uint256 amount) external view returns (uint256) {
         require(!_shouldRevert, "MockOraclePriceFeed: stale");
         require(!_feedMissing[token], "MockOraclePriceFeed: no feed");
+        if (_usdValueZero[token]) return 0;
         uint256 price = _pricePerToken[token];
         if (price == 0) {
-            return amount; // 1:1 default
+            return amount;
         }
         return (amount * price) / 1e18;
     }
 
     function getTokenAmount(address token, uint256 usdValue) external view returns (uint256) {
-        require(!_shouldRevert, "MockOraclePriceFeed: stale");
+        require(!_getTokenAmountShouldRevert, "MockOraclePriceFeed: getTokenAmount reverts");
         require(!_feedMissing[token], "MockOraclePriceFeed: no feed");
+        if (_tokenAmountZero[token]) return 0;
         uint256 price = _pricePerToken[token];
         if (price == 0) {
-            return usdValue; // 1:1 default
+            return usdValue;
         }
         return (usdValue * 1e18) / price;
     }
 }
 
-/**
- * @dev Multi-token swapper mock supporting separate quoteSwap and executeSwap outputs per token.
- *      - `setSwapOutput(token, amt)`: sets both quote and execution output (default: amountIn 1:1).
- *      - `setQuoteOutput(token, amt)`: overrides only the quoteSwap output independently of executeSwap.
- *      This allows tests to have quoteSwap return 1:1 (passing oracle deviation checks) while executeSwap
- *      returns a different amount (simulating actual swap price impact).
- */
 contract MockMultiSwapper {
     mapping(address => uint256) private _swapOutputs;
     mapping(address => uint256) private _quoteOutputs;
@@ -4213,8 +4311,6 @@ contract MockMultiSwapper {
         _swapOutputs[tokenIn] = output;
     }
 
-    /// @dev Separate quoteSwap amount — allows passing oracle validation (1:1 with oracle)
-    ///      while executeSwap returns a different amount (simulating price impact).
     function setQuoteOutput(address tokenIn, uint256 output) external {
         _quoteOutputs[tokenIn] = output;
     }
@@ -4223,12 +4319,10 @@ contract MockMultiSwapper {
         _payoutToken = token;
     }
 
-    /// @dev Returns _quoteOutputs if set, otherwise amountIn (1:1 default).
-    ///      The 1:1 default ensures oracle deviation gate passes in tests that only configure executeSwap output.
     function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
         uint256 q = _quoteOutputs[tokenIn];
         if (q > 0) return q;
-        return amountIn; // 1:1 default: consistent with oracle 1:1 mock
+        return amountIn;
     }
 
     function executeSwap(ISwapper.SwapParams calldata params) external returns (uint256) {
@@ -4255,7 +4349,6 @@ contract MockCoverPool {
     }
 }
 
-/// @dev CoverPool mock whose owner can be changed after deployment, simulating a pool ownership transfer.
 contract MutableOwnerCoverPool {
     address private _owner;
 
@@ -4272,11 +4365,6 @@ contract MutableOwnerCoverPool {
     }
 }
 
-/**
- * @dev Swapper mock that makes quoteSwap revert or return 0 for configured tokens, simulating
- *      collateral tokens with no quote route.  executeSwap also reverts for those tokens so that
- *      any attempt to actually swap them (which should never happen after the fix) is caught.
- */
 contract MockSwapperWithUnquotable {
     mapping(address => bool) private _revertOnQuote;
     mapping(address => bool) private _zeroOnQuote;
@@ -4321,11 +4409,6 @@ contract MockSwapperWithUnquotable {
     }
 }
 
-/**
- * @dev SlashingManager mock where executeSlashing honours the VaultSlash.amount values passed
- *      to it (rather than returning a pre-set constant).  This lets tests verify that unquotable
- *      vaults receive amount=0 and are therefore not transferred.
- */
 contract MockSlashingManagerRespectingSlash {
     address[] private _previewVaults;
     address[] private _previewTokens;
@@ -4423,11 +4506,10 @@ contract MockNativeMultiSwapper {
         _payoutToken = token;
     }
 
-    /// @dev Returns _quoteOutputs if set, otherwise amountIn (1:1 default).
     function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
         uint256 q = _quoteOutputs[tokenIn];
         if (q > 0) return q;
-        return amountIn; // 1:1 default
+        return amountIn;
     }
 
     function executeSwap(ISwapper.SwapParams calldata params) external payable returns (uint256) {
@@ -4445,10 +4527,6 @@ contract MockNativeMultiSwapper {
     }
 }
 
-/**
- * @dev SlashingManager mock that records the VaultSlash array and reverts if any entry has amount == 0.
- *      Used to assert that _computeVaultSlashes compacts zero-amount entries before calling executeSlashing.
- */
 contract MockSlashingManagerAssertingNoZeroAmounts {
     address[] private _previewVaults;
     address[] private _previewTokens;
@@ -4507,11 +4585,6 @@ contract MockSlashingManagerAssertingNoZeroAmounts {
     }
 }
 
-/**
- * @dev Minimal PremiumManager mock that implements distributeSurplusAsRewards() by pulling tokens from the
- *      caller via safeTransferFrom, mirroring the real PremiumManager behaviour. Tracks the
- *      last call parameters and accumulates received tokens for assertion.
- */
 contract MockPremiumManagerForClaims {
     using SafeERC20 for IERC20;
 
@@ -4535,26 +4608,12 @@ contract MockPremiumManagerForClaims {
     }
 }
 
-/**
- * @dev PremiumManager mock that always reverts on distributeSurplusAsRewards(), simulating a Core-side
- *      failure (e.g. duplicate taskId, paused state, or an upgrade regression).
- *      Used to verify that _distributeSurplus's try/catch allows the claim to complete.
- */
 contract MockPremiumManagerReverting {
     function distributeSurplusAsRewards(uint96, address, uint256, IERC20, bytes32) external pure {
         revert("MockPremiumManagerReverting: always reverts");
     }
 }
 
-/**
- * @dev Swapper mock where quoteSwap applies a per-token integer divisor, simulating realistic
- *      DEX price ratios.  Tokens without an explicit divisor default to 1:1.
- *
- *      Purpose: reproduce the QuoteUnavailable-blocking-claim bug where a cross-token vault
- *      passes the first-pass inclusion check (quoteSwap(token, payout, fullStake) > 0) but
- *      its computed proportional baseSlash rounds to 0, which under the old code was forced
- *      to 1, causing quoteSwap(token, payout, 1) to return 0 and revert.
- */
 contract MockSwapperWithPerTokenDivisor {
     address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
@@ -4575,7 +4634,6 @@ contract MockSwapperWithPerTokenDivisor {
         _swapOutput = output;
     }
 
-    /// @dev Returns amountIn / divisor (flooring), or amountIn when no divisor is set (1:1).
     function quoteSwap(address tokenIn, address, uint256 amountIn) external view returns (uint256) {
         uint256 d = _divisors[tokenIn];
         return d > 0 ? amountIn / d : amountIn;
