@@ -101,6 +101,7 @@ contract FuzzSlashingManager {
 contract FuzzSwapper {
     uint256 private _output;
     address private _outToken;
+    address public nativeWrapper = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     function configure(address outToken, uint256 output) external {
         _outToken = outToken;
@@ -118,6 +119,21 @@ contract FuzzSwapper {
             FuzzToken(_outToken).mint(params.recipient, _output);
         }
         return _output;
+    }
+}
+
+/// @dev 1:1 oracle feed mock for fuzz tests. All tokens have a feed; getUSDValue and getTokenAmount are 1:1.
+contract FuzzOraclePriceFeed {
+    function hasPriceFeed(address) external pure returns (bool) {
+        return true;
+    }
+
+    function getUSDValue(address, uint256 amount) external pure returns (uint256) {
+        return amount;
+    }
+
+    function getTokenAmount(address, uint256 usdValue) external pure returns (uint256) {
+        return usdValue;
     }
 }
 
@@ -159,6 +175,7 @@ contract ClaimManagerFuzzTest is Test {
     FuzzCoverPool internal pool;
     FuzzToken internal collateralToken;
     FuzzToken internal payoutToken;
+    FuzzOraclePriceFeed internal oracleFeed;
 
     address internal admin = makeAddr("admin");
     address internal claimer = makeAddr("claimer");
@@ -178,6 +195,7 @@ contract ClaimManagerFuzzTest is Test {
         pool = new FuzzCoverPool(operator);
         collateralToken = new FuzzToken("Collateral", "COL");
         payoutToken = new FuzzToken("Payout", "PAY");
+        oracleFeed = new FuzzOraclePriceFeed();
 
         ClaimManager impl = new ClaimManager();
         address proxy = address(
@@ -190,6 +208,7 @@ contract ClaimManagerFuzzTest is Test {
             )
         );
         claimManager = ClaimManager(payable(proxy));
+        claimManager.initializeV2(address(oracleFeed), 300);
 
         vm.warp(START);
         _setupPolicy(COVERAGE_LIMIT());

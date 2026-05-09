@@ -9,7 +9,7 @@ duration vault (and optionally a Symbiotic vault).
 The restaker deposit is performed directly against EigenLayer contracts (no Coverage script needed).
 Stake sufficiency is enforced at bind time by `PolicyManager.bindPolicy`, which reads
 `StakeManager.getCommitteeTokenStakes(policyId)` and converts each vault's token-native stake to USD
-via `ChainlinkPriceFeed.getUSDValue`, then requires the total >= `coverageLimit` in USD.
+via `OraclePriceFeed.getUSDValue`, then requires the total >= `coverageLimit` in USD.
 
 ## Duration Vault Model (EigenLayer)
 
@@ -61,7 +61,7 @@ The deposited amount must satisfy the coverage USD requirement. The USD value is
 `EigenAdapter.getStrategiesStakeUSD(vaults)` at bind time:
 
 ```
-stake_USD = totalShares * sharesToUnderlyingView() * ChainlinkPriceFeed.getUSDValue(token, 1e18) / 1e18
+stake_USD = totalShares * sharesToUnderlyingView() * OraclePriceFeed.getUSDValue(token, 1e18) / 1e18
 ```
 
 Example: to cover a `coverageLimit` equivalent to 1000 USD (at 8 decimals: `100_000_000_000` payout-token units, given a 1:1 price), at least `$1000 / ETH_USD_PRICE` ETH worth of WETH must be deposited.
@@ -75,7 +75,7 @@ These steps are performed by the curator via `CoverPool.bindPolicyForRequest(...
    sets TVL limits on the duration vault (converting `coverageLimit` USD to token-native amounts),
    and locks the duration vault.
 2. calls `PolicyManager.bindPolicy(...)` — verifies committee has at least one vault, reads
-   `getCommitteeTokenStakes(policyId)`, converts total stake to USD via `ChainlinkPriceFeed.getUSDValue`,
+   `getCommitteeTokenStakes(policyId)`, converts total stake to USD via `OraclePriceFeed.getUSDValue`,
    and requires `totalStakeUSD >= coverageLimitUSD` before activating the policy.
 
 ## Why a Separate Setup Phase Exists
@@ -131,12 +131,12 @@ StakeManager.getCommitteeTokenStakes(policyId)
 
 Then for each vault with non-zero stake:
 ```
-totalStakeUSD += ChainlinkPriceFeed.getUSDValue(tokens[i], tokenStakes[i])
+totalStakeUSD += OraclePriceFeed.getUSDValue(tokens[i], tokenStakes[i])
 ```
 
 And the coverage limit in USD:
 ```
-coverageLimitUSD = ChainlinkPriceFeed.getUSDValue(payoutToken, coverageLimit)
+coverageLimitUSD = OraclePriceFeed.getUSDValue(payoutToken, coverageLimit)
 ```
 
 Bind reverts with `InsufficientStake` if `totalStakeUSD < coverageLimitUSD`.
@@ -186,7 +186,7 @@ Duration vault addresses are looked up at runtime via `StakeManager.getCommittee
 |---------|-----------|-----|
 | `InsufficientStake` at bind | `totalStakeUSD` < `coverageLimitUSD` in `PolicyManager.bindPolicy` | Deposit more collateral or reduce `coverageLimit` in the quote |
 | `VaultModuleNotSet` at `setCommitteeVaults` | Duration vault not registered in `SSPRouter` | Core admin: `SSPRouter.registerVaultModule(vault, 2)` |
-| `PriceFeedNotFound` at bind | Token not registered in `ChainlinkPriceFeed` (used only at bind time in `PolicyManager.bindPolicy`; not used during `fileClaim`) | Core admin: `registerPriceFeed(token, aggregator, stalenessThreshold)` |
+| `PriceFeedNotFound` at bind | Token not registered in `OraclePriceFeed` (used only at bind time in `PolicyManager.bindPolicy`; not used during `fileClaim`) | Core admin: `registerPriceFeed(token, aggregator, stalenessThreshold)` |
 | `InvalidCommitteeId` | `policyId = 0` (not set from output of RequestCoverage) | Set `POLICY_ID` env var from `RequestCoverage.s.sol` output |
 | Stake reads 0 before bind | Vaults not yet added to committee (expected) | Stake = 0 until `bindPolicyForRequest` runs `setCommitteeVaults` |
 | `RewardsManager safeTransferFrom` reverts on distribution | Unexpected: `PremiumManager` uses ephemeral `forceApprove` internally before each `distributeRewards` call — no admin allowance setup is required | Check that `rewardsManager` is correctly configured in `PremiumManager` |

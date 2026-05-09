@@ -16,7 +16,7 @@ import {EfficientHashLib} from "@solady/utils/EfficientHashLib.sol";
 import {MockClaimManager} from "../mocks/Mocks.sol";
 import {
     MockStakeManager,
-    MockChainlinkPriceFeedDefi,
+    MockOraclePriceFeedDefi,
     MockCoverPoolFactory,
     MockSpecRegistry,
     MockBindPolicyHook,
@@ -27,7 +27,7 @@ import {
 /// @notice Abstract base contract that deploys real PolicyManager + real CoverPool for adapter tests
 /// @dev Replaces MockPolicyManager and MockCoverPool with real implementations.
 ///      MockClaimManager is retained because the real ClaimManager.fileClaim() requires deep dependencies
-///      (ChainlinkPriceFeed, SlashingManager, Swapper) that are external to the coverage protocol.
+///      (OraclePriceFeed, SlashingManager, Swapper) that are external to the coverage protocol.
 ///      Peripheral mocks (StakeManager, CoverPoolFactory, SpecRegistry) are lightweight shims.
 abstract contract RealCoverageSetup is Test {
     // ── Real contracts ──
@@ -40,7 +40,7 @@ abstract contract RealCoverageSetup is Test {
     MockCoverPoolFactory internal mockCoverPoolFactory;
     MockSpecRegistry internal mockSpecRegistry;
     MockBindPolicyHook internal mockBindPolicyHook;
-    MockChainlinkPriceFeedDefi internal mockChainlinkPriceFeed;
+    MockOraclePriceFeedDefi internal mockOraclePriceFeed;
     MockPremiumManager internal mockPremiumManager;
 
     // ── EIP-712 quote signing ──
@@ -70,14 +70,14 @@ abstract contract RealCoverageSetup is Test {
         quoteSigner = vm.addr(quoteSignerKey);
 
         // ── Deploy MockClaimManager with pre-computed PolicyManager proxy address ──
-        // Nonce layout: +0 = MockClaimManager, +1 = MockChainlinkPriceFeedDefi, +2 = PolicyManager impl,
+        // Nonce layout: +0 = MockClaimManager, +1 = MockOraclePriceFeedDefi, +2 = PolicyManager impl,
         //               +3 = ERC1967Proxy (= PM proxy)
         uint256 nonce = vm.getNonce(address(this));
         address expectedPmProxy = vm.computeCreateAddress(address(this), nonce + 3);
         claimManager = new MockClaimManager(expectedPmProxy);
 
-        // ── Deploy MockChainlinkPriceFeedDefi (returns input amount as USD value) ──
-        mockChainlinkPriceFeed = new MockChainlinkPriceFeedDefi();
+        // ── Deploy MockOraclePriceFeedDefi (returns input amount as USD value) ──
+        mockOraclePriceFeed = new MockOraclePriceFeedDefi();
 
         // ── Deploy real PolicyManager behind UUPS proxy ──
         PolicyManager pmImpl = new PolicyManager();
@@ -92,7 +92,7 @@ abstract contract RealCoverageSetup is Test {
                             address(mockStakeManager),
                             address(claimManager),
                             address(mockCoverPoolFactory),
-                            address(mockChainlinkPriceFeed),
+                            address(mockOraclePriceFeed),
                             new address[](0)
                         )
                     )

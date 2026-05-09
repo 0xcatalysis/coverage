@@ -14,7 +14,7 @@ import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {ISpec} from "./interfaces/ISpec.sol";
 import {ISpecRegistry} from "./interfaces/ISpecRegistry.sol";
 import {IStakeManager} from "./interfaces/IStakeManager.sol";
-import {IChainlinkPriceFeed} from "./interfaces/IChainlinkPriceFeed.sol";
+import {IOraclePriceFeed} from "./interfaces/IOraclePriceFeed.sol";
 
 /**
  * @title CoverPool
@@ -218,9 +218,8 @@ contract CoverPool is AccessControlDefaultAdminRulesUpgradeable, EIP712Upgradeab
         // into core. SSPRouter._configureEigenStrategies expects USD to correctly size vault TVL limits.
         // Scoped block frees priceFeed and coverageLimitUSD from the stack before the bindPolicy call below.
         {
-            address priceFeed = IPolicyManager(policyManager).chainlinkPriceFeed();
-            uint256 coverageLimitUSD =
-                IChainlinkPriceFeed(priceFeed).getUSDValue(draft.payoutToken, quote.coverageLimit);
+            address priceFeed = IPolicyManager(policyManager).oraclePriceFeed();
+            uint256 coverageLimitUSD = IOraclePriceFeed(priceFeed).getUSDValue(draft.payoutToken, quote.coverageLimit);
             // Add vaults to committee in core contracts using policyId as committeeId (1:1 mapping).
             IStakeManager(stakeManager).setCommitteeVaults(draft.policyId, vaults, coverageLimitUSD);
         }

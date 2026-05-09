@@ -47,7 +47,7 @@ interface ISSPRouterFork {
     function getCommitteeVaultsByModule(uint96 committeeId, uint8 moduleType) external view returns (address[] memory);
 }
 
-interface IChainlinkPriceFeedFork {
+interface IOraclePriceFeedFork {
     function hasPriceFeed(address token) external view returns (bool);
     function registerPriceFeed(address token, address aggregator, uint256 stalenessThreshold) external;
     function getUSDValue(address token, uint256 amount) external view returns (uint256);
@@ -93,7 +93,7 @@ abstract contract ForkCoverageSetup is Test {
     address internal constant SLASHING_MANAGER = 0x7Bc39bf135eF3c30E542C196719c91455ff489f0;
     address internal constant REWARDS_MANAGER = 0x8ae0F0B94fe782D7F055B04d4699c3cc01632b46;
     address internal constant SSP_ROUTER = 0xF39E592E93A7a925a57464e0120B555A25590486;
-    address internal constant CHAINLINK_PRICEFEED = 0x57F750E3B8e095A5b3AE96030F0cac5dFe2f8A16;
+    address internal constant ORACLE_PRICEFEED = 0x57F750E3B8e095A5b3AE96030F0cac5dFe2f8A16;
     address internal constant MASTER_ADMIN = 0xd2d03377Fa96687e9C11380DA9956AcC5F307e2c;
 
     /// @dev EigenLayer
@@ -202,7 +202,7 @@ abstract contract ForkCoverageSetup is Test {
                     address(pmImplContract),
                     abi.encodeCall(
                         PolicyManager.initialize,
-                        (deployer, STAKE_MANAGER, deployer, deployer, CHAINLINK_PRICEFEED, new address[](0))
+                        (deployer, STAKE_MANAGER, deployer, deployer, ORACLE_PRICEFEED, new address[](0))
                     )
                 )
             )
@@ -297,12 +297,12 @@ abstract contract ForkCoverageSetup is Test {
         premiumManager.approveSpender(WETH, REWARDS_MANAGER, type(uint256).max);
     }
 
-    /// @notice Idempotent: registers a Chainlink price feed on the live ChainlinkPriceFeed if missing.
-    function _registerChainlinkFeedIfMissing(address token, address aggregator, uint256 staleness) internal {
-        if (!IChainlinkPriceFeedFork(CHAINLINK_PRICEFEED).hasPriceFeed(token)) {
+    /// @notice Idempotent: registers a price feed on the live OraclePriceFeed if missing.
+    function _registerPriceFeedIfMissing(address token, address aggregator, uint256 staleness) internal {
+        if (!IOraclePriceFeedFork(ORACLE_PRICEFEED).hasPriceFeed(token)) {
             vm.deal(MASTER_ADMIN, address(MASTER_ADMIN).balance + 1 ether);
             vm.startPrank(MASTER_ADMIN);
-            IChainlinkPriceFeedFork(CHAINLINK_PRICEFEED).registerPriceFeed(token, aggregator, staleness);
+            IOraclePriceFeedFork(ORACLE_PRICEFEED).registerPriceFeed(token, aggregator, staleness);
             vm.stopPrank();
         }
     }
@@ -428,7 +428,7 @@ abstract contract ForkCoverageSetup is Test {
         view
         returns (uint256 collateralAmount)
     {
-        IChainlinkPriceFeedFork feed = IChainlinkPriceFeedFork(CHAINLINK_PRICEFEED);
+        IOraclePriceFeedFork feed = IOraclePriceFeedFork(ORACLE_PRICEFEED);
         uint256 targetUSD = feed.getUSDValue(USDC, usdcAmount) * 2;
         uint256 tokenDecimals = 10 ** IERC20Metadata(collateralToken).decimals();
         uint256 tokenPriceUSD = feed.getUSDValue(collateralToken, tokenDecimals);

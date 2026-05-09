@@ -34,7 +34,7 @@ External dependencies from Catalysis Core:
 | `SlashingManager` | Collateral slashing execution across restaking networks. |
 | `StakeManager` | Manages restaker stake and delegation. |
 | `RewardsManager` | Distributes rewards to restakers. |
-| `ChainlinkPriceFeed` | Converts token amounts to USD values for slashing calculations. |
+| `OraclePriceFeed` | Converts token amounts to USD values for slashing calculations. |
 
 ### Swappers (`src/swappers/`)
 
@@ -169,7 +169,7 @@ See [`.env.example`](.env.example) for all variables with inline documentation. 
 | Variable | Description |
 |----------|-------------|
 | `NATIVE_WRAPPER` | WETH or equivalent native token wrapper |
-| `CHAINLINK_PRICE_FEED` | ChainlinkPriceFeed contract |
+| `ORACLE_PRICE_FEED` | OraclePriceFeed contract |
 | `SLASHING_MANAGER` | SlashingManager from Catalysis Core |
 | `STAKE_MANAGER` | StakeManager from Catalysis Core |
 | `REWARDS_MANAGER` | RewardsManager from Catalysis Core |

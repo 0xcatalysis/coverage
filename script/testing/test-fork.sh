@@ -4,7 +4,7 @@
 # Sequence:
 #   1. Start an Anvil fork of mainnet
 #   2. Use live Catalysis Core contracts; grant required roles to deployer via MASTER_ADMIN impersonation
-#   2b. Register USDC/USD price feed if not already registered on live ChainlinkPriceFeed
+#   2b. Register USDC/USD price feed if not already registered on live OraclePriceFeed
 #   3. Deploy Catalysis Coverage on the fork (fresh each run)
 #   3b. Restore deployer DEFAULT_ADMIN_ROLE on Coverage contracts via TimelockController impersonation
 #   3c. Bump PolicyManager._nextPolicyId above existing live committee IDs (avoids CommitteeAlreadyExists)
@@ -24,7 +24,7 @@
 #   SLASHING_MANAGER   = 0x7Bc39bf135eF3c30E542C196719c91455ff489f0
 #   REWARDS_MANAGER    = 0x8ae0F0B94fe782D7F055B04d4699c3cc01632b46
 #   SSP_ROUTER         = 0xF39E592E93A7a925a57464e0120B555A25590486
-#   CHAINLINK_PRICE_FEED = 0x57F750E3B8e095A5b3AE96030F0cac5dFe2f8A16
+#   ORACLE_PRICE_FEED = 0x57F750E3B8e095A5b3AE96030F0cac5dFe2f8A16
 #   MASTER_ADMIN       = 0xd2d03377Fa96687e9C11380DA9956AcC5F307e2c
 #
 # Required .env.fork variables:
@@ -33,7 +33,7 @@
 #   POOL_FEE_BPS, DURATION, SPEC_ID, TERMS_HASH, EXPIRATION_TIME
 #
 # Live Core addresses (can be overridden via .env.fork for Sepolia or future redeployments):
-#   STAKE_MANAGER, SLASHING_MANAGER, REWARDS_MANAGER, SSP_ROUTER, CHAINLINK_PRICE_FEED, MASTER_ADMIN
+#   STAKE_MANAGER, SLASHING_MANAGER, REWARDS_MANAGER, SSP_ROUTER, ORACLE_PRICE_FEED, MASTER_ADMIN
 #
 # Covered-vault mode env vars:
 #   MORPHO_VAULT_VERSION        (set by Makefile: 1 = MetaMorpho v1, 2 = VaultV2)
@@ -81,7 +81,7 @@ STAKE_MANAGER="${STAKE_MANAGER:-0x5be5220F81e76e0CF6089fb7E7aE9eF48a8D64Be}"
 SLASHING_MANAGER="${SLASHING_MANAGER:-0x7Bc39bf135eF3c30E542C196719c91455ff489f0}"
 REWARDS_MANAGER="${REWARDS_MANAGER:-0x8ae0F0B94fe782D7F055B04d4699c3cc01632b46}"
 SSP_ROUTER="${SSP_ROUTER:-0xF39E592E93A7a925a57464e0120B555A25590486}"
-CHAINLINK_PRICE_FEED="${CHAINLINK_PRICE_FEED:-0x57F750E3B8e095A5b3AE96030F0cac5dFe2f8A16}"
+ORACLE_PRICE_FEED="${ORACLE_PRICE_FEED:-0x57F750E3B8e095A5b3AE96030F0cac5dFe2f8A16}"
 MASTER_ADMIN="${MASTER_ADMIN:-0xd2d03377Fa96687e9C11380DA9956AcC5F307e2c}"
 
 # ─── Covered vault mode (always enabled; Makefile sets MORPHO_VAULT_VERSION) ─────
@@ -94,7 +94,7 @@ info "STAKE_MANAGER = $STAKE_MANAGER"
 info "SLASHING_MANAGER = $SLASHING_MANAGER"
 info "REWARDS_MANAGER = $REWARDS_MANAGER"
 info "SSP_ROUTER = $SSP_ROUTER"
-info "CHAINLINK_PRICE_FEED = $CHAINLINK_PRICE_FEED"
+info "ORACLE_PRICE_FEED = $ORACLE_PRICE_FEED"
 info "MASTER_ADMIN = $MASTER_ADMIN"
 info "MORPHO_VAULT_VERSION = $MORPHO_VAULT_VERSION"
 
@@ -151,7 +151,7 @@ cast rpc anvil_impersonateAccount "$MASTER_ADMIN" --rpc-url "$ANVIL_RPC_URL" > /
 cast rpc anvil_setBalance "$MASTER_ADMIN" 0xDE0B6B3A7640000 --rpc-url "$ANVIL_RPC_URL" > /dev/null
 
 # DEFAULT_ADMIN_ROLE on all Core contracts
-for addr in "$STAKE_MANAGER" "$SLASHING_MANAGER" "$REWARDS_MANAGER" "$SSP_ROUTER" "$CHAINLINK_PRICE_FEED"; do
+for addr in "$STAKE_MANAGER" "$SLASHING_MANAGER" "$REWARDS_MANAGER" "$SSP_ROUTER" "$ORACLE_PRICE_FEED"; do
     cast send --from "$MASTER_ADMIN" --unlocked --rpc-url "$ANVIL_RPC_URL" \
         "$addr" "grantRole(bytes32,address)" "$ADMIN_ROLE" "$DEPLOYER" > /dev/null
 done
@@ -166,28 +166,28 @@ cast rpc anvil_stopImpersonatingAccount "$MASTER_ADMIN" --rpc-url "$ANVIL_RPC_UR
 info "Core roles granted to deployer"
 
 # ─── 2b. Register price feeds if missing ──────────────────────────────────────
-# WETH/USD is already registered on the live ChainlinkPriceFeed (verified 2026-04).
+# WETH/USD is already registered on the live OraclePriceFeed (verified 2026-04).
 # USDC/USD must be registered because it was not set at deployment time.
-step "Registering price feeds on live ChainlinkPriceFeed (if missing)..."
+step "Registering price feeds on live OraclePriceFeed (if missing)..."
 WETH_ADDR="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
 USDC_ADDR="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
 ETH_USD_AGG="0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
 USDC_USD_AGG="0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6"
 
-has_weth=$(cast call "$CHAINLINK_PRICE_FEED" "hasPriceFeed(address)(bool)" "$WETH_ADDR" --rpc-url "$ANVIL_RPC_URL" 2>/dev/null || echo "false")
+has_weth=$(cast call "$ORACLE_PRICE_FEED" "hasPriceFeed(address)(bool)" "$WETH_ADDR" --rpc-url "$ANVIL_RPC_URL" 2>/dev/null || echo "false")
 if [[ "$has_weth" != "true" ]]; then
     cast send --private-key "$PRIVATE_KEY" --rpc-url "$ANVIL_RPC_URL" \
-        "$CHAINLINK_PRICE_FEED" "registerPriceFeed(address,address,uint256)" \
+        "$ORACLE_PRICE_FEED" "registerPriceFeed(address,address,uint256)" \
         "$WETH_ADDR" "$ETH_USD_AGG" "86400"
     info "WETH/USD price feed registered"
 else
     info "[SKIP] WETH/USD price feed already registered"
 fi
 
-has_usdc=$(cast call "$CHAINLINK_PRICE_FEED" "hasPriceFeed(address)(bool)" "$USDC_ADDR" --rpc-url "$ANVIL_RPC_URL" 2>/dev/null || echo "false")
+has_usdc=$(cast call "$ORACLE_PRICE_FEED" "hasPriceFeed(address)(bool)" "$USDC_ADDR" --rpc-url "$ANVIL_RPC_URL" 2>/dev/null || echo "false")
 if [[ "$has_usdc" != "true" ]]; then
     cast send --private-key "$PRIVATE_KEY" --rpc-url "$ANVIL_RPC_URL" \
-        "$CHAINLINK_PRICE_FEED" "registerPriceFeed(address,address,uint256)" \
+        "$ORACLE_PRICE_FEED" "registerPriceFeed(address,address,uint256)" \
         "$USDC_ADDR" "$USDC_USD_AGG" "86400"
     info "USDC/USD price feed registered"
 else
@@ -206,7 +206,7 @@ NATIVE_WRAPPER="$PAYOUT_TOKEN" \
 STAKE_MANAGER="$STAKE_MANAGER" \
 SLASHING_MANAGER="$SLASHING_MANAGER" \
 REWARDS_MANAGER="$REWARDS_MANAGER" \
-CHAINLINK_PRICE_FEED="$CHAINLINK_PRICE_FEED" \
+ORACLE_PRICE_FEED="$ORACLE_PRICE_FEED" \
 forge script --root "$COVERAGE_ROOT" \
     "$COVERAGE_ROOT/script/DeployEthereum.s.sol:DeployEthereum" \
     --rpc-url "$ANVIL_RPC_URL" \
@@ -432,7 +432,7 @@ CLAIM_MANAGER="$CLAIM_MANAGER" \
 PREMIUM_MANAGER="$PREMIUM_MANAGER" \
 SPEC_REGISTRY="$SPEC_REGISTRY" \
 STAKE_MANAGER="$STAKE_MANAGER" \
-CHAINLINK_PRICE_FEED="$CHAINLINK_PRICE_FEED" \
+ORACLE_PRICE_FEED="$ORACLE_PRICE_FEED" \
 POOL_FEE_BPS="${POOL_FEE_BPS:-0}" \
 PAYOUT_TOKEN="$PAYOUT_TOKEN" \
 DURATION="${DURATION:-15768000}" \

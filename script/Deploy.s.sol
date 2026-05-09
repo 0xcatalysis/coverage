@@ -44,7 +44,7 @@ import {CreateXDeployer} from "./CreateXDeployer.s.sol";
  *        - SLASHING_MANAGER: Catalysis Core SlashingManager address (required)
  *        - STAKE_MANAGER: Catalysis Core StakeManager address (required)
  *        - REWARDS_MANAGER: Catalysis Core RewardsManager address (required)
- *        - CHAINLINK_PRICE_FEED: ChainlinkPriceFeed address (required)
+ *        - ORACLE_PRICE_FEED: OraclePriceFeed address (required)
  *        - PLATFORM_TREASURY: Platform fee recipient (defaults to admin)
  *        - PLATFORM_FEE_BPS: Platform fee in basis points (defaults to 500 = 5%)
  *        - COVER_POOL_FACTORY_CREATOR: Factory creator role (defaults to admin)
@@ -69,14 +69,14 @@ abstract contract Deploy is CreateXDeployer {
      * @notice External contract addresses required for deployment.
      * @param nativeWrapper WETH or equivalent native token wrapper address.
      * @param slashingManager SlashingManager contract address from Catalysis Core.
-     * @param chainlinkPriceFeed ChainlinkPriceFeed contract address from Catalysis Core.
+     * @param oraclePriceFeed OraclePriceFeed contract address from Catalysis Core.
      * @param stakeManager StakeManager contract address from Catalysis Core.
      * @param rewardsManager RewardsManager contract address from Catalysis Core.
      */
     struct ExternalConfig {
         address nativeWrapper;
         address slashingManager;
-        address chainlinkPriceFeed;
+        address oraclePriceFeed;
         address stakeManager;
         address rewardsManager;
     }
@@ -181,7 +181,7 @@ abstract contract Deploy is CreateXDeployer {
         return ExternalConfig({
             nativeWrapper: vm.envOr("NATIVE_WRAPPER", address(0)),
             slashingManager: vm.envOr("SLASHING_MANAGER", address(0)),
-            chainlinkPriceFeed: vm.envOr("CHAINLINK_PRICE_FEED", address(0)),
+            oraclePriceFeed: vm.envOr("ORACLE_PRICE_FEED", address(0)),
             stakeManager: vm.envOr("STAKE_MANAGER", address(0)),
             rewardsManager: vm.envOr("REWARDS_MANAGER", address(0))
         });
@@ -393,7 +393,7 @@ abstract contract Deploy is CreateXDeployer {
                     external_.stakeManager,
                     roles.deployer, // Temporary placeholder for claimManager, will be set after ClaimManager deployment
                     roles.deployer, // Temporary placeholder for coverPoolFactory, will be set after factory deployment
-                    external_.chainlinkPriceFeed,
+                    external_.oraclePriceFeed,
                     getInitialPayoutTokens()
                 )
             )
@@ -427,6 +427,7 @@ abstract contract Deploy is CreateXDeployer {
         );
 
         ClaimManager(payable(contracts.claimManagerProxy)).setPremiumManager(contracts.premiumManagerProxy);
+        ClaimManager(payable(contracts.claimManagerProxy)).initializeV2(external_.oraclePriceFeed, 300);
 
         PolicyManager(contracts.policyManagerProxy).setClaimManager(contracts.claimManagerProxy);
 
@@ -616,7 +617,7 @@ abstract contract Deploy is CreateXDeployer {
         external_ = getExternalConfig();
         require(external_.nativeWrapper != address(0), "Native wrapper address required");
         require(external_.slashingManager != address(0), "SLASHING_MANAGER required");
-        require(external_.chainlinkPriceFeed != address(0), "CHAINLINK_PRICE_FEED required");
+        require(external_.oraclePriceFeed != address(0), "ORACLE_PRICE_FEED required");
         require(external_.stakeManager != address(0), "STAKE_MANAGER required");
         require(external_.rewardsManager != address(0), "REWARDS_MANAGER required");
     }

@@ -80,7 +80,7 @@ contract CoverPoolTest is Test {
 
         mockPriceFeed = makeAddr("mockPriceFeed");
         vm.label(mockPriceFeed, "MockPriceFeed");
-        mockPolicyManager.setChainlinkPriceFeed(mockPriceFeed);
+        mockPolicyManager.setOraclePriceFeed(mockPriceFeed);
         vm.mockCall(mockPriceFeed, abi.encodeWithSignature("getUSDValue(address,uint256)"), abi.encode(uint256(1000e8)));
 
         implementation = new CoverPool();
@@ -1290,7 +1290,7 @@ contract CoverPoolTest is Test {
 contract MockPolicyManager {
     uint256 public nextPolicyId;
     uint256 public bindPolicyCallCount;
-    address public chainlinkPriceFeed;
+    address public oraclePriceFeed;
     IPolicyManager.BindPolicyRequest private _lastBindRequest;
     ICoverPool.BoundPolicy private _lastBoundPolicy;
     mapping(uint256 => IPolicyManager.PolicyDraft) private _drafts;
@@ -1299,8 +1299,8 @@ contract MockPolicyManager {
     uint96 public lastPremiumDefaultedPolicyId;
     bool public lastPremiumDefaultedValue;
 
-    function setChainlinkPriceFeed(address _feed) external {
-        chainlinkPriceFeed = _feed;
+    function setOraclePriceFeed(address _feed) external {
+        oraclePriceFeed = _feed;
     }
 
     function bindPolicy(

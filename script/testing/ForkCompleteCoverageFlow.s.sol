@@ -46,8 +46,8 @@ interface IDurationVaultStrategyFork {
     function underlyingToken() external view returns (address);
 }
 
-/// @notice Queries USD values from the live Catalysis ChainlinkPriceFeed.
-interface IChainlinkPriceFeedFork {
+/// @notice Queries USD values from the live Catalysis OraclePriceFeed.
+interface IOraclePriceFeedFork {
     function getUSDValue(address token, uint256 amount) external view returns (uint256);
 }
 
@@ -220,8 +220,8 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
 
         console.log("\n=== PHASE 3b: FUND VAULTS (EigenLayer stake) ===");
 
-        address chainlinkPriceFeed = vm.envAddress("CHAINLINK_PRICE_FEED");
-        uint256 coverageLimitUSD = IChainlinkPriceFeedFork(chainlinkPriceFeed).getUSDValue(payoutToken, coverageLimit);
+        address oraclePriceFeed = vm.envAddress("ORACLE_PRICE_FEED");
+        uint256 coverageLimitUSD = IOraclePriceFeedFork(oraclePriceFeed).getUSDValue(payoutToken, coverageLimit);
         uint256 targetUSD = coverageLimitUSD * 2;
 
         for (uint256 i = 0; i < vaults.length; i++) {
@@ -236,7 +236,7 @@ contract ForkCompleteCoverageFlow is CompleteCoverageFlow {
             );
 
             uint256 tokenUnit = 10 ** uint256(IERC20Metadata(collateralToken).decimals());
-            uint256 tokenPriceUSD = IChainlinkPriceFeedFork(chainlinkPriceFeed).getUSDValue(collateralToken, tokenUnit);
+            uint256 tokenPriceUSD = IOraclePriceFeedFork(oraclePriceFeed).getUSDValue(collateralToken, tokenUnit);
             uint256 collateralAmount = (targetUSD * tokenUnit + tokenPriceUSD - 1) / tokenPriceUSD;
 
             uint256 depositorKey = _anvilDepositorKey(i);

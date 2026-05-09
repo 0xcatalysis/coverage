@@ -61,7 +61,7 @@ graph TB
         SM[StakeManager]
         RM[RewardsManager]
         SLM[SlashingManager]
-        PF[ChainlinkPriceFeed]
+        PF[OraclePriceFeed]
     end
 
     subgraph Restaking

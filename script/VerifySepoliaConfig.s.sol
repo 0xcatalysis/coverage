@@ -37,22 +37,24 @@ interface ISSPRouterView {
     function getVaultModule(address vault) external view returns (uint8);
 }
 
-interface IChainlinkPriceFeedView {
+interface IOraclePriceFeedView {
     function getUSDValue(address token, uint256 amount) external view returns (uint256);
 }
 
 interface IAdapterView {
-    function chainlinkPriceFeed() external view returns (address);
+    function oraclePriceFeed() external view returns (address);
 }
 
 interface IPolicyManagerView {
     function stakeManager() external view returns (address);
-    function chainlinkPriceFeed() external view returns (address);
+    function oraclePriceFeed() external view returns (address);
 }
 
 interface IClaimManagerView {
     function slashingManager() external view returns (address);
     function premiumManager() external view returns (address);
+    function oraclePriceFeed() external view returns (address);
+    function priceDeviationToleranceBps() external view returns (uint16);
 }
 
 interface IPremiumManagerView {
@@ -78,7 +80,7 @@ interface ICoverPoolFactoryView {
  *      Coverage:
  *        Flow 1  – CreateCoverPool:       CoverPoolFactory not paused, stakeManager wired
  *        Flow 2-3– RequestCoverage:       StakeManager roles + wiring, SSPRouter adapters
- *        Flow 4  – PrepareBindPolicy:     Adapter chainlinkPriceFeed, SSPRouter adapters
+ *        Flow 4  – PrepareBindPolicy:     Adapter oraclePriceFeed, SSPRouter adapters
  *        Flow 5  – BindPolicy:            SSPRouter vault module registration
  *        Flow 6-7– DistributePremium:     RewardsManager wiring + PREMIUM_MANAGER_ROLE
  *        Flow 8  – FileClaim:             SlashingManager wiring + ClaimManager↔PremiumManager
@@ -105,7 +107,7 @@ contract VerifySepoliaConfig is Script {
     address internal constant REWARDS_MANAGER = 0x6A0823fC61F970BB8a52cF95BfB8F32265Ada8b8;
     address internal constant SSP_ROUTER = 0xf68c72E92f9BdB7Cdba2AF4026Bab8DC22781148;
     address internal constant EIGEN_ADAPTER = 0xB4bB09dcE1C1D9d987D5dc0dC2c8770D4fbBD49b;
-    address internal constant CHAINLINK_PRICE_FEED = 0x2b48F18f73C66075168b727524c99aFE12814417;
+    address internal constant ORACLE_PRICE_FEED = 0x2b48F18f73C66075168b727524c99aFE12814417;
 
     // ── Known E2E vault (EigenLayer wstETH DurationVaultStrategy, deployed by SSPRouter) ──
     address internal constant WSTETH_EL_STRATEGY = 0x7db0C347645bE3E19Af87d72E6220361cdD2428D;
@@ -141,7 +143,7 @@ contract VerifySepoliaConfig is Script {
 
         console2.log("");
         if (_failures == 0) {
-            console2.log("[ALL OK] All", uint256(25), "checks passed. Configuration is complete for E2E testing.");
+            console2.log("[ALL OK] All", uint256(27), "checks passed. Configuration is complete for E2E testing.");
         } else {
             console2.log("[INCOMPLETE]", _failures, "check(s) failed. See [FAIL] lines above.");
             console2.log("  Fix: run cast send commands in docs/deployment/CoreAdminActions-Sepolia.md");
@@ -196,9 +198,7 @@ contract VerifySepoliaConfig is Script {
         _check(
             "SSPRouter.getAdapter(EIGENLAYER)", ISSPRouterView(SSP_ROUTER).getAdapter(MODULE_EIGENLAYER), EIGEN_ADAPTER
         );
-        _check(
-            "EigenAdapter.chainlinkPriceFeed", IAdapterView(EIGEN_ADAPTER).chainlinkPriceFeed(), CHAINLINK_PRICE_FEED
-        );
+        _check("EigenAdapter.oraclePriceFeed", IAdapterView(EIGEN_ADAPTER).oraclePriceFeed(), ORACLE_PRICE_FEED);
 
         console2.log("");
     }
@@ -211,11 +211,7 @@ contract VerifySepoliaConfig is Script {
     function _checkFlow5_bindPolicy() internal {
         console2.log("--- Flow 5: BindPolicy ---");
 
-        _check(
-            "PolicyManager.chainlinkPriceFeed",
-            IPolicyManagerView(POLICY_MANAGER).chainlinkPriceFeed(),
-            CHAINLINK_PRICE_FEED
-        );
+        _check("PolicyManager.oraclePriceFeed", IPolicyManagerView(POLICY_MANAGER).oraclePriceFeed(), ORACLE_PRICE_FEED);
 
         // addCommitteeVaults checks getVaultModule != NONE for each vault
         uint8 module = ISSPRouterView(SSP_ROUTER).getVaultModule(WSTETH_EL_STRATEGY);
@@ -278,6 +274,14 @@ contract VerifySepoliaConfig is Script {
 
         _check("ClaimManager.slashingManager", IClaimManagerView(CLAIM_MANAGER).slashingManager(), SLASHING_MANAGER);
         _check("ClaimManager.premiumManager", IClaimManagerView(CLAIM_MANAGER).premiumManager(), PREMIUM_MANAGER);
+        _check("ClaimManager.oraclePriceFeed", IClaimManagerView(CLAIM_MANAGER).oraclePriceFeed(), ORACLE_PRICE_FEED);
+        uint16 toleranceBps = IClaimManagerView(CLAIM_MANAGER).priceDeviationToleranceBps();
+        if (toleranceBps > 0) {
+            console2.log("[OK] ClaimManager.priceDeviationToleranceBps:", toleranceBps, "bps");
+        } else {
+            console2.log("[FAIL] ClaimManager.priceDeviationToleranceBps is 0 -- initializeV2 not called?");
+            _failures++;
+        }
         _checkRole(
             "PremiumManager: CLAIM_MANAGER_ROLE -> ClaimManager",
             PREMIUM_MANAGER,
@@ -293,15 +297,15 @@ contract VerifySepoliaConfig is Script {
         _check("SSPRouter.slashingManager", ISSPRouterView(SSP_ROUTER).slashingManager(), SLASHING_MANAGER);
         _check("SSPRouter.stakeManager", ISSPRouterView(SSP_ROUTER).stakeManager(), STAKE_MANAGER);
 
-        try IChainlinkPriceFeedView(CHAINLINK_PRICE_FEED).getUSDValue(WETH, 1e18) returns (uint256 usdValue) {
+        try IOraclePriceFeedView(ORACLE_PRICE_FEED).getUSDValue(WETH, 1e18) returns (uint256 usdValue) {
             if (usdValue > 0) {
-                console2.log("[OK] ChainlinkPriceFeed.getUSDValue(WETH, 1e18):", usdValue, "(USD, 8 dec)");
+                console2.log("[OK] OraclePriceFeed.getUSDValue(WETH, 1e18):", usdValue, "(USD, 8 dec)");
             } else {
-                console2.log("[FAIL] ChainlinkPriceFeed.getUSDValue(WETH) returned 0 -- WETH feed not registered");
+                console2.log("[FAIL] OraclePriceFeed.getUSDValue(WETH) returned 0 -- WETH feed not registered");
                 _failures++;
             }
         } catch {
-            console2.log("[FAIL] ChainlinkPriceFeed.getUSDValue(WETH) reverted -- WETH feed not registered");
+            console2.log("[FAIL] OraclePriceFeed.getUSDValue(WETH) reverted -- WETH feed not registered");
             _failures++;
         }
 

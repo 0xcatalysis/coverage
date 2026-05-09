@@ -22,7 +22,7 @@ Coverage contracts live in `src/`. Tests in `test/unit`, `test/fuzz`, and `test/
 
 ### Interfaces (`src/interfaces/`)
 
-Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, `ISpecRegistry`, etc.) plus external Catalysis Core dependencies (`ISlashingManager`, `IRewardsManager`, `IChainlinkPriceFeed`, `IStakeManager`). Additional interfaces cover hook callbacks (`IBindPolicyHook`), swap adapter patterns (`IQuotableAdapter`, `IQuoterV2`), evaluation logic (`ISpec`), and token wrappers (`IWETH`).
+Interfaces mirror each core contract (`ICoverPool`, `IClaimManager`, `ISpecRegistry`, etc.) plus external Catalysis Core dependencies (`ISlashingManager`, `IRewardsManager`, `IOraclePriceFeed`, `IStakeManager`). Additional interfaces cover hook callbacks (`IBindPolicyHook`), swap adapter patterns (`IQuotableAdapter`, `IQuoterV2`), evaluation logic (`ISpec`), and token wrappers (`IWETH`).
 
 ### Swappers (`src/swappers/`)
 
@@ -127,7 +127,7 @@ All network deployments extend `Deploy.s.sol`. The base script deploys contracts
 **All deployments:**
 - `PRIVATE_KEY` – deployer key
 - Network-specific RPC: `SEPOLIA_RPC_URL`, `ETHEREUM_RPC_URL`
-- Catalysis Core addresses: `NATIVE_WRAPPER`, `CHAINLINK_PRICE_FEED`, `SLASHING_MANAGER`, `STAKE_MANAGER`, `REWARDS_MANAGER`
+- Catalysis Core addresses: `NATIVE_WRAPPER`, `ORACLE_PRICE_FEED`, `SLASHING_MANAGER`, `STAKE_MANAGER`, `REWARDS_MANAGER`
 
 **Optional role overrides** (default to deployer/admin):
 - `ADMIN`, `PLATFORM_TREASURY`, `COVER_POOL_FACTORY_CREATOR`, `SWAP_MANAGER`, `PLATFORM_FEE_BPS`

@@ -9,6 +9,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IOraclePriceFeed} from "./interfaces/IOraclePriceFeed.sol";
 import {IClaimManager} from "./interfaces/IClaimManager.sol";
 import {IPolicyManager} from "./interfaces/IPolicyManager.sol";
 import {IPremiumManager} from "./interfaces/IPremiumManager.sol";
@@ -47,6 +48,8 @@ contract ClaimManager is
     uint16 private constant _MAX_SLIPPAGE_BPS = 10_000;
     /// @dev Upper bound for the admin-settable slippage parameter.
     uint16 private constant _MAX_SETTABLE_SLIPPAGE_BPS = 3000;
+    /// @dev Upper bound for the admin-settable price deviation tolerance.
+    uint16 private constant _MAX_SETTABLE_DEVIATION_BPS = 1000;
     address private constant _NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     uint32 private constant _SWAP_DEADLINE_BUFFER = 15 minutes;
 
@@ -61,6 +64,12 @@ contract ClaimManager is
     mapping(uint96 policyId => PolicyClaim) private _policyClaims;
     mapping(uint96 policyId => bool) private _claimApprovalRequired;
     mapping(uint96 policyId => mapping(bytes32 evidenceHash => bool used)) private _usedEvidenceHashes;
+
+    // --- Storage layout V2 (appended; do not insert variables above this line) ---
+    address public override oraclePriceFeed;
+    uint16 public override priceDeviationToleranceBps;
+    // slither-disable-next-line unused-state
+    uint256[48] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -106,6 +115,20 @@ contract ClaimManager is
         swapper = swapper_;
         policyManager = policyManager_;
         maxSwapSlippageBps = 200; // 2%
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
+    function initializeV2(address oraclePriceFeed_, uint16 priceDeviationToleranceBps_) external reinitializer(2) {
+        require(oraclePriceFeed_ != address(0), ZeroAddress());
+        require(
+            priceDeviationToleranceBps_ <= _MAX_SETTABLE_DEVIATION_BPS, InvalidDeviationBps(priceDeviationToleranceBps_)
+        );
+        oraclePriceFeed = oraclePriceFeed_;
+        priceDeviationToleranceBps = priceDeviationToleranceBps_;
+        emit OraclePriceFeedSet(oraclePriceFeed_);
+        emit PriceDeviationToleranceBpsSet(priceDeviationToleranceBps_);
     }
 
     /**
@@ -174,6 +197,30 @@ contract ClaimManager is
         require(premiumManager_ != address(0), ZeroAddress());
         premiumManager = premiumManager_;
         emit PremiumManagerSet(premiumManager_);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
+    function setOraclePriceFeed(address oraclePriceFeed_) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(oraclePriceFeed_ != address(0), ZeroAddress());
+        oraclePriceFeed = oraclePriceFeed_;
+        emit OraclePriceFeedSet(oraclePriceFeed_);
+    }
+
+    /**
+     * @inheritdoc IClaimManager
+     */
+    function setPriceDeviationToleranceBps(uint16 priceDeviationToleranceBps_)
+        external
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        require(
+            priceDeviationToleranceBps_ <= _MAX_SETTABLE_DEVIATION_BPS, InvalidDeviationBps(priceDeviationToleranceBps_)
+        );
+        priceDeviationToleranceBps = priceDeviationToleranceBps_;
+        emit PriceDeviationToleranceBpsSet(priceDeviationToleranceBps_);
     }
 
     /**
@@ -285,6 +332,83 @@ contract ClaimManager is
      * @notice Restricts UUPS upgrade authorization to DEFAULT_ADMIN_ROLE holders.
      */
     function _authorizeUpgrade(address) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {}
+
+    /**
+     * @notice Computes the oracle fair value of `amountIn` units of `tokenIn` denominated in `tokenOut`.
+     * @dev Normalizes the NATIVE_ETH sentinel to the Swapper's nativeWrapper before feed lookups, mirroring
+     *      Swapper.quoteSwap so a slashed-native-ETH leg priced against a WETH feed works correctly.
+     *      Both external oracle calls are wrapped in try/catch so staleness reverts surface as
+     *      OracleUnavailable rather than propagating raw oracle errors.
+     * @param tokenIn Collateral token (may be the NATIVE_ETH sentinel).
+     * @param tokenOut Payout token (may be the NATIVE_ETH sentinel).
+     * @param amountIn Amount of tokenIn to value.
+     * @return fair Token-native amount of tokenOut equivalent to amountIn of tokenIn at oracle prices.
+     */
+    // slither-disable-next-line cyclomatic-complexity
+    function _oracleFairValue(address tokenIn, address tokenOut, uint256 amountIn) private view returns (uint256 fair) {
+        address feed = oraclePriceFeed;
+        if (feed == address(0)) revert OracleUnavailable(tokenIn, tokenOut);
+
+        // Resolve NATIVE_ETH sentinel with a single nativeWrapper() call (at most once per invocation).
+        address nativeWrap = address(0);
+        if (tokenIn == _NATIVE_ETH || tokenOut == _NATIVE_ETH) {
+            // slither-disable-next-line calls-loop
+            nativeWrap = ISwapper(swapper).nativeWrapper();
+        }
+        address actualIn = tokenIn == _NATIVE_ETH ? nativeWrap : tokenIn;
+        address actualOut = tokenOut == _NATIVE_ETH ? nativeWrap : tokenOut;
+
+        if (actualIn == actualOut) return amountIn;
+
+        IOraclePriceFeed oracle = IOraclePriceFeed(feed);
+
+        // slither-disable-next-line calls-loop
+        if (!oracle.hasPriceFeed(actualIn) || !oracle.hasPriceFeed(actualOut)) {
+            revert OracleUnavailable(tokenIn, tokenOut);
+        }
+
+        uint256 usd = 0;
+        // slither-disable-next-line calls-loop
+        try oracle.getUSDValue(actualIn, amountIn) returns (uint256 v) {
+            usd = v;
+        } catch {
+            revert OracleUnavailable(tokenIn, tokenOut);
+        }
+        if (usd == 0) revert OracleUnavailable(tokenIn, tokenOut);
+
+        // slither-disable-next-line calls-loop
+        try oracle.getTokenAmount(actualOut, usd) returns (uint256 v) {
+            fair = v;
+        } catch {
+            revert OracleUnavailable(tokenIn, tokenOut);
+        }
+        if (fair == 0) revert OracleUnavailable(tokenIn, tokenOut);
+    }
+
+    /**
+     * @notice Validates that a DEX spot quote is within the configured tolerance of the oracle fair value.
+     * @dev Reverts with QuoteDeviatesFromOracle when the absolute deviation exceeds priceDeviationToleranceBps.
+     *      Callers must guarantee oracleFair > 0 (enforced by _oracleFairValue).
+     * @param tokenIn Collateral token (used only in the revert payload).
+     * @param tokenOut Payout token (used only in the revert payload).
+     * @param dexQuote Spot quote returned by the DEX route.
+     * @param oracleFair Oracle-derived fair value for the same amount.
+     */
+    function _validateDexAgainstOracle(
+        address tokenIn,
+        address tokenOut,
+        uint256 dexQuote,
+        uint256 oracleFair
+    )
+        private
+        view
+    {
+        uint256 diff = dexQuote > oracleFair ? dexQuote - oracleFair : oracleFair - dexQuote;
+        uint256 deviationBps = (diff * 10_000) / oracleFair;
+        if (deviationBps > priceDeviationToleranceBps) {
+            revert QuoteDeviatesFromOracle(tokenIn, tokenOut, dexQuote, oracleFair, deviationBps);
+        }
+    }
 
     /**
      * @notice Files a claim record and returns policy metadata.
@@ -479,9 +603,9 @@ contract ClaimManager is
 
     /**
      * @notice Computes per-vault token-native slash amounts proportional to each vault's payout-equivalent value.
-     * @dev Two-pass: quotes each stake to payout-token equivalent, then computes proportional slash amounts.
-     *      Cross-token slashes are inflated by MAX / (MAX - maxSwapSlippageBps) so the beneficiary receives
-     *      the full requestedAmount even at worst-case swap slippage; same-token vaults need no inflation.
+     * @dev Two-pass: values each stake via oracle fair value, then computes proportional
+     *      slash amounts. The DEX quote is used as a bounded sanity check — if it deviates from the oracle
+     *      fair value by more than `priceDeviationToleranceBps`, the whole claim reverts.
      * @param vaults Vault addresses from previewSlashing.
      * @param tokens Collateral token address per vault.
      * @param tokenStakes Token-native stake amount per vault.
@@ -513,13 +637,20 @@ contract ClaimManager is
                 payoutEquivalents[i] = tokenStakes[i];
             } else {
                 // slither-disable-next-line calls-loop
-                try ISwapper(swapper).quoteSwap(tokens[i], payoutToken, tokenStakes[i]) returns (uint256 quoted) {
-                    payoutEquivalents[i] = quoted;
-                } catch {}
+                uint256 fair = _oracleFairValue(tokens[i], payoutToken, tokenStakes[i]);
 
-                if (payoutEquivalents[i] == 0) {
-                    emit VaultExcludedFromSlashing(vaults[i], tokens[i]);
+                uint256 dex = 0;
+                // slither-disable-next-line calls-loop
+                try ISwapper(swapper).quoteSwap(tokens[i], payoutToken, tokenStakes[i]) returns (uint256 quoted) {
+                    dex = quoted;
+                } catch {
+                    revert QuoteUnavailable(tokens[i], payoutToken);
                 }
+                if (dex == 0) revert QuoteUnavailable(tokens[i], payoutToken);
+
+                _validateDexAgainstOracle(tokens[i], payoutToken, dex, fair);
+
+                payoutEquivalents[i] = fair;
             }
             totalPayoutEquivalent += payoutEquivalents[i];
         }
@@ -538,9 +669,18 @@ contract ClaimManager is
 
             // slither-disable-next-line divide-before-multiply
             uint256 baseSlash = (tokenStakes[i] * requestedAmount) / totalPayoutEquivalent;
-            if (tokens[i] != payoutToken && cachedMaxSwapSlippageBps > 0) {
-                uint256 maxSlippage = uint256(_MAX_SLIPPAGE_BPS);
-                baseSlash = (baseSlash * maxSlippage) / (maxSlippage - cachedMaxSwapSlippageBps);
+            if (tokens[i] != payoutToken) {
+                {
+                    uint256 deviationBps = priceDeviationToleranceBps;
+                    // slither-disable-next-line divide-before-multiply
+                    baseSlash = (baseSlash * uint256(_MAX_SLIPPAGE_BPS) * uint256(_MAX_SLIPPAGE_BPS))
+                        / ((cachedMaxSwapSlippageBps > 0
+                                    ? uint256(_MAX_SLIPPAGE_BPS) - cachedMaxSwapSlippageBps
+                                    : uint256(_MAX_SLIPPAGE_BPS))
+                            * (deviationBps > 0
+                                    ? uint256(_MAX_SLIPPAGE_BPS) - deviationBps
+                                    : uint256(_MAX_SLIPPAGE_BPS)));
+                }
             }
 
             if (baseSlash == 0) {
@@ -565,8 +705,9 @@ contract ClaimManager is
 
     /**
      * @notice Processes collateral by swapping or transferring directly, capped at remainingPayout.
-     * @dev Uses quoteSwap for amountOutMin instead of oracle-based pricing.
-     *      Surplus beyond remainingPayout is forwarded via PremiumManager.distributeSurplusAsRewards() if configured.
+     * @dev amountOutMin is derived from oracle fair value with the DEX quote as a bounded sanity check
+     *      (see `_computeAmountOutMin`). Surplus beyond remainingPayout is forwarded via
+     *      PremiumManager.distributeSurplusAsRewards() if configured.
      *      vaultIndex is included in the taskId to prevent replay collisions when two vault legs
      *      share the same collateral token.
      * @param policyId Identifier of the policy.
@@ -643,8 +784,18 @@ contract ClaimManager is
     }
 
     /**
-     * @notice Quotes a swap and applies the configured slippage buffer to derive the minimum acceptable output.
-     * @dev Reverts with QuoteUnavailable if the swapper returns zero or reverts.
+     * @notice Derives the minimum acceptable swap output, anchored to oracle fair value with a bounded
+     *         DEX sanity check.
+     * @dev The oracle fair value is the primary anchor; the DEX quote is validated against it via
+     *      `_validateDexAgainstOracle` and then used to determine the tighter of the two bounds:
+     *        anchor = min(fair, dex)
+     *        amountOutMin = anchor × (MAX − maxSwapSlippageBps) / MAX
+     *      Using min(fair, dex) ensures the bound is achievable on-chain when the DEX quote is within
+     *      tolerance below the oracle fair value, while a manipulated DEX quote above fair is capped
+     *      to fair (preventing an inflated bound that cannot be met).
+     *      Reverts with OracleUnavailable if the oracle feed is unset, missing, stale, or returns zero.
+     *      Reverts with QuoteUnavailable if the DEX quote is unavailable or zero.
+     *      Reverts with QuoteDeviatesFromOracle if the DEX quote deviates beyond priceDeviationToleranceBps.
      *      Returns at least 1 to prevent a zero-minimum swap that would accept any output.
      * @param tokenIn Collateral token to sell.
      * @param tokenOut Payout token to receive.
@@ -652,13 +803,21 @@ contract ClaimManager is
      * @return Slippage-adjusted minimum output amount (≥ 1).
      */
     function _computeAmountOutMin(address tokenIn, address tokenOut, uint256 amountIn) private returns (uint256) {
+        uint256 fair = _oracleFairValue(tokenIn, tokenOut, amountIn);
+
+        uint256 dex = 0;
         try ISwapper(swapper).quoteSwap(tokenIn, tokenOut, amountIn) returns (uint256 quoted) {
-            if (quoted == 0) revert QuoteUnavailable(tokenIn, tokenOut);
-            uint256 amountOutMin = (quoted * (uint256(_MAX_SLIPPAGE_BPS) - maxSwapSlippageBps)) / _MAX_SLIPPAGE_BPS;
-            return amountOutMin == 0 ? 1 : amountOutMin;
+            dex = quoted;
         } catch {
             revert QuoteUnavailable(tokenIn, tokenOut);
         }
+        if (dex == 0) revert QuoteUnavailable(tokenIn, tokenOut);
+
+        _validateDexAgainstOracle(tokenIn, tokenOut, dex, fair);
+
+        uint256 anchor = fair < dex ? fair : dex;
+        uint256 amountOutMin = (anchor * (uint256(_MAX_SLIPPAGE_BPS) - maxSwapSlippageBps)) / _MAX_SLIPPAGE_BPS;
+        return amountOutMin == 0 ? 1 : amountOutMin;
     }
 
     // slither-disable-end calls-loop
