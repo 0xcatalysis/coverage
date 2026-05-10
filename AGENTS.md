@@ -139,3 +139,7 @@ Follow the conventional commit style seen in history (`feat:`, `fix:`, `refactor
 ## Security & Configuration Tips
 
 Never commit secrets; mirror new environment keys in `.env.example` instead. When updating upgradeable contracts, inspect `out/<Contract>.storageLayout.json` to confirm slot ordering. Check `foundry.toml` `fs_permissions` before broadcasting and surface required env vars in the PR body.
+
+### Storage Layout Discipline (Deployed UUPS Proxies)
+
+`PolicyManager`, `ClaimManager`, `PremiumManager`, `SpecRegistry`, `Swapper`, and `CoverPoolFactory` are deployed on Ethereum mainnet as UUPS proxies (see `docs/deployment/Ethereum-Mainnet.md`). Their storage layouts are pinned by `test/unit/StorageLayout.t.sol`. New state variables for these contracts may only be **appended** at the end; insertions, removals, reorderings, or type changes corrupt live proxy state on the next upgrade. When a legitimate append happens, update the corresponding baseline in `StorageLayout.t.sol` in the same commit so the regression test still passes.

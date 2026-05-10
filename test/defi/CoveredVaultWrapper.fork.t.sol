@@ -19,7 +19,9 @@ contract CoveredVaultWrapperForkTest is ForkCoverageSetup {
 
     uint16 internal constant MAX_COVERABLE_LOSS_BPS = 1000; // 10%
     uint16 internal constant DEDUCTIBLE_BPS = 100; // 1%
-    uint256 internal constant COVERAGE_LIMIT = 100_000e6; // 100k USDC
+    /// @dev $1k limit keeps collateral ~0.67 wstETH so the wstETH/USDC Uniswap V3 pool
+    ///      can quote it without hitting depth constraints on the oracle-deviation check.
+    uint256 internal constant COVERAGE_LIMIT = 1000e6; // 1k USDC
 
     IVaultV2 morphoVault;
     CoveredVaultWrapper wrapper;
@@ -147,7 +149,7 @@ contract CoveredVaultWrapperForkTest is ForkCoverageSetup {
 
         uint256 depositAmount = 1000e6;
         _userDeposit(user1, depositAmount);
-        skip(365 days);
+        _skipFork(365 days);
         _userRedeemAll(user1);
 
         // Morpho returns ~980 after 2% fee; shortfall ~20; claim = 20 - 10 deductible ≈ 10 USDC.
@@ -174,7 +176,7 @@ contract CoveredVaultWrapperForkTest is ForkCoverageSetup {
         uint256 depositAmount = 1000e6;
         _userDeposit(user1, depositAmount);
         deal(USDC, address(morphoVault), IERC20(USDC).balanceOf(address(morphoVault)) + depositAmount * 5 / 100);
-        skip(365 days);
+        _skipFork(365 days);
         _userRedeemAll(user1);
 
         assertGt(IERC20(USDC).balanceOf(user1), depositAmount, "User received profit from underlying vault");
@@ -189,7 +191,7 @@ contract CoveredVaultWrapperForkTest is ForkCoverageSetup {
 
         uint256 depositAmount = 1000e6;
         _userDeposit(user1, depositAmount);
-        skip(365 days);
+        _skipFork(365 days);
 
         uint256 morphoBalance = IERC20(USDC).balanceOf(address(morphoVault));
         deal(USDC, address(morphoVault), morphoBalance - depositAmount * 1 / 100); // +1% hack on top of fee
