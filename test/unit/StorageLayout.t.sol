@@ -213,8 +213,6 @@ contract StorageLayoutTest is Test {
             }
         }
 
-
-
         bytes memory trimmed = new bytes(outLen);
         for (uint256 i = 0; i < outLen; ++i) {
             trimmed[i] = buf[i];
