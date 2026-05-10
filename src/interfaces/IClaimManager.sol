@@ -401,13 +401,13 @@ interface IClaimManager is IAccessControl {
 
     /**
      * @notice Pauses claim operations.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires PAUSER_ROLE.
      */
     function pause() external;
 
     /**
      * @notice Resumes claim operations.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires PAUSER_ROLE.
      */
     function unpause() external;
 
@@ -619,4 +619,9 @@ interface IClaimManager is IAccessControl {
      *         in basis points. Cross-token claims revert with `QuoteDeviatesFromOracle` if exceeded.
      */
     function priceDeviationToleranceBps() external view returns (uint16);
+
+    /**
+     * @notice AccessControl identifier for the pause role.
+     */
+    function PAUSER_ROLE() external view returns (bytes32);
 }

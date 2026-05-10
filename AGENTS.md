@@ -130,7 +130,7 @@ All network deployments extend `Deploy.s.sol`. The base script deploys contracts
 - Catalysis Core addresses: `NATIVE_WRAPPER`, `ORACLE_PRICE_FEED`, `SLASHING_MANAGER`, `STAKE_MANAGER`, `REWARDS_MANAGER`
 
 **Optional role overrides** (default to deployer/admin):
-- `ADMIN`, `PLATFORM_TREASURY`, `COVER_POOL_FACTORY_CREATOR`, `SWAP_MANAGER`, `PLATFORM_FEE_BPS`
+- `ADMIN`, `PLATFORM_TREASURY`, `PAUSER`, `COVER_POOL_FACTORY_CREATOR`, `SWAP_MANAGER`, `PLATFORM_FEE_BPS`
 
 ## Commit & Pull Request Guidelines
 

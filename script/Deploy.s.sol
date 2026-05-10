@@ -47,6 +47,7 @@ import {CreateXDeployer} from "./CreateXDeployer.s.sol";
  *        - ORACLE_PRICE_FEED: OraclePriceFeed address (required)
  *        - PLATFORM_TREASURY: Platform fee recipient (defaults to admin)
  *        - PLATFORM_FEE_BPS: Platform fee in basis points (defaults to 500 = 5%)
+ *        - PAUSER: PAUSER_ROLE holder on all contracts — use an automation bot address (defaults to admin)
  *        - COVER_POOL_FACTORY_CREATOR: Factory creator role (defaults to admin)
  *        - SWAP_MANAGER: Swap route configuration manager (defaults to admin)
  *        - TIMELOCK_MIN_DELAY: Minimum delay in seconds for TimelockController (defaults to 2 days)
@@ -85,6 +86,7 @@ abstract contract Deploy is CreateXDeployer {
      * @notice Role configuration loaded from environment variables.
      * @param deployer Public address of the keystore signer, used for broadcasting.
      * @param admin DEFAULT_ADMIN_ROLE holder for all deployed contracts.
+     * @param pauser PAUSER_ROLE holder on all deployed contracts (e.g. an automation bot).
      * @param coverPoolFactoryCreator CREATOR_ROLE holder on CoverPoolFactory.
      * @param swapManager SWAP_MANAGER_ROLE holder on Swapper.
      * @param platformTreasury Recipient address for platform fees.
@@ -94,6 +96,7 @@ abstract contract Deploy is CreateXDeployer {
     struct RoleConfig {
         address deployer;
         address admin;
+        address pauser;
         address coverPoolFactoryCreator;
         address swapManager;
         address platformTreasury;
@@ -464,7 +467,7 @@ abstract contract Deploy is CreateXDeployer {
      * @param roles RoleConfig containing deployer address for temporary role revocation.
      */
     function _configureRoles(DeployedContracts memory contracts, RoleConfig memory roles) private {
-        _grantRoles(contracts);
+        _grantRoles(contracts, roles);
         _revokeTemporaryRoles(contracts, roles);
     }
 
@@ -483,11 +486,10 @@ abstract contract Deploy is CreateXDeployer {
      *      to be in the approved set. Initial tokens are added in _deployPremiumContracts().
      * @param contracts DeployedContracts containing all proxy addresses.
      */
-    function _grantRoles(DeployedContracts memory contracts) private {
+    function _grantRoles(DeployedContracts memory contracts, RoleConfig memory roles) private {
         bytes32 defaultAdminRole = bytes32(0);
         address tc = contracts.timelockController;
 
-        // Grant DEFAULT_ADMIN_ROLE to TimelockController on all contracts
         IAccessControl(contracts.swapperProxy).grantRole(defaultAdminRole, tc);
         IAccessControl(contracts.premiumManagerProxy).grantRole(defaultAdminRole, tc);
         IAccessControl(contracts.claimManagerProxy).grantRole(defaultAdminRole, tc);
@@ -495,7 +497,14 @@ abstract contract Deploy is CreateXDeployer {
         IAccessControl(contracts.coverPoolFactoryProxy).grantRole(defaultAdminRole, tc);
         IAccessControl(contracts.specRegistryProxy).grantRole(defaultAdminRole, tc);
 
-        // Operational roles — direct contract-to-contract, not through timelock
+        bytes32 pauserRole = Swapper(payable(contracts.swapperProxy)).PAUSER_ROLE();
+        IAccessControl(contracts.swapperProxy).grantRole(pauserRole, roles.pauser);
+        IAccessControl(contracts.premiumManagerProxy).grantRole(pauserRole, roles.pauser);
+        IAccessControl(contracts.claimManagerProxy).grantRole(pauserRole, roles.pauser);
+        IAccessControl(contracts.policyManagerProxy).grantRole(pauserRole, roles.pauser);
+        IAccessControl(contracts.coverPoolFactoryProxy).grantRole(pauserRole, roles.pauser);
+        IAccessControl(contracts.specRegistryProxy).grantRole(pauserRole, roles.pauser);
+
         IAccessControl(contracts.swapperProxy)
             .grantRole(Swapper(payable(contracts.swapperProxy)).SWAP_EXECUTOR_ROLE(), contracts.claimManagerProxy);
 
@@ -554,6 +563,7 @@ abstract contract Deploy is CreateXDeployer {
         console2.log("--- Accounts ---");
         console2.log("Deployer:", roles.deployer);
         console2.log("Admin:", roles.admin);
+        console2.log("Pauser:", roles.pauser);
         console2.log("Platform Treasury:", roles.platformTreasury);
         console2.log("");
 
@@ -601,6 +611,7 @@ abstract contract Deploy is CreateXDeployer {
     function _loadRoleConfig(address deployer) private view returns (RoleConfig memory roles) {
         roles.deployer = deployer;
         roles.admin = vm.envOr("ADMIN", roles.deployer);
+        roles.pauser = vm.envOr("PAUSER", roles.admin);
         roles.coverPoolFactoryCreator = vm.envOr("COVER_POOL_FACTORY_CREATOR", roles.admin);
         roles.swapManager = vm.envOr("SWAP_MANAGER", roles.admin);
         roles.platformTreasury = vm.envOr("PLATFORM_TREASURY", roles.admin);

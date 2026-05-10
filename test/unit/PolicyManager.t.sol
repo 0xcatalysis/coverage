@@ -109,6 +109,10 @@ contract PolicyManagerTest is Test {
         );
         policyManager = PolicyManager(proxy);
 
+        bytes32 pauserRole = policyManager.PAUSER_ROLE();
+        vm.prank(admin);
+        policyManager.grantRole(pauserRole, admin);
+
         vm.label(address(policyManager), "PolicyManager");
         vm.label(address(coverPool), "CoverPool");
     }
@@ -232,7 +236,7 @@ contract PolicyManagerTest is Test {
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.PAUSER_ROLE()
             )
         );
         vm.prank(buyer);
@@ -256,7 +260,7 @@ contract PolicyManagerTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, buyer, policyManager.PAUSER_ROLE()
             )
         );
         vm.prank(buyer);
@@ -270,6 +274,47 @@ contract PolicyManagerTest is Test {
         vm.stopPrank();
 
         assertFalse(policyManager.paused(), "Manager still paused");
+    }
+
+    function test_pause_WhenAdminLacksPauserRole_Reverts() public {
+        address adminNoPauser = makeAddr("adminNoPauser");
+        bytes32 adminRole = policyManager.DEFAULT_ADMIN_ROLE();
+        vm.prank(admin);
+        policyManager.grantRole(adminRole, adminNoPauser);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, adminNoPauser, policyManager.PAUSER_ROLE()
+            )
+        );
+        vm.prank(adminNoPauser);
+        policyManager.pause();
+    }
+
+    function test_pause_WhenCallerOnlyHasPauserRole_Succeeds() public {
+        address pauserOnly = makeAddr("pauserOnly");
+        bytes32 pauserRole = policyManager.PAUSER_ROLE();
+        vm.prank(admin);
+        policyManager.grantRole(pauserRole, pauserOnly);
+
+        vm.prank(pauserOnly);
+        policyManager.pause();
+        assertTrue(policyManager.paused(), "Manager not paused");
+
+        vm.prank(pauserOnly);
+        policyManager.unpause();
+        assertFalse(policyManager.paused(), "Manager still paused");
+    }
+
+    function test_pause_WhenRandomCaller_Reverts() public {
+        address random = makeAddr("random");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, random, policyManager.PAUSER_ROLE()
+            )
+        );
+        vm.prank(random);
+        policyManager.pause();
     }
 
     /*//////////////////////////////////////////////////////////////

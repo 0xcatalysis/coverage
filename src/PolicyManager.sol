@@ -31,6 +31,8 @@ contract PolicyManager is
     ReentrancyGuard,
     IPolicyManager
 {
+    bytes32 public constant override PAUSER_ROLE = keccak256("PAUSER_ROLE");
+
     address public override stakeManager;
     address public override claimManager;
     address public override coverPoolFactory;
@@ -95,14 +97,14 @@ contract PolicyManager is
     /**
      * @inheritdoc IPolicyManager
      */
-    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function pause() external override onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
     /**
      * @inheritdoc IPolicyManager
      */
-    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function unpause() external override onlyRole(PAUSER_ROLE) {
         _unpause();
     }
 

@@ -26,6 +26,7 @@ contract CoverPoolFactory is
     using EnumerableSet for EnumerableSet.AddressSet;
 
     bytes32 public constant override CREATOR_ROLE = keccak256("CREATOR_ROLE");
+    bytes32 public constant override PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
     address public override coverPoolImplementation;
     address public override policyManager;
@@ -75,14 +76,14 @@ contract CoverPoolFactory is
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function pause() external override onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
     /**
      * @inheritdoc ICoverPoolFactory
      */
-    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function unpause() external override onlyRole(PAUSER_ROLE) {
         _unpause();
     }
 

@@ -42,6 +42,7 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
 
     bytes32 public constant override SWAP_MANAGER_ROLE = keccak256("SWAP_MANAGER_ROLE");
     bytes32 public constant override SWAP_EXECUTOR_ROLE = keccak256("SWAP_EXECUTOR_ROLE");
+    bytes32 public constant override PAUSER_ROLE = keccak256("PAUSER_ROLE");
     address public constant override NATIVE_ETH = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
 
     address public override nativeWrapper;
@@ -101,14 +102,14 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
     /**
      * @inheritdoc ISwapper
      */
-    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function pause() external override onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
     /**
      * @inheritdoc ISwapper
      */
-    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function unpause() external override onlyRole(PAUSER_ROLE) {
         _unpause();
     }
 

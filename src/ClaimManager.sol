@@ -44,6 +44,8 @@ contract ClaimManager is
     using Address for address payable;
     using SafeERC20 for IERC20;
 
+    bytes32 public constant override PAUSER_ROLE = keccak256("PAUSER_ROLE");
+
     /// @dev BPS denominator used in slippage inflation formulas. Must not change.
     uint16 private constant _MAX_SLIPPAGE_BPS = 10_000;
     /// @dev Upper bound for the admin-settable slippage parameter.
@@ -134,14 +136,14 @@ contract ClaimManager is
     /**
      * @inheritdoc IClaimManager
      */
-    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function pause() external override onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
     /**
      * @inheritdoc IClaimManager
      */
-    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function unpause() external override onlyRole(PAUSER_ROLE) {
         _unpause();
     }
 

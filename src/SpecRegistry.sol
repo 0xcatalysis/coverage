@@ -15,6 +15,8 @@ import {ICoverPoolFactory} from "./interfaces/ICoverPoolFactory.sol";
  *      Once a (coverPool, specId) pair is registered, it cannot be changed to a different spec address.
  */
 contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeable, ISpecRegistry {
+    bytes32 public constant override PAUSER_ROLE = keccak256("PAUSER_ROLE");
+
     ICoverPoolFactory public coverPoolFactory;
 
     mapping(address coverPool => mapping(bytes32 specId => ISpec spec)) private _specs;
@@ -58,14 +60,14 @@ contract SpecRegistry is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgr
     /**
      * @inheritdoc ISpecRegistry
      */
-    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function pause() external override onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
     /**
      * @inheritdoc ISpecRegistry
      */
-    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function unpause() external override onlyRole(PAUSER_ROLE) {
         _unpause();
     }
 

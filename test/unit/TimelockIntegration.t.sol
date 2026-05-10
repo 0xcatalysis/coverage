@@ -31,7 +31,6 @@ contract TimelockIntegrationTest is Test {
         multisig = makeAddr("multisig");
         deployer = makeAddr("deployer");
 
-        // Deploy TimelockController
         address[] memory proposers = new address[](1);
         proposers[0] = multisig;
         address[] memory executors = new address[](1);
@@ -39,7 +38,6 @@ contract TimelockIntegrationTest is Test {
 
         timelock = new TimelockController(MIN_DELAY, proposers, executors, address(0));
 
-        // Deploy contracts with deployer as temp admin
         Options memory opts;
         opts.unsafeSkipAllChecks = true;
 
@@ -74,13 +72,17 @@ contract TimelockIntegrationTest is Test {
         );
         claimManager = ClaimManager(payable(cmProxy));
 
-        // Grant DEFAULT_ADMIN_ROLE to timelock
         IAccessControl(address(policyManager)).grantRole(DEFAULT_ADMIN_ROLE, address(timelock));
         IAccessControl(address(premiumManager)).grantRole(DEFAULT_ADMIN_ROLE, address(timelock));
         IAccessControl(address(specRegistry)).grantRole(DEFAULT_ADMIN_ROLE, address(timelock));
         IAccessControl(address(claimManager)).grantRole(DEFAULT_ADMIN_ROLE, address(timelock));
 
-        // Revoke deployer
+        bytes32 pauserRole = policyManager.PAUSER_ROLE();
+        IAccessControl(address(policyManager)).grantRole(pauserRole, address(timelock));
+        IAccessControl(address(premiumManager)).grantRole(pauserRole, address(timelock));
+        IAccessControl(address(specRegistry)).grantRole(pauserRole, address(timelock));
+        IAccessControl(address(claimManager)).grantRole(pauserRole, address(timelock));
+
         IAccessControl(address(policyManager)).revokeRole(DEFAULT_ADMIN_ROLE, deployer);
         IAccessControl(address(premiumManager)).revokeRole(DEFAULT_ADMIN_ROLE, deployer);
         IAccessControl(address(specRegistry)).revokeRole(DEFAULT_ADMIN_ROLE, deployer);
@@ -88,9 +90,6 @@ contract TimelockIntegrationTest is Test {
 
         vm.stopPrank();
     }
-
-    // ─── Role correctness
-    // ─────────────────────────────────────────
 
     function test_timelockHasAdminRoleOnAllContracts() public view {
         assertTrue(IAccessControl(address(policyManager)).hasRole(DEFAULT_ADMIN_ROLE, address(timelock)));
@@ -117,9 +116,6 @@ contract TimelockIntegrationTest is Test {
         assertFalse(IAccessControl(address(premiumManager)).hasRole(DEFAULT_ADMIN_ROLE, multisig));
     }
 
-    // ─── Direct admin calls revert
-    // ────────────────────────────────
-
     function test_directPauseReverts() public {
         vm.prank(multisig);
         vm.expectRevert();
@@ -132,25 +128,18 @@ contract TimelockIntegrationTest is Test {
         premiumManager.setPlatformTreasury(address(0xBEEF));
     }
 
-    // ─── Timelocked admin operations
-    // ──────────────────────────────
-
     function test_timelockPause() public {
         bytes memory data = abi.encodeCall(PolicyManager.pause, ());
 
-        // Schedule
         vm.prank(multisig);
         timelock.schedule(address(policyManager), 0, data, bytes32(0), bytes32(0), MIN_DELAY);
 
-        // Execute before delay — should revert
         vm.prank(multisig);
         vm.expectRevert();
         timelock.execute(address(policyManager), 0, data, bytes32(0), bytes32(0));
 
-        // Advance time past delay
         vm.warp(block.timestamp + MIN_DELAY);
 
-        // Execute after delay — should succeed
         vm.prank(multisig);
         timelock.execute(address(policyManager), 0, data, bytes32(0), bytes32(0));
 
@@ -172,9 +161,6 @@ contract TimelockIntegrationTest is Test {
         assertEq(premiumManager.platformTreasury(), newTreasury);
     }
 
-    // ─── Cancellation
-    // ─────────────────────────────────────────────
-
     function test_cancelledOperationCannotExecute() public {
         bytes memory data = abi.encodeCall(PolicyManager.pause, ());
         bytes32 id = timelock.hashOperation(address(policyManager), 0, data, bytes32(0), bytes32(0));
@@ -182,14 +168,11 @@ contract TimelockIntegrationTest is Test {
         vm.prank(multisig);
         timelock.schedule(address(policyManager), 0, data, bytes32(0), bytes32(0), MIN_DELAY);
 
-        // Cancel
         vm.prank(multisig);
         timelock.cancel(id);
 
-        // Advance time
         vm.warp(block.timestamp + MIN_DELAY);
 
-        // Execute should revert
         vm.prank(multisig);
         vm.expectRevert();
         timelock.execute(address(policyManager), 0, data, bytes32(0), bytes32(0));
@@ -197,16 +180,12 @@ contract TimelockIntegrationTest is Test {
         assertFalse(policyManager.paused());
     }
 
-    // ─── Premature execution reverts
-    // ──────────────────────────────
-
     function test_prematureExecutionReverts() public {
         bytes memory data = abi.encodeCall(PolicyManager.pause, ());
 
         vm.prank(multisig);
         timelock.schedule(address(policyManager), 0, data, bytes32(0), bytes32(0), MIN_DELAY);
 
-        // Try execute 1 second before delay expires
         vm.warp(block.timestamp + MIN_DELAY - 1);
 
         vm.prank(multisig);
@@ -214,16 +193,11 @@ contract TimelockIntegrationTest is Test {
         timelock.execute(address(policyManager), 0, data, bytes32(0), bytes32(0));
     }
 
-    // ─── Upgrade via timelock
-    // ─────────────────────────────────────
-
     function test_upgradeViaTimelock() public {
         address oldImpl = Upgrades.getImplementationAddress(address(policyManager));
 
-        // Deploy new implementation
         PolicyManager newImpl = new PolicyManager();
 
-        // Schedule upgradeToAndCall through timelock
         bytes memory upgradeData = abi.encodeCall(policyManager.upgradeToAndCall, (address(newImpl), ""));
 
         vm.prank(multisig);
@@ -239,9 +213,6 @@ contract TimelockIntegrationTest is Test {
         assertTrue(currentImpl != oldImpl);
     }
 
-    // ─── Unauthorized proposer reverts
-    // ────────────────────────────
-
     function test_nonProposerCannotSchedule() public {
         address attacker = makeAddr("attacker");
         bytes memory data = abi.encodeCall(PolicyManager.pause, ());
@@ -250,9 +221,6 @@ contract TimelockIntegrationTest is Test {
         vm.expectRevert();
         timelock.schedule(address(policyManager), 0, data, bytes32(0), bytes32(0), MIN_DELAY);
     }
-
-    // ─── Batch operations
-    // ─────────────────────────────────────────
 
     function test_timelockBatchOperation() public {
         address[] memory targets = new address[](2);

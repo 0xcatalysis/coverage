@@ -12,6 +12,11 @@ import {UpgradeBase} from "./UpgradeBase.s.sol";
  *      upgrading to avoid corrupting proxy state. The new `_approvedSpecs` mapping
  *      is appended after `_specs` — confirm via `out/SpecRegistry.storageLayout.json`.
  *
+ *      POST-UPGRADE MIGRATION: This version introduces PAUSER_ROLE. After the upgrade,
+ *      the TimelockController must call grantRole(PAUSER_ROLE, <pauser>) on the proxy.
+ *      Bundle this grantRole call in the same Safe TX Builder batch as the upgrade to
+ *      avoid a window where no one can pause the contract.
+ *
  *      After upgrading, the admin must call `approveSpec(specAddress)` for each trusted
  *      ISpec implementation before curators can register them in new policy bindings.
  *

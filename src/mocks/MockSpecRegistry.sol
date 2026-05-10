@@ -11,6 +11,8 @@ import {ISpecRegistry} from "../interfaces/ISpecRegistry.sol";
  *      Provides flexible claim evaluation without real oracle dependencies.
  */
 contract MockSpecRegistry is ISpecRegistry {
+    bytes32 public constant override PAUSER_ROLE = keccak256("PAUSER_ROLE");
+
     mapping(address coverPool => mapping(bytes32 specId => ISpec spec)) private _specs;
     address private _defaultSpec;
     address public immutable OWNER;
