@@ -52,7 +52,7 @@ abstract contract UpgradeClaimManager is UpgradeBase {
      * @dev Encoded as the data argument to upgradeToAndCall so the proxy atomically configures
      *      the V2 storage fields in the same transaction as the implementation swap.
      */
-    function upgradeCalldata() internal view override returns (bytes memory) {
+    function upgradeCalldata() internal view virtual override returns (bytes memory) {
         address oraclePriceFeed = vm.envAddress("ORACLE_PRICE_FEED");
         require(oraclePriceFeed != address(0), "ORACLE_PRICE_FEED required");
         uint16 toleranceBps = SafeCast.toUint16(vm.envOr("PRICE_DEVIATION_TOLERANCE_BPS", uint256(300)));

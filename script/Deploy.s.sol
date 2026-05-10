@@ -475,6 +475,7 @@ abstract contract Deploy is CreateXDeployer {
      * @notice Grants permanent roles to deployed contracts enabling cross-contract interactions.
      * @dev Role assignments:
      *      - All contracts: DEFAULT_ADMIN_ROLE → TimelockController (governance layer)
+     *      - All contracts: PAUSER_ROLE → roles.pauser (automation bot or admin; see PAUSER env var)
      *      - Swapper: SWAP_EXECUTOR_ROLE → ClaimManager (for collateral conversion)
      *      - PremiumManager: CLAIM_MANAGER_ROLE → ClaimManager (for surplus distribution)
      *
@@ -485,6 +486,7 @@ abstract contract Deploy is CreateXDeployer {
      *      NOTE: distributePremium() on PremiumManager is permissionless but requires the token
      *      to be in the approved set. Initial tokens are added in _deployPremiumContracts().
      * @param contracts DeployedContracts containing all proxy addresses.
+     * @param roles RoleConfig containing pauser and other role addresses.
      */
     function _grantRoles(DeployedContracts memory contracts, RoleConfig memory roles) private {
         bytes32 defaultAdminRole = bytes32(0);
@@ -518,6 +520,11 @@ abstract contract Deploy is CreateXDeployer {
      *      and the admin (multisig) must have their direct roles revoked. The deployer's
      *      SWAP_EXECUTOR_ROLE placeholder is also revoked (ClaimManager now holds it).
      *      DEFAULT_ADMIN_ROLE is revoked last to ensure all other revocations succeed.
+     *
+     *      PAUSER_ROLE is intentionally NOT revoked from deployer here. When PAUSER env var is set
+     *      to a dedicated address, the deployer never received PAUSER_ROLE so there is nothing to
+     *      revoke. When PAUSER defaults to the deployer (local/test only), retaining the role is
+     *      intentional for convenience.
      * @param contracts DeployedContracts containing all proxy addresses.
      * @param roles RoleConfig containing deployer and admin addresses.
      */
