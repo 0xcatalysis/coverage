@@ -301,13 +301,13 @@ interface IPolicyManager is IAccessControl {
 
     /**
      * @notice Pauses policy binding operations.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires PAUSER_ROLE.
      */
     function pause() external;
 
     /**
      * @notice Resumes policy binding operations.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires PAUSER_ROLE.
      */
     function unpause() external;
 
@@ -444,4 +444,9 @@ interface IPolicyManager is IAccessControl {
      * @param defaulted True to mark the policy as in premium default, false to clear.
      */
     function setPremiumDefaulted(uint96 policyId, bool defaulted) external;
+
+    /**
+     * @notice AccessControl identifier for the pause role.
+     */
+    function PAUSER_ROLE() external view returns (bytes32);
 }

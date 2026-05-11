@@ -119,13 +119,13 @@ interface IPremiumManager is IAccessControl {
 
     /**
      * @notice Pauses premium processing operations.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires PAUSER_ROLE.
      */
     function pause() external;
 
     /**
      * @notice Resumes premium processing operations.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires PAUSER_ROLE.
      */
     function unpause() external;
 
@@ -252,4 +252,9 @@ interface IPremiumManager is IAccessControl {
         external
         pure
         returns (uint256 platformSplit, uint256 poolSplit, uint256 restakerSplit);
+
+    /**
+     * @notice AccessControl identifier for the pause role.
+     */
+    function PAUSER_ROLE() external view returns (bytes32);
 }

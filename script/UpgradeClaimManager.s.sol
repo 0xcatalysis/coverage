@@ -15,6 +15,11 @@ import {UpgradeBase} from "./UpgradeBase.s.sol";
  *      WARNING: Storage layout checks are skipped. Manually verify layout before
  *      upgrading to avoid corrupting proxy state.
  *
+ *      POST-UPGRADE MIGRATION: This version introduces PAUSER_ROLE. After the upgrade,
+ *      the TimelockController must call grantRole(PAUSER_ROLE, <pauser>) on the proxy.
+ *      Bundle this grantRole call in the same Safe TX Builder batch as the upgrade to
+ *      avoid a window where no one can pause the contract.
+ *
  *      Environment Variables:
  *        - PRIVATE_KEY: Deployer private key with DEFAULT_ADMIN_ROLE on ClaimManager
  *        - CLAIM_MANAGER_PROXY: Address of the deployed ClaimManager proxy (required)
@@ -47,7 +52,7 @@ abstract contract UpgradeClaimManager is UpgradeBase {
      * @dev Encoded as the data argument to upgradeToAndCall so the proxy atomically configures
      *      the V2 storage fields in the same transaction as the implementation swap.
      */
-    function upgradeCalldata() internal view override returns (bytes memory) {
+    function upgradeCalldata() internal view virtual override returns (bytes memory) {
         address oraclePriceFeed = vm.envAddress("ORACLE_PRICE_FEED");
         require(oraclePriceFeed != address(0), "ORACLE_PRICE_FEED required");
         uint16 toleranceBps = SafeCast.toUint16(vm.envOr("PRICE_DEVIATION_TOLERANCE_BPS", uint256(300)));

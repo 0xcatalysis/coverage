@@ -65,7 +65,9 @@ contract SpecRegistryTest is Test {
         specId1 = keccak256("MorphoSpec");
         specId2 = keccak256("MapleSpec");
 
+        bytes32 pauserRole = registry.PAUSER_ROLE();
         vm.startPrank(admin);
+        registry.grantRole(pauserRole, admin);
         registry.approveSpec(spec1);
         registry.approveSpec(spec2);
         vm.stopPrank();
@@ -167,7 +169,9 @@ contract SpecRegistryTest is Test {
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         address notAdmin = makeAddr("notAdmin");
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, notAdmin, ADMIN_ROLE)
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, notAdmin, registry.PAUSER_ROLE()
+            )
         );
         vm.prank(notAdmin);
         registry.pause();
@@ -189,7 +193,9 @@ contract SpecRegistryTest is Test {
 
         address notAdmin = makeAddr("notAdmin");
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, notAdmin, ADMIN_ROLE)
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, notAdmin, registry.PAUSER_ROLE()
+            )
         );
         vm.prank(notAdmin);
         registry.unpause();
@@ -203,6 +209,47 @@ contract SpecRegistryTest is Test {
         vm.prank(admin);
         registry.unpause();
         assertFalse(registry.paused(), "Registry still paused");
+    }
+
+    function test_pause_WhenAdminLacksPauserRole_Reverts() public {
+        address adminNoPauser = makeAddr("adminNoPauser");
+        bytes32 adminRole = registry.DEFAULT_ADMIN_ROLE();
+        vm.prank(admin);
+        registry.grantRole(adminRole, adminNoPauser);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, adminNoPauser, registry.PAUSER_ROLE()
+            )
+        );
+        vm.prank(adminNoPauser);
+        registry.pause();
+    }
+
+    function test_pause_WhenCallerOnlyHasPauserRole_Succeeds() public {
+        address pauserOnly = makeAddr("pauserOnly");
+        bytes32 pauserRole = registry.PAUSER_ROLE();
+        vm.prank(admin);
+        registry.grantRole(pauserRole, pauserOnly);
+
+        vm.prank(pauserOnly);
+        registry.pause();
+        assertTrue(registry.paused(), "Registry not paused");
+
+        vm.prank(pauserOnly);
+        registry.unpause();
+        assertFalse(registry.paused(), "Registry still paused");
+    }
+
+    function test_pause_WhenRandomCaller_Reverts() public {
+        address random = makeAddr("random");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, random, registry.PAUSER_ROLE()
+            )
+        );
+        vm.prank(random);
+        registry.pause();
     }
 
     /*//////////////////////////////////////////////////////////////

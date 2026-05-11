@@ -70,6 +70,10 @@ contract CoverPoolFactoryTest is Test {
         );
         factory = CoverPoolFactory(proxy);
 
+        bytes32 pauserRole = factory.PAUSER_ROLE();
+        vm.prank(admin);
+        factory.grantRole(pauserRole, admin);
+
         creatorRole = factory.CREATOR_ROLE();
     }
 
@@ -183,7 +187,9 @@ contract CoverPoolFactoryTest is Test {
     //////////////////////////////////////////////////////////////*/
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, creator, ADMIN_ROLE)
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, creator, factory.PAUSER_ROLE()
+            )
         );
         vm.prank(creator);
         factory.pause();
@@ -203,7 +209,9 @@ contract CoverPoolFactoryTest is Test {
         factory.pause();
 
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, creator, ADMIN_ROLE)
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, creator, factory.PAUSER_ROLE()
+            )
         );
         vm.prank(creator);
         factory.unpause();
@@ -217,6 +225,47 @@ contract CoverPoolFactoryTest is Test {
         vm.prank(admin);
         factory.unpause();
         assertFalse(factory.paused(), "Factory still paused");
+    }
+
+    function test_pause_WhenAdminLacksPauserRole_Reverts() public {
+        address adminNoPauser = makeAddr("adminNoPauser");
+        bytes32 adminRole = factory.DEFAULT_ADMIN_ROLE();
+        vm.prank(admin);
+        factory.grantRole(adminRole, adminNoPauser);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, adminNoPauser, factory.PAUSER_ROLE()
+            )
+        );
+        vm.prank(adminNoPauser);
+        factory.pause();
+    }
+
+    function test_pause_WhenCallerOnlyHasPauserRole_Succeeds() public {
+        address pauserOnly = makeAddr("pauserOnly");
+        bytes32 pauserRole = factory.PAUSER_ROLE();
+        vm.prank(admin);
+        factory.grantRole(pauserRole, pauserOnly);
+
+        vm.prank(pauserOnly);
+        factory.pause();
+        assertTrue(factory.paused(), "Factory not paused");
+
+        vm.prank(pauserOnly);
+        factory.unpause();
+        assertFalse(factory.paused(), "Factory still paused");
+    }
+
+    function test_pause_WhenRandomCaller_Reverts() public {
+        address random = makeAddr("random");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, random, factory.PAUSER_ROLE()
+            )
+        );
+        vm.prank(random);
+        factory.pause();
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -79,13 +79,13 @@ interface ISpecRegistry {
 
     /**
      * @notice Pauses all spec registration operations.
-     * @dev Can only be called by accounts with DEFAULT_ADMIN_ROLE.
+     * @dev Can only be called by accounts with PAUSER_ROLE.
      */
     function pause() external;
 
     /**
      * @notice Unpauses all spec registration operations.
-     * @dev Can only be called by accounts with DEFAULT_ADMIN_ROLE.
+     * @dev Can only be called by accounts with PAUSER_ROLE.
      */
     function unpause() external;
 
@@ -134,4 +134,9 @@ interface ISpecRegistry {
      * @return spec Address of the authorized ISpec implementation contract.
      */
     function resolveSpec(address coverPool, bytes32 specId) external view returns (ISpec spec);
+
+    /**
+     * @notice AccessControl identifier for the pause role.
+     */
+    function PAUSER_ROLE() external view returns (bytes32);
 }

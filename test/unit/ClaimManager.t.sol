@@ -158,6 +158,10 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.initializeV2(address(oracleFeedMock), 300);
 
+        bytes32 pauserRole = claimManager.PAUSER_ROLE();
+        vm.prank(admin);
+        claimManager.grantRole(pauserRole, admin);
+
         vm.label(address(claimManager), "ClaimManager");
         vm.label(address(oracleFeedMock), "OraclePriceFeed");
 
@@ -332,9 +336,7 @@ contract ClaimManagerTest is Test {
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                unauthorized,
-                claimManager.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, unauthorized, claimManager.PAUSER_ROLE()
             )
         );
         vm.prank(unauthorized);
@@ -353,9 +355,7 @@ contract ClaimManagerTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                unauthorized,
-                claimManager.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, unauthorized, claimManager.PAUSER_ROLE()
             )
         );
         vm.prank(unauthorized);
@@ -380,6 +380,47 @@ contract ClaimManagerTest is Test {
         vm.prank(admin);
         claimManager.pause();
         assertTrue(claimManager.paused());
+    }
+
+    function test_pause_WhenAdminLacksPauserRole_Reverts() public {
+        address adminNoPauser = makeAddr("adminNoPauser");
+        bytes32 adminRole = claimManager.DEFAULT_ADMIN_ROLE();
+        vm.prank(admin);
+        claimManager.grantRole(adminRole, adminNoPauser);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, adminNoPauser, claimManager.PAUSER_ROLE()
+            )
+        );
+        vm.prank(adminNoPauser);
+        claimManager.pause();
+    }
+
+    function test_pause_WhenCallerOnlyHasPauserRole_Succeeds() public {
+        address pauserOnly = makeAddr("pauserOnly");
+        bytes32 pauserRole = claimManager.PAUSER_ROLE();
+        vm.prank(admin);
+        claimManager.grantRole(pauserRole, pauserOnly);
+
+        vm.prank(pauserOnly);
+        claimManager.pause();
+        assertTrue(claimManager.paused());
+
+        vm.prank(pauserOnly);
+        claimManager.unpause();
+        assertFalse(claimManager.paused());
+    }
+
+    function test_pause_WhenRandomCaller_Reverts() public {
+        address random = makeAddr("random");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, random, claimManager.PAUSER_ROLE()
+            )
+        );
+        vm.prank(random);
+        claimManager.pause();
     }
 
     /*//////////////////////////////////////////////////////////////

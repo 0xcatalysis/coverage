@@ -65,6 +65,10 @@ contract SwapperTest is Test {
         );
         swapper = Swapper(payable(proxy));
 
+        bytes32 pauserRole = swapper.PAUSER_ROLE();
+        vm.prank(admin);
+        swapper.grantRole(pauserRole, admin);
+
         vm.label(address(swapper), "Swapper");
         vm.label(address(tokenIn), "TokenIn");
         vm.label(address(tokenOut), "TokenOut");
@@ -178,7 +182,7 @@ contract SwapperTest is Test {
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), swapper.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), swapper.PAUSER_ROLE()
             )
         );
         swapper.pause();
@@ -203,10 +207,51 @@ contract SwapperTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), swapper.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, address(this), swapper.PAUSER_ROLE()
             )
         );
         swapper.unpause();
+    }
+
+    function test_pause_WhenAdminLacksPauserRole_Reverts() public {
+        address adminNoPauser = makeAddr("adminNoPauser");
+        bytes32 adminRole = swapper.DEFAULT_ADMIN_ROLE();
+        vm.prank(admin);
+        swapper.grantRole(adminRole, adminNoPauser);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, adminNoPauser, swapper.PAUSER_ROLE()
+            )
+        );
+        vm.prank(adminNoPauser);
+        swapper.pause();
+    }
+
+    function test_pause_WhenCallerOnlyHasPauserRole_Succeeds() public {
+        address pauserOnly = makeAddr("pauserOnly");
+        bytes32 pauserRole = swapper.PAUSER_ROLE();
+        vm.prank(admin);
+        swapper.grantRole(pauserRole, pauserOnly);
+
+        vm.prank(pauserOnly);
+        swapper.pause();
+        assertTrue(swapper.paused(), "Contract should be paused");
+
+        vm.prank(pauserOnly);
+        swapper.unpause();
+        assertFalse(swapper.paused(), "Contract should not be paused");
+    }
+
+    function test_pause_WhenRandomCaller_Reverts() public {
+        address random = makeAddr("random");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, random, swapper.PAUSER_ROLE()
+            )
+        );
+        vm.prank(random);
+        swapper.pause();
     }
 
     /*//////////////////////////////////////////////////////////////

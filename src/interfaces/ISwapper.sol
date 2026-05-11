@@ -196,13 +196,13 @@ interface ISwapper is IAccessControl {
 
     /**
      * @notice Pauses swap operations.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires PAUSER_ROLE.
      */
     function pause() external;
 
     /**
      * @notice Resumes swap operations.
-     * @dev Requires DEFAULT_ADMIN_ROLE.
+     * @dev Requires PAUSER_ROLE.
      */
     function unpause() external;
 
@@ -322,6 +322,11 @@ interface ISwapper is IAccessControl {
      * @notice AccessControl identifier for the swap executor role.
      */
     function SWAP_EXECUTOR_ROLE() external view returns (bytes32);
+
+    /**
+     * @notice AccessControl identifier for the pause role.
+     */
+    function PAUSER_ROLE() external view returns (bytes32);
 
     /**
      * @notice Address of the native token wrapper contract (e.g., WETH).

@@ -11,6 +11,13 @@ import {UpgradeBase} from "./UpgradeBase.s.sol";
  *      WARNING: Storage layout checks are skipped. Manually verify layout before
  *      upgrading to avoid corrupting proxy state.
  *
+ *      POST-UPGRADE MIGRATION: This version introduces PAUSER_ROLE. After the upgrade,
+ *      the TimelockController must call grantRole(PAUSER_ROLE, <pauser>) on the proxy.
+ *      Bundle this grantRole call in the same Safe TX Builder batch as the upgrade to
+ *      avoid a window where no one can pause the contract.
+ *      Note: setNativeWrapper() requires whenPaused — the PAUSER_ROLE holder must pause
+ *      before admin can call it; and unpause afterwards.
+ *
  *      Environment Variables:
  *        - PRIVATE_KEY: Deployer private key with DEFAULT_ADMIN_ROLE on Swapper
  *        - SWAPPER_PROXY: Address of the deployed Swapper proxy (required)

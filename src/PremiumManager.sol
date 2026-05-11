@@ -31,6 +31,7 @@ contract PremiumManager is
     using EnumerableSet for EnumerableSet.AddressSet;
 
     bytes32 public constant CLAIM_MANAGER_ROLE = keccak256("CLAIM_MANAGER_ROLE");
+    bytes32 public constant override PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
     uint16 private constant _BPS_DENOMINATOR = 10_000;
     uint16 private constant _MAX_PLATFORM_FEE_BPS = 2500; // 25%
@@ -82,14 +83,14 @@ contract PremiumManager is
     /**
      * @inheritdoc IPremiumManager
      */
-    function pause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function pause() external override onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
     /**
      * @inheritdoc IPremiumManager
      */
-    function unpause() external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function unpause() external override onlyRole(PAUSER_ROLE) {
         _unpause();
     }
 

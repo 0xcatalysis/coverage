@@ -78,11 +78,13 @@ interface ICoverPoolFactory is IAccessControl {
 
     /**
      * @notice Pauses cover pool creation.
+     * @dev Requires PAUSER_ROLE.
      */
     function pause() external;
 
     /**
      * @notice Resumes cover pool creation.
+     * @dev Requires PAUSER_ROLE.
      */
     function unpause() external;
 
@@ -186,4 +188,9 @@ interface ICoverPoolFactory is IAccessControl {
      * @return The role identifier hash.
      */
     function CREATOR_ROLE() external view returns (bytes32);
+
+    /**
+     * @notice AccessControl identifier for the pause role.
+     */
+    function PAUSER_ROLE() external view returns (bytes32);
 }

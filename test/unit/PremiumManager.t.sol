@@ -72,8 +72,11 @@ contract PremiumManagerTest is Test {
         vm.label(address(premiumToken), "PremiumToken");
         vm.label(address(mockPool), "MockPool");
 
-        vm.prank(admin);
+        bytes32 pauserRole = premiumManager.PAUSER_ROLE();
+        vm.startPrank(admin);
+        premiumManager.grantRole(pauserRole, admin);
         premiumManager.addApprovedPremiumToken(address(premiumToken));
+        vm.stopPrank();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -123,9 +126,7 @@ contract PremiumManagerTest is Test {
     function test_pause_WhenCallerNotAdmin_Reverts() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                premiumCollector,
-                premiumManager.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, premiumCollector, premiumManager.PAUSER_ROLE()
             )
         );
         vm.prank(premiumCollector);
@@ -149,9 +150,7 @@ contract PremiumManagerTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                premiumCollector,
-                premiumManager.DEFAULT_ADMIN_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, premiumCollector, premiumManager.PAUSER_ROLE()
             )
         );
         vm.prank(premiumCollector);
@@ -165,6 +164,47 @@ contract PremiumManagerTest is Test {
         vm.stopPrank();
 
         assertFalse(premiumManager.paused(), "Manager still paused");
+    }
+
+    function test_pause_WhenAdminLacksPauserRole_Reverts() public {
+        address adminNoPauser = makeAddr("adminNoPauser");
+        bytes32 adminRole = premiumManager.DEFAULT_ADMIN_ROLE();
+        vm.prank(admin);
+        premiumManager.grantRole(adminRole, adminNoPauser);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, adminNoPauser, premiumManager.PAUSER_ROLE()
+            )
+        );
+        vm.prank(adminNoPauser);
+        premiumManager.pause();
+    }
+
+    function test_pause_WhenCallerOnlyHasPauserRole_Succeeds() public {
+        address pauserOnly = makeAddr("pauserOnly");
+        bytes32 pauserRole = premiumManager.PAUSER_ROLE();
+        vm.prank(admin);
+        premiumManager.grantRole(pauserRole, pauserOnly);
+
+        vm.prank(pauserOnly);
+        premiumManager.pause();
+        assertTrue(premiumManager.paused(), "Manager not paused");
+
+        vm.prank(pauserOnly);
+        premiumManager.unpause();
+        assertFalse(premiumManager.paused(), "Manager still paused");
+    }
+
+    function test_pause_WhenRandomCaller_Reverts() public {
+        address random = makeAddr("random");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, random, premiumManager.PAUSER_ROLE()
+            )
+        );
+        vm.prank(random);
+        premiumManager.pause();
     }
 
     /*//////////////////////////////////////////////////////////////
