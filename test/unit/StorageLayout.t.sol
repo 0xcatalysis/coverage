@@ -6,7 +6,8 @@ import {Test} from "forge-std/Test.sol";
 /**
  * @title StorageLayoutTest
  * @notice Regression test that pins the storage layout of every upgradeable proxy currently
- *         deployed on Ethereum mainnet (see docs/deployment/Ethereum-Mainnet.md).
+ *         deployed on Ethereum mainnet (see docs/deployment/Ethereum-Mainnet.md), plus
+ *         CoveredVaultWrapper as a defensive addition given its deep inheritance chain.
  * @dev Forge writes each contract's storage layout to `out/<Contract>.sol/<Contract>.json` because
  *      `extra_output = ["storageLayout"]` is set in foundry.toml. This test reads that JSON for
  *      each deployed UUPS proxy and asserts (label, slot, offset, type) for every storage entry
@@ -29,6 +30,10 @@ import {Test} from "forge-std/Test.sol";
  *      CoverPool is intentionally not pinned: it is deployed as EIP-1167 minimal-proxy clones
  *      via CoverPoolFactory.createCoverPool, and existing clones cannot be upgraded in place.
  *      UniswapV3Adapter is non-upgradeable and is also out of scope.
+ *      CoveredVaultWrapper is pinned defensively: it is not currently on the mainnet list but
+ *      its deep inheritance chain (CoveredVaultStorage → BasePolicyInteractions →
+ *      ERC4626Upgradeable → Ownable2StepUpgradeable → …) makes accidental slot collisions
+ *      easy to introduce, so the baseline is cheap insurance.
  */
 contract StorageLayoutTest is Test {
     /// @dev Single storage entry as decoded from the Foundry storageLayout JSON.
@@ -126,6 +131,51 @@ contract StorageLayoutTest is Test {
         expected[3] = ExpectedSlot("specRegistry", 3, 0, "t_address");
         expected[4] = ExpectedSlot("_pools", 4, 0, "t_struct(AddressSet)_storage");
         _assertLayout("CoverPoolFactory", expected);
+    }
+
+    function test_CoveredVaultWrapper_storageLayoutPinned() public view {
+        ExpectedSlot[] memory expected = new ExpectedSlot[](38);
+        // BasePolicyInteractions (slots 0-52)
+        expected[0] = ExpectedSlot("claimManager", 0, 0, "t_contract(IClaimManager)");
+        expected[1] = ExpectedSlot("_policyManager", 1, 0, "t_contract(IPolicyManager)");
+        expected[2] = ExpectedSlot("coverPool", 2, 0, "t_address");
+        expected[3] = ExpectedSlot("__gap", 3, 0, "t_array(t_uint256)50_storage");
+        // CoveredVaultStorage (slots 53+)
+        expected[4] = ExpectedSlot("morphoVault", 53, 0, "t_address");
+        expected[5] = ExpectedSlot("maxCoverableLossBps", 53, 20, "t_uint16");
+        expected[6] = ExpectedSlot("deductibleBps", 53, 22, "t_uint16");
+        expected[7] = ExpectedSlot("policyId", 54, 0, "t_uint96");
+        expected[8] = ExpectedSlot("policyBoundExecuted", 54, 12, "t_bool");
+        expected[9] = ExpectedSlot("userPrincipal", 55, 0, "t_mapping(t_address,t_uint256)");
+        expected[10] = ExpectedSlot("totalPrincipal", 56, 0, "t_uint256");
+        expected[11] = ExpectedSlot("premiumRatePerSecond", 57, 0, "t_uint256");
+        expected[12] = ExpectedSlot("lastPremiumAccrualTime", 58, 0, "t_uint256");
+        expected[13] = ExpectedSlot("premiumRecipient", 59, 0, "t_address");
+        expected[14] = ExpectedSlot("depositCap", 60, 0, "t_uint256");
+        expected[15] = ExpectedSlot("pendingPremium", 61, 0, "t_uint256");
+        expected[16] = ExpectedSlot("coverageLimit", 62, 0, "t_uint256");
+        expected[17] = ExpectedSlot("cumulativePremiumPerUnit", 63, 0, "t_uint256");
+        expected[18] = ExpectedSlot("userPremiumDebt", 64, 0, "t_mapping(t_address,t_uint256)");
+        expected[19] = ExpectedSlot("totalPremiumLiability", 65, 0, "t_uint256");
+        expected[20] = ExpectedSlot("userMorphoShares", 66, 0, "t_mapping(t_address,t_uint256)");
+        expected[21] = ExpectedSlot("pendingDeductibleBps", 67, 0, "t_uint16");
+        expected[22] = ExpectedSlot("pendingDeductibleTimestamp", 67, 2, "t_uint64");
+        expected[23] = ExpectedSlot("lastKnownMorphoValue", 68, 0, "t_uint256");
+        expected[24] = ExpectedSlot("morphoGateActive", 69, 0, "t_bool");
+        expected[25] = ExpectedSlot("pendingImplementation", 69, 1, "t_address");
+        expected[26] = ExpectedSlot("pendingUpgradeTimestamp", 69, 21, "t_uint64");
+        expected[27] = ExpectedSlot("pendingPremiumRate", 70, 0, "t_uint256");
+        expected[28] = ExpectedSlot("pendingPremiumRateTimestamp", 71, 0, "t_uint64");
+        expected[29] = ExpectedSlot("pendingPremiumRecipient", 71, 8, "t_address");
+        expected[30] = ExpectedSlot("pendingPremiumRecipientTimestamp", 72, 0, "t_uint64");
+        expected[31] = ExpectedSlot("pendingDepositCap", 73, 0, "t_uint256");
+        expected[32] = ExpectedSlot("pendingDepositCapTimestamp", 74, 0, "t_uint64");
+        expected[33] = ExpectedSlot("policyStartTime", 75, 0, "t_uint256");
+        expected[34] = ExpectedSlot("premiumScaleFactor", 76, 0, "t_uint256");
+        expected[35] = ExpectedSlot("premiumAccrualRemainder", 77, 0, "t_uint256");
+        expected[36] = ExpectedSlot("_claimNonce", 78, 0, "t_uint256");
+        expected[37] = ExpectedSlot("premiumRateInitialized", 79, 0, "t_bool");
+        _assertLayout("CoveredVaultWrapper", expected);
     }
 
     /*//////////////////////////////////////////////////////////////
