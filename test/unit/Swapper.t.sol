@@ -418,6 +418,17 @@ contract SwapperTest is Test {
         assertEq(tokenIn.balanceOf(address(swapper)), 0, "Swapper balance should be zero");
     }
 
+    function test_recoverTokens_WhenValid_EmitsTokensRecovered() public {
+        uint256 rescueAmount = 50 ether;
+        tokenIn.mint(address(swapper), rescueAmount);
+
+        vm.expectEmit(true, true, false, true, address(swapper));
+        emit ISwapper.TokensRecovered(address(tokenIn), recipient, rescueAmount);
+
+        vm.prank(admin);
+        swapper.recoverTokens(address(tokenIn), recipient, rescueAmount);
+    }
+
     function test_recoverTokens_WhenNativeETH_TransfersNativeETH() public {
         uint256 rescueAmount = 5 ether;
 
@@ -431,6 +442,18 @@ contract SwapperTest is Test {
 
         assertEq(recipient.balance, balanceBefore + rescueAmount, "Native ETH should be transferred");
         assertEq(address(swapper).balance, 0, "Swapper balance should be zero");
+    }
+
+    function test_recoverTokens_WhenNativeETH_EmitsTokensRecovered() public {
+        uint256 rescueAmount = 5 ether;
+        vm.deal(address(swapper), rescueAmount);
+        address nativeEth = swapper.NATIVE_ETH();
+
+        vm.expectEmit(true, true, false, true, address(swapper));
+        emit ISwapper.TokensRecovered(nativeEth, recipient, rescueAmount);
+
+        vm.prank(admin);
+        swapper.recoverTokens(nativeEth, recipient, rescueAmount);
     }
 
     function test_recoverTokens_WhenNativeETHTransferFails_Reverts() public {

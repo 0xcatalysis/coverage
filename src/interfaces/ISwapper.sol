@@ -96,6 +96,14 @@ interface ISwapper is IAccessControl {
     event NativeWrapperSet(address indexed wrapper);
 
     /**
+     * @notice Emitted when stranded tokens or native ETH are recovered by an admin.
+     * @param token Token address recovered, or the native ETH sentinel (0xEeee...eeEE).
+     * @param to Recipient of the recovered funds.
+     * @param amount Amount recovered.
+     */
+    event TokensRecovered(address indexed token, address indexed to, uint256 amount);
+
+    /**
      * @notice Reverts when a required address argument is zero.
      */
     error ZeroAddress();
