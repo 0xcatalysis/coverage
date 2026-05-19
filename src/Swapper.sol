@@ -147,6 +147,8 @@ contract Swapper is UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeab
         } else {
             IERC20(token).safeTransfer(to, amount);
         }
+
+        emit TokensRecovered(token, to, amount);
     }
 
     /**
