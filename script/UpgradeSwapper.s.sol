@@ -18,6 +18,14 @@ import {UpgradeBase} from "./UpgradeBase.s.sol";
  *      Note: setNativeWrapper() requires whenPaused — the PAUSER_ROLE holder must pause
  *      before admin can call it; and unpause afterwards.
  *
+ *      MANDATORY POST-UPGRADE WIRING:
+ *      After upgrading, call Swapper.setClaimManager(<claimManagerProxy>) before ANY new
+ *      policy is bound. Without this, PolicyManager.bindPolicy reverts OnlyClaimManager
+ *      for every policy with cross-token collateral — ClaimManager.validateAndLockCollateralRoutes
+ *      calls Swapper.lockRouteUntil which requires msg.sender == claimManager. Bundle this
+ *      call in the same multisig batch / scheduleBatch as the upgrade.
+ *      Counter-tested: slot 3 stays 0x0 if skipped; lockRouteUntil reverts 0xeb1af97e.
+ *
  *      Environment Variables:
  *        - PRIVATE_KEY: Deployer private key with DEFAULT_ADMIN_ROLE on Swapper
  *        - SWAPPER_PROXY: Address of the deployed Swapper proxy (required)
