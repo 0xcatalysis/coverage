@@ -70,6 +70,11 @@ interface ICoverPoolFactoryView {
     function stakeManager() external view returns (address);
 }
 
+interface ISwapperView {
+    function claimManager() external view returns (address);
+    function PAUSER_ROLE() external view returns (bytes32);
+}
+
 /**
  * @title VerifySepoliaConfig
  * @notice Reads and prints the live on-chain configuration of all Sepolia contracts,
@@ -81,48 +86,56 @@ interface ICoverPoolFactoryView {
  *        Flow 1  – CreateCoverPool:       CoverPoolFactory not paused, stakeManager wired
  *        Flow 2-3– RequestCoverage:       StakeManager roles + wiring, SSPRouter adapters
  *        Flow 4  – PrepareBindPolicy:     Adapter oraclePriceFeed, SSPRouter adapters
- *        Flow 5  – BindPolicy:            SSPRouter vault module registration
+ *        Flow 5  – BindPolicy:            PolicyManager oraclePriceFeed, vault module, Swapper wiring
  *        Flow 6-7– DistributePremium:     RewardsManager wiring + PREMIUM_MANAGER_ROLE
- *        Flow 8  – FileClaim:             SlashingManager wiring + ClaimManager↔PremiumManager
+ *        Flow 8  – FileClaim:             SlashingManager wiring + ClaimManager state + OraclePriceFeed
  *
  *      Output:
  *        [OK]   – value matches expected
  *        [FAIL] – misconfigured; must be fixed before testing
  *
+ *      Optional env vars:
+ *        PAUSER: When set, also verifies PAUSER_ROLE is granted to this address on all 6 proxies.
+ *
  *      Usage:
  *        forge script script/VerifySepoliaConfig.s.sol --rpc-url $SEPOLIA_RPC_URL
  */
 contract VerifySepoliaConfig is Script {
-    // ── Coverage contracts
-    // ──────────────────────────────────────────────────
-    address internal constant COVER_POOL_FACTORY = 0x43c1AC362f88f461d2CF358D6fF76C833585B830;
-    address internal constant POLICY_MANAGER = 0x48Ded2CB83623d5dE7D51Eab045A452bA70C2A35;
-    address internal constant CLAIM_MANAGER = 0x568191F923C10A5447d8349eFD63687836D52099;
-    address internal constant PREMIUM_MANAGER = 0xD75357f1AA43d87edA20A128D1A525FF320cB743;
+    // ── Coverage contracts (canonical Sepolia addresses — CreateX deployment)
+    // ──────────────
+    address internal constant COVER_POOL_FACTORY = 0x4f3DbB70cD85bcb63303FBa8610Cb163aDDA4E66;
+    address internal constant POLICY_MANAGER = 0xfb771BE75365D2a1D32be198e03ce8a2125e2699;
+    address internal constant CLAIM_MANAGER = 0x3ceE181C3E78fB9968f0Fb0935d2db0723B9Cb45;
+    address internal constant PREMIUM_MANAGER = 0xEc7322D6754709d5001B710ec4fB2547a89B3aD1;
+    address internal constant SPEC_REGISTRY = 0x90EfF742958dd4c54ede3ED365375a14077D0A58;
+    address internal constant SWAPPER = 0x148Bfe2330cEe4f227addb47736a105DB427dc31;
 
-    // ── Core contracts
-    // ──────────────────────────────────────────────────────
-    address internal constant STAKE_MANAGER = 0xF26d310D98b9eB0B20d96B605d9Af15bC31f5c32;
-    address internal constant SLASHING_MANAGER = 0xF397bbFDB272b31366D472Fcdbf4DC0982ec8714;
-    address internal constant REWARDS_MANAGER = 0x6A0823fC61F970BB8a52cF95BfB8F32265Ada8b8;
-    address internal constant SSP_ROUTER = 0xf68c72E92f9BdB7Cdba2AF4026Bab8DC22781148;
-    address internal constant EIGEN_ADAPTER = 0xB4bB09dcE1C1D9d987D5dc0dC2c8770D4fbBD49b;
-    address internal constant ORACLE_PRICE_FEED = 0x2b48F18f73C66075168b727524c99aFE12814417;
+    // ── Core contracts (canonical Sepolia addresses — CreateX deployment)
+    // ─────────────────
+    address internal constant STAKE_MANAGER = 0x5be5220F81e76e0CF6089fb7E7aE9eF48a8D64Be;
+    address internal constant SLASHING_MANAGER = 0x7Bc39bf135eF3c30E542C196719c91455ff489f0;
+    address internal constant REWARDS_MANAGER = 0x8ae0F0B94fe782D7F055B04d4699c3cc01632b46;
+    address internal constant SSP_ROUTER = 0xF39E592E93A7a925a57464e0120B555A25590486;
+    address internal constant EIGEN_ADAPTER = 0xe6168092892E545701D92BEe10149178bE0EEDF4;
+    address internal constant ORACLE_PRICE_FEED = 0x57F750E3B8e095A5b3AE96030F0cac5dFe2f8A16;
 
-    // ── Known E2E vault (EigenLayer wstETH DurationVaultStrategy, deployed by SSPRouter) ──
+    // ── Known E2E vault (EigenLayer wstETH DurationVaultStrategy)
+    // ────────────────────────
     address internal constant WSTETH_EL_STRATEGY = 0x7db0C347645bE3E19Af87d72E6220361cdD2428D;
 
     // ── Reference token
-    // ─────────────────────────────────────────────────────
+    // ───────────────────────────────────────────────────────────────────
     address internal constant WETH = 0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9;
 
     // ── Roles
-    // ────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────────
     bytes32 internal constant POLICY_MANAGER_ROLE = keccak256("POLICY_MANAGER_ROLE");
     bytes32 internal constant CLAIM_MANAGER_ROLE = keccak256("CLAIM_MANAGER_ROLE");
     bytes32 internal constant PREMIUM_MANAGER_ROLE = keccak256("PREMIUM_MANAGER_ROLE");
+    bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
-    // ── SSPRouter module type enum values (ISSPRouter.SSPModuleType) ─────────
+    // ── SSPRouter module type (ISSPRouter.SSPModuleType)
+    // ─────────────────────────────────
     uint8 internal constant MODULE_EIGENLAYER = 2;
 
     uint256 internal _failures;
@@ -141,19 +154,23 @@ contract VerifySepoliaConfig is Script {
         _checkFlow6_7_distributePremium();
         _checkFlow8_fileClaim();
 
+        address pauser = vm.envOr("PAUSER", address(0));
+        if (pauser != address(0)) {
+            _checkPauserRole(pauser);
+        }
+
         console2.log("");
         if (_failures == 0) {
-            console2.log("[ALL OK] All", uint256(27), "checks passed. Configuration is complete for E2E testing.");
+            console2.log("[ALL OK] All checks passed. Configuration is complete for E2E testing.");
         } else {
             console2.log("[INCOMPLETE]", _failures, "check(s) failed. See [FAIL] lines above.");
-            console2.log("  Fix: run cast send commands in docs/deployment/CoreAdminActions-Sepolia.md");
         }
         console2.log("=========================================");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Flow 1 – CreateCoverPool
-    //  Requires: CoverPoolFactory not paused, stakeManager set to new core
+    //  Requires: CoverPoolFactory not paused, stakeManager wired
     // ─────────────────────────────────────────────────────────────────────────
 
     function _checkFlow1_createCoverPool() internal {
@@ -179,7 +196,6 @@ contract VerifySepoliaConfig is Script {
         );
         _check("StakeManager.coverPoolFactory", IStakeManagerView(STAKE_MANAGER).coverPoolFactory(), COVER_POOL_FACTORY);
         _check("StakeManager.router", IStakeManagerView(STAKE_MANAGER).router(), SSP_ROUTER);
-        // SSPRouter must have EigenLayer adapter so createCommittee can deploy operator sets
         _check(
             "SSPRouter.getAdapter(EIGENLAYER)", ISSPRouterView(SSP_ROUTER).getAdapter(MODULE_EIGENLAYER), EIGEN_ADAPTER
         );
@@ -205,7 +221,8 @@ contract VerifySepoliaConfig is Script {
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Flow 5 – BindPolicy
-    //  Requires: vault module registered in SSPRouter (for addCommitteeVaults)
+    //  Requires: vault module registered, PolicyManager oraclePriceFeed,
+    //            Swapper.claimManager set (CYS3-06)
     // ─────────────────────────────────────────────────────────────────────────
 
     function _checkFlow5_bindPolicy() internal {
@@ -213,7 +230,6 @@ contract VerifySepoliaConfig is Script {
 
         _check("PolicyManager.oraclePriceFeed", IPolicyManagerView(POLICY_MANAGER).oraclePriceFeed(), ORACLE_PRICE_FEED);
 
-        // addCommitteeVaults checks getVaultModule != NONE for each vault
         uint8 module = ISSPRouterView(SSP_ROUTER).getVaultModule(WSTETH_EL_STRATEGY);
         if (module == MODULE_EIGENLAYER) {
             console2.log("[OK] SSPRouter.getVaultModule(WSTETH_EL_STRATEGY): EIGENLAYER (2)");
@@ -226,13 +242,15 @@ contract VerifySepoliaConfig is Script {
             _failures++;
         }
 
+        // CYS3-06: Swapper must have claimManager set so lockRouteUntil works during bindPolicy
+        _check("Swapper.claimManager", ISwapperView(SWAPPER).claimManager(), CLAIM_MANAGER);
+
         console2.log("");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Flows 6-7 – DistributePremium
-    //  Requires: PremiumManager → RewardsManager address + PREMIUM_MANAGER_ROLE
-    //  Requires: PremiumManager has approved RewardsManager for WETH (via approveSpender)
+    //  Requires: PremiumManager → RewardsManager + PREMIUM_MANAGER_ROLE + approval
     // ─────────────────────────────────────────────────────────────────────────
 
     function _checkFlow6_7_distributePremium() internal {
@@ -265,8 +283,8 @@ contract VerifySepoliaConfig is Script {
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Flow 8 – FileClaim
-    //  Requires: ClaimManager → SlashingManager address + CLAIM_MANAGER_ROLE,
-    //            SlashingManager → SSPRouter + StakeManager
+    //  Requires: ClaimManager V2 state (oraclePriceFeed + priceDeviationToleranceBps),
+    //            SlashingManager wiring, OraclePriceFeed feed registered
     // ─────────────────────────────────────────────────────────────────────────
 
     function _checkFlow8_fileClaim() internal {
@@ -274,6 +292,8 @@ contract VerifySepoliaConfig is Script {
 
         _check("ClaimManager.slashingManager", IClaimManagerView(CLAIM_MANAGER).slashingManager(), SLASHING_MANAGER);
         _check("ClaimManager.premiumManager", IClaimManagerView(CLAIM_MANAGER).premiumManager(), PREMIUM_MANAGER);
+
+        // CYS3-03: V2 storage fields — both must be non-zero after initializeV2
         _check("ClaimManager.oraclePriceFeed", IClaimManagerView(CLAIM_MANAGER).oraclePriceFeed(), ORACLE_PRICE_FEED);
         uint16 toleranceBps = IClaimManagerView(CLAIM_MANAGER).priceDeviationToleranceBps();
         if (toleranceBps > 0) {
@@ -282,6 +302,7 @@ contract VerifySepoliaConfig is Script {
             console2.log("[FAIL] ClaimManager.priceDeviationToleranceBps is 0 -- initializeV2 not called?");
             _failures++;
         }
+
         _checkRole(
             "PremiumManager: CLAIM_MANAGER_ROLE -> ClaimManager",
             PREMIUM_MANAGER,
@@ -307,6 +328,25 @@ contract VerifySepoliaConfig is Script {
         } catch {
             console2.log("[FAIL] OraclePriceFeed.getUSDValue(WETH) reverted -- WETH feed not registered");
             _failures++;
+        }
+
+        console2.log("");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  PAUSER_ROLE — optional, enabled when PAUSER env var is set
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function _checkPauserRole(address pauser) internal {
+        console2.log("--- PAUSER_ROLE checks (PAUSER =", pauser, ") ---");
+
+        address[6] memory proxies =
+            [SWAPPER, CLAIM_MANAGER, POLICY_MANAGER, PREMIUM_MANAGER, COVER_POOL_FACTORY, SPEC_REGISTRY];
+        string[6] memory names =
+            ["Swapper", "ClaimManager", "PolicyManager", "PremiumManager", "CoverPoolFactory", "SpecRegistry"];
+
+        for (uint256 i = 0; i < proxies.length; ++i) {
+            _checkRole(string.concat(names[i], ": PAUSER_ROLE -> pauser"), proxies[i], PAUSER_ROLE, pauser);
         }
 
         console2.log("");
